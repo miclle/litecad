@@ -1,0 +1,131 @@
+version: "3"
+
+vars:
+  WEBSITE_DIR: website
+
+tasks:
+  default:
+    desc: Print task list
+    cmds:
+      - task --list-all --sort none
+    silent: true
+
+  init-config:
+    internal: true
+    cmds:
+      - cp cmd/app/config.example.yaml cmd/app/config.local.yaml
+      - echo "Created cmd/app/config.local.yaml from config.example.yaml"
+    status:
+      - test -f cmd/app/config.local.yaml
+
+  install:
+    desc: Install all dependencies (Go modules + frontend)
+    cmds:
+      - go mod download
+      - cd {{.WEBSITE_DIR}} && npm install
+
+  # ---------- Development ----------
+
+  dev:
+    desc: Start Vite dev server and Go server with hot-reload
+    deps: [init-config, kill-vite]
+    cmds:
+      - |
+        export GOBLET_HTTP_PORT="${GOBLET_HTTP_PORT:-9000}"
+        export GOBLET_VITE_PORT="${GOBLET_VITE_PORT:-5173}"
+        export GOBLET_API_BASE_URL="${GOBLET_API_BASE_URL:-http://127.0.0.1:${GOBLET_HTTP_PORT}}"
+        export GOBLET_VITE_DEV_SERVER_URL="${GOBLET_VITE_DEV_SERVER_URL:-http://localhost:${GOBLET_VITE_PORT}}"
+
+        echo "Starting Vite on ${GOBLET_VITE_DEV_SERVER_URL}"
+        echo "Starting Go server on port ${GOBLET_HTTP_PORT}"
+
+        cd {{.WEBSITE_DIR}} && npm run dev &
+        sleep 1
+        reflex \
+          -d none -s \
+          -r '\.go$' \
+          -R 'website/' \
+          -R 'tmp' \
+          -- go run -trimpath -tags development ./cmd/app/ -c cmd/app/config.local.yaml
+
+  run:
+    desc: Run the server (production mode, requires build first)
+    deps: [init-config]
+    cmds:
+      - go run ./cmd/app/ -c cmd/app/config.local.yaml
+
+  # ---------- Build ----------
+
+  build:
+    desc: Build the server binary for the current platform
+    cmds:
+      - cd {{.WEBSITE_DIR}} && npm install && npm run build
+      - ./scripts/build.sh
+
+  build-all:
+    desc: Build server binaries for all supported platforms
+    cmds:
+      - cd {{.WEBSITE_DIR}} && npm install && npm run build
+      - ./scripts/build-all.sh
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf bin/
+      - go clean ./...
+
+  # ---------- Code Quality ----------
+
+  lint:
+    desc: Auto-fix code style (go mod tidy + gofmt + vet + staticcheck + frontend eslint)
+    cmds:
+      - go mod tidy
+      - gofmt -w .
+      - go vet -tags development $(./scripts/go-packages.sh)
+      - staticcheck -tags development $(./scripts/go-packages.sh)
+      - cd {{.WEBSITE_DIR}} && npm run lint
+
+  check:
+    desc: Run all checks without modifying files (CI-friendly)
+    cmds:
+      - task: check-backend
+      - task: check-frontend-types
+      - task: check-mod-tidy
+
+  check-backend:
+    internal: true
+    cmds:
+      - gofmt -l .
+      - go vet -tags development $(./scripts/go-packages.sh)
+      - ./scripts/check-lint.sh
+
+  check-frontend-types:
+    internal: true
+    cmds:
+      - cd {{.WEBSITE_DIR}} && npx tsc -b
+
+  check-mod-tidy:
+    internal: true
+    cmds:
+      - ./scripts/check-mod-tidy.sh
+
+  # ---------- Testing ----------
+
+  test:
+    desc: Run Go tests with race detection and coverage, then frontend tests
+    cmds:
+      - go test -trimpath -race -tags development -coverprofile=coverage.out $(./scripts/go-packages.sh)
+      - cd {{.WEBSITE_DIR}} && npx vitest run --passWithNoTests
+
+  # ---------- Internal ----------
+
+  kill-vite:
+    internal: true
+    cmds:
+      - ./scripts/kill-vite.sh
+
+  update-tools:
+    desc: Install/update development tools (reflex, staticcheck, golangci-lint)
+    run: once
+    cmds:
+      - ./scripts/install-tools.sh
