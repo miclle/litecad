@@ -744,7 +744,7 @@ function ViewCube3D({
     viewStateRef.current?.render(orientation)
   }, [orientation])
 
-  return <div ref={containerRef} aria-label="View cube" className="absolute left-1/2 top-[52px] z-10 h-[158px] w-[148px] -translate-x-1/2" />
+  return <div ref={containerRef} aria-label="View cube" className="absolute left-1/2 top-1/2 z-10 size-[112px] -translate-x-1/2 -translate-y-1/2" />
 }
 
 function ViewController({
@@ -759,15 +759,16 @@ function ViewController({
   onStep: (delta: Partial<ViewOrientation>) => void
 }) {
   const arrowButtonClass =
-    'absolute z-30 grid size-10 place-items-center outline-none transition hover:scale-110 focus-visible:outline-none'
-  const arrowClass = 'block size-8 bg-[#9a9f99] transition group-hover:bg-[#c5c7c0]'
+    'absolute z-30 grid size-6 place-items-center outline-none transition hover:scale-110 focus-visible:outline-none'
+  const verticalArrowClass = 'block h-3 w-5 bg-[#9a9f99] transition group-hover:bg-[#c5c7c0]'
+  const horizontalArrowClass = 'block h-5 w-3 bg-[#9a9f99] transition group-hover:bg-[#c5c7c0]'
   const arcButtonClass =
-    'absolute z-30 grid h-14 w-[78px] place-items-center text-[#9a9f99] outline-none transition hover:scale-105 hover:text-[#c5c7c0] focus-visible:outline-none'
+    'absolute z-20 grid h-[30px] w-[35px] place-items-center text-[#9a9f99] outline-none transition hover:scale-105 hover:text-[#c5c7c0] focus-visible:outline-none'
 
   return (
     <div
       aria-label="View orientation controls"
-      className="absolute right-4 top-4 z-20 hidden h-[232px] w-[214px] select-none text-[#d8d1bf] sm:block"
+      className="absolute right-4 top-4 z-20 hidden size-[135px] select-none text-[#d8d1bf] sm:block"
     >
       <button
         aria-label="Tilt view up"
@@ -776,27 +777,27 @@ function ViewController({
         title="Tilt view up"
         type="button"
       >
-        <span className={arrowClass} style={{ clipPath: 'polygon(50% 0, 0 100%, 100% 100%)' }} />
+        <span className={verticalArrowClass} style={{ clipPath: 'polygon(50% 0, 0 100%, 100% 100%)' }} />
       </button>
 
       <button
         aria-label="Rotate view left 45 degrees"
-        className={`${arrowButtonClass} group left-0 top-[101px]`}
+        className={`${arrowButtonClass} group left-0 top-1/2 -translate-y-1/2`}
         onClick={() => onStep({ yaw: -45 })}
         title="Rotate view left 45 degrees"
         type="button"
       >
-        <span className={arrowClass} style={{ clipPath: 'polygon(0 50%, 100% 0, 100% 100%)' }} />
+        <span className={horizontalArrowClass} style={{ clipPath: 'polygon(0 50%, 100% 0, 100% 100%)' }} />
       </button>
 
       <button
         aria-label="Rotate view right 45 degrees"
-        className={`${arrowButtonClass} group right-0 top-[101px]`}
+        className={`${arrowButtonClass} group right-0 top-1/2 -translate-y-1/2`}
         onClick={() => onStep({ yaw: 45 })}
         title="Rotate view right 45 degrees"
         type="button"
       >
-        <span className={arrowClass} style={{ clipPath: 'polygon(100% 50%, 0 0, 0 100%)' }} />
+        <span className={horizontalArrowClass} style={{ clipPath: 'polygon(100% 50%, 0 0, 0 100%)' }} />
       </button>
 
       <button
@@ -806,43 +807,47 @@ function ViewController({
         title="Tilt view down"
         type="button"
       >
-        <span className={arrowClass} style={{ clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
+        <span className={verticalArrowClass} style={{ clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
       </button>
 
       <button
         aria-label="Rotate view left"
-        className={`${arcButtonClass} left-5 top-6`}
+        className={`${arcButtonClass} left-[18px] top-3.5`}
         onClick={() => onStep({ yaw: -45 })}
         title="Rotate view left"
         type="button"
       >
-        <svg aria-hidden="true" className="h-12 w-[78px]" viewBox="0 0 92 54">
-          <path d="M84 11 C58 15 35 26 15 43" fill="none" stroke="currentColor" strokeWidth="10" />
-          <path d="M12 46 L35 39 L21 24 Z" fill="currentColor" />
+        <svg aria-hidden="true" className="size-full" viewBox="6 2 58 50">
+          <path
+            d="M48.6 9.5 A61 61 0 0 0 19.4 29.9 L13.9 25.6 L11.1 48.8 L32.9 40.4 L27.3 36.1 A51 51 0 0 1 51.7 19 Z"
+            fill="currentColor"
+          />
         </svg>
       </button>
 
       <button
         aria-label="Rotate view right"
-        className={`${arcButtonClass} right-5 top-6`}
+        className={`${arcButtonClass} right-[18px] top-3.5`}
         onClick={() => onStep({ yaw: 45 })}
         title="Rotate view right"
         type="button"
       >
-        <svg aria-hidden="true" className="h-12 w-[78px]" viewBox="0 0 92 54">
-          <path d="M8 11 C34 15 57 26 77 43" fill="none" stroke="currentColor" strokeWidth="10" />
-          <path d="M80 46 L57 39 L71 24 Z" fill="currentColor" />
+        <svg aria-hidden="true" className="size-full" viewBox="71 2 58 50">
+          <path
+            d="M86.4 9.5 A61 61 0 0 1 115.6 29.9 L121.1 25.6 L123.9 48.8 L102.1 40.4 L107.7 36.1 A51 51 0 0 0 83.3 19 Z"
+            fill="currentColor"
+          />
         </svg>
       </button>
 
       <button
         aria-label="Flip view"
-        className="absolute right-3 top-2 z-30 grid size-7 place-items-center outline-none transition hover:scale-110 focus-visible:outline-none"
+        className="absolute right-0 top-0 z-30 grid size-5 place-items-center outline-none transition hover:scale-110 focus-visible:outline-none"
         onClick={onFlip}
         title="Flip view"
         type="button"
       >
-        <span className="block size-5 rounded-full bg-[#9a9f99] transition hover:bg-[#c5c7c0]" />
+        <span className="block size-4 rounded-full bg-[#9a9f99] transition hover:bg-[#c5c7c0]" />
       </button>
 
       <ViewCube3D onSetOrientation={onSetOrientation} orientation={orientation} />
@@ -1463,7 +1468,7 @@ function ProjectView() {
             orientation={viewOrientation}
           />
 
-          <div className="absolute right-4 top-[216px] hidden items-center gap-2 rounded-md border border-[#34382f] bg-[#151814]/88 px-3 py-2 font-mono text-[11px] uppercase text-[#8c887c] backdrop-blur sm:flex">
+          <div className="absolute right-4 top-[160px] hidden items-center gap-2 rounded-md border border-[#34382f] bg-[#151814]/88 px-3 py-2 font-mono text-[11px] uppercase text-[#8c887c] backdrop-blur sm:flex">
             Grid 10 mm
           </div>
 
