@@ -832,7 +832,7 @@ function ViewController({
       <button
         aria-label="Tilt view up"
         className={`${arrowButtonClass} group left-1/2 top-0 -translate-x-1/2`}
-        onClick={() => onStep({ pitch: 45 })}
+        onClick={() => onStep({ pitch: -45 })}
         title="Tilt view up"
         type="button"
       >
@@ -842,7 +842,7 @@ function ViewController({
       <button
         aria-label="Rotate view left 45 degrees"
         className={`${arrowButtonClass} group left-0 top-1/2 -translate-y-1/2`}
-        onClick={() => onStep({ yaw: -45 })}
+        onClick={() => onStep({ yaw: 45 })}
         title="Rotate view left 45 degrees"
         type="button"
       >
@@ -852,7 +852,7 @@ function ViewController({
       <button
         aria-label="Rotate view right 45 degrees"
         className={`${arrowButtonClass} group right-0 top-1/2 -translate-y-1/2`}
-        onClick={() => onStep({ yaw: 45 })}
+        onClick={() => onStep({ yaw: -45 })}
         title="Rotate view right 45 degrees"
         type="button"
       >
@@ -862,7 +862,7 @@ function ViewController({
       <button
         aria-label="Tilt view down"
         className={`${arrowButtonClass} group bottom-0 left-1/2 -translate-x-1/2`}
-        onClick={() => onStep({ pitch: -45 })}
+        onClick={() => onStep({ pitch: 45 })}
         title="Tilt view down"
         type="button"
       >
