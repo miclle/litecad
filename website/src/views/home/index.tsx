@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Box, BrainCircuit, FileUp, Gauge, Orbit, Play, SlidersHorizontal } from 'lucide-react'
+import { Box, BrainCircuit, Cuboid, FileUp, Gauge, Layers3, Orbit, Play, Ruler, Sparkles } from 'lucide-react'
 import * as THREE from 'three'
 
 import { fetchStudioStatus } from 'src/api/studio'
 
 const pipeline = [
-  { label: 'Prompt', value: 'constraint brief', icon: BrainCircuit },
-  { label: 'Import', value: 'STEP / STL / GLB', icon: FileUp },
-  { label: 'Preview', value: 'Three.js viewport', icon: Orbit },
-  { label: 'Measure', value: 'dimensions soon', icon: Gauge },
+  { label: 'Describe', value: 'Turn design intent into structured geometry briefs.', icon: BrainCircuit },
+  { label: 'Preview', value: 'Inspect the first mesh in a browser-native viewport.', icon: Orbit },
+  { label: 'Import', value: 'Prepare for STEP, STL, and GLB review workflows.', icon: FileUp },
+  { label: 'Measure', value: 'Keep dimensions and manufacturing checks close to the model.', icon: Gauge },
 ]
 
 const prompts = [
@@ -18,10 +18,32 @@ const prompts = [
   'Parametric drone arm joint, carbon tube socket, integrated cable channel, printable as one part.',
 ]
 
+const features = [
+  {
+    title: 'Prompt-first CAD exploration',
+    body: 'Capture intent, constraints, and dimensions before the model becomes expensive to change.',
+    icon: Sparkles,
+  },
+  {
+    title: 'Web-native 3D review',
+    body: 'Open the preview anywhere, rotate the shape, and discuss geometry without desktop CAD setup.',
+    icon: Cuboid,
+  },
+  {
+    title: 'STEP-oriented pipeline',
+    body: 'Designed around real mechanical exchange formats instead of stopping at decorative meshes.',
+    icon: Layers3,
+  },
+  {
+    title: 'Measurement-ready workflow',
+    body: 'Build toward sections, dimensions, and manufacturability checks as first-class review tools.',
+    icon: Ruler,
+  },
+]
+
 function Home() {
   const canvasHostRef = useRef<HTMLDivElement | null>(null)
-  const [activePrompt, setActivePrompt] = useState(prompts[0])
-  const [detail, setDetail] = useState(68)
+  const [activePrompt, setActivePrompt] = useState(0)
   const [showEdges, setShowEdges] = useState(true)
   const statusQuery = useQuery({
     queryKey: ['studio-status'],
@@ -66,7 +88,7 @@ function Home() {
       bevelSegments: 8,
       bevelSize: 0.08,
       bevelThickness: 0.08,
-      curveSegments: Math.max(16, detail),
+      curveSegments: 68,
     })
     geometry.center()
 
@@ -136,123 +158,161 @@ function Home() {
       renderer.dispose()
       renderer.domElement.remove()
     }
-  }, [detail, showEdges])
+  }, [showEdges])
 
   return (
-    <div className="min-h-[calc(100vh-56px)]">
-      <section className="grid min-h-[calc(100vh-56px)] grid-cols-1 lg:grid-cols-[420px_minmax(0,1fr)]">
-        <aside className="order-2 border-b border-[#d9d3c2] bg-[#fcfaf3] p-5 lg:order-1 lg:border-b-0 lg:border-r">
-          <div className="flex items-center gap-2 font-mono text-xs uppercase text-[#7a6c52]">
-            <Box className="size-4" />
-            AI 3D design workspace
+    <div className="min-h-[calc(100vh-56px)] bg-[#f7f5ef]">
+      <section className="mx-auto max-w-[1480px] px-5 py-6 lg:px-8 lg:py-8">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
+          <div className="max-w-5xl">
+            <div className="inline-flex items-center gap-2 border border-[#cfc6b2] bg-[#fcfaf3] px-3 py-2 font-mono text-xs uppercase text-[#7a6c52]">
+              <Box className="size-4" />
+              AI 3D design preview
+            </div>
+
+            <h1 className="mt-6 max-w-5xl text-4xl font-semibold leading-[1.04] text-[#171814] sm:text-6xl lg:text-7xl">
+              AI-native CAD ideas, previewed in the browser.
+            </h1>
+            <p className="mt-5 max-w-3xl text-base leading-7 text-[#55594f] sm:text-lg sm:leading-8">
+              litecad is a web product for turning early mechanical ideas into visible 3D direction: describe the part,
+              inspect a preview, and prepare the workflow for real CAD exchange formats.
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <a
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#171814] px-5 text-sm font-semibold text-[#f7f5ef] no-underline transition hover:bg-[#303329]"
+                href="#demo"
+              >
+                <Play className="size-4 fill-current" />
+                View demo
+              </a>
+              <a
+                className="inline-flex h-12 items-center justify-center rounded-md border border-[#cfc6b2] bg-[#fcfaf3] px-5 text-sm font-semibold text-[#303329] no-underline transition hover:border-[#52625a]"
+                href="#features"
+              >
+                Explore features
+              </a>
+            </div>
           </div>
 
-          <div className="mt-8 space-y-4">
-            <h1 className="text-4xl font-semibold leading-tight text-[#171814] sm:text-5xl">
-              litecad
-            </h1>
-            <p className="max-w-[34rem] text-base leading-7 text-[#5f6259]">
-              A web-native CAD preview surface for prompt-driven parts, STEP-first imports, and fast browser inspection.
+          <div className="grid gap-3 border-y border-[#d9d3c2] py-4 sm:grid-cols-3 lg:grid-cols-1">
+            <div>
+              <p className="font-mono text-2xl text-[#171814]">STEP</p>
+              <p className="mt-1 text-sm text-[#6c6f65]">exchange-first direction</p>
+            </div>
+            <div>
+              <p className="font-mono text-2xl text-[#171814]">WebGL</p>
+              <p className="mt-1 text-sm text-[#6c6f65]">instant visual review</p>
+            </div>
+            <div>
+              <p className="font-mono text-2xl text-[#171814]">AI</p>
+              <p className="mt-1 text-sm text-[#6c6f65]">prompt iteration loop</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="demo" className="mt-6 overflow-hidden rounded-md border border-[#d8cfbc] bg-[#fcfaf3]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d9d3c2] px-4 py-3">
+            <div className="font-mono text-xs uppercase text-[#7a6c52]">Live demo preview</div>
+            <div className="rounded-sm border border-[#cfc6b2] bg-[#f7f1e4] px-3 py-1.5 font-mono text-xs uppercase text-[#52625a]">
+              {statusQuery.data?.status ?? (statusQuery.isLoading ? 'syncing' : 'offline')}
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="relative min-h-[340px] overflow-hidden bg-[#f1eadb] sm:min-h-[400px] lg:min-h-[440px]">
+              <div ref={canvasHostRef} className="absolute inset-0" />
+              <div className="pointer-events-none absolute left-4 top-4 max-w-xs rounded-md border border-[#d8cfbc] bg-[#fcfaf3]/88 p-4 backdrop-blur">
+                <p className="font-mono text-xs uppercase text-[#7a6c52]">Generated concept</p>
+                <p className="mt-2 text-sm leading-6 text-[#303329]">
+                  A bracket-like mechanical preview with bevels, ribs, grid scale, and optional edge overlay.
+                </p>
+              </div>
+            </div>
+
+            <aside className="grid gap-4 border-t border-[#d9d3c2] p-4 sm:grid-cols-[minmax(0,1fr)_auto] lg:block lg:border-l lg:border-t-0">
+              <p className="font-mono text-xs uppercase text-[#7a6c52]">Sample prompt</p>
+              <p className="min-h-24 rounded-md border border-[#d8cfbc] bg-white p-3 text-sm leading-6 text-[#303329] sm:col-span-2 lg:mt-3 lg:min-h-28">
+                {prompts[activePrompt]}
+              </p>
+
+              <div className="flex gap-2 lg:mt-3">
+                {prompts.map((prompt, index) => (
+                  <button
+                    aria-label={`Show prompt ${index + 1}`}
+                    className={`size-9 rounded-sm border text-sm transition ${
+                      activePrompt === index
+                        ? 'border-[#52625a] bg-[#52625a] text-white'
+                        : 'border-[#cfc6b2] bg-[#f7f1e4] text-[#4d5148] hover:border-[#52625a]'
+                    }`}
+                    key={prompt}
+                    onClick={() => setActivePrompt(index)}
+                    type="button"
+                  >
+                    {index + 1}
+                  </button>
+                ))}
+              </div>
+
+              <label className="flex min-w-44 items-center justify-between rounded-md border border-[#d8cfbc] bg-[#f7f1e4] p-3 text-sm font-medium text-[#303329] lg:mt-5">
+                Edge overlay
+                <input
+                  checked={showEdges}
+                  className="size-5 accent-[#52625a]"
+                  onChange={(event) => setShowEdges(event.target.checked)}
+                  type="checkbox"
+                />
+              </label>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" className="border-t border-[#d9d3c2] bg-[#fcfaf3] px-5 py-12 lg:px-8">
+        <div className="mx-auto max-w-[1480px]">
+          <div className="max-w-2xl">
+            <p className="font-mono text-xs uppercase text-[#7a6c52]">Product focus</p>
+            <h2 className="mt-3 text-3xl font-semibold leading-tight text-[#171814] sm:text-4xl">
+              A lightweight path from idea to inspectable 3D.
+            </h2>
+          </div>
+
+          <div className="mt-8 grid gap-px overflow-hidden rounded-md border border-[#d8cfbc] bg-[#d8cfbc] md:grid-cols-2 xl:grid-cols-4">
+            {features.map((feature) => {
+              const Icon = feature.icon
+              return (
+                <div className="bg-[#fcfaf3] p-5" key={feature.title}>
+                  <Icon className="size-5 text-[#52625a]" />
+                  <h3 className="mt-5 text-base font-semibold text-[#171814]">{feature.title}</h3>
+                  <p className="mt-3 text-sm leading-6 text-[#666a60]">{feature.body}</p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-5 py-12 lg:px-8">
+        <div className="mx-auto grid max-w-[1480px] gap-8 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <div>
+            <p className="font-mono text-xs uppercase text-[#7a6c52]">Workflow</p>
+            <h2 className="mt-3 text-3xl font-semibold leading-tight text-[#171814]">Built for the first product loop.</h2>
+            <p className="mt-4 text-sm leading-6 text-[#666a60]">
+              The homepage demo shows the intended product rhythm: describe, preview, import, and measure.
             </p>
           </div>
 
-          <div className="mt-8 space-y-3">
-            <label className="text-sm font-medium text-[#303329]" htmlFor="design-prompt">
-              Design brief
-            </label>
-            <textarea
-              id="design-prompt"
-              value={activePrompt}
-              onChange={(event) => setActivePrompt(event.target.value)}
-              className="min-h-36 w-full resize-none rounded-md border border-[#cfc6b2] bg-white p-4 text-sm leading-6 text-[#171814] outline-none transition focus:border-[#52625a] focus:ring-2 focus:ring-[#52625a]/20"
-            />
-            <div className="flex flex-wrap gap-2">
-              {prompts.map((prompt, index) => (
-                <button
-                  className="rounded-sm border border-[#cfc6b2] bg-[#f7f1e4] px-3 py-2 text-left text-xs text-[#4d5148] transition hover:border-[#52625a] hover:text-[#171814]"
-                  key={prompt}
-                  onClick={() => setActivePrompt(prompt)}
-                  type="button"
-                >
-                  v{index + 1}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-8 grid gap-4">
-            <div className="rounded-md border border-[#d8cfbc] bg-[#f7f1e4] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-[#303329]">
-                  <SlidersHorizontal className="size-4" />
-                  Tessellation
-                </div>
-                <span className="font-mono text-sm text-[#52625a]">{detail}</span>
-              </div>
-              <input
-                aria-label="Tessellation"
-                className="mt-4 w-full accent-[#52625a]"
-                max="96"
-                min="24"
-                onChange={(event) => setDetail(Number(event.target.value))}
-                type="range"
-                value={detail}
-              />
-            </div>
-
-            <label className="flex items-center justify-between rounded-md border border-[#d8cfbc] bg-[#f7f1e4] p-4 text-sm font-medium text-[#303329]">
-              Edge overlay
-              <input
-                checked={showEdges}
-                className="size-5 accent-[#52625a]"
-                onChange={(event) => setShowEdges(event.target.checked)}
-                type="checkbox"
-              />
-            </label>
-
-            <button
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#171814] px-4 text-sm font-semibold text-[#f7f5ef] transition hover:bg-[#303329]"
-              type="button"
-            >
-              <Play className="size-4 fill-current" />
-              Generate preview
-            </button>
-          </div>
-        </aside>
-
-        <div className="order-1 flex min-h-[620px] flex-col lg:order-2 lg:min-h-[720px]">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d9d3c2] px-5 py-4">
-            <div>
-              <p className="font-mono text-xs uppercase text-[#7a6c52]">Studio status</p>
-              <p className="mt-1 text-sm text-[#4d5148]">
-                {statusQuery.isLoading
-                  ? 'Connecting to litecad API...'
-                  : statusQuery.data?.summary ?? 'API status unavailable'}
-              </p>
-            </div>
-            <div className="rounded-sm border border-[#cfc6b2] bg-[#fcfaf3] px-3 py-2 font-mono text-xs uppercase text-[#52625a]">
-              {statusQuery.data?.status ?? 'offline'}
-            </div>
-          </div>
-
-          <div className="relative min-h-[460px] flex-1 overflow-hidden bg-[#f1eadb]">
-            <div ref={canvasHostRef} className="absolute inset-0" />
-            <div className="pointer-events-none absolute left-5 top-5 max-w-xs rounded-md border border-[#d8cfbc] bg-[#fcfaf3]/86 p-4 backdrop-blur">
-              <p className="font-mono text-xs uppercase text-[#7a6c52]">Viewport</p>
-              <p className="mt-2 text-sm leading-6 text-[#303329]">
-                Live mesh preview with bevels, structural ribs, grid scale, and edge inspection.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid border-t border-[#d9d3c2] bg-[#fcfaf3] md:grid-cols-4">
-            {pipeline.map((item) => {
+          <div className="grid gap-px overflow-hidden rounded-md border border-[#d8cfbc] bg-[#d8cfbc] md:grid-cols-4">
+            {pipeline.map((item, index) => {
               const Icon = item.icon
               return (
-                <div className="border-b border-[#d9d3c2] p-5 md:border-b-0 md:border-r last:md:border-r-0" key={item.label}>
-                  <Icon className="size-5 text-[#52625a]" />
-                  <p className="mt-4 text-sm font-semibold text-[#171814]">{item.label}</p>
-                  <p className="mt-1 text-sm text-[#6c6f65]">{item.value}</p>
+                <div className="bg-[#fcfaf3] p-5" key={item.label}>
+                  <div className="flex items-center justify-between">
+                    <Icon className="size-5 text-[#52625a]" />
+                    <span className="font-mono text-xs text-[#9b8c6f]">0{index + 1}</span>
+                  </div>
+                  <p className="mt-6 text-sm font-semibold text-[#171814]">{item.label}</p>
+                  <p className="mt-2 text-sm leading-6 text-[#6c6f65]">{item.value}</p>
                 </div>
               )
             })}
