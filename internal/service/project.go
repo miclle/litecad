@@ -9,6 +9,7 @@ import (
 
 	"github.com/miclle/litecad/internal/entity"
 	"github.com/miclle/litecad/pkg/id"
+	"gorm.io/gorm"
 )
 
 const maxProjectDescriptionRunes = 350
@@ -55,6 +56,27 @@ func (s *Service) ListProjects(ctx context.Context, ownerUserID string) ([]Proje
 		result = append(result, publicProject(project))
 	}
 	return result, nil
+}
+
+// GetProject returns a project owned by the given user.
+func (s *Service) GetProject(ctx context.Context, ownerUserID, projectID string) (Project, error) {
+	ownerUserID = strings.TrimSpace(ownerUserID)
+	projectID = strings.TrimSpace(projectID)
+	if ownerUserID == "" || projectID == "" {
+		return Project{}, ErrProjectNotFound
+	}
+
+	var project entity.Project
+	err := s.db.WithContext(ctx).
+		First(&project, "id = ? AND owner_user_id = ?", projectID, ownerUserID).
+		Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Project{}, ErrProjectNotFound
+		}
+		return Project{}, fmt.Errorf("get project: %w", err)
+	}
+	return publicProject(project), nil
 }
 
 // CreateProject creates a user-owned LiteCAD project.

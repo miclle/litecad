@@ -59,6 +59,22 @@ func TestProjectRoutesCreateAndList(t *testing.T) {
 	if len(listResponse.Projects) != 1 || listResponse.Projects[0].ID != createResponse.Project.ID {
 		t.Fatalf("listed projects = %+v, want created project", listResponse.Projects)
 	}
+
+	detail := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID, sessionCookie)
+	if detail.Code != http.StatusOK {
+		t.Fatalf("detail status = %d, body = %s", detail.Code, detail.Body.String())
+	}
+	var detailResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(detail.Body.Bytes(), &detailResponse); err != nil {
+		t.Fatalf("decode detail response: %v", err)
+	}
+	if detailResponse.Project.ID != createResponse.Project.ID {
+		t.Fatalf("detail project id = %q, want %q", detailResponse.Project.ID, createResponse.Project.ID)
+	}
 }
 
 func TestProjectRoutesRequireSession(t *testing.T) {

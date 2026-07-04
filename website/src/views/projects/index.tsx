@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarDays, Clock3, FileBox, Grid2X2, Loader2, Plus, Sparkles, UserRound, X } from 'lucide-react'
-import { useOutletContext } from 'react-router-dom'
+import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import axios from 'axios'
 
 import { createProject, fetchProjects } from 'src/api/projects'
@@ -18,6 +18,7 @@ interface MainLayoutContext {
 function ProjectsView() {
   const { currentUser } = useOutletContext<MainLayoutContext>()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -30,12 +31,13 @@ function ProjectsView() {
 
   const createMutation = useMutation({
     mutationFn: async () => (await createProject({ name, description })).data.project,
-    onSuccess: async () => {
+    onSuccess: async (project) => {
       setName('')
       setDescription('')
       setErrorMessage('')
       setIsCreateOpen(false)
       await queryClient.invalidateQueries({ queryKey: ['projects'] })
+      navigate(`/projects/${project.id}`)
     },
     onError: (error) => {
       if (axios.isAxiosError(error) && error.response?.status === 400) {
@@ -196,7 +198,10 @@ function ProjectCard({ index, project }: { index: number; project: Project }) {
   }).format(new Date(project.updated_at))
 
   return (
-    <article className="group overflow-hidden rounded-md border border-[#d8cfbc] bg-[#fcfaf3] shadow-sm transition hover:-translate-y-0.5 hover:border-[#a9b093] hover:shadow-md">
+    <Link
+      className="group block overflow-hidden rounded-md border border-[#d8cfbc] bg-[#fcfaf3] text-inherit no-underline shadow-sm transition hover:-translate-y-0.5 hover:border-[#a9b093] hover:shadow-md"
+      to={`/projects/${project.id}`}
+    >
       <div className="relative h-36 border-b border-[#d9d3c2] bg-[#efe6d5]">
         <div className="absolute inset-0 grid grid-cols-4 grid-rows-3 gap-px p-3">
           {Array.from({ length: 12 }).map((_, cellIndex) => (
@@ -221,7 +226,7 @@ function ProjectCard({ index, project }: { index: number; project: Project }) {
           Updated {updatedAt}
         </div>
       </div>
-    </article>
+    </Link>
   )
 }
 

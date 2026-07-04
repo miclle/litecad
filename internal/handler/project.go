@@ -35,6 +35,19 @@ func (ctrl *Ctrl) ListProjects(c *fox.Context) (projectsResponse, error) {
 	return projectsResponse{Projects: projects}, nil
 }
 
+// GetProject returns a signed-in user's project by id.
+func (ctrl *Ctrl) GetProject(c *fox.Context) (projectResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectResponse{}, err
+	}
+	project, err := ctrl.service.GetProject(c.Request.Context(), user.ID, c.Param("projectID"))
+	if err != nil {
+		return projectResponse{}, projectError(err)
+	}
+	return projectResponse{Project: project}, nil
+}
+
 // CreateProject creates a signed-in user's project.
 func (ctrl *Ctrl) CreateProject(c *fox.Context, req *createProjectRequest) error {
 	user, err := ctrl.currentUser(c)
