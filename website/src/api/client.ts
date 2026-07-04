@@ -12,7 +12,8 @@ client.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       const path = window.location.pathname
-      if (path !== '/login') {
+      const isCurrentUserProbe = error.config?.url === '/auth/me'
+      if (!isCurrentUserProbe && path !== '/login' && path !== '/register') {
         window.location.href = '/login'
       }
     }

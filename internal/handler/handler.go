@@ -31,6 +31,10 @@ func (ctrl *Ctrl) RegisterRoutes(r *fox.Engine) {
 	// ── API routes ──────────────────────────────────────────────────────
 	api := r.Group("/api/v1")
 	api.GET("/studio/status", ctrl.StudioStatus)
+	api.POST("/auth/register", ctrl.Register)
+	api.POST("/auth/login", ctrl.Login)
+	api.GET("/auth/me", ctrl.Me)
+	api.POST("/auth/logout", ctrl.Logout)
 }
 
 // Health returns a simple health check response.

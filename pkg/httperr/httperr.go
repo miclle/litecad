@@ -26,6 +26,16 @@ func NewBadRequest(message string) *StatusError {
 	return &StatusError{Code: http.StatusBadRequest, Message: message}
 }
 
+// NewUnauthorized returns a 401 StatusError carrying message.
+func NewUnauthorized(message string) *StatusError {
+	return &StatusError{Code: http.StatusUnauthorized, Message: message}
+}
+
+// NewConflict returns a 409 StatusError carrying message.
+func NewConflict(message string) *StatusError {
+	return &StatusError{Code: http.StatusConflict, Message: message}
+}
+
 // NewInternalServerError returns a 500 StatusError carrying message.
 func NewInternalServerError(message string) *StatusError {
 	return &StatusError{Code: http.StatusInternalServerError, Message: message}
