@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import {
   ArrowLeft,
   Box,
@@ -114,13 +113,155 @@ type ViewCubeFace = {
   rotation: [number, number, number]
 }
 
+const viewCubeSize = 1.36
+const viewCubeChamferHeight = viewCubeSize * 0.15
+const viewCubeHalfSize = viewCubeSize / 2
+const viewCubeFaceSize = viewCubeSize - viewCubeChamferHeight * 2
+type Point3 = [number, number, number]
+const viewAxisDefinitions = [
+  { color: 0xe36b5d, direction: new THREE.Vector3(1, 0, 0), label: 'X' },
+  { color: 0x6fc782, direction: new THREE.Vector3(0, 0, -1), label: 'Y' },
+  { color: 0x6f94e8, direction: new THREE.Vector3(0, 1, 0), label: 'Z' },
+] as const
+type ChamferedCubeSurface = {
+  kind: 'corner' | 'edge' | 'main'
+  points: Point3[]
+}
+
+const createChamferedCubeGeometry = (size: number, chamferHeight: number) => {
+  const half = size / 2
+  const inset = half - chamferHeight
+  const positions: number[] = []
+  const surfaces: ChamferedCubeSurface[] = []
+  const edgeKeys = new Set<string>()
+  const edgePoints: number[] = []
+  const makePoint = (x = 0, y = 0, z = 0): Point3 => [x, y, z]
+  const edgeKey = (first: Point3, second: Point3) => {
+    const serialize = (point: Point3) => point.map((value) => value.toFixed(5)).join(',')
+    const a = serialize(first)
+    const b = serialize(second)
+    return a < b ? `${a}|${b}` : `${b}|${a}`
+  }
+  const addEdge = (first: Point3, second: Point3) => {
+    const key = edgeKey(first, second)
+    if (edgeKeys.has(key)) {
+      return
+    }
+    edgeKeys.add(key)
+    edgePoints.push(...first, ...second)
+  }
+  const addFace = (points: Point3[], kind: ChamferedCubeSurface['kind']) => {
+    const center = new THREE.Vector3()
+    for (const point of points) {
+      center.add(new THREE.Vector3(...point))
+    }
+    center.divideScalar(points.length)
+
+    const first = new THREE.Vector3(...points[0])
+    const second = new THREE.Vector3(...points[1])
+    const third = new THREE.Vector3(...points[2])
+    const normal = second.clone().sub(first).cross(third.clone().sub(first))
+    const facePoints = normal.dot(center) < 0 ? [...points].reverse() : points
+    surfaces.push({ kind, points: facePoints })
+
+    for (let index = 1; index < facePoints.length - 1; index += 1) {
+      positions.push(...facePoints[0], ...facePoints[index], ...facePoints[index + 1])
+    }
+    for (let index = 0; index < facePoints.length; index += 1) {
+      addEdge(facePoints[index], facePoints[(index + 1) % facePoints.length])
+    }
+  }
+
+  addFace([makePoint(half, -inset, -inset), makePoint(half, inset, -inset), makePoint(half, inset, inset), makePoint(half, -inset, inset)], 'main')
+  addFace([makePoint(-half, -inset, inset), makePoint(-half, inset, inset), makePoint(-half, inset, -inset), makePoint(-half, -inset, -inset)], 'main')
+  addFace([makePoint(-inset, half, -inset), makePoint(-inset, half, inset), makePoint(inset, half, inset), makePoint(inset, half, -inset)], 'main')
+  addFace([makePoint(-inset, -half, inset), makePoint(-inset, -half, -inset), makePoint(inset, -half, -inset), makePoint(inset, -half, inset)], 'main')
+  addFace([makePoint(-inset, -inset, half), makePoint(inset, -inset, half), makePoint(inset, inset, half), makePoint(-inset, inset, half)], 'main')
+  addFace([makePoint(inset, -inset, -half), makePoint(-inset, -inset, -half), makePoint(-inset, inset, -half), makePoint(inset, inset, -half)], 'main')
+
+  const buildPoint = (axisA: number, valueA: number, axisB: number, valueB: number, axisC: number, valueC: number) => {
+    const point: Point3 = [0, 0, 0]
+    point[axisA] = valueA
+    point[axisB] = valueB
+    point[axisC] = valueC
+    return point
+  }
+  for (const [axisA, axisB, axisC] of [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 2, 0],
+  ] as const) {
+    for (const signA of [-1, 1] as const) {
+      for (const signB of [-1, 1] as const) {
+        addFace([
+          buildPoint(axisA, signA * half, axisB, signB * inset, axisC, -inset),
+          buildPoint(axisA, signA * half, axisB, signB * inset, axisC, inset),
+          buildPoint(axisA, signA * inset, axisB, signB * half, axisC, inset),
+          buildPoint(axisA, signA * inset, axisB, signB * half, axisC, -inset),
+        ], 'edge')
+      }
+    }
+  }
+
+  for (const signX of [-1, 1] as const) {
+    for (const signY of [-1, 1] as const) {
+      for (const signZ of [-1, 1] as const) {
+        addFace([
+          makePoint(signX * half, signY * inset, signZ * inset),
+          makePoint(signX * inset, signY * half, signZ * inset),
+          makePoint(signX * inset, signY * inset, signZ * half),
+        ], 'corner')
+      }
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.computeVertexNormals()
+
+  const edgeGeometry = new THREE.BufferGeometry()
+  edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edgePoints, 3))
+
+  return { edgeGeometry, geometry, surfaces }
+}
+
+const createSurfaceGeometry = (points: Point3[], offset = 0) => {
+  const normal = getSurfaceNormal(points)
+  const offsetPoints = points.map((point) => new THREE.Vector3(...point).addScaledVector(normal, offset))
+  const positions: number[] = []
+  for (let index = 1; index < offsetPoints.length - 1; index += 1) {
+    positions.push(
+      offsetPoints[0].x,
+      offsetPoints[0].y,
+      offsetPoints[0].z,
+      offsetPoints[index].x,
+      offsetPoints[index].y,
+      offsetPoints[index].z,
+      offsetPoints[index + 1].x,
+      offsetPoints[index + 1].y,
+      offsetPoints[index + 1].z,
+    )
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.computeVertexNormals()
+  return geometry
+}
+
+const getSurfaceNormal = (points: Point3[]) => {
+  const first = new THREE.Vector3(...points[0])
+  const second = new THREE.Vector3(...points[1])
+  const third = new THREE.Vector3(...points[2])
+  return second.clone().sub(first).cross(third.clone().sub(first)).normalize()
+}
+
 const viewCubeFaces: ViewCubeFace[] = [
   {
     color: 0x9a9f99,
     id: 'front',
     label: '前视图',
     orientation: createOrientation(0, 0),
-    position: [0, 0, 0.67],
+    position: [0, 0, viewCubeHalfSize],
     rotation: [0, 0, 0],
   },
   {
@@ -128,7 +269,7 @@ const viewCubeFaces: ViewCubeFace[] = [
     id: 'back',
     label: '后视图',
     orientation: createOrientation(180, 0),
-    position: [0, 0, -0.67],
+    position: [0, 0, -viewCubeHalfSize],
     rotation: [0, Math.PI, 0],
   },
   {
@@ -136,7 +277,7 @@ const viewCubeFaces: ViewCubeFace[] = [
     id: 'right',
     label: '右视图',
     orientation: createOrientation(90, 0),
-    position: [0.67, 0, 0],
+    position: [viewCubeHalfSize, 0, 0],
     rotation: [0, Math.PI / 2, 0],
   },
   {
@@ -144,7 +285,7 @@ const viewCubeFaces: ViewCubeFace[] = [
     id: 'left',
     label: '左视图',
     orientation: createOrientation(270, 0),
-    position: [-0.67, 0, 0],
+    position: [-viewCubeHalfSize, 0, 0],
     rotation: [0, -Math.PI / 2, 0],
   },
   {
@@ -152,7 +293,7 @@ const viewCubeFaces: ViewCubeFace[] = [
     id: 'top',
     label: '上视图',
     orientation: createOrientation(0, 89),
-    position: [0, 0.67, 0],
+    position: [0, viewCubeHalfSize, 0],
     rotation: [-Math.PI / 2, 0, 0],
   },
   {
@@ -160,7 +301,7 @@ const viewCubeFaces: ViewCubeFace[] = [
     id: 'bottom',
     label: '下视图',
     orientation: createOrientation(0, -89),
-    position: [0, -0.67, 0],
+    position: [0, -viewCubeHalfSize, 0],
     rotation: [Math.PI / 2, 0, 0],
   },
 ]
@@ -204,6 +345,37 @@ const createCanvasLabelTexture = ({
   return texture
 }
 
+const createViewCubeFaceTexture = ({ background, color, label }: { background: number; color: string; label: string }) => {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 512
+  const context = canvas.getContext('2d')
+  if (context) {
+    context.fillStyle = `#${background.toString(16).padStart(6, '0')}`
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.lineJoin = 'round'
+    context.lineWidth = 12
+    context.strokeStyle = 'rgba(245, 240, 226, 0.42)'
+    context.fillStyle = color
+
+    let fontSize = 150
+    const maxTextWidth = canvas.width * 0.82
+    do {
+      context.font = `800 ${fontSize}px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+      fontSize -= 2
+    } while (context.measureText(label).width > maxTextWidth && fontSize > 56)
+
+    context.strokeText(label, canvas.width / 2, canvas.height / 2 + 10)
+    context.fillText(label, canvas.width / 2, canvas.height / 2 + 10)
+  }
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 4
+  return texture
+}
+
 function ViewCube3D({
   onSetOrientation,
   orientation,
@@ -240,7 +412,7 @@ function ViewCube3D({
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
     const hitMeshes: THREE.Mesh[] = []
-    const faceLabels: Array<{ normal: THREE.Vector3; sprite: THREE.Sprite }> = []
+    let hoveredSurface: THREE.Mesh | null = null
 
     const ambient = new THREE.HemisphereLight(0xf2ecdc, 0x252a23, 2.3)
     scene.add(ambient)
@@ -252,13 +424,21 @@ function ViewCube3D({
     scene.add(rim)
 
     const cubeGroup = new THREE.Group()
-    cubeGroup.position.y = 0.2
     scene.add(cubeGroup)
 
+    const {
+      edgeGeometry: cubeEdgeGeometry,
+      geometry: cubeGeometry,
+      surfaces: cubeSurfaces,
+    } = createChamferedCubeGeometry(
+      viewCubeSize,
+      viewCubeChamferHeight,
+    )
     const cubeBody = new THREE.Mesh(
-      new RoundedBoxGeometry(1.36, 1.36, 1.36, 4, 0.09),
+      cubeGeometry,
       new THREE.MeshStandardMaterial({
         color: 0x8f968d,
+        flatShading: true,
         metalness: 0.05,
         roughness: 0.72,
       }),
@@ -266,10 +446,38 @@ function ViewCube3D({
     cubeGroup.add(cubeBody)
 
     const cubeEdges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(1.38, 1.38, 1.38)),
+      cubeEdgeGeometry,
       new THREE.LineBasicMaterial({ color: 0x242a24, transparent: true, opacity: 0.7 }),
     )
     cubeGroup.add(cubeEdges)
+
+    const bevelDefaultMaterial = new THREE.MeshBasicMaterial({
+      color: 0xd7ddcc,
+      depthWrite: false,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      transparent: true,
+    })
+    const bevelHoverMaterial = new THREE.MeshBasicMaterial({
+      color: 0xf2f6dd,
+      depthTest: false,
+      depthWrite: false,
+      opacity: 0.94,
+      side: THREE.DoubleSide,
+      transparent: true,
+    })
+    for (const surface of cubeSurfaces) {
+      if (surface.kind === 'main') {
+        continue
+      }
+      const bevelSurface = new THREE.Mesh(createSurfaceGeometry(surface.points, 0.006), bevelDefaultMaterial)
+      bevelSurface.renderOrder = 5
+      bevelSurface.userData.defaultMaterial = bevelDefaultMaterial
+      bevelSurface.userData.hoverMaterial = bevelHoverMaterial
+      bevelSurface.userData.orientation = directionToOrientation(getSurfaceNormal(surface.points))
+      cubeGroup.add(bevelSurface)
+      hitMeshes.push(bevelSurface)
+    }
 
     const hitMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffff,
@@ -280,49 +488,38 @@ function ViewCube3D({
     })
 
     for (const face of viewCubeFaces) {
-      const facePlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.94, 0.94),
-        new THREE.MeshStandardMaterial({
-          color: face.color,
-          metalness: 0.04,
-          opacity: 0.78,
-          roughness: 0.76,
-          side: THREE.DoubleSide,
-          transparent: true,
-        }),
-      )
-      facePlane.position.set(...face.position)
-      facePlane.rotation.set(...face.rotation)
-      cubeGroup.add(facePlane)
-
-      const labelTexture = createCanvasLabelTexture({
-        background: 'rgba(168, 171, 161, 0.18)',
-        color: '#363b37',
-        fontSize: 58,
+      const faceTexture = createViewCubeFaceTexture({
+        background: face.color,
+        color: '#1d211d',
         label: face.label,
       })
-      const labelSprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({
-          depthTest: false,
-          map: labelTexture,
-          transparent: true,
-        }),
-      )
-      labelSprite.position.set(...face.position)
-      labelSprite.position.multiplyScalar(1.16)
-      labelSprite.renderOrder = 20
-      labelSprite.scale.set(0.78, 0.34, 1)
-      cubeGroup.add(labelSprite)
-      faceLabels.push({
-        normal: new THREE.Vector3(...face.position).normalize(),
-        sprite: labelSprite,
+      const hoverTexture = createViewCubeFaceTexture({
+        background: 0xd7ddcc,
+        color: '#141714',
+        label: face.label,
       })
+      const faceMaterial = new THREE.MeshBasicMaterial({
+        map: faceTexture,
+        side: THREE.FrontSide,
+      })
+      const facePlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(viewCubeFaceSize, viewCubeFaceSize),
+        faceMaterial,
+      )
+      facePlane.position.set(...face.position)
+      facePlane.position.multiplyScalar(1.006)
+      facePlane.rotation.set(...face.rotation)
+      facePlane.renderOrder = 4
+      facePlane.userData.defaultTexture = faceTexture
+      facePlane.userData.hoverTexture = hoverTexture
+      cubeGroup.add(facePlane)
 
-      const hitPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 1.15), hitMaterial)
+      const hitPlane = new THREE.Mesh(new THREE.PlaneGeometry(viewCubeFaceSize, viewCubeFaceSize), hitMaterial)
       hitPlane.position.set(...face.position)
       hitPlane.position.multiplyScalar(1.04)
       hitPlane.rotation.set(...face.rotation)
       hitPlane.userData.orientation = face.orientation
+      hitPlane.userData.facePlane = facePlane
       cubeGroup.add(hitPlane)
       hitMeshes.push(hitPlane)
     }
@@ -342,37 +539,49 @@ function ViewCube3D({
     }
 
     const axisGroup = new THREE.Group()
-    axisGroup.position.y = -1.42
-    scene.add(axisGroup)
+    const axisCornerOffset = 0.014
+    axisGroup.position.set(
+      -viewCubeHalfSize - axisCornerOffset,
+      -viewCubeHalfSize - axisCornerOffset,
+      viewCubeHalfSize + axisCornerOffset,
+    )
+    cubeGroup.add(axisGroup)
 
     const createMiniAxis = (label: string, direction: THREE.Vector3, color: number) => {
       const group = new THREE.Group()
       const normalizedDirection = direction.clone().normalize()
-      const axisLength = 0.56
+      const axisLength = viewCubeFaceSize * 0.54
+      const axisMaterial = new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.95 })
       const line = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints([
           new THREE.Vector3(0, 0, 0),
           normalizedDirection.clone().multiplyScalar(axisLength),
         ]),
-        new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 }),
+        axisMaterial,
       )
+      line.renderOrder = 9
       group.add(line)
 
-      const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.14, 24), new THREE.MeshBasicMaterial({ color }))
+      const arrow = new THREE.Mesh(
+        new THREE.ConeGeometry(0.036, 0.11, 24),
+        new THREE.MeshBasicMaterial({ color, depthTest: false }),
+      )
       arrow.position.copy(normalizedDirection.clone().multiplyScalar(axisLength))
       arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normalizedDirection)
+      arrow.renderOrder = 10
       group.add(arrow)
 
       const labelSprite = axisLabel(label, color)
-      labelSprite.position.copy(normalizedDirection.clone().multiplyScalar(axisLength + 0.2))
+      labelSprite.position.copy(normalizedDirection.clone().multiplyScalar(axisLength + 0.1))
+      labelSprite.scale.set(0.12, 0.12, 1)
       group.add(labelSprite)
 
       return group
     }
 
-    axisGroup.add(createMiniAxis('X', new THREE.Vector3(1, 0, 0), 0xe36b5d))
-    axisGroup.add(createMiniAxis('Y', new THREE.Vector3(0, 1, 0), 0x6fc782))
-    axisGroup.add(createMiniAxis('Z', new THREE.Vector3(0, 0, 1), 0x6f94e8))
+    for (const axis of viewAxisDefinitions) {
+      axisGroup.add(createMiniAxis(axis.label, axis.direction, axis.color))
+    }
 
     const updateSize = () => {
       const { height, width } = container.getBoundingClientRect()
@@ -398,21 +607,64 @@ function ViewCube3D({
           : ([0, 1, 0] as [number, number, number])
       camera.position.copy(direction.multiplyScalar(5))
       camera.up.set(...up)
-      camera.lookAt(0, -0.28, 0)
+      camera.lookAt(0, 0, 0)
       camera.updateMatrixWorld()
-      const cameraDirection = camera.position.clone().normalize()
-      for (const { normal, sprite } of faceLabels) {
-        sprite.visible = normal.dot(cameraDirection) > 0.16
-      }
       renderer.render(scene, camera)
     }
 
-    const handlePointerDown = (event: PointerEvent) => {
+    const getHitFace = (event: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect()
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
       raycaster.setFromCamera(pointer, camera)
       const [hit] = raycaster.intersectObjects(hitMeshes, false)
+      return hit
+    }
+
+    const setHoveredSurface = (surface: THREE.Mesh | null) => {
+      if (hoveredSurface === surface) {
+        return
+      }
+      if (hoveredSurface) {
+        const defaultTexture = hoveredSurface.userData.defaultTexture as THREE.Texture | undefined
+        const defaultMaterial = hoveredSurface.userData.defaultMaterial as THREE.Material | undefined
+        if (defaultTexture) {
+          const material = hoveredSurface.material as THREE.MeshBasicMaterial
+          material.map = defaultTexture
+          material.needsUpdate = true
+        }
+        if (defaultMaterial) {
+          hoveredSurface.material = defaultMaterial
+        }
+      }
+      hoveredSurface = surface
+      if (hoveredSurface) {
+        const hoverTexture = hoveredSurface.userData.hoverTexture as THREE.Texture | undefined
+        const hoverMaterial = hoveredSurface.userData.hoverMaterial as THREE.Material | undefined
+        if (hoverTexture) {
+          const material = hoveredSurface.material as THREE.MeshBasicMaterial
+          material.map = hoverTexture
+          material.needsUpdate = true
+        }
+        if (hoverMaterial) {
+          hoveredSurface.material = hoverMaterial
+        }
+      }
+      renderer.domElement.style.cursor = surface ? 'pointer' : 'default'
+      render(orientationRef.current)
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const hit = getHitFace(event)
+      setHoveredSurface((hit?.object.userData.facePlane as THREE.Mesh | undefined) ?? (hit?.object as THREE.Mesh | undefined) ?? null)
+    }
+
+    const handlePointerLeave = () => {
+      setHoveredSurface(null)
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const hit = getHitFace(event)
       if (!hit) {
         return
       }
@@ -427,10 +679,14 @@ function ViewCube3D({
 
     const resizeObserver = new ResizeObserver(() => render(orientationRef.current))
     resizeObserver.observe(container)
+    renderer.domElement.addEventListener('pointermove', handlePointerMove)
+    renderer.domElement.addEventListener('pointerleave', handlePointerLeave)
     renderer.domElement.addEventListener('pointerdown', handlePointerDown)
 
     return () => {
       resizeObserver.disconnect()
+      renderer.domElement.removeEventListener('pointermove', handlePointerMove)
+      renderer.domElement.removeEventListener('pointerleave', handlePointerLeave)
       renderer.domElement.removeEventListener('pointerdown', handlePointerDown)
       viewStateRef.current = null
 
@@ -461,6 +717,14 @@ function ViewCube3D({
           disposableObject.geometry.dispose()
           disposedGeometries.add(disposableObject.geometry)
         }
+        for (const value of Object.values(disposableObject.userData)) {
+          if (value instanceof THREE.Texture && !disposedTextures.has(value)) {
+            value.dispose()
+            disposedTextures.add(value)
+          } else if (value instanceof THREE.Material) {
+            disposeMaterial(value)
+          }
+        }
         const { material } = disposableObject
         if (Array.isArray(material)) {
           material.forEach(disposeMaterial)
@@ -468,7 +732,6 @@ function ViewCube3D({
           disposeMaterial(material)
         }
       })
-      hitMaterial.dispose()
       renderer.dispose()
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement)
@@ -717,9 +980,9 @@ function ModelPreview() {
 
     const axesGroup = new THREE.Group()
     axesGroup.position.set(-2.2, -0.48, -1.65)
-    axesGroup.add(createAxis('X', new THREE.Vector3(1, 0, 0), 0xe36b5d))
-    axesGroup.add(createAxis('Y', new THREE.Vector3(0, 1, 0), 0x6fc782))
-    axesGroup.add(createAxis('Z', new THREE.Vector3(0, 0, 1), 0x6f94e8))
+    for (const axis of viewAxisDefinitions) {
+      axesGroup.add(createAxis(axis.label, axis.direction, axis.color))
+    }
     scene.add(axesGroup)
 
     const bodyMaterial = new THREE.MeshStandardMaterial({
