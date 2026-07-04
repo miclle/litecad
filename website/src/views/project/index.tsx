@@ -86,14 +86,15 @@ function ModelPreview() {
     camera.position.set(8, 6.5, 10)
 
     const controls = new OrbitControls(camera, renderer.domElement)
-    controls.enableDamping = true
-    controls.dampingFactor = 0.08
+    controls.enableDamping = false
     controls.enablePan = true
     controls.screenSpacePanning = true
     controls.zoomToCursor = true
     controls.minZoom = 0.55
     controls.maxZoom = 4
     controls.target.set(0, 0.15, 0)
+    const renderScene = () => renderer.render(scene, camera)
+    controls.addEventListener('change', renderScene)
 
     const ambient = new THREE.HemisphereLight(0xf4ecd7, 0x293125, 1.5)
     scene.add(ambient)
@@ -234,6 +235,7 @@ function ModelPreview() {
       if (raycaster.ray.intersectPlane(dragPlane, planeHit)) {
         dragDelta.copy(planeHit).sub(dragStart)
         assembly.position.copy(assemblyStart).add(dragDelta)
+        renderScene()
       }
       event.preventDefault()
     }
@@ -298,7 +300,7 @@ function ModelPreview() {
       }
       renderer.setSize(width, height)
       fitCameraToModel(width, height)
-      renderer.render(scene, camera)
+      renderScene()
     }
 
     const resize = () => {
@@ -315,16 +317,7 @@ function ModelPreview() {
     container.addEventListener('litecad:reset-view', handleResetView)
     window.addEventListener('pageshow', handlePageShow)
 
-    let frameID = 0
-    const animate = () => {
-      controls.update()
-      renderer.render(scene, camera)
-      frameID = window.requestAnimationFrame(animate)
-    }
-    animate()
-
     return () => {
-      window.cancelAnimationFrame(frameID)
       window.cancelAnimationFrame(resetFrameID)
       window.clearTimeout(resetTimeoutID)
       resizeObserver.disconnect()
@@ -334,6 +327,7 @@ function ModelPreview() {
       renderer.domElement.removeEventListener('pointermove', handlePointerMove)
       renderer.domElement.removeEventListener('pointerup', stopDragging)
       renderer.domElement.removeEventListener('pointercancel', stopDragging)
+      controls.removeEventListener('change', renderScene)
       controls.dispose()
 
       const disposedGeometries = new Set<THREE.BufferGeometry>()
