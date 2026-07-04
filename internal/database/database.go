@@ -9,8 +9,8 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/miclle/goblet/internal/entity"
-	"github.com/miclle/goblet/pkg/gormlog"
+	"github.com/miclle/litecad/internal/entity"
+	"github.com/miclle/litecad/pkg/gormlog"
 )
 
 // Open connects to the configured database and verifies the connection.

@@ -1,0 +1,12 @@
+addr: "0.0.0.0:${LITECAD_HTTP_PORT:-46280}"
+
+# Database driver: "postgres" (default) or "mysql"
+driver: postgres
+dsn: "host=localhost port=5432 user=postgres password=postgres dbname=litecad sslmode=disable"
+
+# Environment variables are supported:
+# dsn: "${DATABASE_URL:-host=localhost port=5432 user=postgres password=postgres dbname=litecad sslmode=disable}"
+
+# MySQL example:
+# driver: mysql
+# dsn: "root:password@tcp(localhost:3306)/litecad?charset=utf8mb4&parseTime=True&loc=Local"

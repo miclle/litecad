@@ -1,5 +1,7 @@
+import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createBrowserRouter } from 'react-router-dom'
 import { AppContext } from 'src/context/app'
+import { queryClient } from 'src/lib/query-client'
 import routes from './router'
 
 const router = createBrowserRouter(routes)
@@ -7,9 +9,11 @@ const router = createBrowserRouter(routes)
 // App is the root component wrapping providers and the router.
 function App() {
   return (
-    <AppContext.Provider value={{ appName: 'App' }}>
-      <RouterProvider router={router} />
-    </AppContext.Provider>
+    <QueryClientProvider client={queryClient}>
+      <AppContext.Provider value={{ appName: 'litecad' }}>
+        <RouterProvider router={router} />
+      </AppContext.Provider>
+    </QueryClientProvider>
   )
 }
 

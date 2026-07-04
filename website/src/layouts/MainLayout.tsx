@@ -1,35 +1,27 @@
 import { Outlet, NavLink } from 'react-router-dom'
 
-// MainLayout provides the top navigation bar and content area.
 function MainLayout() {
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Top Navigation */}
-      <header className="sticky top-0 z-50 h-14 flex items-center justify-between px-6 border-b bg-background">
-        <NavLink to="/" className="text-xl font-semibold text-foreground no-underline">
-          App
+    <div className="min-h-screen bg-[#f7f5ef] text-[#171814]">
+      <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b border-[#d9d3c2] bg-[#f7f5ef]/92 px-5 backdrop-blur">
+        <NavLink to="/" className="font-mono text-lg font-semibold lowercase text-[#171814] no-underline">
+          litecad
         </NavLink>
-        <nav className="flex items-center gap-4">
+        <nav className="flex items-center gap-2">
           <NavLink
             to="/"
             className={({ isActive }) =>
-              `text-sm no-underline ${isActive ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`
+              `rounded-sm px-3 py-1.5 text-sm no-underline transition ${isActive ? 'bg-[#171814] text-[#f7f5ef]' : 'text-[#5f6259] hover:bg-[#e8e1d0] hover:text-[#171814]'}`
             }
           >
-            Home
+            Studio
           </NavLink>
         </nav>
       </header>
 
-      {/* Main content */}
-      <main className="flex-1">
+      <main>
         <Outlet />
       </main>
-
-      {/* Footer */}
-      <footer className="py-4 px-6 border-t text-center text-xs text-muted-foreground">
-        Built with Go + React
-      </footer>
     </div>
   )
 }

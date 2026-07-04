@@ -1,4 +1,4 @@
-module github.com/miclle/goblet
+module github.com/miclle/litecad
 
 go 1.26.2
 

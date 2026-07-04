@@ -4,7 +4,7 @@
 set -euo pipefail
 
 : "${BIN_DIR:=bin}"
-: "${APP_NAME:=app}"
+: "${APP_NAME:=litecad}"
 : "${PLATFORMS:=linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64}"
 
 GIT_COMMIT="$(git rev-parse --short HEAD)"
@@ -21,5 +21,5 @@ for platform in $PLATFORMS; do
   fi
   echo "Building ${output}"
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-    go build -trimpath -ldflags "$LDFLAGS" -o "$output" ./cmd/app/
+    go build -trimpath -ldflags "$LDFLAGS" -o "$output" ./cmd/litecad/
 done

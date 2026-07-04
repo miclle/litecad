@@ -17,7 +17,7 @@ func writeConfig(t *testing.T, body string) string {
 }
 
 func TestLoadDefaultsDriver(t *testing.T) {
-	path := writeConfig(t, `addr: "127.0.0.1:9000"
+	path := writeConfig(t, `addr: "127.0.0.1:46280"
 dsn: "host=localhost port=5432 user=postgres password=postgres dbname=app sslmode=disable"
 `)
 
@@ -31,7 +31,7 @@ dsn: "host=localhost port=5432 user=postgres password=postgres dbname=app sslmod
 }
 
 func TestLoadSupportsMySQL(t *testing.T) {
-	path := writeConfig(t, `addr: "127.0.0.1:9000"
+	path := writeConfig(t, `addr: "127.0.0.1:46280"
 driver: mysql
 dsn: "root:password@tcp(localhost:3306)/app?charset=utf8mb4&parseTime=True&loc=Local"
 `)
@@ -46,7 +46,7 @@ dsn: "root:password@tcp(localhost:3306)/app?charset=utf8mb4&parseTime=True&loc=L
 }
 
 func TestLoadRejectsUnsupportedDriver(t *testing.T) {
-	path := writeConfig(t, `addr: "127.0.0.1:9000"
+	path := writeConfig(t, `addr: "127.0.0.1:46280"
 driver: sqlite
 dsn: "app.db"
 `)
@@ -57,16 +57,16 @@ dsn: "app.db"
 }
 
 func TestLoadExpandsEnvironmentWithFallback(t *testing.T) {
-	t.Setenv("GOBLET_TEST_DSN", "host=db user=app password=secret dbname=app sslmode=disable")
-	path := writeConfig(t, `addr: "${GOBLET_TEST_ADDR:-127.0.0.1:9000}"
-dsn: "${GOBLET_TEST_DSN:-fallback}"
+	t.Setenv("LITECAD_TEST_DSN", "host=db user=app password=secret dbname=app sslmode=disable")
+	path := writeConfig(t, `addr: "${LITECAD_TEST_ADDR:-127.0.0.1:46280}"
+dsn: "${LITECAD_TEST_DSN:-fallback}"
 `)
 
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if cfg.Addr != "127.0.0.1:9000" {
+	if cfg.Addr != "127.0.0.1:46280" {
 		t.Fatalf("Addr = %q, want fallback", cfg.Addr)
 	}
 	if cfg.DSN != "host=db user=app password=secret dbname=app sslmode=disable" {
@@ -80,7 +80,7 @@ func TestLoadRequiresAddrAndDSN(t *testing.T) {
 		body string
 	}{
 		{name: "missing addr", body: `dsn: "postgres://example"`},
-		{name: "missing dsn", body: `addr: "127.0.0.1:9000"`},
+		{name: "missing dsn", body: `addr: "127.0.0.1:46280"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := Load(writeConfig(t, tc.body)); err == nil {

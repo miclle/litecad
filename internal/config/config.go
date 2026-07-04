@@ -12,7 +12,7 @@ import (
 
 // Config represents the application configuration.
 type Config struct {
-	Addr   string `mapstructure:"addr"`   // listen address, e.g. "0.0.0.0:9000"
+	Addr   string `mapstructure:"addr"`   // listen address, e.g. "0.0.0.0:46280"
 	Driver string `mapstructure:"driver"` // database driver: "postgres" (default) or "mysql"
 	DSN    string `mapstructure:"dsn"`    // database connection string
 }

@@ -33,7 +33,7 @@ task update-tools   # Install/update dev tools
 ## Directory Overview
 
 ```text
-cmd/app/                      # Application entry point and local config
+cmd/litecad/                  # Application entry point and local config
 internal/config/              # YAML config loading (PostgreSQL / MySQL)
 internal/database/            # GORM database connection and schema migration
 internal/entity/              # Data models and domain types

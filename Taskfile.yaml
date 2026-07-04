@@ -2,6 +2,8 @@ version: "3"
 
 vars:
   WEBSITE_DIR: website
+  DEFAULT_HTTP_PORT: 46280
+  DEFAULT_VITE_PORT: 46281
 
 tasks:
   default:
@@ -13,10 +15,10 @@ tasks:
   init-config:
     internal: true
     cmds:
-      - cp cmd/app/config.example.yaml cmd/app/config.local.yaml
-      - echo "Created cmd/app/config.local.yaml from config.example.yaml"
+      - cp cmd/litecad/config.example.yaml cmd/litecad/config.local.yaml
+      - echo "Created cmd/litecad/config.local.yaml from config.example.yaml"
     status:
-      - test -f cmd/app/config.local.yaml
+      - test -f cmd/litecad/config.local.yaml
 
   install:
     desc: Install all dependencies (Go modules + frontend)
@@ -31,13 +33,13 @@ tasks:
     deps: [init-config, kill-vite]
     cmds:
       - |
-        export GOBLET_HTTP_PORT="${GOBLET_HTTP_PORT:-9000}"
-        export GOBLET_VITE_PORT="${GOBLET_VITE_PORT:-5173}"
-        export GOBLET_API_BASE_URL="${GOBLET_API_BASE_URL:-http://127.0.0.1:${GOBLET_HTTP_PORT}}"
-        export GOBLET_VITE_DEV_SERVER_URL="${GOBLET_VITE_DEV_SERVER_URL:-http://localhost:${GOBLET_VITE_PORT}}"
+        export LITECAD_HTTP_PORT="${LITECAD_HTTP_PORT:-{{.DEFAULT_HTTP_PORT}}}"
+        export LITECAD_VITE_PORT="${LITECAD_VITE_PORT:-{{.DEFAULT_VITE_PORT}}}"
+        export LITECAD_API_BASE_URL="${LITECAD_API_BASE_URL:-http://127.0.0.1:${LITECAD_HTTP_PORT}}"
+        export LITECAD_VITE_DEV_SERVER_URL="${LITECAD_VITE_DEV_SERVER_URL:-http://localhost:${LITECAD_VITE_PORT}}"
 
-        echo "Starting Vite on ${GOBLET_VITE_DEV_SERVER_URL}"
-        echo "Starting Go server on port ${GOBLET_HTTP_PORT}"
+        echo "Starting Vite on ${LITECAD_VITE_DEV_SERVER_URL}"
+        echo "Starting Go server on port ${LITECAD_HTTP_PORT}"
 
         cd {{.WEBSITE_DIR}} && npm run dev &
         sleep 1
@@ -46,13 +48,13 @@ tasks:
           -r '\.go$' \
           -R 'website/' \
           -R 'tmp' \
-          -- go run -trimpath -tags development ./cmd/app/ -c cmd/app/config.local.yaml
+          -- go run -trimpath -tags development ./cmd/litecad/ -c cmd/litecad/config.local.yaml
 
   run:
     desc: Run the server (production mode, requires build first)
     deps: [init-config]
     cmds:
-      - go run ./cmd/app/ -c cmd/app/config.local.yaml
+      - go run ./cmd/litecad/ -c cmd/litecad/config.local.yaml
 
   # ---------- Build ----------
 

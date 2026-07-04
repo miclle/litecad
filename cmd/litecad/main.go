@@ -8,10 +8,10 @@ import (
 
 	"github.com/fox-gonic/fox"
 
-	"github.com/miclle/goblet/internal/config"
-	"github.com/miclle/goblet/internal/database"
-	"github.com/miclle/goblet/internal/handler"
-	"github.com/miclle/goblet/internal/service"
+	"github.com/miclle/litecad/internal/config"
+	"github.com/miclle/litecad/internal/database"
+	"github.com/miclle/litecad/internal/handler"
+	"github.com/miclle/litecad/internal/service"
 )
 
 var (

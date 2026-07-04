@@ -1,63 +1,81 @@
-# Goblet
+# litecad
 
-A project template for building Go + React single-page applications that compile into a single binary.
+Web-based AI-driven 3D design and preview workspace.
 
-The backend embeds the frontend build output via `//go:embed`, so production deployment is typically a single executable plus a database.
+litecad is initialized from [miclle/goblet](https://github.com/miclle/goblet), keeping the Go + React single-binary deployment model while turning the template into a product surface for prompt-driven CAD exploration, STEP-first import, and browser-native 3D inspection.
+
+## Product Direction
+
+litecad starts as a fast web studio for early mechanical design loops:
+
+- Write a constrained design brief and preview a generated part shape.
+- Inspect geometry in a browser viewport powered by Three.js.
+- Build toward STEP / STL / GLB import, conversion, and measurement workflows.
+- Keep backend services ready for AI orchestration, model metadata, and design history.
+- Deploy as one Go executable that embeds the built React application.
+
+The current implementation is an initialization milestone: it includes product branding, an AI 3D studio first screen, a Three.js preview prototype, and a backend status endpoint. AI generation and STEP parsing are intentionally not claimed as complete yet.
 
 ## Tech Stack
 
-**Backend:**
+**Backend**
 
-- Go 1.26, [fox-gonic/fox](https://github.com/fox-gonic/fox) (Gin-based HTTP framework)
-- GORM with PostgreSQL (default) or MySQL driver
-- [Viper](https://github.com/spf13/viper) for configuration
+- Go 1.26
+- [fox-gonic/fox](https://github.com/fox-gonic/fox)
+- GORM with PostgreSQL by default, MySQL supported
+- Viper YAML configuration
 
-**Frontend:**
+**Frontend**
 
-- React 19, TypeScript 6, Vite 8, Tailwind CSS 4
-- React Router v7, React Query v5
-- [shadcn/ui](https://ui.shadcn.com/) v4 component library
-- Vitest 4 for unit testing
+- React 19 + TypeScript 6 + Vite 8
+- Tailwind CSS 4
+- React Router v7
+- React Query v5
+- Axios
+- Lucide React
+- Three.js
 
 ## Requirements
 
 - Go 1.26+
 - Node.js 22.14+
 - PostgreSQL or MySQL
-- [Task](https://taskfile.dev/) (task runner)
-- `reflex` — file-watching hot reload for `task dev`
-- `staticcheck` — static analysis for `task check`
-- `golangci-lint` — comprehensive linting for `task check`
+- [Task](https://taskfile.dev/)
+- `reflex` for `task dev`
+- `staticcheck` and `golangci-lint` for `task check`
 
-Run `task update-tools` to install `reflex`, `staticcheck`, and `golangci-lint`.
+Install or refresh Go tooling with:
+
+```bash
+task update-tools
+```
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/miclle/goblet.git
-cd goblet
+git clone https://github.com/miclle/litecad.git
+cd litecad
 task install
 ```
 
 Create local config:
 
 ```bash
-cp cmd/app/config.example.yaml cmd/app/config.local.yaml
-# Edit config.local.yaml with your database settings
+cp cmd/litecad/config.example.yaml cmd/litecad/config.local.yaml
 ```
 
-Start development:
+Start the development environment:
 
 ```bash
 task dev
 ```
 
-This starts both the Vite dev server (port 5173) and the Go server with hot reload (port 9000).
+This starts Vite on port `46281` and the Go server on port `46280`.
 
-To avoid port conflicts when running multiple local apps, override the ports per session:
+To avoid port conflicts:
 
 ```bash
-GOBLET_HTTP_PORT=9100 GOBLET_VITE_PORT=3100 task dev
+LITECAD_HTTP_PORT=47280 LITECAD_VITE_PORT=47281 task dev
 ```
 
 `task dev` wires those values through Vite, the Vite `/api/v1` proxy, and the development asset reverse proxy.
@@ -68,84 +86,84 @@ GOBLET_HTTP_PORT=9100 GOBLET_VITE_PORT=3100 task dev
 task install        # Install Go and frontend dependencies
 task dev            # Start Vite dev server + Go hot reload
 task build          # Build production binary with embedded frontend
-task build-all      # Cross-compile for linux/darwin/windows × amd64/arm64
+task build-all      # Cross-compile for linux/darwin/windows x amd64/arm64
 task run            # Run the production binary with local config
-task lint           # Auto-fix: go mod tidy, gofmt, go vet, staticcheck, ESLint
-task check          # CI-aligned checks (read-only, no file modifications)
-task test           # Go tests (race + coverage) + frontend Vitest
+task lint           # Auto-fix Go and frontend style checks
+task check          # CI-aligned checks
+task test           # Go tests + frontend Vitest
 task clean          # Remove build artifacts
 task update-tools   # Install/update reflex, staticcheck, golangci-lint
 ```
 
 ## Architecture
 
-```
-.
-├── cmd/app/                        → Application entry point
-│   ├── main.go
-│   └── config.example.yaml
-├── internal/
-│   ├── config/                     → YAML config loading (Viper)
-│   ├── entity/                     → Data models (GORM)
-│   ├── handler/                    → HTTP handlers + routes + middleware
-│   ├── service/                    → Business logic + DB operations
-│   └── errors/                     → Centralized error types
-├── pkg/gormlog/                    → GORM logger adapter
-├── website/                        → Embedded SPA (React + Vite)
-│   ├── assets_development.go       → Dev: reverse-proxy to Vite dev server
-│   ├── assets_production.go        → Prod: //go:embed build/*
-│   └── src/
-│       ├── api/                    → API client (Axios)
-│       ├── components/ui/          → shadcn/ui components
-│       ├── context/                → React context providers
-│       ├── hooks/                  → Custom React hooks
-│       ├── layouts/                → Page layout components
-│       ├── lib/                    → Utilities (React Query client, cn helper)
-│       ├── types/                  → TypeScript type definitions
-│       └── views/                  → Page-level route components
-├── scripts/                        → Shell helpers invoked by Taskfile
-├── .github/workflows/              → CI workflows
-└── Taskfile.yaml                   → Task runner configuration
+```text
+cmd/litecad/                  # Application entry point and local config
+internal/config/              # YAML config loading
+internal/database/            # GORM database connection and migration
+internal/entity/              # Data models and domain types
+internal/handler/             # HTTP handlers, route registration, middleware
+internal/service/             # Business logic and database operations
+pkg/                          # Reusable helpers
+website/                      # Embedded SPA
+  assets_development.go       # Dev mode: reverse-proxy to Vite
+  assets_production.go        # Prod mode: go:embed static assets
+  src/
+    api/                      # Axios API modules
+    views/                    # Route-level UI
+    components/               # Reusable UI components
+    layouts/                  # Page layouts
+    lib/                      # Shared frontend utilities
+scripts/                      # Shell helpers invoked by Taskfile
 ```
 
-### Single Binary Embedding
+## API Surface
 
-The key pattern: two Go files with build tags control how frontend assets are served:
+Current initialization endpoint:
 
-- **Development** (`-tags development`): Reverse-proxies requests to Vite dev server at `localhost:5173`
-- **Production** (default): Serves assets from `//go:embed build/*`, with SPA fallback for non-API routes
+```text
+GET /api/v1/studio/status
+```
+
+It reports the product bootstrap state and the first planned capability set for the studio.
+
+## Single Binary Embedding
+
+- Development builds use `website/assets_development.go` and reverse-proxy static requests to the Vite dev server.
+- Production builds use `website/assets_production.go` and embed `website/build/*` with `//go:embed`.
+- `/api` paths return JSON 404s when not found; other unknown paths fall back to the SPA index.
 
 ## Configuration
 
-The YAML config (`config.example.yaml`) keeps only bootstrap settings:
-
 ```yaml
-addr: "0.0.0.0:${GOBLET_HTTP_PORT:-9000}"
-driver: postgres   # or "mysql"
+addr: "0.0.0.0:${LITECAD_HTTP_PORT:-46280}"
+driver: postgres
 dsn: "host=localhost port=5432 user=postgres password=postgres dbname=app sslmode=disable"
 ```
 
-## Build & Deployment
+Configuration files support `${NAME}` and `${NAME:-fallback}` environment variable expansion.
+
+## Near-Term Roadmap
+
+- Define design/project entities and persistence.
+- Add upload and metadata extraction for STEP / STL / GLB assets.
+- Decide the conversion boundary for STEP previews, likely server-side conversion to web-friendly mesh data or GLB.
+- Add AI orchestration APIs for prompt-to-design iterations.
+- Add measurement, sectioning, edge display, and export workflows in the viewer.
+
+## Verification
+
+Run before committing:
 
 ```bash
-task build          # Build production binary (includes frontend)
-./bin/app -c config.yaml
+task check
 ```
 
-Cross-compile for all supported platforms:
+Run tests when backend or shared frontend behavior changes:
 
 ```bash
-task build-all      # Outputs to bin/ for each OS/arch combination
+task test
 ```
-
-## CI
-
-GitHub Actions workflows are included:
-
-- **ci.yml** — runs backend gofmt/vet/staticcheck/tests, frontend lint/type-check/tests/build, and an embedded binary build
-- **golangci-lint.yml** — runs golangci-lint on PRs
-- **dependency-review.yml** — reviews dependency changes on PRs
-- **actionlint.yml** — lints GitHub Actions workflow files
 
 ## License
 

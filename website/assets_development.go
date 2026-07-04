@@ -47,12 +47,12 @@ func init() {
 }
 
 func devServerURLFromEnvironment() string {
-	if devServerURL := os.Getenv("GOBLET_VITE_DEV_SERVER_URL"); devServerURL != "" {
+	if devServerURL := os.Getenv("LITECAD_VITE_DEV_SERVER_URL"); devServerURL != "" {
 		return devServerURL
 	}
-	port := os.Getenv("GOBLET_VITE_PORT")
+	port := os.Getenv("LITECAD_VITE_PORT")
 	if port == "" {
-		port = "5173"
+		port = "46281"
 	}
 	return fmt.Sprintf("http://localhost:%s", port)
 }

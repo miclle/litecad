@@ -2,10 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-const vitePort = Number.parseInt(process.env.GOBLET_VITE_PORT ?? '5173', 10)
+const vitePort = Number.parseInt(process.env.LITECAD_VITE_PORT ?? '46281', 10)
 const apiBaseURL =
-  process.env.GOBLET_API_BASE_URL ??
-  `http://127.0.0.1:${process.env.GOBLET_HTTP_PORT ?? '9000'}`
+  process.env.LITECAD_API_BASE_URL ??
+  `http://127.0.0.1:${process.env.LITECAD_HTTP_PORT ?? '46280'}`
 
 // https://vitejs.dev/config/
 export default defineConfig({

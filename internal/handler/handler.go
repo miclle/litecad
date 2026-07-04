@@ -4,8 +4,8 @@ package handler
 import (
 	"github.com/fox-gonic/fox"
 
-	"github.com/miclle/goblet/internal/service"
-	"github.com/miclle/goblet/website"
+	"github.com/miclle/litecad/internal/service"
+	"github.com/miclle/litecad/website"
 )
 
 // Ctrl is the controller that holds service dependencies and registers routes.
@@ -30,7 +30,7 @@ func (ctrl *Ctrl) RegisterRoutes(r *fox.Engine) {
 
 	// ── API routes ──────────────────────────────────────────────────────
 	api := r.Group("/api/v1")
-	api.GET("/hello", ctrl.Hello)
+	api.GET("/studio/status", ctrl.StudioStatus)
 }
 
 // Health returns a simple health check response.
@@ -38,7 +38,17 @@ func (ctrl *Ctrl) Health(c *fox.Context) string {
 	return "ok"
 }
 
-// Hello returns a greeting message.
-func (ctrl *Ctrl) Hello(c *fox.Context) any {
-	return map[string]string{"message": "Hello from Goblet!"}
+// StudioStatus returns the product initialization state for the LiteCAD studio.
+func (ctrl *Ctrl) StudioStatus(c *fox.Context) any {
+	return map[string]any{
+		"name":    "litecad",
+		"status":  "initializing",
+		"summary": "AI-driven 3D design and preview workspace",
+		"capabilities": []string{
+			"Prompt-to-geometry design brief",
+			"Browser-based 3D preview",
+			"STEP-first import pipeline",
+			"Single-binary deployment",
+		},
+	}
 }
