@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import {
   ArrowLeft,
   Box,
@@ -57,6 +58,535 @@ const modelTree = [
   },
 ]
 
+type ViewOrientation = {
+  pitch: number
+  yaw: number
+}
+
+type HorizontalFace = 'front' | 'right' | 'back' | 'left'
+
+const initialViewOrientation: ViewOrientation = { yaw: 38, pitch: 27 }
+
+const clampPitch = (pitch: number) => Math.max(-89, Math.min(89, pitch))
+const normalizeYaw = (yaw: number) => ((yaw % 360) + 360) % 360
+const createOrientation = (yaw: number, pitch: number): ViewOrientation => ({
+  yaw: normalizeYaw(yaw),
+  pitch: clampPitch(pitch),
+})
+const isViewOrientation = (orientation: unknown): orientation is ViewOrientation => {
+  if (!orientation || typeof orientation !== 'object') {
+    return false
+  }
+  const candidate = orientation as Partial<ViewOrientation>
+  return Number.isFinite(candidate.yaw) && Number.isFinite(candidate.pitch)
+}
+const orientationToDirection = ({ yaw, pitch }: ViewOrientation) => {
+  const yawRadians = (normalizeYaw(yaw) * Math.PI) / 180
+  const pitchRadians = (clampPitch(pitch) * Math.PI) / 180
+  const levelRadius = Math.cos(pitchRadians)
+
+  return new THREE.Vector3(
+    Math.sin(yawRadians) * levelRadius,
+    Math.sin(pitchRadians),
+    Math.cos(yawRadians) * levelRadius,
+  ).normalize()
+}
+const directionToOrientation = (direction: THREE.Vector3) => {
+  const normalizedDirection = direction.clone().normalize()
+  return createOrientation(
+    (Math.atan2(normalizedDirection.x, normalizedDirection.z) * 180) / Math.PI,
+    (Math.asin(THREE.MathUtils.clamp(normalizedDirection.y, -1, 1)) * 180) / Math.PI,
+  )
+}
+const orientationDistance = (first: ViewOrientation, second: ViewOrientation) => {
+  const yawDistance = Math.abs(((first.yaw - second.yaw + 540) % 360) - 180)
+  return yawDistance + Math.abs(first.pitch - second.pitch)
+}
+
+type ViewCubeFaceID = HorizontalFace | 'top' | 'bottom'
+
+type ViewCubeFace = {
+  color: number
+  id: ViewCubeFaceID
+  label: string
+  orientation: ViewOrientation
+  position: [number, number, number]
+  rotation: [number, number, number]
+}
+
+const viewCubeFaces: ViewCubeFace[] = [
+  {
+    color: 0x9a9f99,
+    id: 'front',
+    label: '前视图',
+    orientation: createOrientation(0, 0),
+    position: [0, 0, 0.67],
+    rotation: [0, 0, 0],
+  },
+  {
+    color: 0x828981,
+    id: 'back',
+    label: '后视图',
+    orientation: createOrientation(180, 0),
+    position: [0, 0, -0.67],
+    rotation: [0, Math.PI, 0],
+  },
+  {
+    color: 0x8e958d,
+    id: 'right',
+    label: '右视图',
+    orientation: createOrientation(90, 0),
+    position: [0.67, 0, 0],
+    rotation: [0, Math.PI / 2, 0],
+  },
+  {
+    color: 0x858c84,
+    id: 'left',
+    label: '左视图',
+    orientation: createOrientation(270, 0),
+    position: [-0.67, 0, 0],
+    rotation: [0, -Math.PI / 2, 0],
+  },
+  {
+    color: 0xa5aaa3,
+    id: 'top',
+    label: '上视图',
+    orientation: createOrientation(0, 89),
+    position: [0, 0.67, 0],
+    rotation: [-Math.PI / 2, 0, 0],
+  },
+  {
+    color: 0x747b74,
+    id: 'bottom',
+    label: '下视图',
+    orientation: createOrientation(0, -89),
+    position: [0, -0.67, 0],
+    rotation: [Math.PI / 2, 0, 0],
+  },
+]
+
+const createCanvasLabelTexture = ({
+  background,
+  color,
+  fontSize,
+  height = 128,
+  label,
+  width = 256,
+}: {
+  background?: string
+  color: string
+  fontSize: number
+  height?: number
+  label: string
+  width?: number
+}) => {
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (context) {
+    context.clearRect(0, 0, width, height)
+    if (background) {
+      context.fillStyle = background
+      context.fillRect(0, 0, width, height)
+    }
+    context.font = `700 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.lineWidth = 4
+    context.strokeStyle = 'rgba(17,19,16,0.42)'
+    context.fillStyle = color
+    context.strokeText(label, width / 2, height / 2 + 3)
+    context.fillText(label, width / 2, height / 2 + 3)
+  }
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
+function ViewCube3D({
+  onSetOrientation,
+  orientation,
+}: {
+  onSetOrientation: (orientation: ViewOrientation) => void
+  orientation: ViewOrientation
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const onSetOrientationRef = useRef(onSetOrientation)
+  const orientationRef = useRef(orientation)
+  const viewStateRef = useRef<{ render: (orientation: ViewOrientation) => void } | null>(null)
+
+  useEffect(() => {
+    onSetOrientationRef.current = onSetOrientation
+  }, [onSetOrientation])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) {
+      return undefined
+    }
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setClearColor(0x000000, 0)
+    renderer.outputColorSpace = THREE.SRGBColorSpace
+    renderer.domElement.style.display = 'block'
+    renderer.domElement.style.height = '100%'
+    renderer.domElement.style.width = '100%'
+    container.appendChild(renderer.domElement)
+
+    const scene = new THREE.Scene()
+    const camera = new THREE.OrthographicCamera(-1.7, 1.7, 1.7, -1.7, 0.1, 20)
+    const raycaster = new THREE.Raycaster()
+    const pointer = new THREE.Vector2()
+    const hitMeshes: THREE.Mesh[] = []
+    const faceLabels: Array<{ normal: THREE.Vector3; sprite: THREE.Sprite }> = []
+
+    const ambient = new THREE.HemisphereLight(0xf2ecdc, 0x252a23, 2.3)
+    scene.add(ambient)
+    const key = new THREE.DirectionalLight(0xf3ead2, 2.9)
+    key.position.set(2.4, 3.2, 4)
+    scene.add(key)
+    const rim = new THREE.DirectionalLight(0x9fb08f, 1.25)
+    rim.position.set(-2.5, -1.5, -3)
+    scene.add(rim)
+
+    const cubeGroup = new THREE.Group()
+    cubeGroup.position.y = 0.2
+    scene.add(cubeGroup)
+
+    const cubeBody = new THREE.Mesh(
+      new RoundedBoxGeometry(1.36, 1.36, 1.36, 4, 0.09),
+      new THREE.MeshStandardMaterial({
+        color: 0x8f968d,
+        metalness: 0.05,
+        roughness: 0.72,
+      }),
+    )
+    cubeGroup.add(cubeBody)
+
+    const cubeEdges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1.38, 1.38, 1.38)),
+      new THREE.LineBasicMaterial({ color: 0x242a24, transparent: true, opacity: 0.7 }),
+    )
+    cubeGroup.add(cubeEdges)
+
+    const hitMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      depthWrite: false,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      transparent: true,
+    })
+
+    for (const face of viewCubeFaces) {
+      const facePlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.94, 0.94),
+        new THREE.MeshStandardMaterial({
+          color: face.color,
+          metalness: 0.04,
+          opacity: 0.78,
+          roughness: 0.76,
+          side: THREE.DoubleSide,
+          transparent: true,
+        }),
+      )
+      facePlane.position.set(...face.position)
+      facePlane.rotation.set(...face.rotation)
+      cubeGroup.add(facePlane)
+
+      const labelTexture = createCanvasLabelTexture({
+        background: 'rgba(168, 171, 161, 0.18)',
+        color: '#363b37',
+        fontSize: 58,
+        label: face.label,
+      })
+      const labelSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          depthTest: false,
+          map: labelTexture,
+          transparent: true,
+        }),
+      )
+      labelSprite.position.set(...face.position)
+      labelSprite.position.multiplyScalar(1.16)
+      labelSprite.renderOrder = 20
+      labelSprite.scale.set(0.78, 0.34, 1)
+      cubeGroup.add(labelSprite)
+      faceLabels.push({
+        normal: new THREE.Vector3(...face.position).normalize(),
+        sprite: labelSprite,
+      })
+
+      const hitPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 1.15), hitMaterial)
+      hitPlane.position.set(...face.position)
+      hitPlane.position.multiplyScalar(1.04)
+      hitPlane.rotation.set(...face.rotation)
+      hitPlane.userData.orientation = face.orientation
+      cubeGroup.add(hitPlane)
+      hitMeshes.push(hitPlane)
+    }
+
+    const axisLabel = (label: string, color: number) => {
+      const texture = createCanvasLabelTexture({
+        color: `#${color.toString(16).padStart(6, '0')}`,
+        fontSize: 54,
+        height: 96,
+        label,
+        width: 96,
+      })
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, map: texture, transparent: true }))
+      sprite.renderOrder = 10
+      sprite.scale.set(0.18, 0.18, 1)
+      return sprite
+    }
+
+    const axisGroup = new THREE.Group()
+    axisGroup.position.y = -1.42
+    scene.add(axisGroup)
+
+    const createMiniAxis = (label: string, direction: THREE.Vector3, color: number) => {
+      const group = new THREE.Group()
+      const normalizedDirection = direction.clone().normalize()
+      const axisLength = 0.56
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0, 0),
+          normalizedDirection.clone().multiplyScalar(axisLength),
+        ]),
+        new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 }),
+      )
+      group.add(line)
+
+      const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.14, 24), new THREE.MeshBasicMaterial({ color }))
+      arrow.position.copy(normalizedDirection.clone().multiplyScalar(axisLength))
+      arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normalizedDirection)
+      group.add(arrow)
+
+      const labelSprite = axisLabel(label, color)
+      labelSprite.position.copy(normalizedDirection.clone().multiplyScalar(axisLength + 0.2))
+      group.add(labelSprite)
+
+      return group
+    }
+
+    axisGroup.add(createMiniAxis('X', new THREE.Vector3(1, 0, 0), 0xe36b5d))
+    axisGroup.add(createMiniAxis('Y', new THREE.Vector3(0, 1, 0), 0x6fc782))
+    axisGroup.add(createMiniAxis('Z', new THREE.Vector3(0, 0, 1), 0x6f94e8))
+
+    const updateSize = () => {
+      const { height, width } = container.getBoundingClientRect()
+      if (width === 0 || height === 0) {
+        return
+      }
+      const aspect = width / height
+      const viewHeight = 2.95
+      camera.left = (-viewHeight * aspect) / 2
+      camera.right = (viewHeight * aspect) / 2
+      camera.top = viewHeight / 2
+      camera.bottom = -viewHeight / 2
+      camera.updateProjectionMatrix()
+      renderer.setSize(width, height)
+    }
+
+    const render = (nextOrientation: ViewOrientation) => {
+      updateSize()
+      const direction = orientationToDirection(nextOrientation)
+      const up =
+        Math.abs(direction.y) > 0.98
+          ? ([0, 0, direction.y > 0 ? -1 : 1] as [number, number, number])
+          : ([0, 1, 0] as [number, number, number])
+      camera.position.copy(direction.multiplyScalar(5))
+      camera.up.set(...up)
+      camera.lookAt(0, -0.28, 0)
+      camera.updateMatrixWorld()
+      const cameraDirection = camera.position.clone().normalize()
+      for (const { normal, sprite } of faceLabels) {
+        sprite.visible = normal.dot(cameraDirection) > 0.16
+      }
+      renderer.render(scene, camera)
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect()
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+      raycaster.setFromCamera(pointer, camera)
+      const [hit] = raycaster.intersectObjects(hitMeshes, false)
+      if (!hit) {
+        return
+      }
+      const nextOrientation = hit.object.userData.orientation
+      if (isViewOrientation(nextOrientation)) {
+        onSetOrientationRef.current(nextOrientation)
+      }
+    }
+
+    viewStateRef.current = { render }
+    render(orientationRef.current)
+
+    const resizeObserver = new ResizeObserver(() => render(orientationRef.current))
+    resizeObserver.observe(container)
+    renderer.domElement.addEventListener('pointerdown', handlePointerDown)
+
+    return () => {
+      resizeObserver.disconnect()
+      renderer.domElement.removeEventListener('pointerdown', handlePointerDown)
+      viewStateRef.current = null
+
+      const disposedGeometries = new Set<THREE.BufferGeometry>()
+      const disposedMaterials = new Set<THREE.Material>()
+      const disposedTextures = new Set<THREE.Texture>()
+      const disposeMaterial = (material: THREE.Material) => {
+        if (disposedMaterials.has(material)) {
+          return
+        }
+        const materialRecord = material as THREE.Material & Record<string, unknown>
+        for (const value of Object.values(materialRecord)) {
+          if (value instanceof THREE.Texture && !disposedTextures.has(value)) {
+            value.dispose()
+            disposedTextures.add(value)
+          }
+        }
+        material.dispose()
+        disposedMaterials.add(material)
+      }
+
+      scene.traverse((object) => {
+        const disposableObject = object as THREE.Object3D & {
+          geometry?: THREE.BufferGeometry
+          material?: THREE.Material | THREE.Material[]
+        }
+        if (disposableObject.geometry instanceof THREE.BufferGeometry && !disposedGeometries.has(disposableObject.geometry)) {
+          disposableObject.geometry.dispose()
+          disposedGeometries.add(disposableObject.geometry)
+        }
+        const { material } = disposableObject
+        if (Array.isArray(material)) {
+          material.forEach(disposeMaterial)
+        } else if (material instanceof THREE.Material) {
+          disposeMaterial(material)
+        }
+      })
+      hitMaterial.dispose()
+      renderer.dispose()
+      if (container.contains(renderer.domElement)) {
+        container.removeChild(renderer.domElement)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    orientationRef.current = orientation
+    viewStateRef.current?.render(orientation)
+  }, [orientation])
+
+  return <div ref={containerRef} aria-label="View cube" className="absolute left-1/2 top-[52px] z-10 h-[158px] w-[148px] -translate-x-1/2" />
+}
+
+function ViewController({
+  orientation,
+  onFlip,
+  onSetOrientation,
+  onStep,
+}: {
+  orientation: ViewOrientation
+  onFlip: () => void
+  onSetOrientation: (orientation: ViewOrientation) => void
+  onStep: (delta: Partial<ViewOrientation>) => void
+}) {
+  const arrowButtonClass =
+    'absolute z-30 grid size-10 place-items-center outline-none transition hover:scale-110 focus-visible:outline-none'
+  const arrowClass = 'block size-8 bg-[#9a9f99] transition group-hover:bg-[#c5c7c0]'
+  const arcButtonClass =
+    'absolute z-30 grid h-14 w-[78px] place-items-center text-[#9a9f99] outline-none transition hover:scale-105 hover:text-[#c5c7c0] focus-visible:outline-none'
+
+  return (
+    <div
+      aria-label="View orientation controls"
+      className="absolute right-4 top-4 z-20 hidden h-[232px] w-[214px] select-none text-[#d8d1bf] sm:block"
+    >
+      <button
+        aria-label="Tilt view up"
+        className={`${arrowButtonClass} group left-1/2 top-0 -translate-x-1/2`}
+        onClick={() => onStep({ pitch: 45 })}
+        title="Tilt view up"
+        type="button"
+      >
+        <span className={arrowClass} style={{ clipPath: 'polygon(50% 0, 0 100%, 100% 100%)' }} />
+      </button>
+
+      <button
+        aria-label="Rotate view left 45 degrees"
+        className={`${arrowButtonClass} group left-0 top-[101px]`}
+        onClick={() => onStep({ yaw: -45 })}
+        title="Rotate view left 45 degrees"
+        type="button"
+      >
+        <span className={arrowClass} style={{ clipPath: 'polygon(0 50%, 100% 0, 100% 100%)' }} />
+      </button>
+
+      <button
+        aria-label="Rotate view right 45 degrees"
+        className={`${arrowButtonClass} group right-0 top-[101px]`}
+        onClick={() => onStep({ yaw: 45 })}
+        title="Rotate view right 45 degrees"
+        type="button"
+      >
+        <span className={arrowClass} style={{ clipPath: 'polygon(100% 50%, 0 0, 0 100%)' }} />
+      </button>
+
+      <button
+        aria-label="Tilt view down"
+        className={`${arrowButtonClass} group bottom-0 left-1/2 -translate-x-1/2`}
+        onClick={() => onStep({ pitch: -45 })}
+        title="Tilt view down"
+        type="button"
+      >
+        <span className={arrowClass} style={{ clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
+      </button>
+
+      <button
+        aria-label="Rotate view left"
+        className={`${arcButtonClass} left-5 top-6`}
+        onClick={() => onStep({ yaw: -45 })}
+        title="Rotate view left"
+        type="button"
+      >
+        <svg aria-hidden="true" className="h-12 w-[78px]" viewBox="0 0 92 54">
+          <path d="M84 11 C58 15 35 26 15 43" fill="none" stroke="currentColor" strokeWidth="10" />
+          <path d="M12 46 L35 39 L21 24 Z" fill="currentColor" />
+        </svg>
+      </button>
+
+      <button
+        aria-label="Rotate view right"
+        className={`${arcButtonClass} right-5 top-6`}
+        onClick={() => onStep({ yaw: 45 })}
+        title="Rotate view right"
+        type="button"
+      >
+        <svg aria-hidden="true" className="h-12 w-[78px]" viewBox="0 0 92 54">
+          <path d="M8 11 C34 15 57 26 77 43" fill="none" stroke="currentColor" strokeWidth="10" />
+          <path d="M80 46 L57 39 L71 24 Z" fill="currentColor" />
+        </svg>
+      </button>
+
+      <button
+        aria-label="Flip view"
+        className="absolute right-3 top-2 z-30 grid size-7 place-items-center outline-none transition hover:scale-110 focus-visible:outline-none"
+        onClick={onFlip}
+        title="Flip view"
+        type="button"
+      >
+        <span className="block size-5 rounded-full bg-[#9a9f99] transition hover:bg-[#c5c7c0]" />
+      </button>
+
+      <ViewCube3D onSetOrientation={onSetOrientation} orientation={orientation} />
+    </div>
+  )
+}
+
 function ModelPreview() {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -93,8 +623,22 @@ function ModelPreview() {
     controls.minZoom = 0.55
     controls.maxZoom = 4
     controls.target.set(0, 0.15, 0)
+    let activeOrientation = initialViewOrientation
+    let lastEmittedOrientation = initialViewOrientation
     const renderScene = () => renderer.render(scene, camera)
-    controls.addEventListener('change', renderScene)
+    const emitOrientationChange = (orientation: ViewOrientation) => {
+      if (orientationDistance(lastEmittedOrientation, orientation) < 0.2) {
+        return
+      }
+      lastEmittedOrientation = orientation
+      window.dispatchEvent(new CustomEvent('litecad:view-orientation-change', { detail: { orientation } }))
+    }
+    const handleControlsChange = () => {
+      activeOrientation = directionToOrientation(camera.position.clone().sub(controls.target))
+      emitOrientationChange(activeOrientation)
+      renderScene()
+    }
+    controls.addEventListener('change', handleControlsChange)
 
     const ambient = new THREE.HemisphereLight(0xf4ecd7, 0x293125, 1.5)
     scene.add(ambient)
@@ -121,6 +665,62 @@ function ModelPreview() {
     ground.position.y = -0.53
     ground.receiveShadow = true
     scene.add(ground)
+
+    const createAxisLabel = (label: string, color: number) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 96
+      canvas.height = 96
+      const context = canvas.getContext('2d')
+      if (context) {
+        context.font = '700 42px ui-monospace, SFMono-Regular, Menlo, monospace'
+        context.textAlign = 'center'
+        context.textBaseline = 'middle'
+        context.lineWidth = 5
+        context.strokeStyle = '#111310'
+        context.fillStyle = `#${color.toString(16).padStart(6, '0')}`
+        context.strokeText(label, 48, 50)
+        context.fillText(label, 48, 50)
+      }
+      const texture = new THREE.CanvasTexture(canvas)
+      texture.colorSpace = THREE.SRGBColorSpace
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }))
+      sprite.scale.set(0.36, 0.36, 1)
+      sprite.renderOrder = 3
+      return sprite
+    }
+
+    const createAxis = (label: string, direction: THREE.Vector3, color: number) => {
+      const axis = new THREE.Group()
+      const normalizedDirection = direction.clone().normalize()
+      const axisLength = 2.8
+      const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 })
+      const geometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        normalizedDirection.clone().multiplyScalar(axisLength),
+      ])
+      axis.add(new THREE.Line(geometry, material))
+
+      const arrow = new THREE.Mesh(
+        new THREE.ConeGeometry(0.06, 0.22, 28),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 }),
+      )
+      arrow.position.copy(normalizedDirection.clone().multiplyScalar(axisLength))
+      arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normalizedDirection)
+      axis.add(arrow)
+
+      const labelSprite = createAxisLabel(label, color)
+      labelSprite.position.copy(normalizedDirection.clone().multiplyScalar(axisLength + 0.32))
+      axis.add(labelSprite)
+
+      return axis
+    }
+
+    const axesGroup = new THREE.Group()
+    axesGroup.position.set(-2.2, -0.48, -1.65)
+    axesGroup.add(createAxis('X', new THREE.Vector3(1, 0, 0), 0xe36b5d))
+    axesGroup.add(createAxis('Y', new THREE.Vector3(0, 1, 0), 0x6fc782))
+    axesGroup.add(createAxis('Z', new THREE.Vector3(0, 0, 1), 0x6f94e8))
+    scene.add(axesGroup)
 
     const bodyMaterial = new THREE.MeshStandardMaterial({
       color: 0xaab69a,
@@ -274,11 +874,16 @@ function ModelPreview() {
       const bounds = new THREE.Box3().setFromObject(assembly)
       const sphere = new THREE.Sphere()
       bounds.getBoundingSphere(sphere)
-      const direction = new THREE.Vector3(8, 6.5, 10).normalize()
+      const direction = orientationToDirection(activeOrientation)
+      const up =
+        Math.abs(direction.y) > 0.98
+          ? ([0, 0, direction.y > 0 ? -1 : 1] as [number, number, number])
+          : ([0, 1, 0] as [number, number, number])
       const aspect = width / Math.max(height, 1)
       const viewSize = sphere.radius * (width < 640 ? 2.65 : 2.45)
 
       controls.target.copy(sphere.center)
+      camera.up.set(...up)
       camera.position.copy(sphere.center).add(direction.multiplyScalar(28))
       camera.left = (-viewSize * aspect) / 2
       camera.right = (viewSize * aspect) / 2
@@ -314,7 +919,17 @@ function ModelPreview() {
 
     const handleResetView = () => resetView()
     const handlePageShow = () => resetView()
+    const handleSetView = (event: Event) => {
+      const orientation = (event as CustomEvent<{ orientation?: unknown }>).detail?.orientation
+      if (!isViewOrientation(orientation)) {
+        return
+      }
+      activeOrientation = createOrientation(orientation.yaw, orientation.pitch)
+      lastEmittedOrientation = activeOrientation
+      resetView()
+    }
     container.addEventListener('litecad:reset-view', handleResetView)
+    container.addEventListener('litecad:set-view', handleSetView)
     window.addEventListener('pageshow', handlePageShow)
 
     return () => {
@@ -322,19 +937,28 @@ function ModelPreview() {
       window.clearTimeout(resetTimeoutID)
       resizeObserver.disconnect()
       container.removeEventListener('litecad:reset-view', handleResetView)
+      container.removeEventListener('litecad:set-view', handleSetView)
       window.removeEventListener('pageshow', handlePageShow)
       renderer.domElement.removeEventListener('pointerdown', handlePointerDown)
       renderer.domElement.removeEventListener('pointermove', handlePointerMove)
       renderer.domElement.removeEventListener('pointerup', stopDragging)
       renderer.domElement.removeEventListener('pointercancel', stopDragging)
-      controls.removeEventListener('change', renderScene)
+      controls.removeEventListener('change', handleControlsChange)
       controls.dispose()
 
       const disposedGeometries = new Set<THREE.BufferGeometry>()
       const disposedMaterials = new Set<THREE.Material>()
+      const disposedTextures = new Set<THREE.Texture>()
       const disposeMaterial = (material: THREE.Material) => {
         if (disposedMaterials.has(material)) {
           return
+        }
+        const materialRecord = material as THREE.Material & Record<string, unknown>
+        for (const value of Object.values(materialRecord)) {
+          if (value instanceof THREE.Texture && !disposedTextures.has(value)) {
+            value.dispose()
+            disposedTextures.add(value)
+          }
         }
         material.dispose()
         disposedMaterials.add(material)
@@ -369,12 +993,29 @@ function ProjectView() {
   const { projectId = '' } = useParams()
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false)
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false)
+  const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: async () => (await fetchProject(projectId)).data.project,
     enabled: projectId !== '',
   })
   const project = projectQuery.data
+
+  useEffect(() => {
+    const handleViewOrientationChange = (event: Event) => {
+      const orientation = (event as CustomEvent<{ orientation?: unknown }>).detail?.orientation
+      if (!isViewOrientation(orientation)) {
+        return
+      }
+      const nextOrientation = createOrientation(orientation.yaw, orientation.pitch)
+      setViewOrientation((currentOrientation) =>
+        orientationDistance(currentOrientation, nextOrientation) < 0.2 ? currentOrientation : nextOrientation,
+      )
+    }
+
+    window.addEventListener('litecad:view-orientation-change', handleViewOrientationChange)
+    return () => window.removeEventListener('litecad:view-orientation-change', handleViewOrientationChange)
+  }, [])
 
   if (projectQuery.isLoading) {
     return (
@@ -414,6 +1055,21 @@ function ProjectView() {
   const shellStyle = { '--project-columns': projectColumns } as CSSProperties
   const LeftPanelIcon = isLeftPanelCollapsed ? PanelLeftOpen : PanelLeftClose
   const RightPanelIcon = isRightPanelCollapsed ? PanelRightOpen : PanelRightClose
+  const applyCanvasOrientation = (orientation: ViewOrientation) => {
+    const nextOrientation = createOrientation(orientation.yaw, orientation.pitch)
+    setViewOrientation(nextOrientation)
+    document
+      .querySelector('[data-model-preview]')
+      ?.dispatchEvent(new CustomEvent('litecad:set-view', { detail: { orientation: nextOrientation } }))
+  }
+  const stepCanvasOrientation = (delta: Partial<ViewOrientation>) => {
+    applyCanvasOrientation(
+      createOrientation(viewOrientation.yaw + (delta.yaw ?? 0), viewOrientation.pitch + (delta.pitch ?? 0)),
+    )
+  }
+  const flipCanvasOrientation = () => {
+    applyCanvasOrientation(createOrientation(viewOrientation.yaw + 180, viewOrientation.pitch))
+  }
 
   return (
     <div className="grid min-h-screen grid-rows-[56px_minmax(0,1fr)] bg-[#111310] text-[#e9e2d0]">
@@ -529,9 +1185,7 @@ function ProjectView() {
 
           <button
             className="absolute left-4 top-4 flex items-center gap-2 rounded-md border border-[#34382f] bg-[#151814]/88 px-3 py-2 text-xs text-[#aaa593] backdrop-blur transition hover:bg-[#242820] hover:text-[#f7f1e4]"
-            onClick={() => {
-              document.querySelector('[data-model-preview]')?.dispatchEvent(new CustomEvent('litecad:reset-view'))
-            }}
+            onClick={() => applyCanvasOrientation(initialViewOrientation)}
             title="Reset isometric view"
             type="button"
           >
@@ -539,7 +1193,14 @@ function ProjectView() {
             Isometric
           </button>
 
-          <div className="absolute right-4 top-4 hidden items-center gap-2 rounded-md border border-[#34382f] bg-[#151814]/88 px-3 py-2 font-mono text-[11px] uppercase text-[#8c887c] backdrop-blur sm:flex">
+          <ViewController
+            onFlip={flipCanvasOrientation}
+            onSetOrientation={applyCanvasOrientation}
+            onStep={stepCanvasOrientation}
+            orientation={viewOrientation}
+          />
+
+          <div className="absolute right-4 top-[216px] hidden items-center gap-2 rounded-md border border-[#34382f] bg-[#151814]/88 px-3 py-2 font-mono text-[11px] uppercase text-[#8c887c] backdrop-blur sm:flex">
             Grid 10 mm
           </div>
 
