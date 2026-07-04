@@ -4,6 +4,7 @@ import MainLayout from 'src/layouts/MainLayout'
 import Home from 'src/views/home'
 import AuthView from 'src/views/auth'
 import NotFound from 'src/views/errors/NotFound'
+import ProjectsView from 'src/views/projects'
 
 const routes: RouteObject[] = [
   {
@@ -11,6 +12,7 @@ const routes: RouteObject[] = [
     element: <MainLayout />,
     children: [
       { index: true, element: <Home /> },
+      { path: 'projects', element: <ProjectsView /> },
       { path: 'login', element: <AuthView /> },
       { path: 'register', element: <AuthView /> },
     ],

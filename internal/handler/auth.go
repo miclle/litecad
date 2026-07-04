@@ -61,13 +61,9 @@ func (ctrl *Ctrl) Login(c *fox.Context, req *loginRequest) (authResponse, error)
 
 // Me returns the user attached to the current session cookie.
 func (ctrl *Ctrl) Me(c *fox.Context) (authResponse, error) {
-	token, err := c.Cookie(SessionCookieName)
+	user, err := ctrl.currentUser(c)
 	if err != nil {
-		return authResponse{}, httperr.NewUnauthorized("not signed in")
-	}
-	user, err := ctrl.service.UserBySessionToken(c.Request.Context(), token)
-	if err != nil {
-		return authResponse{}, authError(err)
+		return authResponse{}, err
 	}
 	return authResponse{User: user}, nil
 }

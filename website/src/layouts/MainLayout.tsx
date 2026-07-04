@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { Outlet, NavLink } from 'react-router-dom'
-import { UserRound } from 'lucide-react'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { Plus, UserRound } from 'lucide-react'
 
 import { fetchCurrentUser } from 'src/api/auth'
 
 function MainLayout() {
+  const location = useLocation()
+  const isProjectsPage = location.pathname === '/projects'
   const currentUserQuery = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: async () => (await fetchCurrentUser()).data.user,
@@ -13,6 +15,10 @@ function MainLayout() {
   })
   const currentUser = currentUserQuery.data
 
+  const openProjectDialog = () => {
+    window.dispatchEvent(new CustomEvent('litecad:new-project'))
+  }
+
   return (
     <div className="min-h-screen bg-[#f7f5ef] text-[#171814]">
       <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b border-[#d9d3c2] bg-[#f7f5ef]/92 px-5 backdrop-blur">
@@ -20,20 +26,22 @@ function MainLayout() {
           litecad
         </NavLink>
         <nav className="flex items-center gap-2">
-          <NavLink
-            to="/"
-            className={({ isActive }) =>
-              `rounded-sm px-3 py-1.5 text-sm no-underline transition ${isActive ? 'bg-[#171814] text-[#f7f5ef]' : 'text-[#5f6259] hover:bg-[#e8e1d0] hover:text-[#171814]'}`
-            }
-          >
-            Studio
-          </NavLink>
-          {currentUser ? (
+          {isProjectsPage && (
+            <button
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-sm bg-[#171814] px-3 text-sm font-semibold text-[#f7f5ef] transition hover:bg-[#303329]"
+              onClick={openProjectDialog}
+              type="button"
+            >
+              <Plus className="size-4" />
+              New project
+            </button>
+          )}
+          {currentUser && !isProjectsPage ? (
             <div className="inline-flex h-9 max-w-[180px] items-center gap-2 rounded-sm border border-[#cfc6b2] bg-[#fcfaf3] px-3 text-sm font-medium text-[#303329]">
               <UserRound className="size-4 shrink-0 text-[#52625a]" />
               <span className="truncate">{currentUser.name}</span>
             </div>
-          ) : currentUserQuery.isPending ? null : (
+          ) : currentUserQuery.isPending || (currentUser && isProjectsPage) ? null : (
             <>
               <NavLink
                 to="/login"
@@ -57,7 +65,7 @@ function MainLayout() {
       </header>
 
       <main>
-        <Outlet />
+        <Outlet context={{ currentUser }} />
       </main>
     </div>
   )

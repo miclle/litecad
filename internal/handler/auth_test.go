@@ -75,7 +75,7 @@ func newTestRouter(t *testing.T) *fox.Engine {
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.User{}, &entity.UserSession{}); err != nil {
+	if err := db.AutoMigrate(&entity.User{}, &entity.UserSession{}, &entity.Project{}); err != nil {
 		t.Fatalf("migrate test db: %v", err)
 	}
 
@@ -91,6 +91,11 @@ func newTestRouter(t *testing.T) *fox.Engine {
 
 func postJSON(t *testing.T, router http.Handler, target string, payload any) *httptest.ResponseRecorder {
 	t.Helper()
+	return postJSONWithCookie(t, router, target, payload, nil)
+}
+
+func postJSONWithCookie(t *testing.T, router http.Handler, target string, payload any, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
 
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -98,6 +103,21 @@ func postJSON(t *testing.T, router http.Handler, target string, payload any) *ht
 	}
 	req := httptest.NewRequest(http.MethodPost, target, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+func getWithCookie(t *testing.T, router http.Handler, target string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	return rec

@@ -35,6 +35,8 @@ func (ctrl *Ctrl) RegisterRoutes(r *fox.Engine) {
 	api.POST("/auth/login", ctrl.Login)
 	api.GET("/auth/me", ctrl.Me)
 	api.POST("/auth/logout", ctrl.Logout)
+	api.GET("/projects", ctrl.ListProjects)
+	api.POST("/projects", ctrl.CreateProject)
 }
 
 // Health returns a simple health check response.

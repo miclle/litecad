@@ -54,7 +54,7 @@ func Migrate(ctx context.Context, db *gorm.DB) error {
 	if db == nil {
 		return fmt.Errorf("db handle is nil")
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&entity.Example{}, &entity.User{}, &entity.UserSession{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&entity.Example{}, &entity.User{}, &entity.UserSession{}, &entity.Project{}); err != nil {
 		return fmt.Errorf("auto migrate: %w", err)
 	}
 	return nil
