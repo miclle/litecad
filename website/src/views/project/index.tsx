@@ -101,6 +101,15 @@ const orientationDistance = (first: ViewOrientation, second: ViewOrientation) =>
   const yawDistance = Math.abs(((first.yaw - second.yaw + 540) % 360) - 180)
   return yawDistance + Math.abs(first.pitch - second.pitch)
 }
+const viewOrientationAnimationDuration = 360
+const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3)
+const interpolateOrientation = (from: ViewOrientation, to: ViewOrientation, progress: number) => {
+  const yawDelta = ((to.yaw - from.yaw + 540) % 360) - 180
+  return createOrientation(
+    from.yaw + yawDelta * progress,
+    from.pitch + (to.pitch - from.pitch) * progress,
+  )
+}
 
 type ViewCubeFaceID = HorizontalFace | 'top' | 'bottom'
 
@@ -377,16 +386,23 @@ const createViewCubeFaceTexture = ({ background, color, label }: { background: n
 }
 
 function ViewCube3D({
+  animateOrientationChanges,
   onSetOrientation,
   orientation,
 }: {
+  animateOrientationChanges: boolean
   onSetOrientation: (orientation: ViewOrientation) => void
   orientation: ViewOrientation
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const onSetOrientationRef = useRef(onSetOrientation)
   const orientationRef = useRef(orientation)
-  const viewStateRef = useRef<{ render: (orientation: ViewOrientation) => void } | null>(null)
+  const displayedOrientationRef = useRef(orientation)
+  const viewStateRef = useRef<{
+    animateTo: (orientation: ViewOrientation) => void
+    render: (orientation: ViewOrientation) => void
+    syncTo: (orientation: ViewOrientation) => void
+  } | null>(null)
 
   useEffect(() => {
     onSetOrientationRef.current = onSetOrientation
@@ -413,6 +429,7 @@ function ViewCube3D({
     const pointer = new THREE.Vector2()
     const hitMeshes: THREE.Mesh[] = []
     let hoveredSurface: THREE.Mesh | null = null
+    let animationFrameID: number | null = null
 
     const ambient = new THREE.HemisphereLight(0xf2ecdc, 0x252a23, 2.3)
     scene.add(ambient)
@@ -599,6 +616,7 @@ function ViewCube3D({
     }
 
     const render = (nextOrientation: ViewOrientation) => {
+      displayedOrientationRef.current = nextOrientation
       updateSize()
       const direction = orientationToDirection(nextOrientation)
       const up =
@@ -610,6 +628,40 @@ function ViewCube3D({
       camera.lookAt(0, 0, 0)
       camera.updateMatrixWorld()
       renderer.render(scene, camera)
+    }
+
+    const cancelAnimation = () => {
+      if (animationFrameID === null) {
+        return
+      }
+      window.cancelAnimationFrame(animationFrameID)
+      animationFrameID = null
+    }
+
+    const animateTo = (nextOrientation: ViewOrientation) => {
+      cancelAnimation()
+      const startOrientation = displayedOrientationRef.current
+      if (orientationDistance(startOrientation, nextOrientation) < 0.2) {
+        render(nextOrientation)
+        return
+      }
+      const startedAt = performance.now()
+      const step = (now: number) => {
+        const progress = Math.min((now - startedAt) / viewOrientationAnimationDuration, 1)
+        render(interpolateOrientation(startOrientation, nextOrientation, easeOutCubic(progress)))
+        if (progress < 1) {
+          animationFrameID = window.requestAnimationFrame(step)
+          return
+        }
+        animationFrameID = null
+        render(nextOrientation)
+      }
+      animationFrameID = window.requestAnimationFrame(step)
+    }
+
+    const syncTo = (nextOrientation: ViewOrientation) => {
+      cancelAnimation()
+      render(nextOrientation)
     }
 
     const getHitFace = (event: PointerEvent) => {
@@ -651,7 +703,7 @@ function ViewCube3D({
         }
       }
       renderer.domElement.style.cursor = surface ? 'pointer' : 'default'
-      render(orientationRef.current)
+      render(displayedOrientationRef.current)
     }
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -674,10 +726,10 @@ function ViewCube3D({
       }
     }
 
-    viewStateRef.current = { render }
+    viewStateRef.current = { animateTo, render, syncTo }
     render(orientationRef.current)
 
-    const resizeObserver = new ResizeObserver(() => render(orientationRef.current))
+    const resizeObserver = new ResizeObserver(() => render(displayedOrientationRef.current))
     resizeObserver.observe(container)
     renderer.domElement.addEventListener('pointermove', handlePointerMove)
     renderer.domElement.addEventListener('pointerleave', handlePointerLeave)
@@ -688,6 +740,7 @@ function ViewCube3D({
       renderer.domElement.removeEventListener('pointermove', handlePointerMove)
       renderer.domElement.removeEventListener('pointerleave', handlePointerLeave)
       renderer.domElement.removeEventListener('pointerdown', handlePointerDown)
+      cancelAnimation()
       viewStateRef.current = null
 
       const disposedGeometries = new Set<THREE.BufferGeometry>()
@@ -741,18 +794,24 @@ function ViewCube3D({
 
   useEffect(() => {
     orientationRef.current = orientation
-    viewStateRef.current?.render(orientation)
-  }, [orientation])
+    if (animateOrientationChanges) {
+      viewStateRef.current?.animateTo(orientation)
+      return
+    }
+    viewStateRef.current?.syncTo(orientation)
+  }, [animateOrientationChanges, orientation])
 
   return <div ref={containerRef} aria-label="View cube" className="absolute left-1/2 top-1/2 z-10 size-[112px] -translate-x-1/2 -translate-y-1/2" />
 }
 
 function ViewController({
+  animateViewCubeOrientation,
   orientation,
   onFlip,
   onSetOrientation,
   onStep,
 }: {
+  animateViewCubeOrientation: boolean
   orientation: ViewOrientation
   onFlip: () => void
   onSetOrientation: (orientation: ViewOrientation) => void
@@ -850,7 +909,11 @@ function ViewController({
         <span className="block size-4 rounded-full bg-[#9a9f99] transition hover:bg-[#c5c7c0]" />
       </button>
 
-      <ViewCube3D onSetOrientation={onSetOrientation} orientation={orientation} />
+      <ViewCube3D
+        animateOrientationChanges={animateViewCubeOrientation}
+        onSetOrientation={onSetOrientation}
+        orientation={orientation}
+      />
     </div>
   )
 }
@@ -893,6 +956,8 @@ function ModelPreview() {
     controls.target.set(0, 0.15, 0)
     let activeOrientation = initialViewOrientation
     let lastEmittedOrientation = initialViewOrientation
+    let viewAnimationFrameID: number | null = null
+    let isProgrammaticCameraUpdate = false
     const renderScene = () => renderer.render(scene, camera)
     const emitOrientationChange = (orientation: ViewOrientation) => {
       if (orientationDistance(lastEmittedOrientation, orientation) < 0.2) {
@@ -902,6 +967,9 @@ function ModelPreview() {
       window.dispatchEvent(new CustomEvent('litecad:view-orientation-change', { detail: { orientation } }))
     }
     const handleControlsChange = () => {
+      if (isProgrammaticCameraUpdate) {
+        return
+      }
       activeOrientation = directionToOrientation(camera.position.clone().sub(controls.target))
       emitOrientationChange(activeOrientation)
       renderScene()
@@ -1074,6 +1142,7 @@ function ModelPreview() {
       if (event.button !== 0) {
         return
       }
+      cancelViewAnimation()
       updatePointer(event)
       const hits = raycaster.intersectObjects(draggableMeshes, false)
       if (hits.length === 0) {
@@ -1138,11 +1207,11 @@ function ModelPreview() {
     }
     assembly.add(edges)
 
-    const fitCameraToModel = (width: number, height: number) => {
+    const updateCameraForOrientation = (width: number, height: number, orientation: ViewOrientation) => {
       const bounds = new THREE.Box3().setFromObject(assembly)
       const sphere = new THREE.Sphere()
       bounds.getBoundingSphere(sphere)
-      const direction = orientationToDirection(activeOrientation)
+      const direction = orientationToDirection(orientation)
       const up =
         Math.abs(direction.y) > 0.98
           ? ([0, 0, direction.y > 0 ? -1 : 1] as [number, number, number])
@@ -1150,6 +1219,7 @@ function ModelPreview() {
       const aspect = width / Math.max(height, 1)
       const viewSize = sphere.radius * (width < 640 ? 2.65 : 2.45)
 
+      isProgrammaticCameraUpdate = true
       controls.target.copy(sphere.center)
       camera.up.set(...up)
       camera.position.copy(sphere.center).add(direction.multiplyScalar(28))
@@ -1164,6 +1234,57 @@ function ModelPreview() {
       camera.updateProjectionMatrix()
       camera.updateMatrixWorld()
       controls.update()
+      isProgrammaticCameraUpdate = false
+    }
+
+    const cancelViewAnimation = () => {
+      if (viewAnimationFrameID === null) {
+        return
+      }
+      window.cancelAnimationFrame(viewAnimationFrameID)
+      viewAnimationFrameID = null
+      activeOrientation = directionToOrientation(camera.position.clone().sub(controls.target))
+      lastEmittedOrientation = activeOrientation
+      window.dispatchEvent(new CustomEvent('litecad:view-orientation-change', { detail: { orientation: activeOrientation } }))
+    }
+
+    const fitCameraToModel = (width: number, height: number) => {
+      updateCameraForOrientation(width, height, activeOrientation)
+    }
+
+    const animateViewOrientation = (nextOrientation: ViewOrientation) => {
+      const { width, height } = container.getBoundingClientRect()
+      if (width === 0 || height === 0) {
+        return
+      }
+      renderer.setSize(width, height)
+      cancelViewAnimation()
+      const startOrientation = activeOrientation
+      activeOrientation = nextOrientation
+      lastEmittedOrientation = nextOrientation
+      if (orientationDistance(startOrientation, nextOrientation) < 0.2) {
+        updateCameraForOrientation(width, height, nextOrientation)
+        renderScene()
+        return
+      }
+      const startedAt = performance.now()
+      const step = (now: number) => {
+        const progress = Math.min((now - startedAt) / viewOrientationAnimationDuration, 1)
+        updateCameraForOrientation(
+          width,
+          height,
+          interpolateOrientation(startOrientation, nextOrientation, easeOutCubic(progress)),
+        )
+        renderScene()
+        if (progress < 1) {
+          viewAnimationFrameID = window.requestAnimationFrame(step)
+          return
+        }
+        viewAnimationFrameID = null
+        updateCameraForOrientation(width, height, nextOrientation)
+        renderScene()
+      }
+      viewAnimationFrameID = window.requestAnimationFrame(step)
     }
 
     const resetView = () => {
@@ -1171,6 +1292,7 @@ function ModelPreview() {
       if (width === 0 || height === 0) {
         return
       }
+      cancelViewAnimation()
       renderer.setSize(width, height)
       fitCameraToModel(width, height)
       renderScene()
@@ -1192,15 +1314,15 @@ function ModelPreview() {
       if (!isViewOrientation(orientation)) {
         return
       }
-      activeOrientation = createOrientation(orientation.yaw, orientation.pitch)
-      lastEmittedOrientation = activeOrientation
-      resetView()
+      animateViewOrientation(createOrientation(orientation.yaw, orientation.pitch))
     }
     container.addEventListener('litecad:reset-view', handleResetView)
     container.addEventListener('litecad:set-view', handleSetView)
     window.addEventListener('pageshow', handlePageShow)
+    controls.addEventListener('start', cancelViewAnimation)
 
     return () => {
+      cancelViewAnimation()
       window.cancelAnimationFrame(resetFrameID)
       window.clearTimeout(resetTimeoutID)
       resizeObserver.disconnect()
@@ -1211,6 +1333,7 @@ function ModelPreview() {
       renderer.domElement.removeEventListener('pointermove', handlePointerMove)
       renderer.domElement.removeEventListener('pointerup', stopDragging)
       renderer.domElement.removeEventListener('pointercancel', stopDragging)
+      controls.removeEventListener('start', cancelViewAnimation)
       controls.removeEventListener('change', handleControlsChange)
       controls.dispose()
 
@@ -1261,6 +1384,7 @@ function ProjectView() {
   const { projectId = '' } = useParams()
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false)
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false)
+  const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
   const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -1276,6 +1400,7 @@ function ProjectView() {
         return
       }
       const nextOrientation = createOrientation(orientation.yaw, orientation.pitch)
+      setAnimateViewCubeOrientation(false)
       setViewOrientation((currentOrientation) =>
         orientationDistance(currentOrientation, nextOrientation) < 0.2 ? currentOrientation : nextOrientation,
       )
@@ -1325,6 +1450,7 @@ function ProjectView() {
   const RightPanelIcon = isRightPanelCollapsed ? PanelRightOpen : PanelRightClose
   const applyCanvasOrientation = (orientation: ViewOrientation) => {
     const nextOrientation = createOrientation(orientation.yaw, orientation.pitch)
+    setAnimateViewCubeOrientation(true)
     setViewOrientation(nextOrientation)
     document
       .querySelector('[data-model-preview]')
@@ -1462,6 +1588,7 @@ function ProjectView() {
           </button>
 
           <ViewController
+            animateViewCubeOrientation={animateViewCubeOrientation}
             onFlip={flipCanvasOrientation}
             onSetOrientation={applyCanvasOrientation}
             onStep={stepCanvasOrientation}
