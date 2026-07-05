@@ -29,6 +29,105 @@ type ModelPreviewProps = {
   previewUrl?: string
 }
 
+const viewportBackground = 0xf8fafc
+const gridPlaneOffset = 0.015
+
+const niceGridStep = (radius: number) => {
+  const targetStep = Math.max(radius / 10, 0.01)
+  const magnitude = 10 ** Math.floor(Math.log10(targetStep))
+  const normalized = targetStep / magnitude
+  if (normalized <= 1) {
+    return magnitude
+  }
+  if (normalized <= 2) {
+    return magnitude * 2
+  }
+  if (normalized <= 5) {
+    return magnitude * 5
+  }
+  return magnitude * 10
+}
+
+const createGridLineGeometry = (size: number, step: number, shouldIncludeLine: (index: number) => boolean) => {
+  const positions: number[] = []
+  const lineCount = Math.floor(size / step)
+
+  for (let index = -lineCount; index <= lineCount; index += 1) {
+    if (!shouldIncludeLine(index)) {
+      continue
+    }
+    const position = index * step
+    positions.push(-size, 0, position, size, 0, position)
+    positions.push(position, 0, -size, position, 0, size)
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  return geometry
+}
+
+const createWorldGrid = (radius: number) => {
+  const minorStep = niceGridStep(radius)
+  const gridSize = minorStep * 180
+  const group = new THREE.Group()
+  group.name = 'Perspective CAD grid'
+
+  const minorGrid = new THREE.LineSegments(
+    createGridLineGeometry(gridSize, minorStep, (index) => index % 5 !== 0),
+    new THREE.LineBasicMaterial({
+      color: 0xb7c4d1,
+      fog: true,
+      opacity: 0.52,
+      transparent: true,
+      depthWrite: false,
+    }),
+  )
+  minorGrid.renderOrder = -2
+  group.add(minorGrid)
+
+  const majorGrid = new THREE.LineSegments(
+    createGridLineGeometry(gridSize, minorStep, (index) => index % 5 === 0),
+    new THREE.LineBasicMaterial({
+      color: 0x7f8fa3,
+      fog: true,
+      opacity: 0.58,
+      transparent: true,
+      depthWrite: false,
+    }),
+  )
+  majorGrid.renderOrder = -1
+  group.add(majorGrid)
+
+  const axisSize = gridSize * 1.04
+  const xAxis = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-axisSize, 0, 0), new THREE.Vector3(axisSize, 0, 0)]),
+    new THREE.LineBasicMaterial({
+      color: 0xe57373,
+      fog: true,
+      opacity: 0.64,
+      transparent: true,
+      depthWrite: false,
+    }),
+  )
+  xAxis.renderOrder = 0
+  group.add(xAxis)
+
+  const zAxis = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -axisSize), new THREE.Vector3(0, 0, axisSize)]),
+    new THREE.LineBasicMaterial({
+      color: 0x6aa875,
+      fog: true,
+      opacity: 0.66,
+      transparent: true,
+      depthWrite: false,
+    }),
+  )
+  zAxis.renderOrder = 0
+  group.add(zAxis)
+
+  return group
+}
+
 export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -38,9 +137,9 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
       return undefined
     }
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true })
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setClearColor(0x000000, 0)
+    renderer.setClearColor(viewportBackground, 1)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -49,10 +148,15 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
     renderer.domElement.style.display = 'block'
     renderer.domElement.style.width = '100%'
     renderer.domElement.style.height = '100%'
+    renderer.domElement.style.zIndex = '1'
+    renderer.domElement.style.backgroundColor = '#f8fafc'
     container.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100)
+    scene.background = new THREE.Color(viewportBackground)
+    scene.fog = new THREE.Fog(viewportBackground, 40, 520)
+
+    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000)
     camera.position.set(8, 6.5, 10)
 
     const controls = new TrackballControls(camera, renderer.domElement)
@@ -62,8 +166,8 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
     controls.rotateSpeed = 1.2
     controls.panSpeed = 0.35
     controls.zoomSpeed = 1.15
-    controls.minZoom = 0.55
-    controls.maxZoom = 4
+    controls.minDistance = 1
+    controls.maxDistance = 1000
     controls.target.set(0, 0.15, 0)
     let activeOrientation = initialViewOrientation
     let lastEmittedOrientation = initialViewOrientation
@@ -74,7 +178,33 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
     const previewCenter = new THREE.Vector3(0, 0, 0)
     let previewRadius = 4
     let previewObject: THREE.Object3D | null = null
-    const renderScene = () => renderer.render(scene, camera)
+    let worldGrid = createWorldGrid(previewRadius)
+    scene.add(worldGrid)
+    const updateWorldGrid = (bounds?: THREE.Box3) => {
+      scene.remove(worldGrid)
+      disposeObject3DResources(worldGrid)
+      worldGrid = createWorldGrid(previewRadius)
+      if (bounds) {
+        worldGrid.position.set(previewCenter.x, bounds.min.y - previewRadius * gridPlaneOffset, previewCenter.z)
+      } else {
+        worldGrid.position.y = -previewRadius * gridPlaneOffset
+      }
+      scene.add(worldGrid)
+    }
+    const updateSceneFog = (viewDistance: number) => {
+      const nextNear = viewDistance * 0.78
+      const nextFar = viewDistance + previewRadius * 24
+      if (scene.fog instanceof THREE.Fog) {
+        scene.fog.near = nextNear
+        scene.fog.far = nextFar
+        return
+      }
+      scene.fog = new THREE.Fog(viewportBackground, nextNear, nextFar)
+    }
+    const renderScene = () => {
+      updateSceneFog(camera.position.distanceTo(controls.target))
+      renderer.render(scene, camera)
+    }
     const emitOrientationChange = (orientation: ViewOrientation) => {
       if (orientationDistance(lastEmittedOrientation, orientation) < 0.2) {
         return
@@ -137,19 +267,6 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
     camera.add(cameraLight)
     scene.add(camera)
 
-    const grid = new THREE.GridHelper(40, 160, 0x58604f, 0x31362f)
-    grid.position.y = -0.52
-    scene.add(grid)
-
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(40, 40),
-      new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.22 }),
-    )
-    ground.rotation.x = -Math.PI / 2
-    ground.position.y = -0.53
-    ground.receiveShadow = true
-    scene.add(ground)
-
     const createAxisLabel = (label: string, color: number) => {
       const canvas = document.createElement('canvas')
       canvas.width = 96
@@ -160,7 +277,7 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
         context.textAlign = 'center'
         context.textBaseline = 'middle'
         context.lineWidth = 5
-        context.strokeStyle = '#111310'
+        context.strokeStyle = '#ffffff'
         context.fillStyle = `#${color.toString(16).padStart(6, '0')}`
         context.strokeText(label, 48, 50)
         context.fillText(label, 48, 50)
@@ -212,7 +329,7 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
       if (isGlass) {
         return new THREE.MeshStandardMaterial({
           color: 0x394966,
-          opacity: 0.46,
+          opacity: 0.38,
           roughness: 0.36,
           metalness: 0.02,
           transparent: true,
@@ -222,7 +339,7 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
         })
       }
       return new THREE.MeshStandardMaterial({
-        color: 0x96a098,
+        color: 0xb6c0b8,
         roughness: 0.8,
         metalness: 0.04,
         flatShading: true,
@@ -248,9 +365,9 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
           child.receiveShadow = false
         } else if (child instanceof THREE.Line) {
           child.material = new THREE.LineBasicMaterial({
-            color: 0x1c2522,
+            color: 0x64748b,
             transparent: true,
-            opacity: 0.86,
+            opacity: 0.5,
             depthTest: false,
           })
           child.renderOrder = 10
@@ -261,6 +378,7 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
       bounds.getBoundingSphere(sphere)
       previewCenter.copy(sphere.center)
       previewRadius = Math.max(sphere.radius, 1)
+      updateWorldGrid(bounds)
       scene.add(object)
       resetView()
     }
@@ -285,19 +403,22 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
               : ([0, 1, 0] as [number, number, number])),
           )
       const aspect = width / Math.max(height, 1)
-      const viewSize = previewRadius * (width < 640 ? 3.8 : 3.6)
+      const frameSize = previewRadius * (width < 640 ? 3.9 : 3.35)
+      const distance = Math.max(
+        frameSize / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)),
+        previewRadius * 4.5,
+      )
 
       isProgrammaticCameraUpdate = true
       controls.target.copy(previewCenter)
       camera.up.copy(up)
-      camera.position.copy(previewCenter).add(direction.multiplyScalar(28))
-      camera.left = (-viewSize * aspect) / 2
-      camera.right = (viewSize * aspect) / 2
-      camera.top = viewSize / 2
-      camera.bottom = -viewSize / 2
-      camera.near = 0.1
-      camera.far = 100
-      camera.zoom = 1
+      camera.position.copy(previewCenter).add(direction.multiplyScalar(distance))
+      camera.aspect = aspect
+      camera.near = Math.max(previewRadius / 800, 0.01)
+      camera.far = Math.max(distance + previewRadius * 120, 2000)
+      updateSceneFog(distance)
+      controls.minDistance = Math.max(previewRadius * 0.8, 0.25)
+      controls.maxDistance = Math.max(previewRadius * 80, distance * 10)
       camera.lookAt(previewCenter)
       camera.updateProjectionMatrix()
       camera.updateMatrixWorld()
@@ -420,5 +541,5 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
     }
   }, [previewFormat, previewUrl])
 
-  return <div ref={containerRef} className="absolute inset-0" data-model-preview />
+  return <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-[#f8fafc]" data-model-preview />
 }

@@ -1,18 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import {
   ArrowLeft,
+  Box,
   CheckCircle2,
   Database,
   FileText,
-  FileUp,
   HardDrive,
+  Import,
   Orbit,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
-  Upload,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
@@ -23,6 +23,7 @@ import {
   fetchProjectModels,
   uploadProjectModel,
 } from 'src/api/projects'
+import type { ProjectModel } from 'src/types/project'
 import {
   dispatchModelPreviewSetViewEvent,
   normalizeViewOrientation,
@@ -82,6 +83,7 @@ function ProjectView() {
   const latestPreviewArtifact = projectModelPreviewArtifactQuery.data
   const latestPreviewFormat = latestPreviewArtifact?.format ?? ''
   const latestTriangleCount = latestPreviewArtifact?.facet_count ?? latestModel?.metadata.triangle_count ?? 0
+  const shouldShowCanvasStatus = !latestModel || !previewUrl
   const projectModelPreviewQuery = useQuery({
     queryKey: ['projects', projectId, 'models', latestModel?.id, 'preview'],
     queryFn: async () => (await fetchProjectModelPreview(projectId, latestModel?.id ?? '')).data,
@@ -118,23 +120,23 @@ function ProjectView() {
 
   if (projectQuery.isLoading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-[#101210] text-[#e9e2d0]">
-        <div className="font-mono text-xs uppercase tracking-wide text-[#9d988a]">Opening project</div>
+      <div className="grid min-h-screen place-items-center bg-[#f8fafc] text-[#0f172a]">
+        <div className="font-mono text-xs uppercase tracking-wide text-[#64748b]">Opening project</div>
       </div>
     )
   }
 
   if (projectQuery.isError || !project) {
     return (
-      <div className="grid min-h-screen place-items-center bg-[#101210] px-5 text-center text-[#e9e2d0]">
+      <div className="grid min-h-screen place-items-center bg-[#f8fafc] px-5 text-center text-[#0f172a]">
         <div>
-          <FileText className="mx-auto size-8 text-[#cfc6b2]" />
+          <FileText className="mx-auto size-8 text-[#475569]" />
           <h1 className="mt-4 text-2xl font-semibold">Project unavailable</h1>
-          <p className="mt-2 max-w-sm text-sm leading-6 text-[#9d988a]">
+          <p className="mt-2 max-w-sm text-sm leading-6 text-[#64748b]">
             This project could not be loaded. It may have been removed or belongs to another account.
           </p>
           <Link
-            className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#e9e2d0] px-4 text-sm font-semibold text-[#111310] no-underline"
+            className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0f172a] px-4 text-sm font-semibold text-[#f8fafc] no-underline transition hover:bg-[#1f2937]"
             to="/projects"
           >
             <ArrowLeft className="size-4" />
@@ -150,10 +152,10 @@ function ProjectView() {
     day: 'numeric',
     year: 'numeric',
   }).format(new Date(project.updated_at))
-  const projectColumns = `${isLeftPanelCollapsed ? '56px' : '270px'} minmax(0,1fr) ${isRightPanelCollapsed ? '56px' : '304px'}`
-  const shellStyle = { '--project-columns': projectColumns } as CSSProperties
   const LeftPanelIcon = isLeftPanelCollapsed ? PanelLeftOpen : PanelLeftClose
   const RightPanelIcon = isRightPanelCollapsed ? PanelRightOpen : PanelRightClose
+  const canvasLeftOffset = isLeftPanelCollapsed ? 'lg:left-20' : 'lg:left-[302px]'
+  const canvasRightOffset = isRightPanelCollapsed ? 'xl:right-20' : 'xl:right-[324px]'
   const applyCanvasOrientation = (orientation: ViewOrientation) => {
     const nextOrientation = normalizeViewOrientation(orientation) ?? initialViewOrientation
     setAnimateViewCubeOrientation(true)
@@ -176,47 +178,102 @@ function ProjectView() {
   }
 
   return (
-    <div className="grid min-h-screen grid-rows-[56px_minmax(0,1fr)] bg-[#111310] text-[#e9e2d0]">
-      <header className="grid border-b border-[#2d302b] bg-[#151814] px-3 lg:grid-cols-[270px_minmax(0,1fr)_304px]">
+    <div className="grid min-h-screen grid-rows-[56px_minmax(0,1fr)] bg-[#f8fafc] text-[#0f172a]">
+      <header className="grid border-b border-[#e2e8f0] bg-[#f8fafc]/92 px-3 backdrop-blur lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
         <div className="flex min-w-0 items-center gap-3">
           <Link
-            className="grid size-9 shrink-0 place-items-center rounded-md text-[#a8a293] no-underline transition hover:bg-[#242820] hover:text-[#f7f1e4]"
+            className="grid size-9 shrink-0 place-items-center rounded-md text-[#64748b] no-underline transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
             title="All projects"
             to="/projects"
           >
             <ArrowLeft className="size-4" />
           </Link>
           <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold leading-tight text-[#f7f1e4]">{project.name}</h1>
+            <h1 className="truncate text-sm font-semibold leading-tight text-[#0f172a]">{project.name}</h1>
           </div>
         </div>
 
         <div className="hidden items-center justify-center gap-2 lg:flex">
-          <div className="flex items-center gap-2 rounded-md border border-[#2d302b] bg-[#101210] px-3 py-2 font-mono text-[11px] uppercase text-[#8c887c]">
-            <Database className="size-4 text-[#b7c3a8]" />
-            {projectModels.length > 0 ? `${projectModels.length} source ${projectModels.length === 1 ? 'file' : 'files'}` : 'No source file'}
+          <div className="flex items-center gap-2 rounded-md border border-[#e2e8f0] bg-[#ffffff] px-3 py-2 font-mono text-[11px] uppercase text-[#64748b]">
+            <Database className="size-4 text-[#475569]" />
+            {projectModels.length > 0 ? `${projectModels.length} ${projectModels.length === 1 ? 'model' : 'models'}` : 'No model'}
           </div>
         </div>
 
         <div className="hidden items-center justify-end gap-3 lg:flex">
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#8c887c]">
-            <CheckCircle2 className="size-4 text-[#b7c3a8]" />
+          <button
+            aria-label="Import model"
+            className="grid size-9 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={uploadModelMutation.isPending}
+            onClick={() => fileInputRef.current?.click()}
+            title="Import model"
+            type="button"
+          >
+            <Import className="size-4" />
+          </button>
+          <input
+            accept=".step,.stp,.gltf,.glb,.stl"
+            className="hidden"
+            onChange={handleModelFileChange}
+            ref={fileInputRef}
+            type="file"
+          />
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#64748b]">
+            <CheckCircle2 className="size-4 text-[#475569]" />
             Project saved
           </div>
         </div>
       </header>
 
-      <div className="grid min-h-0 lg:grid-cols-[var(--project-columns)]" style={shellStyle}>
+      <main className="relative min-h-0 overflow-hidden bg-[#f8fafc]">
+        <section className="absolute inset-0 overflow-hidden">
+          <ModelPreview key={project.id} previewFormat={latestPreviewFormat} previewUrl={previewUrl} />
+          {shouldShowCanvasStatus && (
+            <div
+              className={`pointer-events-none absolute bottom-4 left-4 max-w-sm rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 p-4 shadow-xl backdrop-blur ${canvasLeftOffset}`}
+            >
+              <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#64748b]">
+                <HardDrive className="size-4 text-[#475569]" />
+                {latestModel ? `Imported ${latestModel.format.toUpperCase()} source` : 'Empty project canvas'}
+              </div>
+              <p className="mt-2 text-sm leading-6 text-[#1f2937]">
+                {latestModel
+                  ? `${latestProductName || latestModel.original_filename} metadata is parsed. Geometry preview is being prepared.`
+                  : 'The canvas is empty until imported geometry is prepared for preview. Import a CAD source file to attach real model data to this project.'}
+              </p>
+            </div>
+          )}
+
+          <button
+            className={`absolute left-4 top-4 z-20 flex items-center gap-2 rounded-md border border-[#e2e8f0] bg-[#ffffff]/88 px-3 py-2 text-xs text-[#64748b] backdrop-blur transition hover:border-[#475569] hover:text-[#0f172a] ${canvasLeftOffset}`}
+            onClick={() => applyCanvasOrientation(initialViewOrientation)}
+            title="Reset isometric view"
+            type="button"
+          >
+            <Orbit className="size-4 text-[#475569]" />
+            Isometric
+          </button>
+
+          <ViewController
+            animateViewCubeOrientation={animateViewCubeOrientation}
+            className={canvasRightOffset}
+            onFlip={flipCanvasOrientation}
+            onSetOrientation={applyCanvasOrientation}
+            onStep={stepCanvasOrientation}
+            orientation={viewOrientation}
+          />
+        </section>
+
         <aside
-          className={`hidden min-h-0 border-r border-[#2d302b] bg-[#171a16] lg:block ${
-            isLeftPanelCollapsed ? 'p-2' : 'p-4'
+          className={`absolute bottom-4 left-4 top-4 z-30 hidden overflow-y-auto rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 shadow-2xl backdrop-blur lg:block ${
+            isLeftPanelCollapsed ? 'w-12 p-2' : 'w-[270px] p-4'
           }`}
         >
           <div className="flex items-center justify-between">
-            {!isLeftPanelCollapsed && <p className="font-mono text-[11px] uppercase text-[#8c887c]">Project</p>}
+            {!isLeftPanelCollapsed && <p className="font-mono text-[11px] uppercase text-[#64748b]">Project</p>}
             <button
               aria-label={isLeftPanelCollapsed ? 'Expand left panel' : 'Collapse left panel'}
-              className="grid size-8 place-items-center rounded-md text-[#8c887c] transition hover:bg-[#242820] hover:text-[#f7f1e4]"
+              className="grid size-8 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
               onClick={() => setIsLeftPanelCollapsed((collapsed) => !collapsed)}
               title={isLeftPanelCollapsed ? 'Expand left panel' : 'Collapse left panel'}
               type="button"
@@ -228,125 +285,64 @@ function ProjectView() {
           {!isLeftPanelCollapsed && (
             <>
               <section className="mt-3">
-                <p className="text-sm leading-6 text-[#aaa593]">
+                <p className="text-sm leading-6 text-[#64748b]">
                   {project.description || 'No description yet. Import a CAD source file to begin the project record.'}
                 </p>
               </section>
 
               <section className="mt-8">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-mono text-[11px] uppercase text-[#8c887c]">Source files</p>
-                  <button
-                    className="grid size-8 place-items-center rounded-md text-[#a8a293] transition hover:bg-[#242820] hover:text-[#f7f1e4]"
-                    disabled={uploadModelMutation.isPending}
-                    onClick={() => fileInputRef.current?.click()}
-                    title="Import model"
-                    type="button"
-                  >
-                    <Upload className="size-4" />
-                  </button>
-                  <input
-                    accept=".step,.stp,.gltf,.glb,.stl"
-                    className="hidden"
-                    onChange={handleModelFileChange}
-                    ref={fileInputRef}
-                    type="file"
-                  />
+                  <p className="font-mono text-[11px] uppercase text-[#64748b]">Model</p>
                 </div>
 
                 <div className="mt-3 grid gap-2">
                   {projectModelsQuery.isLoading && (
-                    <div className="rounded-md border border-[#2d302b] bg-[#111310] px-3 py-3 font-mono text-[11px] uppercase text-[#8c887c]">
-                      Loading sources
+                    <div className="px-2 py-2 font-mono text-[11px] uppercase text-[#64748b]">
+                      Loading model tree
                     </div>
                   )}
                   {!projectModelsQuery.isLoading && projectModels.length === 0 && (
-                    <div className="rounded-md border border-dashed border-[#34382f] bg-[#111310] px-3 py-4 text-sm leading-6 text-[#aaa593]">
-                      No project-owned model source has been imported.
+                    <div className="px-2 py-3 text-sm leading-6 text-[#64748b]">
+                      Import a CAD model to populate the project tree.
                     </div>
                   )}
                   {projectModels.map((model) => (
-                    <div className="rounded-md border border-[#34382f] bg-[#111310] p-3" key={model.id}>
-                      <div className="flex min-w-0 items-center gap-2">
-                        <FileUp className="size-4 shrink-0 text-[#b7c3a8]" />
-                        <p className="truncate text-sm font-medium text-[#f7f1e4]">{model.original_filename}</p>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-3 font-mono text-[10px] uppercase text-[#8c887c]">
-                        <span>{model.format}</span>
-                        <span>{formatBytes(model.byte_size)}</span>
-                      </div>
-                      <div className="mt-3 grid gap-1 text-xs leading-5 text-[#aaa593]">
-                        <p className="truncate text-[#d8d1bf]">
-                          {model.metadata.product_names[0] || model.metadata.asset_type.toUpperCase() || 'No product name parsed'}
-                        </p>
-                        <p className="font-mono uppercase text-[#8c887c]">
-                          {model.parse_status === 'parsed' ? model.metadata.schema || 'STEP' : model.parse_status}
-                        </p>
-                      </div>
+                    <div
+                      className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-[#1f2937] transition hover:bg-[#f1f5f9]"
+                      key={model.id}
+                    >
+                      <Box className="size-4 shrink-0 text-[#475569]" />
+                      <p className="min-w-0 flex-1 truncate">{getModelDisplayName(model)}</p>
+                      <div
+                        aria-label={model.parse_status === 'parsed' ? 'Model preview is ready' : 'Model is being processed'}
+                        className={`size-1.5 shrink-0 rounded-full ${
+                          model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'
+                        }`}
+                      />
                     </div>
                   ))}
                   {uploadModelMutation.isPending && (
-                    <div className="rounded-md border border-[#34382f] bg-[#151814] px-3 py-3 font-mono text-[11px] uppercase text-[#b7c3a8]">
+                    <div className="rounded-md border border-[#e2e8f0] bg-[#f1f5f9] px-3 py-3 font-mono text-[11px] uppercase text-[#475569]">
                       Importing model
                     </div>
                   )}
-                  {uploadError && <p className="text-sm leading-6 text-[#e0a19a]">{uploadError}</p>}
+                  {uploadError && <p className="text-sm leading-6 text-[#8a2f24]">{uploadError}</p>}
                 </div>
               </section>
             </>
           )}
         </aside>
 
-        <section className="relative min-h-0 overflow-hidden bg-[#1b1d19]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(183,195,168,0.13),transparent_34%)]" />
-          <ModelPreview key={project.id} previewFormat={latestPreviewFormat} previewUrl={previewUrl} />
-          <div className="pointer-events-none absolute left-4 bottom-4 max-w-sm rounded-md border border-[#34382f] bg-[#151814]/92 p-4 shadow-xl backdrop-blur">
-            <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#8c887c]">
-              <HardDrive className="size-4 text-[#b7c3a8]" />
-              {latestModel ? `Imported ${latestModel.format.toUpperCase()} source` : 'Empty project canvas'}
-            </div>
-            <p className="mt-2 text-sm leading-6 text-[#d8d1bf]">
-              {latestModel
-                ? previewUrl
-                  ? `${latestProductName || latestModel.original_filename} preview is loaded as ${latestPreviewFormat.toUpperCase()}.`
-                  : `${latestProductName || latestModel.original_filename} metadata is parsed. Geometry preview is being prepared.`
-                : 'The canvas is empty until imported geometry is prepared for preview. Import a CAD source file to attach real model data to this project.'}
-            </p>
-          </div>
-
-          <button
-            className="absolute left-4 top-4 flex items-center gap-2 rounded-md border border-[#34382f] bg-[#151814]/88 px-3 py-2 text-xs text-[#aaa593] backdrop-blur transition hover:bg-[#242820] hover:text-[#f7f1e4]"
-            onClick={() => applyCanvasOrientation(initialViewOrientation)}
-            title="Reset isometric view"
-            type="button"
-          >
-            <Orbit className="size-4 text-[#b7c3a8]" />
-            Isometric
-          </button>
-
-          <ViewController
-            animateViewCubeOrientation={animateViewCubeOrientation}
-            onFlip={flipCanvasOrientation}
-            onSetOrientation={applyCanvasOrientation}
-            onStep={stepCanvasOrientation}
-            orientation={viewOrientation}
-          />
-
-          <div className="absolute right-4 top-[160px] hidden items-center gap-2 rounded-md border border-[#34382f] bg-[#151814]/88 px-3 py-2 font-mono text-[11px] uppercase text-[#8c887c] backdrop-blur sm:flex">
-            Grid 10 mm
-          </div>
-        </section>
-
         <aside
-          className={`hidden min-h-0 border-l border-[#2d302b] bg-[#171a16] xl:block ${
-            isRightPanelCollapsed ? 'p-2' : 'p-4'
+          className={`absolute bottom-4 right-4 top-4 z-30 hidden overflow-y-auto rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 shadow-2xl backdrop-blur xl:block ${
+            isRightPanelCollapsed ? 'w-12 p-2' : 'w-[304px] p-4'
           }`}
         >
           <div className="flex items-center justify-between">
-            {!isRightPanelCollapsed && <p className="font-mono text-[11px] uppercase text-[#8c887c]">Inspector</p>}
+            {!isRightPanelCollapsed && <p className="font-mono text-[11px] uppercase text-[#64748b]">Inspector</p>}
             <button
               aria-label={isRightPanelCollapsed ? 'Expand right panel' : 'Collapse right panel'}
-              className="grid size-8 place-items-center rounded-md text-[#8c887c] transition hover:bg-[#242820] hover:text-[#f7f1e4]"
+              className="grid size-8 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
               onClick={() => setIsRightPanelCollapsed((collapsed) => !collapsed)}
               title={isRightPanelCollapsed ? 'Expand right panel' : 'Collapse right panel'}
               type="button"
@@ -357,12 +353,12 @@ function ProjectView() {
 
           {!isRightPanelCollapsed && (
             <>
-              <section className="mt-5 rounded-md border border-[#34382f] bg-[#111310] p-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-[#f7f1e4]">
-                  <CheckCircle2 className="size-4 text-[#b7c3a8]" />
+              <section className="mt-5 rounded-md border border-[#e2e8f0] bg-white/70 p-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
+                  <CheckCircle2 className="size-4 text-[#475569]" />
                   {latestModel ? `${latestModel.format.toUpperCase()} source stored` : 'Awaiting import'}
                 </div>
-                <p className="mt-2 text-sm leading-6 text-[#aaa593]">
+                <p className="mt-2 text-sm leading-6 text-[#64748b]">
                   {latestModel
                     ? previewUrl
                       ? 'The project owns an uploaded source file and a browser-loadable preview mesh.'
@@ -372,43 +368,43 @@ function ProjectView() {
               </section>
 
               <section className="mt-5">
-                <p className="font-mono text-[11px] uppercase text-[#8c887c]">Document</p>
+                <p className="font-mono text-[11px] uppercase text-[#64748b]">Document</p>
                 <dl className="mt-3 grid gap-3 text-sm">
-                  <div className="flex items-center justify-between border-b border-[#2d302b] pb-2">
-                    <dt className="text-[#8c887c]">Updated</dt>
-                    <dd className="text-[#d8d1bf]">{updatedAt}</dd>
+                  <div className="flex items-center justify-between border-b border-[#e2e8f0] pb-2">
+                    <dt className="text-[#64748b]">Updated</dt>
+                    <dd className="text-[#1f2937]">{updatedAt}</dd>
                   </div>
-                  <div className="flex items-center justify-between border-b border-[#2d302b] pb-2">
-                    <dt className="text-[#8c887c]">Units</dt>
-                    <dd className="text-[#d8d1bf]">Millimeters</dd>
+                  <div className="flex items-center justify-between border-b border-[#e2e8f0] pb-2">
+                    <dt className="text-[#64748b]">Units</dt>
+                    <dd className="text-[#1f2937]">Millimeters</dd>
                   </div>
-                  <div className="flex items-center justify-between border-b border-[#2d302b] pb-2">
-                    <dt className="text-[#8c887c]">Sources</dt>
-                    <dd className="text-[#d8d1bf]">{projectModels.length}</dd>
+                  <div className="flex items-center justify-between border-b border-[#e2e8f0] pb-2">
+                    <dt className="text-[#64748b]">Sources</dt>
+                    <dd className="text-[#1f2937]">{projectModels.length}</dd>
                   </div>
-                  <div className="flex items-center justify-between border-b border-[#2d302b] pb-2">
-                    <dt className="text-[#8c887c]">Preview</dt>
-                    <dd className="text-[#d8d1bf]">{previewUrl ? `${latestPreviewFormat.toUpperCase()} mesh` : latestModel ? 'Preparing' : 'Empty'}</dd>
+                  <div className="flex items-center justify-between border-b border-[#e2e8f0] pb-2">
+                    <dt className="text-[#64748b]">Preview</dt>
+                    <dd className="text-[#1f2937]">{previewUrl ? `${latestPreviewFormat.toUpperCase()} mesh` : latestModel ? 'Preparing' : 'Empty'}</dd>
                   </div>
                   {latestModel && (
                     <>
-                      <div className="flex items-center justify-between gap-3 border-b border-[#2d302b] pb-2">
-                        <dt className="text-[#8c887c]">STEP</dt>
-                        <dd className="truncate text-[#d8d1bf]">
+                      <div className="flex items-center justify-between gap-3 border-b border-[#e2e8f0] pb-2">
+                        <dt className="text-[#64748b]">STEP</dt>
+                        <dd className="truncate text-[#1f2937]">
                           {latestModel.metadata.schema || latestModel.metadata.asset_type.toUpperCase() || latestModel.parse_status}
                         </dd>
                       </div>
-                      <div className="flex items-center justify-between border-b border-[#2d302b] pb-2">
-                        <dt className="text-[#8c887c]">Unit</dt>
-                        <dd className="text-[#d8d1bf]">{latestModel.metadata.length_unit || 'Unknown'}</dd>
+                      <div className="flex items-center justify-between border-b border-[#e2e8f0] pb-2">
+                        <dt className="text-[#64748b]">Unit</dt>
+                        <dd className="text-[#1f2937]">{latestModel.metadata.length_unit || 'Unknown'}</dd>
                       </div>
-                      <div className="flex items-center justify-between border-b border-[#2d302b] pb-2">
-                        <dt className="text-[#8c887c]">Entities</dt>
-                        <dd className="text-[#d8d1bf]">{latestModel.metadata.entity_count}</dd>
+                      <div className="flex items-center justify-between border-b border-[#e2e8f0] pb-2">
+                        <dt className="text-[#64748b]">Entities</dt>
+                        <dd className="text-[#1f2937]">{latestModel.metadata.entity_count}</dd>
                       </div>
-                      <div className="flex items-center justify-between border-b border-[#2d302b] pb-2">
-                        <dt className="text-[#8c887c]">Triangles</dt>
-                        <dd className="text-[#d8d1bf]">{latestTriangleCount}</dd>
+                      <div className="flex items-center justify-between border-b border-[#e2e8f0] pb-2">
+                        <dt className="text-[#64748b]">Triangles</dt>
+                        <dd className="text-[#1f2937]">{latestTriangleCount}</dd>
                       </div>
                     </>
                   )}
@@ -417,19 +413,17 @@ function ProjectView() {
             </>
           )}
         </aside>
-      </div>
+      </main>
     </div>
   )
 }
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) {
-    return `${bytes} B`
+function getModelDisplayName(model: ProjectModel) {
+  const parsedName = model.metadata.product_names[0]?.trim()
+  if (parsedName) {
+    return parsedName
   }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`
-  }
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return model.original_filename.replace(/\.[^.]+$/, '')
 }
 
 export default ProjectView

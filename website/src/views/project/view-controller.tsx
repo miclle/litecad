@@ -416,12 +416,14 @@ function ViewCube3D({
 
 export function ViewController({
   animateViewCubeOrientation,
+  className = '',
   orientation,
   onFlip,
   onSetOrientation,
   onStep,
 }: {
   animateViewCubeOrientation: boolean
+  className?: string
   orientation: ViewOrientation
   onFlip: () => void
   onSetOrientation: (orientation: ViewOrientation) => void
@@ -429,15 +431,15 @@ export function ViewController({
 }) {
   const arrowButtonClass =
     'absolute z-30 grid size-6 place-items-center outline-none transition hover:scale-110 focus-visible:outline-none'
-  const verticalArrowClass = 'block h-3 w-5 bg-[#9a9f99] transition group-hover:bg-[#c5c7c0]'
-  const horizontalArrowClass = 'block h-5 w-3 bg-[#9a9f99] transition group-hover:bg-[#c5c7c0]'
+  const verticalArrowClass = 'block h-3 w-5 bg-[#94a3b8] transition group-hover:bg-[#475569]'
+  const horizontalArrowClass = 'block h-5 w-3 bg-[#94a3b8] transition group-hover:bg-[#475569]'
   const arcButtonClass =
-    'absolute z-20 grid h-[30px] w-[35px] place-items-center text-[#9a9f99] outline-none transition hover:scale-105 hover:text-[#c5c7c0] focus-visible:outline-none'
+    'absolute z-20 grid h-[30px] w-[35px] place-items-center text-[#94a3b8] outline-none transition hover:scale-105 hover:text-[#475569] focus-visible:outline-none'
 
   return (
     <div
       aria-label="View orientation controls"
-      className="absolute right-4 top-4 z-20 hidden size-[135px] select-none text-[#d8d1bf] sm:block"
+      className={`absolute right-4 top-4 z-20 hidden size-[135px] select-none text-[#1f2937] sm:block ${className}`}
     >
       <button
         aria-label="Tilt view up"
@@ -516,7 +518,7 @@ export function ViewController({
         title="Flip view"
         type="button"
       >
-        <span className="block size-4 rounded-full bg-[#9a9f99] transition hover:bg-[#c5c7c0]" />
+        <span className="block size-4 rounded-full bg-[#94a3b8] transition hover:bg-[#475569]" />
       </button>
 
       <ViewCube3D
