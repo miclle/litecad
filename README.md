@@ -11,12 +11,12 @@ The repository is in an early product milestone. The implemented application inc
 - A branded LiteCAD home screen that reports the current import pipeline state without rendering demo CAD geometry.
 - Account registration, login, current-user lookup, and logout through an `HttpOnly` `litecad_session` cookie.
 - User-owned project creation, project listing, and project detail lookup.
-- Project-scoped CAD source uploads for `.step`, `.stp`, `.gltf`, `.glb`, and `.stl` files with stored filename, format, content type, byte size, timestamps, lightweight source metadata, preview artifact metadata, and a read-only geometry document API.
-- A project workbench route with a CAD-style Three.js viewer shell, source-file list, upload control, backend-published preview artifacts, and a frontend viewer that only consumes OBJ, GLTF, or GLB preview outputs.
+- Project-scoped CAD source uploads for multiple `.step`, `.stp`, `.gltf`, `.glb`, and `.stl` files with stored filename, format, content type, byte size, timestamps, lightweight source metadata, preview artifact metadata, and a read-only geometry document API.
+- A project workbench route with a CAD-style Three.js viewer shell, source-file list, upload control, backend-published preview artifacts, and a multi-model frontend viewer that only consumes OBJ, GLTF, or GLB preview outputs.
 - A backend studio status endpoint for the product bootstrap state.
 - Single-binary production builds that embed the Vite frontend output.
 
-AI model orchestration, full STEP geometry/B-rep semantics, normalized editable geometry, measurement tools, export, and design-history persistence are product direction, not completed capabilities yet.
+AI model orchestration, full STEP geometry/B-rep semantics, assembly placement, CAD merge/boolean operations, normalized editable geometry, measurement tools, export, and design-history persistence are product direction, not completed capabilities yet.
 
 ## Tech Stack
 
@@ -109,15 +109,15 @@ Signed-in users can open `/projects`, create a project with a name and optional 
 
 ### CAD Source Imports
 
-Signed-in users can upload `.step`, `.stp`, `.gltf`, `.glb`, or `.stl` files from a project workbench. The backend stores the uploaded source bytes and returns project-owned model metadata including parse status, detected asset type, STEP schema and product names when available, length unit, entity count, representation count, and STL triangle count when available.
+Signed-in users can upload multiple `.step`, `.stp`, `.gltf`, `.glb`, or `.stl` files from a project workbench. The backend stores the uploaded source bytes and returns project-owned model metadata including parse status, detected asset type, STEP schema and product names when available, length unit, entity count, representation count, and STL triangle count when available.
 
 The backend converts STEP sources through a format-neutral preview artifact boundary. The current FreeCAD converter emits OBJ because FreeCAD's headless `Mesh.export` path in the local toolchain does not export GLB directly, but the service layer already accepts GLB preview bytes from a converter. GLB and GLTF uploads are validated by the backend before being published as preview artifacts, and STL uploads are converted to OBJ preview artifacts in Go. The preview artifact metadata endpoint exposes the artifact format, content type, byte size, and mesh counts separately from the binary payload so clients can choose the correct loader before downloading preview bytes. The read-only geometry document endpoint exposes the current project model tree with both source format and preview format, preview artifacts, and generated geometry version records without claiming editable CAD semantics.
 
 ### 3D Preview Shell
 
-The home page no longer renders demo CAD geometry. The project detail route renders a CAD-style viewer shell with grid, axis, view-control, panel UI, parsed source metadata, and backend-generated preview artifacts such as imported OBJ previews for converted STEP files.
+The home page no longer renders demo CAD geometry. The project detail route renders a CAD-style viewer shell with grid, axis, view-control, panel UI, parsed source metadata, and backend-generated preview artifacts such as imported OBJ previews for converted STEP files. When a project has multiple parsed source files with ready preview artifacts, the workbench loads them into one preview scene and frames the combined bounds.
 
-The project workbench keeps reusable view orientation math, ViewCube geometry definitions, ViewCube texture helpers, ViewCube controls, model preview behavior, viewer event helpers, and shared Three.js resource cleanup in focused frontend modules under `website/src/views/project/`, while the route component remains responsible for project loading, source-file state, upload mutation flow, and shell layout.
+The project workbench keeps reusable view orientation math, ViewCube geometry definitions, ViewCube texture helpers, ViewCube controls, multi-model preview behavior, viewer event helpers, and shared Three.js resource cleanup in focused frontend modules under `website/src/views/project/`, while the route component remains responsible for project loading, source-file state, preview artifact queries, upload mutation flow, and shell layout.
 
 ## API Surface
 

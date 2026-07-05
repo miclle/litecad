@@ -8,6 +8,7 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 - Continue the CAD import and geometry pipeline beyond completed STEP/STP/GLTF/GLB/STL source upload, lightweight metadata extraction, STEP-to-OBJ preview conversion, GLB/GLTF preview publishing, STL-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API:
   - Promote backend preview generation to a canonical Three.js-friendly artifact format, preferably GLB, so STEP and STL previews do not remain OBJ fallback artifacts. FreeCAD's headless `Mesh.export` path currently supports the OBJ fallback but did not export GLB directly in local verification, so GLB likely needs a dedicated converter step or packaged geometry service.
   - Define editable geometry records and CAD feature/version semantics beyond uploaded sources, preview artifacts, and generated read-only version snapshots.
+- Define assembly semantics for multi-source projects, including per-model transforms, selection, visibility, persisted placement, and explicit merge/boolean/export behavior. Current multi-model support is browser preview composition only; it does not combine multiple STEP files into one editable CAD part.
 - Decide whether STEP preview conversion should remain FreeCAD-backed server-side conversion or move toward a packaged/headless geometry service for production.
 - Add measurement, sectioning, edge display, and export workflows after real geometry is available.
 - Define AI orchestration APIs for prompt-to-design iterations, including provider boundaries, request history, failure states, and cost controls.
@@ -24,7 +25,6 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 - Add route protection UX for `/projects` and `/projects/:projectId` so signed-out users get a deliberate sign-in flow instead of only relying on the Axios 401 redirect.
 - Add focused tests for project creation UI behavior and project detail loading/error states.
 - Introduce Playwright-based browser verification for the CAD workbench after the first stable viewer flows exist. Start with an optional task for installing Chromium and local screenshot/interaction smoke checks; only fold Playwright browser installation into `task install` or CI once real Playwright tests are part of the supported test suite.
-- Verify the CAD viewer shell across desktop and mobile viewports once project geometry is connected.
 
 ## Documentation And Operations
 

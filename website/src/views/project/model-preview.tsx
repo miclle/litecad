@@ -23,10 +23,10 @@ import {
   viewOrientationAnimationDuration,
   type ViewOrientation,
 } from './view-orientation'
+import type { ProjectPreviewAsset } from './project-preview-assets'
 
 type ModelPreviewProps = {
-  previewFormat?: string
-  previewUrl?: string
+  previewAssets?: ProjectPreviewAsset[]
 }
 
 const viewportBackground = 0xf8fafc
@@ -128,7 +128,9 @@ const createWorldGrid = (radius: number) => {
   return group
 }
 
-export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPreviewProps) {
+const previewMaterialColors = [0xb6c0b8, 0xc4b78a, 0x9fb6c8, 0xc7a0a0, 0xa8bea0]
+
+export function ModelPreview({ previewAssets = [] }: ModelPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -177,9 +179,12 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
     let isProgrammaticCameraUpdate = false
     const previewCenter = new THREE.Vector3(0, 0, 0)
     let previewRadius = 4
-    let previewObject: THREE.Object3D | null = null
+    const previewGroup = new THREE.Group()
+    previewGroup.name = 'Project preview models'
+    let isDisposed = false
     let worldGrid = createWorldGrid(previewRadius)
     scene.add(worldGrid)
+    scene.add(previewGroup)
     const updateWorldGrid = (bounds?: THREE.Box3) => {
       scene.remove(worldGrid)
       disposeObject3DResources(worldGrid)
@@ -323,7 +328,7 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
     }
     scene.add(axesGroup)
 
-    const createCADPreviewMaterial = (name = '') => {
+    const createCADPreviewMaterial = (name = '', assetIndex = 0) => {
       const normalizedName = name.toLowerCase()
       const isGlass = normalizedName.includes('lcd') || normalizedName.includes('glass') || name.includes('玻璃')
       if (isGlass) {
@@ -339,7 +344,7 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
         })
       }
       return new THREE.MeshStandardMaterial({
-        color: 0xb6c0b8,
+        color: previewMaterialColors[assetIndex % previewMaterialColors.length],
         roughness: 0.8,
         metalness: 0.04,
         flatShading: true,
@@ -347,16 +352,37 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
       })
     }
 
-    const addPreviewObject = (object: THREE.Object3D) => {
-      previewObject = object
-      if (previewFormat === 'obj') {
+    const updatePreviewBounds = () => {
+      const bounds = new THREE.Box3().setFromObject(previewGroup)
+      if (bounds.isEmpty()) {
+        previewCenter.set(0, 0, 0)
+        previewRadius = 4
+        updateWorldGrid()
+        resetView()
+        return
+      }
+      const sphere = new THREE.Sphere()
+      bounds.getBoundingSphere(sphere)
+      previewCenter.copy(sphere.center)
+      previewRadius = Math.max(sphere.radius, 1)
+      updateWorldGrid(bounds)
+      resetView()
+    }
+
+    const addPreviewObject = (asset: ProjectPreviewAsset, assetIndex: number, object: THREE.Object3D) => {
+      if (isDisposed) {
+        disposeObject3DResources(object)
+        return
+      }
+      object.name = asset.name
+      if (asset.previewFormat === 'obj') {
         orientCADPreviewObject(object)
       }
       object.traverse((child) => {
         if (child instanceof THREE.Mesh) {
           const objectName = `${child.name} ${child.parent?.name ?? ''}`
-          if (previewFormat === 'obj') {
-            child.material = createCADPreviewMaterial(objectName)
+          if (asset.previewFormat === 'obj') {
+            child.material = createCADPreviewMaterial(`${asset.name} ${objectName}`, assetIndex)
           } else if (child.material instanceof THREE.Material) {
             child.material.side = THREE.DoubleSide
             child.material.needsUpdate = true
@@ -373,23 +399,17 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
           child.renderOrder = 10
         }
       })
-      const bounds = new THREE.Box3().setFromObject(object)
-      const sphere = new THREE.Sphere()
-      bounds.getBoundingSphere(sphere)
-      previewCenter.copy(sphere.center)
-      previewRadius = Math.max(sphere.radius, 1)
-      updateWorldGrid(bounds)
-      scene.add(object)
-      resetView()
+      previewGroup.add(object)
+      updatePreviewBounds()
     }
 
-    if (previewUrl) {
-      if (previewFormat === 'obj') {
-        new OBJLoader().load(previewUrl, addPreviewObject)
-      } else if (previewFormat === 'glb' || previewFormat === 'gltf') {
-        new GLTFLoader().load(previewUrl, (gltf) => addPreviewObject(gltf.scene))
+    previewAssets.forEach((asset, assetIndex) => {
+      if (asset.previewFormat === 'obj') {
+        new OBJLoader().load(asset.previewUrl, (object) => addPreviewObject(asset, assetIndex, object))
+      } else if (asset.previewFormat === 'glb' || asset.previewFormat === 'gltf') {
+        new GLTFLoader().load(asset.previewUrl, (gltf) => addPreviewObject(asset, assetIndex, gltf.scene))
       }
-    }
+    })
 
     renderer.domElement.style.cursor = 'grab'
 
@@ -529,17 +549,22 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
       controls.removeEventListener('end', stopControlsInteraction)
       controls.removeEventListener('change', handleControlsChange)
       controls.dispose()
-
-      if (previewObject) {
-        scene.remove(previewObject)
-      }
+      isDisposed = true
+      scene.remove(previewGroup)
       disposeObject3DResources(scene)
       renderer.dispose()
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement)
       }
     }
-  }, [previewFormat, previewUrl])
+  }, [previewAssets])
 
-  return <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-[#f8fafc]" data-model-preview />
+  return (
+    <div
+      ref={containerRef}
+      className="absolute inset-0 overflow-hidden bg-[#f8fafc]"
+      data-model-preview
+      data-preview-asset-count={previewAssets.length}
+    />
+  )
 }

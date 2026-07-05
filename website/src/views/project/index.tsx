@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   ArrowLeft,
   Box,
@@ -23,7 +23,6 @@ import {
   fetchProjectModels,
   uploadProjectModel,
 } from 'src/api/projects'
-import type { ProjectModel } from 'src/types/project'
 import {
   dispatchModelPreviewSetViewEvent,
   normalizeViewOrientation,
@@ -31,6 +30,12 @@ import {
   viewOrientationChangeEventName,
 } from './view-events'
 import { ModelPreview } from './model-preview'
+import {
+  buildProjectPreviewAssets,
+  getModelDisplayName,
+  parsedPreviewModels,
+  projectPreviewSummary,
+} from './project-preview-assets'
 import { ViewController } from './view-controller'
 import {
   initialViewOrientation,
@@ -49,7 +54,7 @@ function ProjectView() {
   const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
   const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
   const [uploadError, setUploadError] = useState('')
-  const [previewUrl, setPreviewUrl] = useState('')
+  const [previewUrlsByModelID, setPreviewUrlsByModelID] = useState<Record<string, string>>({})
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: async () => (await fetchProject(projectId)).data.project,
@@ -72,35 +77,75 @@ function ProjectView() {
   })
   const project = projectQuery.data
   const projectModels = projectModelsQuery.data ?? []
+  const previewModels = useMemo(() => parsedPreviewModels(projectModels), [projectModels])
   const latestModel = projectModels[0]
   const latestProductName = latestModel?.metadata.product_names[0]
-  const projectModelPreviewArtifactQuery = useQuery({
-    queryKey: ['projects', projectId, 'models', latestModel?.id, 'preview-artifact'],
-    queryFn: async () => (await fetchProjectModelPreviewArtifact(projectId, latestModel?.id ?? '')).data.preview,
-    enabled: projectId !== '' && latestModel?.parse_status === 'parsed',
-    retry: false,
+  const projectModelPreviewArtifactQueries = useQueries({
+    queries: previewModels.map((model) => ({
+      queryKey: ['projects', projectId, 'models', model.id, 'preview-artifact'],
+      queryFn: async () => (await fetchProjectModelPreviewArtifact(projectId, model.id)).data.preview,
+      enabled: projectId !== '',
+      retry: false,
+    })),
   })
-  const latestPreviewArtifact = projectModelPreviewArtifactQuery.data
+  const previewArtifacts = projectModelPreviewArtifactQueries.flatMap((query) => (query.data ? [query.data] : []))
+  const previewArtifactByModelID = useMemo(
+    () => new Map(previewArtifacts.map((artifact) => [artifact.model_id, artifact])),
+    [previewArtifacts],
+  )
+  const latestPreviewArtifact = latestModel ? previewArtifactByModelID.get(latestModel.id) : undefined
   const latestPreviewFormat = latestPreviewArtifact?.format ?? ''
   const latestTriangleCount = latestPreviewArtifact?.facet_count ?? latestModel?.metadata.triangle_count ?? 0
-  const shouldShowCanvasStatus = !latestModel || !previewUrl
-  const projectModelPreviewQuery = useQuery({
-    queryKey: ['projects', projectId, 'models', latestModel?.id, 'preview'],
-    queryFn: async () => (await fetchProjectModelPreview(projectId, latestModel?.id ?? '')).data,
-    enabled: projectId !== '' && latestModel?.parse_status === 'parsed' && projectModelPreviewArtifactQuery.isSuccess,
-    retry: false,
+  const projectModelPreviewQueries = useQueries({
+    queries: previewModels.map((model) => {
+      const artifact = previewArtifactByModelID.get(model.id)
+      return {
+        queryKey: ['projects', projectId, 'models', model.id, 'preview'],
+        queryFn: async () => (await fetchProjectModelPreview(projectId, model.id)).data,
+        enabled: projectId !== '' && Boolean(artifact),
+        retry: false,
+      }
+    }),
   })
+  const previewAssets = useMemo(
+    () => buildProjectPreviewAssets(previewModels, previewArtifacts, previewUrlsByModelID),
+    [previewArtifacts, previewModels, previewUrlsByModelID],
+  )
+  const previewSummary = projectPreviewSummary({
+    modelCount: projectModels.length,
+    previewAssetCount: previewAssets.length,
+    latestPreviewFormat: latestPreviewFormat || previewAssets[0]?.previewFormat,
+  })
+  const shouldShowCanvasStatus = !latestModel || previewAssets.length === 0
+  const previewBlobSignature = projectModelPreviewQueries
+    .map((query, index) => {
+      const modelID = previewModels[index]?.id ?? ''
+      const blob = query.data
+      return `${modelID}:${blob ? `${blob.type}:${blob.size}` : 'pending'}`
+    })
+    .join('|')
 
   useEffect(() => {
-    const blob = projectModelPreviewQuery.data
-    if (!blob) {
-      setPreviewUrl('')
-      return undefined
+    const nextPreviewUrlsByModelID: Record<string, string> = {}
+    const objectUrls: string[] = []
+
+    projectModelPreviewQueries.forEach((query, index) => {
+      const blob = query.data
+      const modelID = previewModels[index]?.id
+      if (!blob || !modelID) {
+        return
+      }
+      const objectUrl = URL.createObjectURL(blob)
+      nextPreviewUrlsByModelID[modelID] = objectUrl
+      objectUrls.push(objectUrl)
+    })
+
+    setPreviewUrlsByModelID(nextPreviewUrlsByModelID)
+    return () => {
+      objectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl))
     }
-    const nextPreviewUrl = URL.createObjectURL(blob)
-    setPreviewUrl(nextPreviewUrl)
-    return () => URL.revokeObjectURL(nextPreviewUrl)
-  }, [projectModelPreviewQuery.data])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewBlobSignature])
 
   useEffect(() => {
     const handleViewOrientationChange = (event: Event) => {
@@ -227,14 +272,14 @@ function ProjectView() {
 
       <main className="relative min-h-0 overflow-hidden bg-[#f8fafc]">
         <section className="absolute inset-0 overflow-hidden">
-          <ModelPreview key={project.id} previewFormat={latestPreviewFormat} previewUrl={previewUrl} />
+          <ModelPreview key={project.id} previewAssets={previewAssets} />
           {shouldShowCanvasStatus && (
             <div
               className={`pointer-events-none absolute bottom-4 left-4 max-w-sm rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 p-4 shadow-xl backdrop-blur ${canvasLeftOffset}`}
             >
               <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#64748b]">
                 <HardDrive className="size-4 text-[#475569]" />
-                {latestModel ? `Imported ${latestModel.format.toUpperCase()} source` : 'Empty project canvas'}
+                {previewSummary.sourceLabel}
               </div>
               <p className="mt-2 text-sm leading-6 text-[#1f2937]">
                 {latestModel
@@ -356,14 +401,10 @@ function ProjectView() {
               <section className="mt-5 rounded-md border border-[#e2e8f0] bg-white/70 p-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
                   <CheckCircle2 className="size-4 text-[#475569]" />
-                  {latestModel ? `${latestModel.format.toUpperCase()} source stored` : 'Awaiting import'}
+                  {previewSummary.sourceLabel}
                 </div>
                 <p className="mt-2 text-sm leading-6 text-[#64748b]">
-                  {latestModel
-                    ? previewUrl
-                      ? 'The project owns an uploaded source file and a browser-loadable preview mesh.'
-                      : 'The project owns an uploaded source file with parsed STEP metadata. Mesh preview generation is pending.'
-                    : 'The workbench starts empty until a real CAD source file is imported.'}
+                  {previewSummary.sourceBody}
                 </p>
               </section>
 
@@ -384,7 +425,7 @@ function ProjectView() {
                   </div>
                   <div className="flex items-center justify-between border-b border-[#e2e8f0] pb-2">
                     <dt className="text-[#64748b]">Preview</dt>
-                    <dd className="text-[#1f2937]">{previewUrl ? `${latestPreviewFormat.toUpperCase()} mesh` : latestModel ? 'Preparing' : 'Empty'}</dd>
+                    <dd className="text-[#1f2937]">{previewSummary.previewLabel}</dd>
                   </div>
                   {latestModel && (
                     <>
@@ -416,14 +457,6 @@ function ProjectView() {
       </main>
     </div>
   )
-}
-
-function getModelDisplayName(model: ProjectModel) {
-  const parsedName = model.metadata.product_names[0]?.trim()
-  if (parsedName) {
-    return parsedName
-  }
-  return model.original_filename.replace(/\.[^.]+$/, '')
 }
 
 export default ProjectView
