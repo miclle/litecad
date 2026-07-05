@@ -8,6 +8,8 @@
 
 **Tech Stack:** Go 1.26, GORM, FreeCAD headless converter, React 19, TypeScript 6, Three.js.
 
+**Current outcome after implementation:** The backend owns preview publication, but preview artifacts are not fully canonicalized to GLB yet. STEP and STL sources currently produce OBJ preview artifacts, GLB uploads are validated and published as GLB preview artifacts, and GLTF uploads are accepted only when self-contained with no external buffer or image URIs. Generated geometry version numbers are unique within a project. Canonical GLB generation and editable CAD geometry remain roadmap work in `TODO.md`.
+
 ## Global Constraints
 
 - Start implementation or review work with `git status --short`.
@@ -40,7 +42,7 @@
 
 - [x] **Step 1: Write failing tests**
 
-Add service tests proving source-backed GLTF/GLB/STL preview artifacts are not considered normalized generated artifacts and are explicitly tagged as source passthrough fallback.
+Add service tests proving source-backed GLB and self-contained GLTF preview artifacts are explicitly validated before publication, while STL preview artifacts are backend-generated OBJ data rather than raw source passthrough.
 
 - [x] **Step 2: Run tests and verify failure**
 
@@ -48,7 +50,7 @@ Run `go test ./internal/service -run 'Test.*Preview'`.
 
 - [x] **Step 3: Implement minimal backend contract changes**
 
-Rename generator/version constants and helper names so source passthrough is explicit, while preserving current behavior until Task 2 replaces it.
+Keep generator/version constants aligned with the actual artifact producers while preserving current OBJ fallback behavior until canonical GLB generation exists.
 
 - [x] **Step 4: Remove frontend source-format assumptions**
 
@@ -56,7 +58,7 @@ Ensure `ModelPreview` branches only on preview artifact format, not uploaded mod
 
 - [x] **Step 5: Update docs**
 
-Document backend-owned parsing, current OBJ preview artifact fallback, and GLB normalization as the next implementation phase.
+Document backend-owned parsing, current OBJ preview artifact fallback, self-contained GLTF limitations, and GLB normalization as a future phase.
 
 - [ ] **Step 6: Verify and commit**
 
@@ -92,13 +94,13 @@ Run `task check`, `task test`, `git diff --check`, then commit this stage.
 - Modify: docs updated in earlier tasks
 
 **Interfaces:**
-- Consumes: GLTF/GLB/STL uploads.
-- Produces: backend-generated normalized preview artifacts so the frontend does not load source uploads directly.
+- Consumes: self-contained GLTF, GLB, and STL uploads.
+- Produces: backend-published preview artifacts so the frontend loads only backend preview outputs. GLB and self-contained GLTF remain validated viewer-format artifacts; STL is converted to OBJ preview data.
 
 - [x] **Step 1: Write failing tests for non-STEP preview normalization**
 - [x] **Step 2: Verify failure**
 - [x] **Step 3: Implement backend normalization or clear unsupported-preview errors**
-- [x] **Step 4: Remove frontend loaders made unnecessary by canonical preview format**
+- [x] **Step 4: Keep frontend loaders only for backend-published preview formats**
 - [x] **Step 5: Verify, update docs, and commit**
 
 ### Task 4: Geometry API Follow-Through

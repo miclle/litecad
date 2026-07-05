@@ -77,12 +77,17 @@ func ExtractGLTFMetadata(data []byte) (StepMetadata, error) {
 		Asset struct {
 			Version string `json:"version"`
 		} `json:"asset"`
-		Meshes []unknownGLTFMesh `json:"meshes"`
+		Meshes  []unknownGLTFMesh     `json:"meshes"`
+		Buffers []unknownGLTFResource `json:"buffers"`
+		Images  []unknownGLTFResource `json:"images"`
 	}
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return StepMetadata{}, errInvalidGLTFSource
 	}
 	if payload.Asset.Version == "" {
+		return StepMetadata{}, errInvalidGLTFSource
+	}
+	if hasExternalGLTFResource(payload.Buffers) || hasExternalGLTFResource(payload.Images) {
 		return StepMetadata{}, errInvalidGLTFSource
 	}
 	return StepMetadata{
@@ -93,6 +98,20 @@ func ExtractGLTFMetadata(data []byte) (StepMetadata, error) {
 }
 
 type unknownGLTFMesh struct{}
+
+type unknownGLTFResource struct {
+	URI string `json:"uri"`
+}
+
+func hasExternalGLTFResource(resources []unknownGLTFResource) bool {
+	for _, resource := range resources {
+		uri := strings.TrimSpace(resource.URI)
+		if uri != "" && !strings.HasPrefix(strings.ToLower(uri), "data:") {
+			return true
+		}
+	}
+	return false
+}
 
 // ExtractSTLMetadata reads ASCII or binary STL triangle counts.
 func ExtractSTLMetadata(data []byte) (StepMetadata, error) {

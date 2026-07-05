@@ -273,6 +273,34 @@ func TestUploadProjectModelStoresGLTFAsset(t *testing.T) {
 	}
 }
 
+func TestUploadProjectModelRejectsExternalGLTFResourcePreview(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	user, project := createTestProjectForModel(t, svc, ctx)
+
+	model, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Filename:    "case.gltf",
+		ContentType: "model/gltf+json",
+		Data:        []byte(`{"asset":{"version":"2.0"},"buffers":[{"uri":"case.bin","byteLength":12}],"meshes":[{"name":"case"}]}`),
+	})
+	if err != nil {
+		t.Fatalf("UploadProjectModel returned error: %v", err)
+	}
+	if model.ParseStatus != "error" {
+		t.Fatalf("model parse status = %q, want error", model.ParseStatus)
+	}
+	if model.ParseError == "" {
+		t.Fatal("model parse error should explain unsupported external GLTF resources")
+	}
+
+	_, err = svc.GetOrCreateProjectModelPreview(ctx, user.ID, project.ID, model.ID)
+	if !errors.Is(err, ErrModelPreviewUnavailable) {
+		t.Fatalf("GetOrCreateProjectModelPreview error = %v, want ErrModelPreviewUnavailable", err)
+	}
+}
+
 func TestUploadProjectModelStoresSTLAsset(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

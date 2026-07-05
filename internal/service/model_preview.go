@@ -240,31 +240,45 @@ func (s *Service) ensureProjectGeometryVersion(ctx context.Context, projectID, m
 		return ProjectGeometryVersion{}, fmt.Errorf("load project geometry version: %w", err)
 	}
 
-	var maxVersion int
-	if err := s.db.WithContext(ctx).
-		Model(&entity.ProjectGeometryVersion{}).
-		Where("project_id = ?", projectID).
-		Select("COALESCE(MAX(version_number), 0)").
-		Scan(&maxVersion).
-		Error; err != nil {
-		return ProjectGeometryVersion{}, fmt.Errorf("load project geometry version number: %w", err)
+	for attempt := 0; attempt < 5; attempt++ {
+		var maxVersion int
+		if err := s.db.WithContext(ctx).
+			Model(&entity.ProjectGeometryVersion{}).
+			Where("project_id = ?", projectID).
+			Select("COALESCE(MAX(version_number), 0)").
+			Scan(&maxVersion).
+			Error; err != nil {
+			return ProjectGeometryVersion{}, fmt.Errorf("load project geometry version number: %w", err)
+		}
+		versionID, err := id.NewPrefixed("geo")
+		if err != nil {
+			return ProjectGeometryVersion{}, err
+		}
+		version := entity.ProjectGeometryVersion{
+			ID:                versionID,
+			ProjectID:         projectID,
+			SourceModelID:     modelID,
+			PreviewArtifactID: previewArtifactID,
+			VersionNumber:     maxVersion + 1,
+			Summary:           "Preview artifact imported",
+		}
+		if err := s.db.WithContext(ctx).Create(&version).Error; err != nil {
+			if isUniqueConstraintError(err) {
+				var existing entity.ProjectGeometryVersion
+				reloadErr := s.db.WithContext(ctx).First(&existing, "preview_artifact_id = ?", previewArtifactID).Error
+				if reloadErr == nil {
+					return publicProjectGeometryVersion(existing), nil
+				}
+				if !errors.Is(reloadErr, gorm.ErrRecordNotFound) {
+					return ProjectGeometryVersion{}, fmt.Errorf("load concurrent project geometry version: %w", reloadErr)
+				}
+				continue
+			}
+			return ProjectGeometryVersion{}, fmt.Errorf("store project geometry version: %w", err)
+		}
+		return publicProjectGeometryVersion(version), nil
 	}
-	versionID, err := id.NewPrefixed("geo")
-	if err != nil {
-		return ProjectGeometryVersion{}, err
-	}
-	version := entity.ProjectGeometryVersion{
-		ID:                versionID,
-		ProjectID:         projectID,
-		SourceModelID:     modelID,
-		PreviewArtifactID: previewArtifactID,
-		VersionNumber:     maxVersion + 1,
-		Summary:           "Preview artifact imported",
-	}
-	if err := s.db.WithContext(ctx).Create(&version).Error; err != nil {
-		return ProjectGeometryVersion{}, fmt.Errorf("store project geometry version: %w", err)
-	}
-	return publicProjectGeometryVersion(version), nil
+	return ProjectGeometryVersion{}, fmt.Errorf("store project geometry version: %w", gorm.ErrDuplicatedKey)
 }
 
 func publicProjectModelPreview(artifact entity.ProjectModelPreviewArtifact) ProjectModelPreviewArtifact {

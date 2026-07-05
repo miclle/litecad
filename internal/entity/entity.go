@@ -83,10 +83,10 @@ type ProjectGeometryVersion struct {
 	CreatedAt         time.Time                   `json:"created_at"`
 	UpdatedAt         time.Time                   `json:"updated_at"`
 	DeletedAt         gorm.DeletedAt              `gorm:"index" json:"deleted_at,omitempty"`
-	ProjectID         string                      `gorm:"size:32;index;not null" json:"project_id"`
+	ProjectID         string                      `gorm:"size:32;index;uniqueIndex:idx_project_geometry_version_number;not null" json:"project_id"`
 	SourceModelID     string                      `gorm:"size:32;index;not null" json:"source_model_id"`
 	PreviewArtifactID string                      `gorm:"size:32;uniqueIndex;not null" json:"preview_artifact_id"`
-	VersionNumber     int                         `gorm:"not null" json:"version_number"`
+	VersionNumber     int                         `gorm:"uniqueIndex:idx_project_geometry_version_number;not null" json:"version_number"`
 	Summary           string                      `gorm:"size:255;not null" json:"summary"`
 	Project           Project                     `gorm:"foreignKey:ProjectID" json:"project"`
 	SourceModel       ProjectModel                `gorm:"foreignKey:SourceModelID" json:"source_model"`

@@ -245,6 +245,96 @@ func TestGetOrCreateProjectModelPreviewReloadsConcurrentArtifact(t *testing.T) {
 	}
 }
 
+func TestProjectGeometryVersionRejectsDuplicateProjectVersionNumber(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada",
+		Email:    "ada-duplicate-geometry-version@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Duplicate geometry version case",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	modelA, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Filename:    "case-a.stl",
+		Data:        minimalASCIISTL(),
+	})
+	if err != nil {
+		t.Fatalf("UploadProjectModel A returned error: %v", err)
+	}
+	modelB, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Filename:    "case-b.stl",
+		Data:        minimalASCIISTL(),
+	})
+	if err != nil {
+		t.Fatalf("UploadProjectModel B returned error: %v", err)
+	}
+	artifactA := entity.ProjectModelPreviewArtifact{
+		ID:               "prv_duplicate_first",
+		ModelID:          modelA.ID,
+		Format:           "obj",
+		ContentType:      "model/obj",
+		GeneratorVersion: stlOBJPreviewGeneratorVersion,
+		ByteSize:         48,
+		VertexCount:      3,
+		FacetCount:       1,
+		Data:             []byte("# first\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"),
+	}
+	if err := svc.DB().Create(&artifactA).Error; err != nil {
+		t.Fatalf("store first preview artifact: %v", err)
+	}
+	artifactB := entity.ProjectModelPreviewArtifact{
+		ID:               "prv_duplicate_second",
+		ModelID:          modelB.ID,
+		Format:           "obj",
+		ContentType:      "model/obj",
+		GeneratorVersion: stlOBJPreviewGeneratorVersion,
+		ByteSize:         49,
+		VertexCount:      3,
+		FacetCount:       1,
+		Data:             []byte("# second\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"),
+	}
+	if err := svc.DB().Create(&artifactB).Error; err != nil {
+		t.Fatalf("store second preview artifact: %v", err)
+	}
+
+	first := entity.ProjectGeometryVersion{
+		ID:                "geo_duplicate_first",
+		ProjectID:         project.ID,
+		SourceModelID:     modelA.ID,
+		PreviewArtifactID: artifactA.ID,
+		VersionNumber:     1,
+		Summary:           "First version",
+	}
+	if err := svc.DB().Create(&first).Error; err != nil {
+		t.Fatalf("store first geometry version: %v", err)
+	}
+	duplicate := entity.ProjectGeometryVersion{
+		ID:                "geo_duplicate_second",
+		ProjectID:         project.ID,
+		SourceModelID:     modelB.ID,
+		PreviewArtifactID: artifactB.ID,
+		VersionNumber:     1,
+		Summary:           "Duplicate version",
+	}
+	if err := svc.DB().Create(&duplicate).Error; err == nil {
+		t.Fatal("duplicate project geometry version number should be rejected")
+	}
+}
+
 func TestGetOrCreateProjectModelPreviewConvertsSTLToOBJArtifact(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
