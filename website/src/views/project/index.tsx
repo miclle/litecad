@@ -60,6 +60,7 @@ const modelTree = [
 type ViewOrientation = {
   direction?: [number, number, number]
   pitch: number
+  rotationStep?: ViewRotationStep
   up?: [number, number, number]
   yaw: number
 }
@@ -92,7 +93,15 @@ const isViewOrientation = (orientation: unknown): orientation is ViewOrientation
   const hasValidUp =
     candidate.up === undefined ||
     (Array.isArray(candidate.up) && candidate.up.length === 3 && candidate.up.every((value) => Number.isFinite(value)))
-  return Number.isFinite(candidate.yaw) && Number.isFinite(candidate.pitch) && hasValidDirection && hasValidUp
+  const step = candidate.rotationStep
+  const hasValidRotationStep =
+    step === undefined ||
+    (typeof step === 'object' &&
+      step !== null &&
+      (step.horizontal === undefined || Number.isFinite(step.horizontal)) &&
+      (step.roll === undefined || Number.isFinite(step.roll)) &&
+      (step.vertical === undefined || Number.isFinite(step.vertical)))
+  return Number.isFinite(candidate.yaw) && Number.isFinite(candidate.pitch) && hasValidDirection && hasValidUp && hasValidRotationStep
 }
 const orientationToDirection = ({ yaw, pitch }: ViewOrientation) => {
   const yawRadians = (normalizeYaw(yaw) * Math.PI) / 180
@@ -154,6 +163,13 @@ const orientationDistance = (first: ViewOrientation, second: ViewOrientation) =>
 const viewOrientationAnimationDuration = 360
 const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3)
 const interpolateOrientation = (from: ViewOrientation, to: ViewOrientation, progress: number) => {
+  if (to.rotationStep) {
+    return rotateOrientation(from, {
+      horizontal: to.rotationStep.horizontal === undefined ? undefined : to.rotationStep.horizontal * progress,
+      roll: to.rotationStep.roll === undefined ? undefined : to.rotationStep.roll * progress,
+      vertical: to.rotationStep.vertical === undefined ? undefined : to.rotationStep.vertical * progress,
+    })
+  }
   const quaternion = orientationToQuaternion(from).slerp(orientationToQuaternion(to), progress)
   return createFreeOrientation(
     new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion),
@@ -1431,6 +1447,7 @@ function ModelPreview() {
       animateViewOrientation({
         ...createOrientation(orientation.yaw, orientation.pitch),
         ...(orientation.direction ? { direction: orientation.direction } : {}),
+        ...(orientation.rotationStep ? { rotationStep: orientation.rotationStep } : {}),
         ...(orientation.up ? { up: orientation.up } : {}),
       })
     }
@@ -1523,6 +1540,7 @@ function ProjectView() {
       const nextOrientation = {
         ...createOrientation(orientation.yaw, orientation.pitch),
         ...(orientation.direction ? { direction: orientation.direction } : {}),
+        ...(orientation.rotationStep ? { rotationStep: orientation.rotationStep } : {}),
         ...(orientation.up ? { up: orientation.up } : {}),
       }
       setAnimateViewCubeOrientation(false)
@@ -1577,6 +1595,7 @@ function ProjectView() {
     const nextOrientation = {
       ...createOrientation(orientation.yaw, orientation.pitch),
       ...(orientation.direction ? { direction: orientation.direction } : {}),
+      ...(orientation.rotationStep ? { rotationStep: orientation.rotationStep } : {}),
       ...(orientation.up ? { up: orientation.up } : {}),
     }
     setAnimateViewCubeOrientation(true)
@@ -1586,10 +1605,10 @@ function ProjectView() {
       ?.dispatchEvent(new CustomEvent('litecad:set-view', { detail: { orientation: nextOrientation } }))
   }
   const stepCanvasOrientation = (step: ViewRotationStep) => {
-    applyCanvasOrientation(rotateOrientation(viewOrientation, step))
+    applyCanvasOrientation({ ...rotateOrientation(viewOrientation, step), rotationStep: step })
   }
   const flipCanvasOrientation = () => {
-    applyCanvasOrientation(rotateOrientation(viewOrientation, { horizontal: 180 }))
+    applyCanvasOrientation({ ...rotateOrientation(viewOrientation, { horizontal: 180 }), rotationStep: { horizontal: 180 } })
   }
 
   return (
