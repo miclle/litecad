@@ -524,4 +524,3 @@ export function ModelPreview() {
 
   return <div ref={containerRef} className="absolute inset-0" data-model-preview />
 }
-
