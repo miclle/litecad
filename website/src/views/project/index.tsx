@@ -65,6 +65,7 @@ type ViewOrientation = {
 }
 type ViewRotationStep = {
   horizontal?: number
+  roll?: number
   vertical?: number
 }
 
@@ -173,6 +174,9 @@ const rotateOrientation = (orientation: ViewOrientation, step: ViewRotationStep)
   }
   if (step.vertical) {
     rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(right, THREE.MathUtils.degToRad(step.vertical)))
+  }
+  if (step.roll) {
+    rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(direction, THREE.MathUtils.degToRad(step.roll)))
   }
 
   return createFreeOrientation(direction.applyQuaternion(rotation), up.applyQuaternion(rotation))
@@ -942,7 +946,7 @@ function ViewController({
       <button
         aria-label="Rotate view left"
         className={`${arcButtonClass} left-[18px] top-3.5`}
-        onClick={() => onStep({ horizontal: -45 })}
+        onClick={() => onStep({ roll: -45 })}
         title="Rotate view left"
         type="button"
       >
@@ -957,7 +961,7 @@ function ViewController({
       <button
         aria-label="Rotate view right"
         className={`${arcButtonClass} right-[18px] top-3.5`}
-        onClick={() => onStep({ horizontal: 45 })}
+        onClick={() => onStep({ roll: 45 })}
         title="Rotate view right"
         type="button"
       >
