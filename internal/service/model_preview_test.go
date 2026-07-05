@@ -10,7 +10,7 @@ import (
 
 type fakePreviewConverter struct{}
 
-func (fakePreviewConverter) ConvertStepToOBJ(ctx context.Context, data []byte) (ModelPreviewMesh, error) {
+func (fakePreviewConverter) ConvertStepToPreview(ctx context.Context, data []byte) (ModelPreviewMesh, error) {
 	return ModelPreviewMesh{
 		Format:      "obj",
 		ContentType: "model/obj",
@@ -66,6 +66,9 @@ func TestGetOrCreateProjectModelPreviewCreatesOBJArtifact(t *testing.T) {
 	if preview.ContentType != "model/obj" {
 		t.Fatalf("preview content type = %q, want model/obj", preview.ContentType)
 	}
+	if preview.GeneratorVersion != "step-preview-v1" {
+		t.Fatalf("preview generator version = %q, want step-preview-v1", preview.GeneratorVersion)
+	}
 	if preview.FacetCount != 1 || preview.VertexCount != 3 {
 		t.Fatalf("preview counts = facets %d vertices %d", preview.FacetCount, preview.VertexCount)
 	}
@@ -96,6 +99,66 @@ func TestGetOrCreateProjectModelPreviewCreatesOBJArtifact(t *testing.T) {
 	}
 	if len(document.Versions) != 1 || document.Versions[0].ProjectID != project.ID || document.Versions[0].PreviewArtifactID != preview.ID {
 		t.Fatalf("geometry document versions = %+v", document.Versions)
+	}
+}
+
+type fakeGLBPreviewConverter struct{}
+
+func (fakeGLBPreviewConverter) ConvertStepToPreview(ctx context.Context, data []byte) (ModelPreviewMesh, error) {
+	return ModelPreviewMesh{
+		Format:      "glb",
+		ContentType: "model/gltf-binary",
+		Data:        minimalGLB(),
+		FacetCount:  2,
+		VertexCount: 4,
+	}, nil
+}
+
+func TestGetOrCreateProjectModelPreviewStoresConverterPreviewFormat(t *testing.T) {
+	svc := newTestService(t)
+	svc.previewConverter = fakeGLBPreviewConverter{}
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada",
+		Email:    "ada-glb-preview@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "GLB preview case",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	model, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Filename:    "case.step",
+		Data:        []byte("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1 = PRODUCT('Case','Case','',(#2));\nENDSEC;\nEND-ISO-10303-21;"),
+	})
+	if err != nil {
+		t.Fatalf("UploadProjectModel returned error: %v", err)
+	}
+
+	preview, err := svc.GetOrCreateProjectModelPreview(ctx, user.ID, project.ID, model.ID)
+	if err != nil {
+		t.Fatalf("GetOrCreateProjectModelPreview returned error: %v", err)
+	}
+	if preview.Format != "glb" {
+		t.Fatalf("preview format = %q, want glb", preview.Format)
+	}
+	if preview.ContentType != "model/gltf-binary" {
+		t.Fatalf("preview content type = %q, want model/gltf-binary", preview.ContentType)
+	}
+	if preview.GeneratorVersion != "step-preview-v1" {
+		t.Fatalf("preview generator version = %q, want step-preview-v1", preview.GeneratorVersion)
+	}
+	if !bytes.Equal(preview.Data, minimalGLB()) {
+		t.Fatal("preview data should preserve converter GLB data")
 	}
 }
 
@@ -147,9 +210,9 @@ func TestFreeCADPreviewConverterConvertsExternalStepFileWhenConfigured(t *testin
 		t.Fatalf("read STEP file: %v", err)
 	}
 
-	mesh, err := NewFreeCADPreviewConverter().ConvertStepToOBJ(context.Background(), data)
+	mesh, err := NewFreeCADPreviewConverter().ConvertStepToPreview(context.Background(), data)
 	if err != nil {
-		t.Fatalf("ConvertStepToOBJ returned error: %v", err)
+		t.Fatalf("ConvertStepToPreview returned error: %v", err)
 	}
 	if mesh.Format != "obj" {
 		t.Fatalf("format = %q, want obj", mesh.Format)

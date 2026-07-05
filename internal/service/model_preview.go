@@ -16,12 +16,12 @@ import (
 var ErrModelPreviewUnavailable = errors.New("model preview unavailable")
 
 const (
-	stepOBJPreviewGeneratorVersion = "step-obj-v4"
+	stepPreviewGeneratorVersion = "step-preview-v1"
 )
 
 // ModelPreviewConverter converts source CAD data into a browser-previewable mesh.
 type ModelPreviewConverter interface {
-	ConvertStepToOBJ(ctx context.Context, data []byte) (ModelPreviewMesh, error)
+	ConvertStepToPreview(ctx context.Context, data []byte) (ModelPreviewMesh, error)
 }
 
 // ModelPreviewMesh is converted mesh data ready to persist as a preview artifact.
@@ -72,7 +72,7 @@ func (s *Service) GetOrCreateProjectModelPreview(ctx context.Context, ownerUserI
 	var existing entity.ProjectModelPreviewArtifact
 	err = s.db.WithContext(ctx).First(&existing, "model_id = ?", model.ID).Error
 	if err == nil {
-		if model.Format == "step" && existing.GeneratorVersion != stepOBJPreviewGeneratorVersion {
+		if model.Format == "step" && existing.GeneratorVersion != stepPreviewGeneratorVersion {
 			return s.refreshStepPreviewArtifact(ctx, model, existing)
 		}
 		if model.Format != "step" {
@@ -104,7 +104,7 @@ func (s *Service) GetOrCreateProjectModelPreview(ctx context.Context, ownerUserI
 		ModelID:          model.ID,
 		Format:           mesh.Format,
 		ContentType:      mesh.ContentType,
-		GeneratorVersion: stepOBJPreviewGeneratorVersion,
+		GeneratorVersion: stepPreviewGeneratorVersion,
 		ByteSize:         int64(len(mesh.Data)),
 		VertexCount:      mesh.VertexCount,
 		FacetCount:       mesh.FacetCount,
@@ -120,7 +120,7 @@ func (s *Service) GetOrCreateProjectModelPreview(ctx context.Context, ownerUserI
 }
 
 func (s *Service) convertStepPreviewMesh(ctx context.Context, model entity.ProjectModel) (ModelPreviewMesh, error) {
-	mesh, err := s.previewConverter.ConvertStepToOBJ(ctx, model.SourceData)
+	mesh, err := s.previewConverter.ConvertStepToPreview(ctx, model.SourceData)
 	if err != nil {
 		return ModelPreviewMesh{}, fmt.Errorf("%w: %v", ErrModelPreviewUnavailable, err)
 	}
@@ -146,7 +146,7 @@ func (s *Service) refreshStepPreviewArtifact(ctx context.Context, model entity.P
 	}
 	artifact.Format = mesh.Format
 	artifact.ContentType = mesh.ContentType
-	artifact.GeneratorVersion = stepOBJPreviewGeneratorVersion
+	artifact.GeneratorVersion = stepPreviewGeneratorVersion
 	artifact.ByteSize = int64(len(mesh.Data))
 	artifact.VertexCount = mesh.VertexCount
 	artifact.FacetCount = mesh.FacetCount

@@ -15,7 +15,7 @@ import (
 
 type testPreviewConverter struct{}
 
-func (testPreviewConverter) ConvertStepToOBJ(ctx context.Context, data []byte) (service.ModelPreviewMesh, error) {
+func (testPreviewConverter) ConvertStepToPreview(ctx context.Context, data []byte) (service.ModelPreviewMesh, error) {
 	return service.ModelPreviewMesh{
 		Format:      "obj",
 		ContentType: "model/obj",

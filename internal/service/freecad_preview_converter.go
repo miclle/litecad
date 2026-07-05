@@ -29,8 +29,8 @@ func NewFreeCADPreviewConverter() FreeCADPreviewConverter {
 	}
 }
 
-// ConvertStepToOBJ converts STEP bytes to an OBJ mesh.
-func (c FreeCADPreviewConverter) ConvertStepToOBJ(ctx context.Context, data []byte) (ModelPreviewMesh, error) {
+// ConvertStepToPreview converts STEP bytes to the best browser-previewable artifact currently available.
+func (c FreeCADPreviewConverter) ConvertStepToPreview(ctx context.Context, data []byte) (ModelPreviewMesh, error) {
 	if c.Command == "" {
 		return ModelPreviewMesh{}, fmt.Errorf("FreeCAD command is not configured")
 	}

@@ -76,11 +76,11 @@ Run `task check`, `task test`, `git diff --check`, then commit this stage.
 - Consumes: uploaded STEP source data and FreeCAD conversion entrypoint.
 - Produces: canonical backend-generated preview artifact, preferably GLB, with OBJ only as a clearly documented fallback if FreeCAD GLB export is unavailable.
 
-- [ ] **Step 1: Write failing converter/service tests**
-- [ ] **Step 2: Verify failure**
-- [ ] **Step 3: Implement FreeCAD GLB or deterministic fallback strategy**
-- [ ] **Step 4: Verify sample STEP import with `/Users/miclle/github/miclle/Macintosh/exports/macintosh_ipad_lcd_case.step`**
-- [ ] **Step 5: Update docs and commit**
+- [x] **Step 1: Write failing converter/service tests**
+- [x] **Step 2: Verify failure**
+- [x] **Step 3: Implement FreeCAD GLB or deterministic fallback strategy**
+- [x] **Step 4: Verify sample STEP import with `/Users/miclle/github/miclle/Macintosh/exports/macintosh_ipad_lcd_case.step`**
+- [x] **Step 5: Update docs and commit**
 
 ### Task 3: Source Format Normalization for GLTF/GLB/STL Uploads
 
