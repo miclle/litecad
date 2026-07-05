@@ -13,7 +13,6 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 
 ## Backend And Data
 
-- Remove or repurpose the template `entity.Example` model and its migration once no code path needs it.
 - Add update/delete APIs for projects if the product needs project renaming, archival, or cleanup.
 - Add session lifecycle hardening such as explicit expiry tests around stale cookies and optional session pruning.
 - Decide whether `internal/errors` should remain as a legacy package or be replaced entirely by `pkg/httperr`.

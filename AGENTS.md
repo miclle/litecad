@@ -123,7 +123,7 @@ scripts/                      # Shell helpers invoked by Taskfile (build, check,
 
 - Keep `README.md`, `TODO.md`, `AGENTS.md`, and `.agents/rules/` synchronized with the current code.
 - Put future work in `TODO.md`, not in README sections that imply shipped behavior.
-- When removing template leftovers, verify whether they still exist in code first. For example, `entity.Example` is still migrated today and should be treated as cleanup work until removed.
+- When removing template leftovers, verify whether they still exist in code first.
 - Do not write personal machine paths, credentials, private hosts, or production DSNs into docs.
 
 ## Mandatory Rules
