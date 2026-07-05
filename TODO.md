@@ -20,8 +20,9 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 
 ## Frontend
 
+- Continue shrinking the project workbench hotspot by keeping viewer math, ViewCube controls, demo-scene setup, and page shell in focused modules with targeted tests.
 - Add route protection UX for `/projects` and `/projects/:projectId` so signed-out users get a deliberate sign-in flow instead of only relying on the Axios 401 redirect.
-- Add focused tests for project creation UI behavior and project detail loading/error states.
+- Add focused tests for project creation UI behavior, project detail loading/error states, and viewer shell event boundaries.
 - Verify the CAD viewer shell across desktop and mobile viewports once project geometry is connected.
 
 ## Documentation And Operations
