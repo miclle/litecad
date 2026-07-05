@@ -26,6 +26,7 @@ type ProjectGeometryTreeNode struct {
 	PreviewArtifactID string `json:"preview_artifact_id"`
 	Name              string `json:"name"`
 	Format            string `json:"format"`
+	PreviewFormat     string `json:"preview_format"`
 }
 
 // ProjectGeometryVersion is the public shape for a project geometry snapshot.
@@ -101,6 +102,7 @@ func (s *Service) GetProjectGeometryDocument(ctx context.Context, ownerUserID, p
 			PreviewArtifactID: artifact.ID,
 			Name:              model.OriginalFilename,
 			Format:            model.Format,
+			PreviewFormat:     artifact.Format,
 		})
 	}
 

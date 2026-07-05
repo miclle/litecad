@@ -70,6 +70,7 @@ export interface ProjectGeometryTreeNode {
   preview_artifact_id: string
   name: string
   format: string
+  preview_format: string
 }
 
 export interface ProjectGeometryVersion {

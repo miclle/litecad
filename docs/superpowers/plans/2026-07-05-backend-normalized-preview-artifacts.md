@@ -114,8 +114,8 @@ Run `task check`, `task test`, `git diff --check`, then commit this stage.
 - Consumes: uploaded source models and preview artifacts.
 - Produces: read-only geometry document shape that references normalized preview artifacts and is ready for editable geometry records later.
 
-- [ ] **Step 1: Write failing geometry document tests**
-- [ ] **Step 2: Verify failure**
-- [ ] **Step 3: Implement contract cleanup**
-- [ ] **Step 4: Verify API/frontend types**
-- [ ] **Step 5: Update docs and commit**
+- [x] **Step 1: Write failing geometry document tests**
+- [x] **Step 2: Verify failure**
+- [x] **Step 3: Implement contract cleanup**
+- [x] **Step 4: Verify API/frontend types**
+- [x] **Step 5: Update docs and commit**

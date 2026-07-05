@@ -93,6 +93,9 @@ func TestGetOrCreateProjectModelPreviewCreatesOBJArtifact(t *testing.T) {
 	if len(document.ModelTree) != 1 || document.ModelTree[0].ModelID != model.ID || document.ModelTree[0].PreviewArtifactID != preview.ID {
 		t.Fatalf("geometry document model tree = %+v", document.ModelTree)
 	}
+	if document.ModelTree[0].Format != "step" || document.ModelTree[0].PreviewFormat != "obj" {
+		t.Fatalf("geometry document formats = source %q preview %q, want step and obj", document.ModelTree[0].Format, document.ModelTree[0].PreviewFormat)
+	}
 	if len(document.PreviewArtifacts) != 1 || document.PreviewArtifacts[0].ID != preview.ID || len(document.PreviewArtifacts[0].Data) != 0 {
 		t.Fatalf("geometry document preview artifacts = %+v", document.PreviewArtifacts)
 	}
