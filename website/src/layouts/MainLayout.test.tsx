@@ -68,7 +68,7 @@ async function screenText(text: string) {
       return true
     }
     await act(async () => {
-      await Promise.resolve()
+      await new Promise((resolve) => window.setTimeout(resolve, 10))
     })
   }
   return false

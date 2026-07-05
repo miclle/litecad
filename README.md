@@ -110,6 +110,8 @@ Signed-in users can open `/projects`, create a project with a name and optional 
 
 The home page renders a Three.js demo shape. The project detail route renders a CAD-style viewer shell with model-tree, tool, view-control, and panel UI. The current viewer does not load persisted CAD geometry yet.
 
+The project workbench keeps reusable view orientation math and ViewCube controls in focused frontend modules under `website/src/views/project/`, while the route component remains responsible for project loading and shell layout.
+
 ## API Surface
 
 Current backend routes:
@@ -153,6 +155,7 @@ website/                      # Embedded SPA
     api/                      # Axios API modules
     types/                    # Shared frontend contract types
     views/                    # Route-level UI
+      project/                # Project workbench route plus focused viewer helpers
     components/               # Reusable UI components
     layouts/                  # Page layouts
     lib/                      # Shared frontend utilities
