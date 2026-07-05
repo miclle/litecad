@@ -3,8 +3,11 @@ import * as THREE from 'three'
 
 import {
   createOrientation,
+  createFreeOrientation,
+  createSquaredOrientation,
   initialViewOrientation,
   orientationDistance,
+  orientationToViewUp,
   orientationToViewDirection,
   rotateOrientation,
   rotateOrientationToDirection,
@@ -29,5 +32,13 @@ describe('view orientation helpers', () => {
 
     expect(orientationToViewDirection(rotated).angleTo(targetDirection)).toBeLessThan(0.001)
     expect(rotated.up).toHaveLength(3)
+  })
+
+  test('squares a rolled view while keeping the current view direction', () => {
+    const rolledFront = createFreeOrientation(new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0))
+    const squared = createSquaredOrientation(rolledFront)
+
+    expect(orientationToViewDirection(squared).angleTo(new THREE.Vector3(0, 0, 1))).toBeLessThan(0.001)
+    expect(orientationToViewUp(squared).angleTo(new THREE.Vector3(0, 1, 0))).toBeLessThan(0.001)
   })
 })

@@ -73,6 +73,20 @@ export const fallbackUpForDirection = (direction: THREE.Vector3) =>
 export const orientationToViewUp = (orientation: ViewOrientation) =>
   (orientation.up ? new THREE.Vector3(...orientation.up) : fallbackUpForDirection(orientationToViewDirection(orientation))).normalize()
 
+const squaredUpForDirection = (direction: THREE.Vector3) => {
+  const normalizedDirection = direction.clone().normalize()
+  const preferredUp = fallbackUpForDirection(normalizedDirection)
+  const up = preferredUp.sub(normalizedDirection.clone().multiplyScalar(preferredUp.dot(normalizedDirection)))
+  if (up.lengthSq() > 0.000001) {
+    return up.normalize()
+  }
+
+  const fallbackAxis = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)].sort(
+    (first, second) => Math.abs(first.dot(normalizedDirection)) - Math.abs(second.dot(normalizedDirection)),
+  )[0]
+  return fallbackAxis.sub(normalizedDirection.clone().multiplyScalar(fallbackAxis.dot(normalizedDirection))).normalize()
+}
+
 export const directionToOrientation = (direction: THREE.Vector3) => {
   const normalizedDirection = direction.clone().normalize()
   return createOrientation(
@@ -97,6 +111,11 @@ export const createFreeOrientation = (direction: THREE.Vector3, up: THREE.Vector
     direction: [normalizedDirection.x, normalizedDirection.y, normalizedDirection.z],
     up: [normalizedUp.x, normalizedUp.y, normalizedUp.z],
   }
+}
+
+export const createSquaredOrientation = (orientation: ViewOrientation, targetDirection?: THREE.Vector3) => {
+  const direction = targetDirection ? targetDirection.clone().normalize() : orientationToViewDirection(orientation)
+  return createFreeOrientation(direction, squaredUpForDirection(direction))
 }
 
 const orientationToQuaternion = (orientation: ViewOrientation) =>

@@ -13,6 +13,7 @@ import {
   viewCubeSize,
 } from './view-cube'
 import {
+  createSquaredOrientation,
   easeOutCubic,
   interpolateOrientation,
   orientationDistance,
@@ -433,7 +434,13 @@ function ViewCube3D({
       }
       const nextDirection = hit.object.userData.viewDirection
       if (nextDirection instanceof THREE.Vector3) {
-        const nextOrientation = rotateOrientationToDirection(displayedOrientationRef.current, nextDirection)
+        const currentOrientation = displayedOrientationRef.current
+        const currentDirection = orientationToViewDirection(currentOrientation)
+        const isFacingTarget =
+          currentDirection.angleTo(nextDirection.clone().normalize()) < THREE.MathUtils.degToRad(0.8)
+        const nextOrientation = isFacingTarget
+          ? createSquaredOrientation(currentOrientation, nextDirection)
+          : rotateOrientationToDirection(currentOrientation, nextDirection)
         onSetOrientationRef.current(nextOrientation)
       }
     }
