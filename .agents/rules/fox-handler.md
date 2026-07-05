@@ -1,6 +1,6 @@
 # fox-gonic Handler Rules
 
-Goblet uses `github.com/fox-gonic/fox`, not raw Gin. The application entrypoint is `cmd/app`, and route registration is centralized in `internal/handler/handler.go`.
+LiteCAD uses `github.com/fox-gonic/fox`, not raw Gin. The application entrypoint is `cmd/litecad`, and route registration is centralized in `internal/handler/handler.go`.
 
 ## Core Rules
 

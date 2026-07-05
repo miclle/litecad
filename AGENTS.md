@@ -4,21 +4,31 @@ Technical specification for AI coding assistants working on this project.
 
 ## Project Overview
 
-A Go + React single-page application template that compiles into a single binary. The backend embeds frontend build output via `//go:embed`, so production deployment requires only one executable plus a database.
+litecad is a Go + React single-page application for AI-assisted CAD exploration and browser-native 3D preview. It is product code, not just a template, but it still uses the compact single-binary architecture inherited from `miclle/goblet`: the backend embeds frontend build output via `//go:embed`, so production deployment requires one executable plus a database.
+
+Current implemented product surface:
+
+- Three.js home-page preview prototype and CAD-oriented project workbench shell.
+- Account registration/login/logout with an `HttpOnly` `litecad_session` cookie.
+- Session-scoped project creation, listing, and detail lookup.
+- Studio status endpoint for bootstrap/product-state messaging.
+
+Do not document or implement AI generation, STEP parsing, file upload, mesh conversion, measurement, export, or persisted CAD geometry as completed unless the code actually implements them.
 
 ## Tech Stack
 
 - Backend: Go 1.26 + `fox-gonic/fox` + GORM + PostgreSQL (default) / MySQL
-- Frontend: React 19 + TypeScript 6 + Vite 8 + Tailwind CSS 4 + shadcn/ui
+- Frontend: React 19 + TypeScript 6 + Vite 8 + Tailwind CSS 4
   - React Router v7 (routing)
   - React Query v5 (server state)
   - Axios (HTTP client)
   - Lucide React (icons)
+  - Three.js (browser 3D previews/viewer shell)
 
 ## Development Commands
 
 ```bash
-task install        # Install backend and frontend dependencies
+task install        # Install Go modules and frontend dependencies
 task dev            # Start development environment (hot reload)
 task build          # Build production binary (with embedded frontend)
 task build-all      # Cross-compile for multiple platforms
@@ -36,10 +46,10 @@ task update-tools   # Install/update dev tools
 cmd/litecad/                  # Application entry point and local config
 internal/config/              # YAML config loading (PostgreSQL / MySQL)
 internal/database/            # GORM database connection and schema migration
-internal/entity/              # Data models and domain types
+internal/entity/              # GORM models and persistence types
 internal/handler/             # HTTP handlers, route registration, middleware
 internal/service/             # Business logic, database operations
-internal/errors/              # Centralized error types
+internal/errors/              # Legacy centralized status errors
 pkg/httperr/                  # Generic HTTP-status-aware errors
 pkg/id/                       # Prefixed ULID helpers
 pkg/secret/                   # Random secret and digest helpers
@@ -65,7 +75,7 @@ website/                      # Embedded SPA (frontend + go:embed glue)
       ├── api/
       ├── types/
       ├── views/
-      ├── components/ (includes ui/ by shadcn)
+      ├── components/
       ├── layouts/
       ├── hooks/
       ├── context/
@@ -77,34 +87,54 @@ scripts/                      # Shell helpers invoked by Taskfile (build, check,
 
 ### Backend
 
-- Follow the `Handler -> Service -> Entity` layering
-- Register all routes in `internal/handler/handler.go`
-- Keep database connection and migration setup in `internal/database/`; services receive a ready `*gorm.DB`
-- PostgreSQL (default) and MySQL are supported; switch via `driver` in YAML config
-- YAML config contains only bootstrap settings (address, database driver, connection string)
-- Configuration files may reference environment variables with `${NAME}` or `${NAME:-fallback}`
+- Follow the `Handler -> Service -> Entity` layering.
+- Register all routes in `internal/handler/handler.go`.
+- Keep database connection and migration setup in `internal/database/`; services receive a ready `*gorm.DB`.
+- PostgreSQL and MySQL are the supported runtime drivers; tests may use SQLite directly through GORM test helpers.
+- Switch runtime database driver via `driver` in YAML config.
+- YAML config contains only bootstrap settings such as listen address, database driver, and connection string.
+- Configuration files may reference environment variables with `${NAME}` or `${NAME:-fallback}`.
+- Do not expose GORM entities directly as HTTP response contracts; handlers should return DTOs or service-level public shapes.
 
 ### Frontend
 
-- Routing: React Router v7
-- Server state management: React Query (`@tanstack/react-query`)
-- API calls go in `website/src/api/`
-- Type definitions go in `website/src/types/`
-- Pages go in `website/src/views/`
-- Prefer reusing existing shadcn/ui components and Tailwind styles
+- Routing: React Router v7 in `website/src/router.tsx`.
+- Server state management: React Query (`@tanstack/react-query`).
+- API calls go in `website/src/api/` and use the shared Axios client.
+- Type definitions go in `website/src/types/`.
+- Pages go in `website/src/views/`.
+- Prefer existing Tailwind styles, shadcn-compatible component conventions, Lucide icons, and local layout patterns.
+- Do not hard-code backend origins in components; use `/api/v1` through the shared client and Vite proxy.
+
+### Product Boundaries
+
+- Keep current docs honest about implemented vs planned CAD features.
+- Treat STEP/STL/GLB import, AI orchestration, measurement, export, and persisted geometry as roadmap work until code, tests, and UI flows exist.
+- Project data is currently metadata only: name, description, owner, timestamps.
+- The project workbench may contain demo geometry and viewer controls, but it is not yet a real CAD document editor.
 
 ### Single Binary Embedding
 
-- `website/assets_development.go` (`//go:build development`) reverse-proxies to Vite dev server
-- `website/assets_production.go` (`//go:build !development`) serves assets via `//go:embed build/*`
-- NotFound handler: `/api` prefix returns JSON 404; all other routes fall back to SPA index
+- `website/assets_development.go` (`//go:build development`) reverse-proxies to Vite dev server.
+- `website/assets_production.go` (`//go:build !development`) serves assets via `//go:embed build/*`.
+- NotFound handler: `/api` prefix returns JSON 404; all other GET/HEAD routes fall back to SPA index.
+
+## Documentation Rules
+
+- Keep `README.md`, `TODO.md`, `AGENTS.md`, and `.agents/rules/` synchronized with the current code.
+- Put future work in `TODO.md`, not in README sections that imply shipped behavior.
+- When removing template leftovers, verify whether they still exist in code first. For example, `entity.Example` is still migrated today and should be treated as cleanup work until removed.
+- Do not write personal machine paths, credentials, private hosts, or production DSNs into docs.
 
 ## Mandatory Rules
 
-- Respect the existing layering and directory structure; do not reshape architecture for local changes
-- Run `task check` before committing
+- Start implementation or review work with `git status --short`.
+- Respect the existing layering and directory structure; do not reshape architecture for local changes.
+- Run `task check` before committing.
+- Run `task test` when changing behavior, API contracts, database models, or non-trivial frontend interactions.
 
 ## Pre-commit Checklist
 
-- Run `task check`; do not commit if it fails
-- Verify whether frontend API calls or types need to be updated accordingly
+- Run `task check`; do not commit if it fails.
+- Verify whether frontend API calls or types need to be updated with backend route/DTO changes.
+- Verify whether README, TODO, or agent rules need updates when product capability, setup, or architecture changes.
