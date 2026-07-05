@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   createSetViewEvent,
+  dispatchModelPreviewSetViewEvent,
   modelPreviewSelector,
   normalizeViewOrientation,
   setViewEventName,
@@ -25,5 +26,23 @@ describe('view event helpers', () => {
 
     expect(event.type).toBe(setViewEventName)
     expect(event.detail.orientation).toEqual({ yaw: 0, pitch: 0 })
+  })
+
+  test('dispatches set-view events to the model preview boundary', () => {
+    const root = document.createElement('div')
+    const preview = document.createElement('div')
+    preview.dataset.modelPreview = ''
+    root.append(preview)
+    let receivedOrientation: unknown = null
+    preview.addEventListener(setViewEventName, (event) => {
+      receivedOrientation = (event as CustomEvent).detail.orientation
+    })
+
+    expect(dispatchModelPreviewSetViewEvent({ yaw: 90, pitch: 0 }, root)).toBe(true)
+    expect(receivedOrientation).toEqual({ yaw: 90, pitch: 0 })
+  })
+
+  test('reports when the model preview boundary is unavailable', () => {
+    expect(dispatchModelPreviewSetViewEvent({ yaw: 0, pitch: 0 }, document.createElement('div'))).toBe(false)
   })
 })

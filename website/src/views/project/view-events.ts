@@ -29,3 +29,12 @@ export const createSetViewEvent = (orientation: ViewOrientation) =>
 
 export const createViewOrientationChangeEvent = (orientation: ViewOrientation) =>
   new CustomEvent<ViewOrientationEventDetail>(viewOrientationChangeEventName, { detail: { orientation } })
+
+export const dispatchModelPreviewSetViewEvent = (orientation: ViewOrientation, root: ParentNode = document) => {
+  const target = root.querySelector(modelPreviewSelector)
+  if (!target) {
+    return false
+  }
+  target.dispatchEvent(createSetViewEvent(orientation))
+  return true
+}

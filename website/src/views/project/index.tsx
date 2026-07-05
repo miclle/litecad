@@ -26,8 +26,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { fetchProject } from 'src/api/projects'
 import {
-  createSetViewEvent,
-  modelPreviewSelector,
+  dispatchModelPreviewSetViewEvent,
   normalizeViewOrientation,
   orientationFromEvent,
   viewOrientationChangeEventName,
@@ -142,7 +141,7 @@ function ProjectView() {
     const nextOrientation = normalizeViewOrientation(orientation) ?? initialViewOrientation
     setAnimateViewCubeOrientation(true)
     setViewOrientation(nextOrientation)
-    document.querySelector(modelPreviewSelector)?.dispatchEvent(createSetViewEvent(nextOrientation))
+    dispatchModelPreviewSetViewEvent(nextOrientation)
   }
   const stepCanvasOrientation = (step: ViewRotationStep) => {
     applyCanvasOrientation({ ...rotateOrientation(viewOrientation, step), rotationStep: step })
