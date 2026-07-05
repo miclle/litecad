@@ -113,7 +113,7 @@ func newTestService(t *testing.T) *Service {
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.User{}, &entity.Project{}); err != nil {
+	if err := db.AutoMigrate(&entity.User{}, &entity.Project{}, &entity.ProjectModel{}, &entity.ProjectModelPreviewArtifact{}, &entity.ProjectGeometryVersion{}); err != nil {
 		t.Fatalf("migrate test db: %v", err)
 	}
 

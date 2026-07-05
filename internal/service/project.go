@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -14,11 +16,18 @@ import (
 
 const maxProjectDescriptionRunes = 350
 
+// MaxProjectModelUploadBytes is the largest CAD source file accepted by the import pipeline.
+const MaxProjectModelUploadBytes = 100 * 1024 * 1024
+
 var (
 	// ErrInvalidProjectInput indicates missing or malformed project input.
 	ErrInvalidProjectInput = errors.New("invalid project input")
 	// ErrProjectNotFound indicates a project does not exist for the current owner.
 	ErrProjectNotFound = errors.New("project not found")
+	// ErrInvalidProjectModelInput indicates missing or malformed project model input.
+	ErrInvalidProjectModelInput = errors.New("invalid project model input")
+	// ErrUnsupportedModelFormat indicates the uploaded CAD file format is not accepted yet.
+	ErrUnsupportedModelFormat = errors.New("unsupported model format")
 )
 
 // CreateProjectInput is the data required to create a project.
@@ -35,6 +44,30 @@ type Project struct {
 	Description string `json:"description"`
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
+}
+
+// UploadProjectModelInput is the data required to attach a CAD source file to a project.
+type UploadProjectModelInput struct {
+	OwnerUserID string
+	ProjectID   string
+	Filename    string
+	ContentType string
+	Data        []byte
+}
+
+// ProjectModel is the public shape for an uploaded CAD source file.
+type ProjectModel struct {
+	ID               string       `json:"id"`
+	ProjectID        string       `json:"project_id"`
+	OriginalFilename string       `json:"original_filename"`
+	Format           string       `json:"format"`
+	ContentType      string       `json:"content_type"`
+	ByteSize         int64        `json:"byte_size"`
+	ParseStatus      string       `json:"parse_status"`
+	ParseError       string       `json:"parse_error"`
+	Metadata         StepMetadata `json:"metadata"`
+	CreatedAt        string       `json:"created_at"`
+	UpdatedAt        string       `json:"updated_at"`
 }
 
 // ListProjects returns projects owned by the given user, newest first.
@@ -105,6 +138,91 @@ func (s *Service) CreateProject(ctx context.Context, input CreateProjectInput) (
 	return publicProject(project), nil
 }
 
+// UploadProjectModel stores an uploaded CAD source file for a user-owned project.
+func (s *Service) UploadProjectModel(ctx context.Context, input UploadProjectModelInput) (ProjectModel, error) {
+	ownerUserID := strings.TrimSpace(input.OwnerUserID)
+	projectID := strings.TrimSpace(input.ProjectID)
+	filename := strings.TrimSpace(filepath.Base(input.Filename))
+	contentType := strings.TrimSpace(input.ContentType)
+	data := input.Data
+	if ownerUserID == "" || projectID == "" || filename == "" || len(data) == 0 || len(data) > MaxProjectModelUploadBytes {
+		return ProjectModel{}, ErrInvalidProjectModelInput
+	}
+
+	format, err := projectModelFormat(filename)
+	if err != nil {
+		return ProjectModel{}, err
+	}
+
+	var project entity.Project
+	if err := s.db.WithContext(ctx).First(&project, "id = ? AND owner_user_id = ?", projectID, ownerUserID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ProjectModel{}, ErrProjectNotFound
+		}
+		return ProjectModel{}, fmt.Errorf("load project for model upload: %w", err)
+	}
+
+	modelID, err := id.NewPrefixed("mdl")
+	if err != nil {
+		return ProjectModel{}, err
+	}
+	model := entity.ProjectModel{
+		ID:               modelID,
+		ProjectID:        project.ID,
+		OriginalFilename: filename,
+		Format:           format,
+		ContentType:      contentType,
+		ByteSize:         int64(len(data)),
+		SourceData:       append([]byte(nil), data...),
+	}
+	applyModelMetadata(&model)
+	if err := s.db.WithContext(ctx).Create(&model).Error; err != nil {
+		return ProjectModel{}, fmt.Errorf("store project model: %w", err)
+	}
+	return publicProjectModel(model), nil
+}
+
+// ListProjectModels returns uploaded CAD source files for a user-owned project, newest first.
+func (s *Service) ListProjectModels(ctx context.Context, ownerUserID, projectID string) ([]ProjectModel, error) {
+	ownerUserID = strings.TrimSpace(ownerUserID)
+	projectID = strings.TrimSpace(projectID)
+	if ownerUserID == "" || projectID == "" {
+		return nil, ErrProjectNotFound
+	}
+
+	var project entity.Project
+	if err := s.db.WithContext(ctx).First(&project, "id = ? AND owner_user_id = ?", projectID, ownerUserID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrProjectNotFound
+		}
+		return nil, fmt.Errorf("load project for model list: %w", err)
+	}
+
+	var models []entity.ProjectModel
+	if err := s.db.WithContext(ctx).
+		Where("project_id = ?", project.ID).
+		Order("created_at DESC").
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("list project models: %w", err)
+	}
+
+	result := make([]ProjectModel, 0, len(models))
+	for _, model := range models {
+		if shouldBackfillModelMetadata(model) {
+			applyModelMetadata(&model)
+			if err := s.db.WithContext(ctx).Model(&model).Updates(map[string]any{
+				"parse_status":  model.ParseStatus,
+				"parse_error":   model.ParseError,
+				"metadata_json": model.MetadataJSON,
+			}).Error; err != nil {
+				return nil, fmt.Errorf("update project model metadata: %w", err)
+			}
+		}
+		result = append(result, publicProjectModel(model))
+	}
+	return result, nil
+}
+
 func publicProject(project entity.Project) Project {
 	return Project{
 		ID:          project.ID,
@@ -113,4 +231,79 @@ func publicProject(project entity.Project) Project {
 		CreatedAt:   project.CreatedAt.Format(timeFormatRFC3339),
 		UpdatedAt:   project.UpdatedAt.Format(timeFormatRFC3339),
 	}
+}
+
+func projectModelFormat(filename string) (string, error) {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".step", ".stp":
+		return "step", nil
+	case ".glb":
+		return "glb", nil
+	case ".gltf":
+		return "gltf", nil
+	case ".stl":
+		return "stl", nil
+	default:
+		return "", ErrUnsupportedModelFormat
+	}
+}
+
+func publicProjectModel(model entity.ProjectModel) ProjectModel {
+	metadata := StepMetadata{}
+	if len(model.MetadataJSON) > 0 {
+		_ = json.Unmarshal(model.MetadataJSON, &metadata)
+	}
+	return ProjectModel{
+		ID:               model.ID,
+		ProjectID:        model.ProjectID,
+		OriginalFilename: model.OriginalFilename,
+		Format:           model.Format,
+		ContentType:      model.ContentType,
+		ByteSize:         model.ByteSize,
+		ParseStatus:      model.ParseStatus,
+		ParseError:       model.ParseError,
+		Metadata:         metadata,
+		CreatedAt:        model.CreatedAt.Format(timeFormatRFC3339),
+		UpdatedAt:        model.UpdatedAt.Format(timeFormatRFC3339),
+	}
+}
+
+func shouldBackfillModelMetadata(model entity.ProjectModel) bool {
+	return model.ParseStatus == "" || (model.ParseStatus == "pending" && len(model.MetadataJSON) == 0)
+}
+
+func applyModelMetadata(model *entity.ProjectModel) {
+	var (
+		metadata StepMetadata
+		err      error
+	)
+	switch model.Format {
+	case "step":
+		metadata, err = ExtractStepMetadata(model.SourceData)
+	case "glb":
+		metadata, err = ExtractGLBMetadata(model.SourceData)
+	case "gltf":
+		metadata, err = ExtractGLTFMetadata(model.SourceData)
+	case "stl":
+		metadata, err = ExtractSTLMetadata(model.SourceData)
+	default:
+		model.ParseStatus = "pending"
+		return
+	}
+	if err != nil {
+		model.ParseStatus = "error"
+		model.ParseError = err.Error()
+		model.MetadataJSON = nil
+		return
+	}
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		model.ParseStatus = "error"
+		model.ParseError = err.Error()
+		model.MetadataJSON = nil
+		return
+	}
+	model.ParseStatus = "parsed"
+	model.ParseError = ""
+	model.MetadataJSON = metadataJSON
 }

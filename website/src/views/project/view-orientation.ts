@@ -14,7 +14,7 @@ export type ViewRotationStep = {
   vertical?: number
 }
 
-export const initialViewOrientation: ViewOrientation = { yaw: 38, pitch: 27 }
+export const initialViewOrientation: ViewOrientation = { yaw: 22, pitch: 18 }
 
 const clampPitch = (pitch: number) => Math.max(-89, Math.min(89, pitch))
 const normalizeYaw = (yaw: number) => ((yaw % 360) + 360) % 360

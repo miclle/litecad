@@ -1,30 +1,28 @@
-import { useQuery } from '@tanstack/react-query'
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from 'react'
 import {
   ArrowLeft,
-  Box,
-  Boxes,
   CheckCircle2,
-  Circle,
-  Cuboid,
+  Database,
   FileText,
-  Layers3,
-  MousePointer2,
+  FileUp,
+  HardDrive,
   Orbit,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
-  PenTool,
-  Ruler,
-  Share2,
-  SlidersHorizontal,
-  SquareDashedMousePointer,
-  Triangle,
+  Upload,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
-import { fetchProject } from 'src/api/projects'
+import {
+  fetchProject,
+  fetchProjectModelPreview,
+  fetchProjectModelPreviewArtifact,
+  fetchProjectModels,
+  uploadProjectModel,
+} from 'src/api/projects'
 import {
   dispatchModelPreviewSetViewEvent,
   normalizeViewOrientation,
@@ -41,47 +39,66 @@ import {
   type ViewRotationStep,
 } from './view-orientation'
 
-const canvasTools = [
-  { label: 'Select', icon: MousePointer2, active: true },
-  { label: 'Sketch', icon: PenTool },
-  { label: 'Extrude', icon: Cuboid },
-  { label: 'Measure', icon: Ruler },
-  { label: 'Region select', icon: SquareDashedMousePointer },
-  { label: 'Solid', icon: Box },
-  { label: 'Triangle', icon: Triangle },
-  { label: 'Circle', icon: Circle },
-  { label: 'Adjust', icon: SlidersHorizontal },
-]
-
-const primaryTools = canvasTools.slice(0, 4)
-const geometryTools = canvasTools.slice(4)
-
-const modelTree = [
-  {
-    label: 'Bodies',
-    items: [
-      { label: 'Base plate', state: 'ready', icon: Boxes },
-      { label: 'Mounting rib', state: 'draft', icon: Box },
-    ],
-  },
-  {
-    label: 'Construction',
-    items: [{ label: 'Reference plane', state: 'locked', icon: Layers3 }],
-  },
-]
-
 function ProjectView() {
   const { projectId = '' } = useParams()
+  const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false)
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false)
   const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
   const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
+  const [uploadError, setUploadError] = useState('')
+  const [previewUrl, setPreviewUrl] = useState('')
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: async () => (await fetchProject(projectId)).data.project,
     enabled: projectId !== '',
   })
+  const projectModelsQuery = useQuery({
+    queryKey: ['projects', projectId, 'models'],
+    queryFn: async () => (await fetchProjectModels(projectId)).data.models,
+    enabled: projectId !== '' && projectQuery.isSuccess,
+  })
+  const uploadModelMutation = useMutation({
+    mutationFn: (file: File) => uploadProjectModel(projectId, file),
+    onSuccess: async () => {
+      setUploadError('')
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
+    },
+    onError: () => {
+      setUploadError('Model upload failed. Check that the file is STEP, GLTF, GLB, or STL and try again.')
+    },
+  })
   const project = projectQuery.data
+  const projectModels = projectModelsQuery.data ?? []
+  const latestModel = projectModels[0]
+  const latestProductName = latestModel?.metadata.product_names[0]
+  const projectModelPreviewArtifactQuery = useQuery({
+    queryKey: ['projects', projectId, 'models', latestModel?.id, 'preview-artifact'],
+    queryFn: async () => (await fetchProjectModelPreviewArtifact(projectId, latestModel?.id ?? '')).data.preview,
+    enabled: projectId !== '' && latestModel?.parse_status === 'parsed',
+    retry: false,
+  })
+  const latestPreviewArtifact = projectModelPreviewArtifactQuery.data
+  const latestPreviewFormat = latestPreviewArtifact?.format ?? ''
+  const latestTriangleCount = latestPreviewArtifact?.facet_count ?? latestModel?.metadata.triangle_count ?? 0
+  const projectModelPreviewQuery = useQuery({
+    queryKey: ['projects', projectId, 'models', latestModel?.id, 'preview'],
+    queryFn: async () => (await fetchProjectModelPreview(projectId, latestModel?.id ?? '')).data,
+    enabled: projectId !== '' && latestModel?.parse_status === 'parsed' && projectModelPreviewArtifactQuery.isSuccess,
+    retry: false,
+  })
+
+  useEffect(() => {
+    const blob = projectModelPreviewQuery.data
+    if (!blob) {
+      setPreviewUrl('')
+      return undefined
+    }
+    const nextPreviewUrl = URL.createObjectURL(blob)
+    setPreviewUrl(nextPreviewUrl)
+    return () => URL.revokeObjectURL(nextPreviewUrl)
+  }, [projectModelPreviewQuery.data])
 
   useEffect(() => {
     const handleViewOrientationChange = (event: Event) => {
@@ -149,6 +166,14 @@ function ProjectView() {
   const flipCanvasOrientation = () => {
     applyCanvasOrientation({ ...rotateOrientation(viewOrientation, { horizontal: 180 }), rotationStep: { horizontal: 180 } })
   }
+  const handleModelFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+    uploadModelMutation.mutate(file)
+    event.target.value = ''
+  }
 
   return (
     <div className="grid min-h-screen grid-rows-[56px_minmax(0,1fr)] bg-[#111310] text-[#e9e2d0]">
@@ -166,36 +191,18 @@ function ProjectView() {
           </div>
         </div>
 
-        <div className="hidden items-center justify-center gap-1 lg:flex">
-          {primaryTools.map((item) => {
-            const Icon = item.icon
-            return (
-              <button
-                className={`grid size-9 place-items-center rounded-md transition ${
-                  item.active ? 'bg-[#e9e2d0] text-[#111310]' : 'text-[#a8a293] hover:bg-[#242820] hover:text-[#f7f1e4]'
-                }`}
-                key={item.label}
-                title={item.label}
-                type="button"
-              >
-                <Icon className="size-4" />
-              </button>
-            )
-          })}
+        <div className="hidden items-center justify-center gap-2 lg:flex">
+          <div className="flex items-center gap-2 rounded-md border border-[#2d302b] bg-[#101210] px-3 py-2 font-mono text-[11px] uppercase text-[#8c887c]">
+            <Database className="size-4 text-[#b7c3a8]" />
+            {projectModels.length > 0 ? `${projectModels.length} source ${projectModels.length === 1 ? 'file' : 'files'}` : 'No source file'}
+          </div>
         </div>
 
         <div className="hidden items-center justify-end gap-3 lg:flex">
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#8c887c]">
             <CheckCircle2 className="size-4 text-[#b7c3a8]" />
-            Autosaved
+            Project saved
           </div>
-          <button
-            className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium text-[#a8a293] transition hover:bg-[#242820] hover:text-[#f7f1e4]"
-            type="button"
-          >
-            <Share2 className="size-4" />
-            Share
-          </button>
         </div>
       </header>
 
@@ -222,36 +229,68 @@ function ProjectView() {
             <>
               <section className="mt-3">
                 <p className="text-sm leading-6 text-[#aaa593]">
-                  {project.description || 'No description yet. Start by sketching or importing a reference.'}
+                  {project.description || 'No description yet. Import a CAD source file to begin the project record.'}
                 </p>
               </section>
 
               <section className="mt-8">
-                <p className="font-mono text-[11px] uppercase text-[#8c887c]">Model</p>
-                <div className="mt-3 grid gap-5">
-                  {modelTree.map((group) => (
-                    <div key={group.label}>
-                      <p className="mb-1 px-2 font-mono text-[10px] uppercase text-[#68655d]">{group.label}</p>
-                      <div className="grid gap-1">
-                        {group.items.map((item) => {
-                          const Icon = item.icon
-                          return (
-                            <button
-                              className="flex h-10 items-center justify-between rounded-md px-2 text-left text-sm text-[#d8d1bf] transition hover:bg-[#242820]"
-                              key={item.label}
-                              type="button"
-                            >
-                              <span className="flex min-w-0 items-center gap-2">
-                                <Icon className="size-4 text-[#b7c3a8]" />
-                                <span className="truncate">{item.label}</span>
-                              </span>
-                              <span className="font-mono text-[10px] uppercase text-[#8c887c]">{item.state}</span>
-                            </button>
-                          )
-                        })}
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-mono text-[11px] uppercase text-[#8c887c]">Source files</p>
+                  <button
+                    className="grid size-8 place-items-center rounded-md text-[#a8a293] transition hover:bg-[#242820] hover:text-[#f7f1e4]"
+                    disabled={uploadModelMutation.isPending}
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Import model"
+                    type="button"
+                  >
+                    <Upload className="size-4" />
+                  </button>
+                  <input
+                    accept=".step,.stp,.gltf,.glb,.stl"
+                    className="hidden"
+                    onChange={handleModelFileChange}
+                    ref={fileInputRef}
+                    type="file"
+                  />
+                </div>
+
+                <div className="mt-3 grid gap-2">
+                  {projectModelsQuery.isLoading && (
+                    <div className="rounded-md border border-[#2d302b] bg-[#111310] px-3 py-3 font-mono text-[11px] uppercase text-[#8c887c]">
+                      Loading sources
+                    </div>
+                  )}
+                  {!projectModelsQuery.isLoading && projectModels.length === 0 && (
+                    <div className="rounded-md border border-dashed border-[#34382f] bg-[#111310] px-3 py-4 text-sm leading-6 text-[#aaa593]">
+                      No project-owned model source has been imported.
+                    </div>
+                  )}
+                  {projectModels.map((model) => (
+                    <div className="rounded-md border border-[#34382f] bg-[#111310] p-3" key={model.id}>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <FileUp className="size-4 shrink-0 text-[#b7c3a8]" />
+                        <p className="truncate text-sm font-medium text-[#f7f1e4]">{model.original_filename}</p>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-3 font-mono text-[10px] uppercase text-[#8c887c]">
+                        <span>{model.format}</span>
+                        <span>{formatBytes(model.byte_size)}</span>
+                      </div>
+                      <div className="mt-3 grid gap-1 text-xs leading-5 text-[#aaa593]">
+                        <p className="truncate text-[#d8d1bf]">
+                          {model.metadata.product_names[0] || model.metadata.asset_type.toUpperCase() || 'No product name parsed'}
+                        </p>
+                        <p className="font-mono uppercase text-[#8c887c]">
+                          {model.parse_status === 'parsed' ? model.metadata.schema || 'STEP' : model.parse_status}
+                        </p>
                       </div>
                     </div>
                   ))}
+                  {uploadModelMutation.isPending && (
+                    <div className="rounded-md border border-[#34382f] bg-[#151814] px-3 py-3 font-mono text-[11px] uppercase text-[#b7c3a8]">
+                      Importing model
+                    </div>
+                  )}
+                  {uploadError && <p className="text-sm leading-6 text-[#e0a19a]">{uploadError}</p>}
                 </div>
               </section>
             </>
@@ -260,7 +299,20 @@ function ProjectView() {
 
         <section className="relative min-h-0 overflow-hidden bg-[#1b1d19]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(183,195,168,0.13),transparent_34%)]" />
-          <ModelPreview key={project.id} />
+          <ModelPreview key={project.id} previewFormat={latestPreviewFormat} previewUrl={previewUrl} />
+          <div className="pointer-events-none absolute left-4 bottom-4 max-w-sm rounded-md border border-[#34382f] bg-[#151814]/92 p-4 shadow-xl backdrop-blur">
+            <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#8c887c]">
+              <HardDrive className="size-4 text-[#b7c3a8]" />
+              {latestModel ? `Imported ${latestModel.format.toUpperCase()} source` : 'Empty project canvas'}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-[#d8d1bf]">
+              {latestModel
+                ? previewUrl
+                  ? `${latestProductName || latestModel.original_filename} preview is loaded as ${latestPreviewFormat.toUpperCase()}.`
+                  : `${latestProductName || latestModel.original_filename} metadata is parsed. Geometry preview is being prepared.`
+                : 'The canvas is empty until imported geometry is prepared for preview. Import a CAD source file to attach real model data to this project.'}
+            </p>
+          </div>
 
           <button
             className="absolute left-4 top-4 flex items-center gap-2 rounded-md border border-[#34382f] bg-[#151814]/88 px-3 py-2 text-xs text-[#aaa593] backdrop-blur transition hover:bg-[#242820] hover:text-[#f7f1e4]"
@@ -282,24 +334,6 @@ function ProjectView() {
 
           <div className="absolute right-4 top-[160px] hidden items-center gap-2 rounded-md border border-[#34382f] bg-[#151814]/88 px-3 py-2 font-mono text-[11px] uppercase text-[#8c887c] backdrop-blur sm:flex">
             Grid 10 mm
-          </div>
-
-          <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-md border border-[#34382f] bg-[#151814]/92 p-1 shadow-xl backdrop-blur">
-            {geometryTools.map((item) => {
-              const Icon = item.icon
-              return (
-                <button
-                  className={`grid size-9 place-items-center rounded transition ${
-                    item.active ? 'bg-[#e9e2d0] text-[#111310]' : 'text-[#a8a293] hover:bg-[#242820] hover:text-[#f7f1e4]'
-                  }`}
-                  key={item.label}
-                  title={item.label}
-                  type="button"
-                >
-                  <Icon className="size-4" />
-                </button>
-              )
-            })}
           </div>
         </section>
 
@@ -326,10 +360,14 @@ function ProjectView() {
               <section className="mt-5 rounded-md border border-[#34382f] bg-[#111310] p-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[#f7f1e4]">
                   <CheckCircle2 className="size-4 text-[#b7c3a8]" />
-                  Ready for sketch
+                  {latestModel ? `${latestModel.format.toUpperCase()} source stored` : 'Awaiting import'}
                 </div>
                 <p className="mt-2 text-sm leading-6 text-[#aaa593]">
-                  Build the first solid from a prompt, a sketch, or an imported reference.
+                  {latestModel
+                    ? previewUrl
+                      ? 'The project owns an uploaded source file and a browser-loadable preview mesh.'
+                      : 'The project owns an uploaded source file with parsed STEP metadata. Mesh preview generation is pending.'
+                    : 'The workbench starts empty until a real CAD source file is imported.'}
                 </p>
               </section>
 
@@ -345,9 +383,35 @@ function ProjectView() {
                     <dd className="text-[#d8d1bf]">Millimeters</dd>
                   </div>
                   <div className="flex items-center justify-between border-b border-[#2d302b] pb-2">
-                    <dt className="text-[#8c887c]">Kernel</dt>
-                    <dd className="text-[#d8d1bf]">Preview</dd>
+                    <dt className="text-[#8c887c]">Sources</dt>
+                    <dd className="text-[#d8d1bf]">{projectModels.length}</dd>
                   </div>
+                  <div className="flex items-center justify-between border-b border-[#2d302b] pb-2">
+                    <dt className="text-[#8c887c]">Preview</dt>
+                    <dd className="text-[#d8d1bf]">{previewUrl ? `${latestPreviewFormat.toUpperCase()} mesh` : latestModel ? 'Preparing' : 'Empty'}</dd>
+                  </div>
+                  {latestModel && (
+                    <>
+                      <div className="flex items-center justify-between gap-3 border-b border-[#2d302b] pb-2">
+                        <dt className="text-[#8c887c]">STEP</dt>
+                        <dd className="truncate text-[#d8d1bf]">
+                          {latestModel.metadata.schema || latestModel.metadata.asset_type.toUpperCase() || latestModel.parse_status}
+                        </dd>
+                      </div>
+                      <div className="flex items-center justify-between border-b border-[#2d302b] pb-2">
+                        <dt className="text-[#8c887c]">Unit</dt>
+                        <dd className="text-[#d8d1bf]">{latestModel.metadata.length_unit || 'Unknown'}</dd>
+                      </div>
+                      <div className="flex items-center justify-between border-b border-[#2d302b] pb-2">
+                        <dt className="text-[#8c887c]">Entities</dt>
+                        <dd className="text-[#d8d1bf]">{latestModel.metadata.entity_count}</dd>
+                      </div>
+                      <div className="flex items-center justify-between border-b border-[#2d302b] pb-2">
+                        <dt className="text-[#8c887c]">Triangles</dt>
+                        <dd className="text-[#d8d1bf]">{latestTriangleCount}</dd>
+                      </div>
+                    </>
+                  )}
                 </dl>
               </section>
             </>
@@ -356,6 +420,16 @@ function ProjectView() {
       </div>
     </div>
   )
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 export default ProjectView

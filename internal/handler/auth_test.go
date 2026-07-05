@@ -75,11 +75,11 @@ func newTestRouter(t *testing.T) *fox.Engine {
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.User{}, &entity.UserSession{}, &entity.Project{}); err != nil {
+	if err := db.AutoMigrate(&entity.User{}, &entity.UserSession{}, &entity.Project{}, &entity.ProjectModel{}, &entity.ProjectModelPreviewArtifact{}, &entity.ProjectGeometryVersion{}); err != nil {
 		t.Fatalf("migrate test db: %v", err)
 	}
 
-	svc, err := service.New(context.Background(), db)
+	svc, err := service.NewWithPreviewConverter(context.Background(), db, testPreviewConverter{})
 	if err != nil {
 		t.Fatalf("create service: %v", err)
 	}

@@ -14,6 +14,11 @@ import {
 } from './view-orientation'
 
 describe('view orientation helpers', () => {
+  test('starts from a front-biased CAD preview orientation', () => {
+    expect(initialViewOrientation.yaw).toBeLessThan(30)
+    expect(initialViewOrientation.pitch).toBeLessThan(25)
+  })
+
   test('normalizes yaw and clamps pitch', () => {
     expect(createOrientation(-45, 120)).toEqual({ yaw: 315, pitch: 89 })
     expect(createOrientation(405, -120)).toEqual({ yaw: 45, pitch: -89 })

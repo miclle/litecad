@@ -8,12 +8,13 @@ litecad is a Go + React single-page application for AI-assisted CAD exploration 
 
 Current implemented product surface:
 
-- Three.js home-page preview prototype and CAD-oriented project workbench shell.
+- Home-page import pipeline status panel and CAD-oriented project workbench shell.
 - Account registration/login/logout with an `HttpOnly` `litecad_session` cookie.
 - Session-scoped project creation, listing, and detail lookup.
+- Session-scoped CAD source upload, lightweight metadata extraction, listing, preview artifact metadata, preview loading, read-only geometry document API, and generated geometry version snapshots for project-owned `.step`, `.stp`, `.gltf`, `.glb`, and `.stl` files, including FreeCAD-backed OBJ preview conversion for STEP sources. GLTF, GLB, and STL source uploads are stored and parsed for lightweight metadata, but they require backend preview normalization before the frontend renders them.
 - Studio status endpoint for bootstrap/product-state messaging.
 
-Do not document or implement AI generation, STEP parsing, file upload, mesh conversion, measurement, export, or persisted CAD geometry as completed unless the code actually implements them.
+Do not document or implement AI generation, full STEP B-rep semantics, measurement, export, normalized geometry APIs, or editable persisted CAD geometry as completed unless the code actually implements them.
 
 ## Tech Stack
 
@@ -94,7 +95,7 @@ Project-scoped skills live in `.agents/skills/` and are locked by `skills-lock.j
 - Use `shadcn` when adding, updating, composing, or debugging shadcn-compatible UI, or any task touching `website/components.json` or shadcn-style components.
 - Use `webapp-testing` when verifying user-visible browser behavior, routing, auth flows, project workflows, frontend regressions, screenshots, console errors, or local dev-server UI behavior.
 - Use `threejs-fundamentals` when setting up or refactoring Three.js scenes, cameras, renderers, resize handling, Object3D hierarchy, transforms, or render loops.
-- Use `threejs-geometry` when creating demo CAD geometry, custom `BufferGeometry`, edges/wireframes, instanced meshes, or geometry performance changes.
+- Use `threejs-geometry` when creating project-owned or derived CAD preview geometry, custom `BufferGeometry`, edges/wireframes, instanced meshes, or geometry performance changes.
 - Use `threejs-materials` when changing mesh materials, PBR appearance, wireframe/solid visual styling, texture usage, material performance, or shader-adjacent rendering behavior.
 - `threejs-interaction` is explicit-only. Do not auto-trigger it for normal viewport work; use it only when the user explicitly requests it and after reviewing its `SKILL.md`, because the skills CLI reported a Critical Risk Gen audit for it at install time.
 
@@ -126,9 +127,9 @@ For feature work that changes the browser experience, combine the relevant front
 ### Product Boundaries
 
 - Keep current docs honest about implemented vs planned CAD features.
-- Treat STEP/STL/GLB import, AI orchestration, measurement, export, and persisted geometry as roadmap work until code, tests, and UI flows exist.
-- Project data is currently metadata only: name, description, owner, timestamps.
-- The project workbench may contain demo geometry and viewer controls, but it is not yet a real CAD document editor.
+- Treat AI orchestration, measurement, export, editable geometry documents, and full STEP B-rep semantics as roadmap work until code, tests, and UI flows exist.
+- Project data currently includes project metadata, uploaded STEP/STP/GLTF/GLB/STL source-file records, lightweight source metadata, preview artifact metadata, derived OBJ preview artifacts for STEP sources, read-only model tree responses, and generated geometry version snapshots; it does not include editable CAD geometry or source-passthrough GLTF/GLB/STL browser previews.
+- The project workbench must not render hard-coded demo geometry as if it were project-owned model data.
 
 ### Single Binary Embedding
 

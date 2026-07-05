@@ -4,10 +4,11 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 
 ## Product Capability
 
-- Define the persisted CAD document model for a project. Current projects store metadata only: owner, name, description, and timestamps.
-- Add CAD asset upload and metadata extraction for STEP, STL, and GLB files.
-- Decide the STEP preview conversion boundary: server-side conversion to web-friendly mesh/GLB, client-side parsing, or a hybrid pipeline.
-- Replace demo geometry in the project workbench with project-owned geometry or uploaded/generated preview data.
+- Define the persisted CAD document model beyond uploaded source-file records, lightweight metadata, generated preview artifacts, and read-only geometry snapshots. Current projects do not store editable CAD features, B-rep semantics, or versioned editable geometry documents.
+- Continue the CAD import and geometry pipeline beyond completed STEP/STP/GLTF/GLB/STL source upload, lightweight metadata extraction, STEP-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API:
+  - Promote backend preview generation to a canonical Three.js-friendly artifact format, preferably GLB, so STEP/GLTF/GLB/STL sources are all parsed or normalized on the Go/backend side instead of being source-passthrough browser previews.
+  - Define editable geometry records and CAD feature/version semantics beyond uploaded sources, preview artifacts, and generated read-only version snapshots.
+- Decide whether STEP preview conversion should remain FreeCAD-backed server-side conversion or move toward a packaged/headless geometry service for production.
 - Add measurement, sectioning, edge display, and export workflows after real geometry is available.
 - Define AI orchestration APIs for prompt-to-design iterations, including provider boundaries, request history, failure states, and cost controls.
 

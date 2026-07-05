@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
 
-import { createDemoAssemblyScene } from './demo-assembly-scene'
 import { disposeObject3DResources } from './three-object-resources'
+import { orientCADPreviewObject } from './model-preview-orientation'
 import { viewAxisDefinitions } from './view-axis'
 import {
   createViewOrientationChangeEvent,
@@ -22,7 +24,12 @@ import {
   type ViewOrientation,
 } from './view-orientation'
 
-export function ModelPreview() {
+type ModelPreviewProps = {
+  previewFormat?: string
+  previewUrl?: string
+}
+
+export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -45,8 +52,6 @@ export function ModelPreview() {
     container.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    scene.fog = new THREE.Fog(0x1b1d19, 18, 56)
-
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100)
     camera.position.set(8, 6.5, 10)
 
@@ -66,6 +71,9 @@ export function ModelPreview() {
     let controlsFrameID: number | null = null
     let isControlsInteracting = false
     let isProgrammaticCameraUpdate = false
+    const previewCenter = new THREE.Vector3(0, 0, 0)
+    let previewRadius = 4
+    let previewObject: THREE.Object3D | null = null
     const renderScene = () => renderer.render(scene, camera)
     const emitOrientationChange = (orientation: ViewOrientation) => {
       if (orientationDistance(lastEmittedOrientation, orientation) < 0.2) {
@@ -111,18 +119,23 @@ export function ModelPreview() {
       controlsFrameID = null
     }
 
-    const ambient = new THREE.HemisphereLight(0xf4ecd7, 0x293125, 1.5)
+    const ambient = new THREE.AmbientLight(0xdfe6d7, 2.4)
     scene.add(ambient)
 
-    const keyLight = new THREE.DirectionalLight(0xf3ead2, 3.1)
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x5f685d, 1.2)
+    scene.add(hemiLight)
+
+    const keyLight = new THREE.DirectionalLight(0xf3ead2, 1.8)
     keyLight.position.set(5, 7, 4)
-    keyLight.castShadow = true
-    keyLight.shadow.mapSize.set(1024, 1024)
     scene.add(keyLight)
 
-    const fillLight = new THREE.DirectionalLight(0x9fb08f, 1.3)
+    const fillLight = new THREE.DirectionalLight(0xd7dfcc, 2.4)
     fillLight.position.set(-4, 3, -5)
     scene.add(fillLight)
+
+    const cameraLight = new THREE.DirectionalLight(0xffffff, 1.2)
+    camera.add(cameraLight)
+    scene.add(camera)
 
     const grid = new THREE.GridHelper(40, 160, 0x58604f, 0x31362f)
     grid.position.y = -0.52
@@ -193,89 +206,76 @@ export function ModelPreview() {
     }
     scene.add(axesGroup)
 
-    const { assembly, draggableMeshes } = createDemoAssemblyScene()
-    scene.add(assembly)
-
-    const raycaster = new THREE.Raycaster()
-    const pointer = new THREE.Vector2()
-    const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
-    const dragStart = new THREE.Vector3()
-    const assemblyStart = new THREE.Vector3()
-    const planeHit = new THREE.Vector3()
-    const dragDelta = new THREE.Vector3()
-    let activePointerID: number | null = null
-    let isDraggingAssembly = false
-
-    const updatePointer = (event: PointerEvent) => {
-      const rect = renderer.domElement.getBoundingClientRect()
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
-      raycaster.setFromCamera(pointer, camera)
+    const createCADPreviewMaterial = (name = '') => {
+      const normalizedName = name.toLowerCase()
+      const isGlass = normalizedName.includes('lcd') || normalizedName.includes('glass') || name.includes('玻璃')
+      if (isGlass) {
+        return new THREE.MeshStandardMaterial({
+          color: 0x394966,
+          opacity: 0.46,
+          roughness: 0.36,
+          metalness: 0.02,
+          transparent: true,
+          depthWrite: false,
+          flatShading: true,
+          side: THREE.DoubleSide,
+        })
+      }
+      return new THREE.MeshStandardMaterial({
+        color: 0x96a098,
+        roughness: 0.8,
+        metalness: 0.04,
+        flatShading: true,
+        side: THREE.DoubleSide,
+      })
     }
 
-    const handlePointerDown = (event: PointerEvent) => {
-      if (event.button !== 0) {
-        return
+    const addPreviewObject = (object: THREE.Object3D) => {
+      previewObject = object
+      if (previewFormat === 'obj') {
+        orientCADPreviewObject(object)
       }
-      cancelViewAnimation()
-      updatePointer(event)
-      const hits = raycaster.intersectObjects(draggableMeshes, false)
-      if (hits.length === 0) {
-        return
-      }
-
-      const hitPoint = hits[0].point
-      dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), hitPoint)
-      if (!raycaster.ray.intersectPlane(dragPlane, dragStart)) {
-        return
-      }
-
-      activePointerID = event.pointerId
-      isDraggingAssembly = true
-      assemblyStart.copy(assembly.position)
-      cancelControlsUpdate()
-      controls.enabled = false
-      renderer.domElement.setPointerCapture(event.pointerId)
-      renderer.domElement.style.cursor = 'grabbing'
-      event.preventDefault()
+      object.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const objectName = `${child.name} ${child.parent?.name ?? ''}`
+          if (previewFormat === 'obj') {
+            child.material = createCADPreviewMaterial(objectName)
+          } else if (child.material instanceof THREE.Material) {
+            child.material.side = THREE.DoubleSide
+            child.material.needsUpdate = true
+          }
+          child.castShadow = false
+          child.receiveShadow = false
+        } else if (child instanceof THREE.Line) {
+          child.material = new THREE.LineBasicMaterial({
+            color: 0x1c2522,
+            transparent: true,
+            opacity: 0.86,
+            depthTest: false,
+          })
+          child.renderOrder = 10
+        }
+      })
+      const bounds = new THREE.Box3().setFromObject(object)
+      const sphere = new THREE.Sphere()
+      bounds.getBoundingSphere(sphere)
+      previewCenter.copy(sphere.center)
+      previewRadius = Math.max(sphere.radius, 1)
+      scene.add(object)
+      resetView()
     }
 
-    const handlePointerMove = (event: PointerEvent) => {
-      if (activePointerID !== event.pointerId || !isDraggingAssembly) {
-        return
-      }
-      updatePointer(event)
-      if (raycaster.ray.intersectPlane(dragPlane, planeHit)) {
-        dragDelta.copy(planeHit).sub(dragStart)
-        assembly.position.copy(assemblyStart).add(dragDelta)
-        renderScene()
-      }
-      event.preventDefault()
-    }
-
-    const stopDragging = (event: PointerEvent) => {
-      if (activePointerID !== event.pointerId) {
-        return
-      }
-      activePointerID = null
-      isDraggingAssembly = false
-      controls.enabled = true
-      renderer.domElement.style.cursor = 'grab'
-      if (renderer.domElement.hasPointerCapture(event.pointerId)) {
-        renderer.domElement.releasePointerCapture(event.pointerId)
+    if (previewUrl) {
+      if (previewFormat === 'obj') {
+        new OBJLoader().load(previewUrl, addPreviewObject)
+      } else if (previewFormat === 'glb' || previewFormat === 'gltf') {
+        new GLTFLoader().load(previewUrl, (gltf) => addPreviewObject(gltf.scene))
       }
     }
 
     renderer.domElement.style.cursor = 'grab'
-    renderer.domElement.addEventListener('pointerdown', handlePointerDown)
-    renderer.domElement.addEventListener('pointermove', handlePointerMove)
-    renderer.domElement.addEventListener('pointerup', stopDragging)
-    renderer.domElement.addEventListener('pointercancel', stopDragging)
 
     const updateCameraForOrientation = (width: number, height: number, orientation: ViewOrientation) => {
-      const bounds = new THREE.Box3().setFromObject(assembly)
-      const sphere = new THREE.Sphere()
-      bounds.getBoundingSphere(sphere)
       const direction = orientationToViewDirection(orientation)
       const up = orientation.up
         ? new THREE.Vector3(...orientation.up).normalize()
@@ -285,12 +285,12 @@ export function ModelPreview() {
               : ([0, 1, 0] as [number, number, number])),
           )
       const aspect = width / Math.max(height, 1)
-      const viewSize = sphere.radius * (width < 640 ? 2.65 : 2.45)
+      const viewSize = previewRadius * (width < 640 ? 3.8 : 3.6)
 
       isProgrammaticCameraUpdate = true
-      controls.target.copy(sphere.center)
+      controls.target.copy(previewCenter)
       camera.up.copy(up)
-      camera.position.copy(sphere.center).add(direction.multiplyScalar(28))
+      camera.position.copy(previewCenter).add(direction.multiplyScalar(28))
       camera.left = (-viewSize * aspect) / 2
       camera.right = (viewSize * aspect) / 2
       camera.top = viewSize / 2
@@ -298,7 +298,7 @@ export function ModelPreview() {
       camera.near = 0.1
       camera.far = 100
       camera.zoom = 1
-      camera.lookAt(sphere.center)
+      camera.lookAt(previewCenter)
       camera.updateProjectionMatrix()
       camera.updateMatrixWorld()
       controls.update()
@@ -404,22 +404,21 @@ export function ModelPreview() {
       container.removeEventListener(resetViewEventName, handleResetView)
       container.removeEventListener(setViewEventName, handleSetView)
       window.removeEventListener('pageshow', handlePageShow)
-      renderer.domElement.removeEventListener('pointerdown', handlePointerDown)
-      renderer.domElement.removeEventListener('pointermove', handlePointerMove)
-      renderer.domElement.removeEventListener('pointerup', stopDragging)
-      renderer.domElement.removeEventListener('pointercancel', stopDragging)
       controls.removeEventListener('start', startControlsInteraction)
       controls.removeEventListener('end', stopControlsInteraction)
       controls.removeEventListener('change', handleControlsChange)
       controls.dispose()
 
+      if (previewObject) {
+        scene.remove(previewObject)
+      }
       disposeObject3DResources(scene)
       renderer.dispose()
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement)
       }
     }
-  }, [])
+  }, [previewFormat, previewUrl])
 
   return <div ref={containerRef} className="absolute inset-0" data-model-preview />
 }
