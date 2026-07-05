@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
 
 import { createDemoAssemblyScene } from './demo-assembly-scene'
-import { disposeObject3DResources } from './model-preview-resources'
+import { disposeObject3DResources } from './three-object-resources'
 import { viewAxisDefinitions } from './view-axis'
 import {
   createViewOrientationChangeEvent,

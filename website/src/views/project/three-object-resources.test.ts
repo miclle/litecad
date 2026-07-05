@@ -1,9 +1,9 @@
 import { describe, expect, test, vi } from 'vitest'
 import * as THREE from 'three'
 
-import { disposeObject3DResources } from './model-preview-resources'
+import { disposeObject3DResources } from './three-object-resources'
 
-describe('model preview resources', () => {
+describe('three object resources', () => {
   test('disposes shared geometries, materials, and textures once', () => {
     const scene = new THREE.Scene()
     const geometry = new THREE.BoxGeometry(1, 1, 1)
@@ -37,5 +37,22 @@ describe('model preview resources', () => {
 
     expect(firstDispose).toHaveBeenCalledTimes(1)
     expect(secondDispose).toHaveBeenCalledTimes(1)
+  })
+
+  test('disposes textures and materials stored in user data', () => {
+    const scene = new THREE.Scene()
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial())
+    const hoverTexture = new THREE.Texture()
+    const hoverMaterial = new THREE.MeshBasicMaterial()
+    const textureDispose = vi.spyOn(hoverTexture, 'dispose')
+    const materialDispose = vi.spyOn(hoverMaterial, 'dispose')
+    mesh.userData.hoverTexture = hoverTexture
+    mesh.userData.hoverMaterial = hoverMaterial
+    scene.add(mesh)
+
+    disposeObject3DResources(scene)
+
+    expect(textureDispose).toHaveBeenCalledTimes(1)
+    expect(materialDispose).toHaveBeenCalledTimes(1)
   })
 })

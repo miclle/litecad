@@ -29,6 +29,14 @@ export function disposeObject3DResources(root: THREE.Object3D) {
       disposableObject.geometry.dispose()
       disposedGeometries.add(disposableObject.geometry)
     }
+    for (const value of Object.values(disposableObject.userData)) {
+      if (value instanceof THREE.Texture && !disposedTextures.has(value)) {
+        value.dispose()
+        disposedTextures.add(value)
+      } else if (value instanceof THREE.Material) {
+        disposeMaterial(value)
+      }
+    }
     const { material } = disposableObject
     if (Array.isArray(material)) {
       material.forEach(disposeMaterial)

@@ -110,7 +110,7 @@ Signed-in users can open `/projects`, create a project with a name and optional 
 
 The home page renders a Three.js demo shape. The project detail route renders a CAD-style viewer shell with model-tree, tool, view-control, and panel UI. The current viewer does not load persisted CAD geometry yet.
 
-The project workbench keeps reusable view orientation math, ViewCube geometry definitions, ViewCube texture helpers, ViewCube controls, model preview behavior, demo assembly scene setup, viewer event helpers, and model preview resource cleanup in focused frontend modules under `website/src/views/project/`, while the route component remains responsible for project loading and shell layout.
+The project workbench keeps reusable view orientation math, ViewCube geometry definitions, ViewCube texture helpers, ViewCube controls, model preview behavior, demo assembly scene setup, viewer event helpers, and shared Three.js resource cleanup in focused frontend modules under `website/src/views/project/`, while the route component remains responsible for project loading and shell layout.
 
 ## API Surface
 
