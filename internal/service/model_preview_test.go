@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"errors"
 	"os"
 	"testing"
 )
@@ -162,7 +161,7 @@ func TestGetOrCreateProjectModelPreviewStoresConverterPreviewFormat(t *testing.T
 	}
 }
 
-func TestGetOrCreateProjectModelPreviewRejectsSourcePassthroughFormats(t *testing.T) {
+func TestGetOrCreateProjectModelPreviewConvertsSTLToOBJArtifact(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -191,12 +190,21 @@ func TestGetOrCreateProjectModelPreviewRejectsSourcePassthroughFormats(t *testin
 		t.Fatalf("UploadProjectModel returned error: %v", err)
 	}
 
-	_, err = svc.GetOrCreateProjectModelPreview(ctx, user.ID, project.ID, model.ID)
-	if err == nil {
-		t.Fatal("GetOrCreateProjectModelPreview returned nil error for source passthrough format")
+	preview, err := svc.GetOrCreateProjectModelPreview(ctx, user.ID, project.ID, model.ID)
+	if err != nil {
+		t.Fatalf("GetOrCreateProjectModelPreview returned error: %v", err)
 	}
-	if !errors.Is(err, ErrModelPreviewUnavailable) {
-		t.Fatalf("GetOrCreateProjectModelPreview error = %v, want ErrModelPreviewUnavailable", err)
+	if preview.Format != "obj" || preview.ContentType != "model/obj" {
+		t.Fatalf("preview = format %q content type %q, want obj model/obj", preview.Format, preview.ContentType)
+	}
+	if preview.GeneratorVersion != "stl-obj-v1" {
+		t.Fatalf("preview generator version = %q, want stl-obj-v1", preview.GeneratorVersion)
+	}
+	if bytes.Equal(preview.Data, minimalASCIISTL()) {
+		t.Fatal("preview data should be generated OBJ, not source-passthrough STL")
+	}
+	if !bytes.Contains(preview.Data, []byte("f 1 2 3")) {
+		t.Fatalf("preview OBJ data = %q, want face data", string(preview.Data))
 	}
 }
 

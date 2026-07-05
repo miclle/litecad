@@ -2,9 +2,12 @@ package service
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/miclle/litecad/internal/entity"
@@ -16,7 +19,9 @@ import (
 var ErrModelPreviewUnavailable = errors.New("model preview unavailable")
 
 const (
-	stepPreviewGeneratorVersion = "step-preview-v1"
+	stepPreviewGeneratorVersion   = "step-preview-v1"
+	gltfPreviewGeneratorVersion   = "gltf-preview-v1"
+	stlOBJPreviewGeneratorVersion = "stl-obj-v1"
 )
 
 // ModelPreviewConverter converts source CAD data into a browser-previewable mesh.
@@ -72,11 +77,12 @@ func (s *Service) GetOrCreateProjectModelPreview(ctx context.Context, ownerUserI
 	var existing entity.ProjectModelPreviewArtifact
 	err = s.db.WithContext(ctx).First(&existing, "model_id = ?", model.ID).Error
 	if err == nil {
-		if model.Format == "step" && existing.GeneratorVersion != stepPreviewGeneratorVersion {
-			return s.refreshStepPreviewArtifact(ctx, model, existing)
+		expectedGeneratorVersion := modelPreviewGeneratorVersion(model.Format)
+		if expectedGeneratorVersion == "" {
+			return ProjectModelPreviewArtifact{}, ErrUnsupportedModelFormat
 		}
-		if model.Format != "step" {
-			return ProjectModelPreviewArtifact{}, fmt.Errorf("%w: %s source requires backend preview normalization", ErrModelPreviewUnavailable, model.Format)
+		if existing.GeneratorVersion != expectedGeneratorVersion {
+			return s.refreshPreviewArtifact(ctx, model, existing)
 		}
 		if _, ensureErr := s.ensureProjectGeometryVersion(ctx, model.ProjectID, model.ID, existing.ID); ensureErr != nil {
 			return ProjectModelPreviewArtifact{}, ensureErr
@@ -86,11 +92,8 @@ func (s *Service) GetOrCreateProjectModelPreview(ctx context.Context, ownerUserI
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return ProjectModelPreviewArtifact{}, fmt.Errorf("load project model preview: %w", err)
 	}
-	if model.Format != "step" {
-		return ProjectModelPreviewArtifact{}, fmt.Errorf("%w: %s source requires backend preview normalization", ErrModelPreviewUnavailable, model.Format)
-	}
 
-	mesh, err := s.convertStepPreviewMesh(ctx, model)
+	mesh, err := s.convertModelPreviewMesh(ctx, model)
 	if err != nil {
 		return ProjectModelPreviewArtifact{}, err
 	}
@@ -104,7 +107,7 @@ func (s *Service) GetOrCreateProjectModelPreview(ctx context.Context, ownerUserI
 		ModelID:          model.ID,
 		Format:           mesh.Format,
 		ContentType:      mesh.ContentType,
-		GeneratorVersion: stepPreviewGeneratorVersion,
+		GeneratorVersion: modelPreviewGeneratorVersion(model.Format),
 		ByteSize:         int64(len(mesh.Data)),
 		VertexCount:      mesh.VertexCount,
 		FacetCount:       mesh.FacetCount,
@@ -119,34 +122,14 @@ func (s *Service) GetOrCreateProjectModelPreview(ctx context.Context, ownerUserI
 	return publicProjectModelPreview(artifact), nil
 }
 
-func (s *Service) convertStepPreviewMesh(ctx context.Context, model entity.ProjectModel) (ModelPreviewMesh, error) {
-	mesh, err := s.previewConverter.ConvertStepToPreview(ctx, model.SourceData)
-	if err != nil {
-		return ModelPreviewMesh{}, fmt.Errorf("%w: %v", ErrModelPreviewUnavailable, err)
-	}
-	if mesh.Format == "" {
-		mesh.Format = "obj"
-	}
-	if mesh.ContentType == "" {
-		mesh.ContentType = "model/obj"
-	}
-	if mesh.VertexCount == 0 || mesh.FacetCount == 0 {
-		mesh.VertexCount, mesh.FacetCount = countOBJMesh(mesh.Data)
-	}
-	if len(mesh.Data) == 0 || mesh.VertexCount == 0 || mesh.FacetCount == 0 {
-		return ModelPreviewMesh{}, fmt.Errorf("%w: converted mesh is empty", ErrModelPreviewUnavailable)
-	}
-	return mesh, nil
-}
-
-func (s *Service) refreshStepPreviewArtifact(ctx context.Context, model entity.ProjectModel, artifact entity.ProjectModelPreviewArtifact) (ProjectModelPreviewArtifact, error) {
-	mesh, err := s.convertStepPreviewMesh(ctx, model)
+func (s *Service) refreshPreviewArtifact(ctx context.Context, model entity.ProjectModel, artifact entity.ProjectModelPreviewArtifact) (ProjectModelPreviewArtifact, error) {
+	mesh, err := s.convertModelPreviewMesh(ctx, model)
 	if err != nil {
 		return ProjectModelPreviewArtifact{}, err
 	}
 	artifact.Format = mesh.Format
 	artifact.ContentType = mesh.ContentType
-	artifact.GeneratorVersion = stepPreviewGeneratorVersion
+	artifact.GeneratorVersion = modelPreviewGeneratorVersion(model.Format)
 	artifact.ByteSize = int64(len(mesh.Data))
 	artifact.VertexCount = mesh.VertexCount
 	artifact.FacetCount = mesh.FacetCount
@@ -158,6 +141,68 @@ func (s *Service) refreshStepPreviewArtifact(ctx context.Context, model entity.P
 		return ProjectModelPreviewArtifact{}, err
 	}
 	return publicProjectModelPreview(artifact), nil
+}
+
+func (s *Service) convertModelPreviewMesh(ctx context.Context, model entity.ProjectModel) (ModelPreviewMesh, error) {
+	switch model.Format {
+	case "step":
+		mesh, err := s.previewConverter.ConvertStepToPreview(ctx, model.SourceData)
+		if err != nil {
+			return ModelPreviewMesh{}, fmt.Errorf("%w: %v", ErrModelPreviewUnavailable, err)
+		}
+		if mesh.Format == "" {
+			mesh.Format = "obj"
+		}
+		if mesh.ContentType == "" {
+			mesh.ContentType = "model/obj"
+		}
+		if mesh.VertexCount == 0 || mesh.FacetCount == 0 {
+			mesh.VertexCount, mesh.FacetCount = countOBJMesh(mesh.Data)
+		}
+		if len(mesh.Data) == 0 || mesh.VertexCount == 0 || mesh.FacetCount == 0 {
+			return ModelPreviewMesh{}, fmt.Errorf("%w: converted STEP mesh is empty", ErrModelPreviewUnavailable)
+		}
+		return mesh, nil
+	case "glb":
+		if _, err := ExtractGLBMetadata(model.SourceData); err != nil {
+			return ModelPreviewMesh{}, fmt.Errorf("%w: %v", ErrModelPreviewUnavailable, err)
+		}
+		return ModelPreviewMesh{
+			Format:      "glb",
+			ContentType: "model/gltf-binary",
+			Data:        append([]byte(nil), model.SourceData...),
+		}, nil
+	case "gltf":
+		if _, err := ExtractGLTFMetadata(model.SourceData); err != nil {
+			return ModelPreviewMesh{}, fmt.Errorf("%w: %v", ErrModelPreviewUnavailable, err)
+		}
+		return ModelPreviewMesh{
+			Format:      "gltf",
+			ContentType: "model/gltf+json",
+			Data:        append([]byte(nil), model.SourceData...),
+		}, nil
+	case "stl":
+		mesh, err := convertSTLToOBJPreview(model.SourceData)
+		if err != nil {
+			return ModelPreviewMesh{}, fmt.Errorf("%w: %v", ErrModelPreviewUnavailable, err)
+		}
+		return mesh, nil
+	default:
+		return ModelPreviewMesh{}, ErrUnsupportedModelFormat
+	}
+}
+
+func modelPreviewGeneratorVersion(format string) string {
+	switch format {
+	case "step":
+		return stepPreviewGeneratorVersion
+	case "glb", "gltf":
+		return gltfPreviewGeneratorVersion
+	case "stl":
+		return stlOBJPreviewGeneratorVersion
+	default:
+		return ""
+	}
 }
 
 func (s *Service) ensureProjectGeometryVersion(ctx context.Context, projectID, modelID, previewArtifactID string) (ProjectGeometryVersion, error) {
@@ -225,4 +270,119 @@ func countOBJMesh(data []byte) (vertices int, facets int) {
 		}
 	}
 	return vertices, facets
+}
+
+func convertSTLToOBJPreview(data []byte) (ModelPreviewMesh, error) {
+	triangles, err := parseSTLTriangles(data)
+	if err != nil {
+		return ModelPreviewMesh{}, err
+	}
+	var output strings.Builder
+	output.WriteString("# Created by LiteCAD STL preview converter\n")
+	for _, triangle := range triangles {
+		for _, vertex := range triangle {
+			output.WriteString("v ")
+			output.WriteString(strconv.FormatFloat(float64(vertex[0]), 'f', -1, 32))
+			output.WriteByte(' ')
+			output.WriteString(strconv.FormatFloat(float64(vertex[1]), 'f', -1, 32))
+			output.WriteByte(' ')
+			output.WriteString(strconv.FormatFloat(float64(vertex[2]), 'f', -1, 32))
+			output.WriteByte('\n')
+		}
+	}
+	for index := range triangles {
+		base := index*3 + 1
+		output.WriteString("f ")
+		output.WriteString(strconv.Itoa(base))
+		output.WriteByte(' ')
+		output.WriteString(strconv.Itoa(base + 1))
+		output.WriteByte(' ')
+		output.WriteString(strconv.Itoa(base + 2))
+		output.WriteByte('\n')
+	}
+	obj := []byte(output.String())
+	return ModelPreviewMesh{
+		Format:      "obj",
+		ContentType: "model/obj",
+		Data:        obj,
+		VertexCount: len(triangles) * 3,
+		FacetCount:  len(triangles),
+	}, nil
+}
+
+type stlTriangle [3][3]float32
+
+func parseSTLTriangles(data []byte) ([]stlTriangle, error) {
+	if triangles, ok := parseASCIISTLTriangles(data); ok {
+		return triangles, nil
+	}
+	if triangles, ok := parseBinarySTLTriangles(data); ok {
+		return triangles, nil
+	}
+	return nil, errInvalidSTLSource
+}
+
+func parseASCIISTLTriangles(data []byte) ([]stlTriangle, bool) {
+	source := strings.TrimSpace(string(data))
+	lowerSource := strings.ToLower(source)
+	if !strings.HasPrefix(lowerSource, "solid ") || !strings.Contains(lowerSource, "facet normal") {
+		return nil, false
+	}
+	triangles := []stlTriangle{}
+	current := stlTriangle{}
+	vertexIndex := 0
+	scanner := bufio.NewScanner(strings.NewReader(source))
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) != 4 || strings.ToLower(fields[0]) != "vertex" {
+			continue
+		}
+		x, errX := strconv.ParseFloat(fields[1], 32)
+		y, errY := strconv.ParseFloat(fields[2], 32)
+		z, errZ := strconv.ParseFloat(fields[3], 32)
+		if errX != nil || errY != nil || errZ != nil {
+			return nil, false
+		}
+		current[vertexIndex] = [3]float32{float32(x), float32(y), float32(z)}
+		vertexIndex++
+		if vertexIndex == 3 {
+			triangles = append(triangles, current)
+			current = stlTriangle{}
+			vertexIndex = 0
+		}
+	}
+	if len(triangles) == 0 || vertexIndex != 0 {
+		return nil, false
+	}
+	return triangles, true
+}
+
+func parseBinarySTLTriangles(data []byte) ([]stlTriangle, bool) {
+	if len(data) < 84 {
+		return nil, false
+	}
+	triangleCount := int(binary.LittleEndian.Uint32(data[80:84]))
+	if triangleCount <= 0 || 84+triangleCount*50 > len(data) {
+		return nil, false
+	}
+	triangles := make([]stlTriangle, 0, triangleCount)
+	reader := bytes.NewReader(data[84:])
+	for index := 0; index < triangleCount; index++ {
+		var normal [3]float32
+		if err := binary.Read(reader, binary.LittleEndian, &normal); err != nil {
+			return nil, false
+		}
+		var triangle stlTriangle
+		for vertexIndex := 0; vertexIndex < 3; vertexIndex++ {
+			if err := binary.Read(reader, binary.LittleEndian, &triangle[vertexIndex]); err != nil {
+				return nil, false
+			}
+		}
+		var attributes uint16
+		if err := binary.Read(reader, binary.LittleEndian, &attributes); err != nil {
+			return nil, false
+		}
+		triangles = append(triangles, triangle)
+	}
+	return triangles, true
 }

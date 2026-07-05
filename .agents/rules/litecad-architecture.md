@@ -30,7 +30,7 @@ These rules keep LiteCAD product work aligned with the small Go + React single-b
 
 ## Product Boundaries
 
-- Current projects include metadata, uploaded STEP/STP/GLTF/GLB/STL source records, lightweight source metadata, preview artifact metadata, derived OBJ preview artifacts for STEP sources, read-only model tree responses, and generated geometry version snapshots; they are not editable persisted CAD documents.
+- Current projects include metadata, uploaded STEP/STP/GLTF/GLB/STL source records, lightweight source metadata, preview artifact metadata, derived STEP/STL OBJ preview artifacts, backend-published GLTF/GLB preview artifacts, read-only model tree responses, and generated geometry version snapshots; they are not editable persisted CAD documents.
 - Keep CAD source parsing and preview normalization on the backend side. Frontend viewer code should consume backend-provided preview artifacts, not raw CAD source uploads.
 - The home and project workbench Three.js surfaces must use project-owned source or derived preview data instead of hard-coded demo geometry.
 - Treat AI generation, measurement, export, editable geometry documents, and full STEP B-rep semantics as roadmap work unless the code implements the end-to-end flow.

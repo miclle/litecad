@@ -95,11 +95,11 @@ Run `task check`, `task test`, `git diff --check`, then commit this stage.
 - Consumes: GLTF/GLB/STL uploads.
 - Produces: backend-generated normalized preview artifacts so the frontend does not load source uploads directly.
 
-- [ ] **Step 1: Write failing tests for non-STEP preview normalization**
-- [ ] **Step 2: Verify failure**
-- [ ] **Step 3: Implement backend normalization or clear unsupported-preview errors**
-- [ ] **Step 4: Remove frontend loaders made unnecessary by canonical preview format**
-- [ ] **Step 5: Verify, update docs, and commit**
+- [x] **Step 1: Write failing tests for non-STEP preview normalization**
+- [x] **Step 2: Verify failure**
+- [x] **Step 3: Implement backend normalization or clear unsupported-preview errors**
+- [x] **Step 4: Remove frontend loaders made unnecessary by canonical preview format**
+- [x] **Step 5: Verify, update docs, and commit**
 
 ### Task 4: Geometry API Follow-Through
 

@@ -7,7 +7,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/miclle/litecad/internal/service"
@@ -347,11 +346,14 @@ func TestProjectModelRoutesUploadSTLPreview(t *testing.T) {
 	}
 
 	preview := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/models/"+uploadResponse.Model.ID+"/preview", sessionCookie)
-	if preview.Code != http.StatusBadRequest {
+	if preview.Code != http.StatusOK {
 		t.Fatalf("preview status = %d, body = %s", preview.Code, preview.Body.String())
 	}
-	if body := preview.Body.String(); !strings.Contains(body, "model preview unavailable") {
-		t.Fatalf("preview body = %q, want model preview unavailable", body)
+	if contentType := preview.Header().Get("Content-Type"); contentType != "model/obj" {
+		t.Fatalf("preview content type = %q, want model/obj", contentType)
+	}
+	if !bytes.Contains(preview.Body.Bytes(), []byte("f 1 2 3")) {
+		t.Fatalf("preview body should contain OBJ face data, got %q", preview.Body.String())
 	}
 }
 

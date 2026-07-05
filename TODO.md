@@ -5,8 +5,8 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 ## Product Capability
 
 - Define the persisted CAD document model beyond uploaded source-file records, lightweight metadata, generated preview artifacts, and read-only geometry snapshots. Current projects do not store editable CAD features, B-rep semantics, or versioned editable geometry documents.
-- Continue the CAD import and geometry pipeline beyond completed STEP/STP/GLTF/GLB/STL source upload, lightweight metadata extraction, STEP-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API:
-  - Promote backend preview generation to a canonical Three.js-friendly artifact format, preferably GLB, so STEP/GLTF/GLB/STL sources are all parsed or normalized on the Go/backend side instead of being source-passthrough browser previews. FreeCAD's headless `Mesh.export` path currently supports the OBJ fallback but did not export GLB directly in local verification, so GLB likely needs a dedicated converter step or packaged geometry service.
+- Continue the CAD import and geometry pipeline beyond completed STEP/STP/GLTF/GLB/STL source upload, lightweight metadata extraction, STEP-to-OBJ preview conversion, GLB/GLTF preview publishing, STL-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API:
+  - Promote backend preview generation to a canonical Three.js-friendly artifact format, preferably GLB, so STEP and STL previews do not remain OBJ fallback artifacts. FreeCAD's headless `Mesh.export` path currently supports the OBJ fallback but did not export GLB directly in local verification, so GLB likely needs a dedicated converter step or packaged geometry service.
   - Define editable geometry records and CAD feature/version semantics beyond uploaded sources, preview artifacts, and generated read-only version snapshots.
 - Decide whether STEP preview conversion should remain FreeCAD-backed server-side conversion or move toward a packaged/headless geometry service for production.
 - Add measurement, sectioning, edge display, and export workflows after real geometry is available.

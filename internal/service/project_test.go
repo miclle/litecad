@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -223,9 +224,18 @@ func TestUploadProjectModelStoresGLBAsset(t *testing.T) {
 		t.Fatalf("model metadata = %+v, want glb version 2", model.Metadata)
 	}
 
-	_, err = svc.GetOrCreateProjectModelPreview(ctx, user.ID, project.ID, model.ID)
-	if !errors.Is(err, ErrModelPreviewUnavailable) {
-		t.Fatalf("GetOrCreateProjectModelPreview error = %v, want ErrModelPreviewUnavailable", err)
+	preview, err := svc.GetOrCreateProjectModelPreview(ctx, user.ID, project.ID, model.ID)
+	if err != nil {
+		t.Fatalf("GetOrCreateProjectModelPreview returned error: %v", err)
+	}
+	if preview.Format != "glb" || preview.ContentType != "model/gltf-binary" {
+		t.Fatalf("preview = format %q content type %q", preview.Format, preview.ContentType)
+	}
+	if preview.GeneratorVersion != "gltf-preview-v1" {
+		t.Fatalf("preview generator version = %q, want gltf-preview-v1", preview.GeneratorVersion)
+	}
+	if !bytes.Equal(preview.Data, minimalGLB()) {
+		t.Fatal("GLB preview should be published by backend after source validation")
 	}
 }
 
@@ -251,9 +261,15 @@ func TestUploadProjectModelStoresGLTFAsset(t *testing.T) {
 		t.Fatalf("model metadata = %+v, want gltf version 2.0 with one mesh", model.Metadata)
 	}
 
-	_, err = svc.GetOrCreateProjectModelPreview(ctx, user.ID, project.ID, model.ID)
-	if !errors.Is(err, ErrModelPreviewUnavailable) {
-		t.Fatalf("GetOrCreateProjectModelPreview error = %v, want ErrModelPreviewUnavailable", err)
+	preview, err := svc.GetOrCreateProjectModelPreview(ctx, user.ID, project.ID, model.ID)
+	if err != nil {
+		t.Fatalf("GetOrCreateProjectModelPreview returned error: %v", err)
+	}
+	if preview.Format != "gltf" || preview.ContentType != "model/gltf+json" {
+		t.Fatalf("preview = format %q content type %q", preview.Format, preview.ContentType)
+	}
+	if preview.GeneratorVersion != "gltf-preview-v1" {
+		t.Fatalf("preview generator version = %q, want gltf-preview-v1", preview.GeneratorVersion)
 	}
 }
 
@@ -282,9 +298,21 @@ func TestUploadProjectModelStoresSTLAsset(t *testing.T) {
 		t.Fatalf("model metadata = %+v, want stl with one triangle", model.Metadata)
 	}
 
-	_, err = svc.GetOrCreateProjectModelPreview(ctx, user.ID, project.ID, model.ID)
-	if !errors.Is(err, ErrModelPreviewUnavailable) {
-		t.Fatalf("GetOrCreateProjectModelPreview error = %v, want ErrModelPreviewUnavailable", err)
+	preview, err := svc.GetOrCreateProjectModelPreview(ctx, user.ID, project.ID, model.ID)
+	if err != nil {
+		t.Fatalf("GetOrCreateProjectModelPreview returned error: %v", err)
+	}
+	if preview.Format != "obj" || preview.ContentType != "model/obj" {
+		t.Fatalf("preview = format %q content type %q", preview.Format, preview.ContentType)
+	}
+	if preview.GeneratorVersion != "stl-obj-v1" {
+		t.Fatalf("preview generator version = %q, want stl-obj-v1", preview.GeneratorVersion)
+	}
+	if preview.FacetCount != 1 || preview.VertexCount != 3 {
+		t.Fatalf("preview counts = facets %d vertices %d, want 1 and 3", preview.FacetCount, preview.VertexCount)
+	}
+	if !bytes.Contains(preview.Data, []byte("f 1 2 3")) {
+		t.Fatalf("preview OBJ data = %q, want face data", string(preview.Data))
 	}
 }
 
