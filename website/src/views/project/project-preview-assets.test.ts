@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest'
 
-import { buildProjectPreviewAssets, parsedPreviewModels, projectPreviewSummary } from './project-preview-assets'
+import {
+  buildProjectPreviewAssets,
+  parsedPreviewModels,
+  projectPreviewAssetSignature,
+  projectPreviewSummary,
+} from './project-preview-assets'
 import type { ProjectModel, ProjectModelPreviewArtifact } from 'src/types/project'
 
 const baseModel = {
@@ -94,5 +99,25 @@ describe('project preview assets', () => {
       sourceBody: 'The project owns 2 uploaded source files and 2 browser-loadable preview meshes.',
       isReady: true,
     })
+  })
+
+  test('creates a stable preview signature from asset content instead of array identity', () => {
+    const firstAssets = [
+      {
+        modelId: 'mdl_pulley',
+        name: 'CyberGearTimingPulley',
+        previewFormat: 'obj',
+        previewUrl: 'blob:pulley',
+      },
+      {
+        modelId: 'mdl_connector',
+        name: 'Bearing connector',
+        previewFormat: 'obj',
+        previewUrl: 'blob:connector',
+      },
+    ] as const
+    const secondAssets = firstAssets.map((asset) => ({ ...asset }))
+
+    expect(projectPreviewAssetSignature(firstAssets)).toBe(projectPreviewAssetSignature(secondAssets))
   })
 })

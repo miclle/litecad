@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
@@ -23,7 +23,7 @@ import {
   viewOrientationAnimationDuration,
   type ViewOrientation,
 } from './view-orientation'
-import type { ProjectPreviewAsset } from './project-preview-assets'
+import { projectPreviewAssetSignature, type ProjectPreviewAsset } from './project-preview-assets'
 
 type ModelPreviewProps = {
   previewAssets?: ProjectPreviewAsset[]
@@ -132,6 +132,7 @@ const previewMaterialColors = [0xb6c0b8, 0xc4b78a, 0x9fb6c8, 0xc7a0a0, 0xa8bea0]
 
 export function ModelPreview({ previewAssets = [] }: ModelPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const previewAssetSignature = useMemo(() => projectPreviewAssetSignature(previewAssets), [previewAssets])
 
   useEffect(() => {
     const container = containerRef.current
@@ -557,7 +558,9 @@ export function ModelPreview({ previewAssets = [] }: ModelPreviewProps) {
         container.removeChild(renderer.domElement)
       }
     }
-  }, [previewAssets])
+    // The parent can re-render during view changes; only rebuild the Three.js scene when asset content changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewAssetSignature])
 
   return (
     <div

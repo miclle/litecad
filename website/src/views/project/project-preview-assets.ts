@@ -41,6 +41,10 @@ export function buildProjectPreviewAssets(
   })
 }
 
+export function projectPreviewAssetSignature(assets: readonly ProjectPreviewAsset[]) {
+  return assets.map((asset) => `${asset.modelId}:${asset.previewFormat}:${asset.previewUrl}`).join('|')
+}
+
 export function getModelDisplayName(model: ProjectModel) {
   const parsedName = model.metadata.product_names[0]?.trim()
   if (parsedName) {
