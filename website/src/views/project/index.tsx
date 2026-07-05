@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import * as THREE from 'three'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
 import {
   ArrowLeft,
   Box,
@@ -58,8 +58,14 @@ const modelTree = [
 ]
 
 type ViewOrientation = {
+  direction?: [number, number, number]
   pitch: number
+  up?: [number, number, number]
   yaw: number
+}
+type ViewRotationStep = {
+  horizontal?: number
+  vertical?: number
 }
 
 type HorizontalFace = 'front' | 'right' | 'back' | 'left'
@@ -77,7 +83,15 @@ const isViewOrientation = (orientation: unknown): orientation is ViewOrientation
     return false
   }
   const candidate = orientation as Partial<ViewOrientation>
-  return Number.isFinite(candidate.yaw) && Number.isFinite(candidate.pitch)
+  const hasValidDirection =
+    candidate.direction === undefined ||
+    (Array.isArray(candidate.direction) &&
+      candidate.direction.length === 3 &&
+      candidate.direction.every((value) => Number.isFinite(value)))
+  const hasValidUp =
+    candidate.up === undefined ||
+    (Array.isArray(candidate.up) && candidate.up.length === 3 && candidate.up.every((value) => Number.isFinite(value)))
+  return Number.isFinite(candidate.yaw) && Number.isFinite(candidate.pitch) && hasValidDirection && hasValidUp
 }
 const orientationToDirection = ({ yaw, pitch }: ViewOrientation) => {
   const yawRadians = (normalizeYaw(yaw) * Math.PI) / 180
@@ -90,6 +104,16 @@ const orientationToDirection = ({ yaw, pitch }: ViewOrientation) => {
     Math.cos(yawRadians) * levelRadius,
   ).normalize()
 }
+const orientationToViewDirection = (orientation: ViewOrientation) =>
+  orientation.direction ? new THREE.Vector3(...orientation.direction).normalize() : orientationToDirection(orientation)
+const fallbackUpForDirection = (direction: THREE.Vector3) =>
+  new THREE.Vector3(
+    ...(Math.abs(direction.y) > 0.98
+      ? ([0, 0, direction.y > 0 ? -1 : 1] as [number, number, number])
+      : ([0, 1, 0] as [number, number, number])),
+  )
+const orientationToViewUp = (orientation: ViewOrientation) =>
+  (orientation.up ? new THREE.Vector3(...orientation.up) : fallbackUpForDirection(orientationToViewDirection(orientation))).normalize()
 const directionToOrientation = (direction: THREE.Vector3) => {
   const normalizedDirection = direction.clone().normalize()
   return createOrientation(
@@ -97,18 +121,61 @@ const directionToOrientation = (direction: THREE.Vector3) => {
     (Math.asin(THREE.MathUtils.clamp(normalizedDirection.y, -1, 1)) * 180) / Math.PI,
   )
 }
+const cameraToOrientation = (camera: THREE.Camera, target: THREE.Vector3): ViewOrientation => {
+  const direction = camera.position.clone().sub(target).normalize()
+  const orientation = directionToOrientation(direction)
+  const up = camera.up.clone().normalize()
+  return { ...orientation, direction: [direction.x, direction.y, direction.z], up: [up.x, up.y, up.z] }
+}
+const createFreeOrientation = (direction: THREE.Vector3, up: THREE.Vector3): ViewOrientation => {
+  const normalizedDirection = direction.clone().normalize()
+  const normalizedUp = up.clone().normalize()
+  const orientation = directionToOrientation(normalizedDirection)
+  return {
+    ...orientation,
+    direction: [normalizedDirection.x, normalizedDirection.y, normalizedDirection.z],
+    up: [normalizedUp.x, normalizedUp.y, normalizedUp.z],
+  }
+}
+const orientationToQuaternion = (orientation: ViewOrientation) =>
+  new THREE.Quaternion().setFromRotationMatrix(
+    new THREE.Matrix4().lookAt(orientationToViewDirection(orientation), new THREE.Vector3(0, 0, 0), orientationToViewUp(orientation)),
+  )
 const orientationDistance = (first: ViewOrientation, second: ViewOrientation) => {
-  const yawDistance = Math.abs(((first.yaw - second.yaw + 540) % 360) - 180)
-  return yawDistance + Math.abs(first.pitch - second.pitch)
+  const firstDirection = orientationToViewDirection(first)
+  const secondDirection = orientationToViewDirection(second)
+  const directionDistance = (firstDirection.angleTo(secondDirection) * 180) / Math.PI
+  const firstUp = first.up ? new THREE.Vector3(...first.up).normalize() : null
+  const secondUp = second.up ? new THREE.Vector3(...second.up).normalize() : null
+  const upDistance = firstUp && secondUp ? (firstUp.angleTo(secondUp) * 180) / Math.PI : 0
+  return directionDistance + upDistance
 }
 const viewOrientationAnimationDuration = 360
 const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3)
 const interpolateOrientation = (from: ViewOrientation, to: ViewOrientation, progress: number) => {
-  const yawDelta = ((to.yaw - from.yaw + 540) % 360) - 180
-  return createOrientation(
-    from.yaw + yawDelta * progress,
-    from.pitch + (to.pitch - from.pitch) * progress,
+  const quaternion = orientationToQuaternion(from).slerp(orientationToQuaternion(to), progress)
+  return createFreeOrientation(
+    new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion),
+    new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion),
   )
+}
+const rotateOrientation = (orientation: ViewOrientation, step: ViewRotationStep) => {
+  const direction = orientationToViewDirection(orientation)
+  const up = orientationToViewUp(orientation)
+  const right = new THREE.Vector3().crossVectors(up, direction).normalize()
+  if (right.lengthSq() < 0.000001) {
+    return orientation
+  }
+
+  const rotation = new THREE.Quaternion()
+  if (step.horizontal) {
+    rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(up, THREE.MathUtils.degToRad(step.horizontal)))
+  }
+  if (step.vertical) {
+    rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(right, THREE.MathUtils.degToRad(step.vertical)))
+  }
+
+  return createFreeOrientation(direction.applyQuaternion(rotation), up.applyQuaternion(rotation))
 }
 
 type ViewCubeFaceID = HorizontalFace | 'top' | 'bottom'
@@ -618,13 +685,16 @@ function ViewCube3D({
     const render = (nextOrientation: ViewOrientation) => {
       displayedOrientationRef.current = nextOrientation
       updateSize()
-      const direction = orientationToDirection(nextOrientation)
-      const up =
-        Math.abs(direction.y) > 0.98
-          ? ([0, 0, direction.y > 0 ? -1 : 1] as [number, number, number])
-          : ([0, 1, 0] as [number, number, number])
+      const direction = orientationToViewDirection(nextOrientation)
+      const up = nextOrientation.up
+        ? new THREE.Vector3(...nextOrientation.up).normalize()
+        : new THREE.Vector3(
+            ...(Math.abs(direction.y) > 0.98
+              ? ([0, 0, direction.y > 0 ? -1 : 1] as [number, number, number])
+              : ([0, 1, 0] as [number, number, number])),
+          )
       camera.position.copy(direction.multiplyScalar(5))
-      camera.up.set(...up)
+      camera.up.copy(up)
       camera.lookAt(0, 0, 0)
       camera.updateMatrixWorld()
       renderer.render(scene, camera)
@@ -815,7 +885,7 @@ function ViewController({
   orientation: ViewOrientation
   onFlip: () => void
   onSetOrientation: (orientation: ViewOrientation) => void
-  onStep: (delta: Partial<ViewOrientation>) => void
+  onStep: (step: ViewRotationStep) => void
 }) {
   const arrowButtonClass =
     'absolute z-30 grid size-6 place-items-center outline-none transition hover:scale-110 focus-visible:outline-none'
@@ -832,7 +902,7 @@ function ViewController({
       <button
         aria-label="Tilt view up"
         className={`${arrowButtonClass} group left-1/2 top-0 -translate-x-1/2`}
-        onClick={() => onStep({ pitch: -45 })}
+        onClick={() => onStep({ vertical: 45 })}
         title="Tilt view up"
         type="button"
       >
@@ -842,7 +912,7 @@ function ViewController({
       <button
         aria-label="Rotate view left 45 degrees"
         className={`${arrowButtonClass} group left-0 top-1/2 -translate-y-1/2`}
-        onClick={() => onStep({ yaw: 45 })}
+        onClick={() => onStep({ horizontal: 45 })}
         title="Rotate view left 45 degrees"
         type="button"
       >
@@ -852,7 +922,7 @@ function ViewController({
       <button
         aria-label="Rotate view right 45 degrees"
         className={`${arrowButtonClass} group right-0 top-1/2 -translate-y-1/2`}
-        onClick={() => onStep({ yaw: -45 })}
+        onClick={() => onStep({ horizontal: -45 })}
         title="Rotate view right 45 degrees"
         type="button"
       >
@@ -862,7 +932,7 @@ function ViewController({
       <button
         aria-label="Tilt view down"
         className={`${arrowButtonClass} group bottom-0 left-1/2 -translate-x-1/2`}
-        onClick={() => onStep({ pitch: 45 })}
+        onClick={() => onStep({ vertical: -45 })}
         title="Tilt view down"
         type="button"
       >
@@ -872,7 +942,7 @@ function ViewController({
       <button
         aria-label="Rotate view left"
         className={`${arcButtonClass} left-[18px] top-3.5`}
-        onClick={() => onStep({ yaw: -45 })}
+        onClick={() => onStep({ horizontal: -45 })}
         title="Rotate view left"
         type="button"
       >
@@ -887,7 +957,7 @@ function ViewController({
       <button
         aria-label="Rotate view right"
         className={`${arcButtonClass} right-[18px] top-3.5`}
-        onClick={() => onStep({ yaw: 45 })}
+        onClick={() => onStep({ horizontal: 45 })}
         title="Rotate view right"
         type="button"
       >
@@ -946,17 +1016,21 @@ function ModelPreview() {
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100)
     camera.position.set(8, 6.5, 10)
 
-    const controls = new OrbitControls(camera, renderer.domElement)
-    controls.enableDamping = false
-    controls.enablePan = true
-    controls.screenSpacePanning = true
-    controls.zoomToCursor = true
+    const controls = new TrackballControls(camera, renderer.domElement)
+    controls.staticMoving = true
+    controls.noPan = false
+    controls.noZoom = false
+    controls.rotateSpeed = 1.2
+    controls.panSpeed = 0.35
+    controls.zoomSpeed = 1.15
     controls.minZoom = 0.55
     controls.maxZoom = 4
     controls.target.set(0, 0.15, 0)
     let activeOrientation = initialViewOrientation
     let lastEmittedOrientation = initialViewOrientation
     let viewAnimationFrameID: number | null = null
+    let controlsFrameID: number | null = null
+    let isControlsInteracting = false
     let isProgrammaticCameraUpdate = false
     const renderScene = () => renderer.render(scene, camera)
     const emitOrientationChange = (orientation: ViewOrientation) => {
@@ -970,11 +1044,38 @@ function ModelPreview() {
       if (isProgrammaticCameraUpdate) {
         return
       }
-      activeOrientation = directionToOrientation(camera.position.clone().sub(controls.target))
+      activeOrientation = cameraToOrientation(camera, controls.target)
       emitOrientationChange(activeOrientation)
       renderScene()
     }
     controls.addEventListener('change', handleControlsChange)
+
+    const updateControls = () => {
+      controls.update()
+      if (isControlsInteracting) {
+        controlsFrameID = window.requestAnimationFrame(updateControls)
+        return
+      }
+      controlsFrameID = null
+    }
+    const startControlsInteraction = () => {
+      cancelViewAnimation()
+      isControlsInteracting = true
+      if (controlsFrameID === null) {
+        controlsFrameID = window.requestAnimationFrame(updateControls)
+      }
+    }
+    const stopControlsInteraction = () => {
+      isControlsInteracting = false
+    }
+    const cancelControlsUpdate = () => {
+      isControlsInteracting = false
+      if (controlsFrameID === null) {
+        return
+      }
+      window.cancelAnimationFrame(controlsFrameID)
+      controlsFrameID = null
+    }
 
     const ambient = new THREE.HemisphereLight(0xf4ecd7, 0x293125, 1.5)
     scene.add(ambient)
@@ -1158,6 +1259,7 @@ function ModelPreview() {
       activePointerID = event.pointerId
       isDraggingAssembly = true
       assemblyStart.copy(assembly.position)
+      cancelControlsUpdate()
       controls.enabled = false
       renderer.domElement.setPointerCapture(event.pointerId)
       renderer.domElement.style.cursor = 'grabbing'
@@ -1211,17 +1313,20 @@ function ModelPreview() {
       const bounds = new THREE.Box3().setFromObject(assembly)
       const sphere = new THREE.Sphere()
       bounds.getBoundingSphere(sphere)
-      const direction = orientationToDirection(orientation)
-      const up =
-        Math.abs(direction.y) > 0.98
-          ? ([0, 0, direction.y > 0 ? -1 : 1] as [number, number, number])
-          : ([0, 1, 0] as [number, number, number])
+      const direction = orientationToViewDirection(orientation)
+      const up = orientation.up
+        ? new THREE.Vector3(...orientation.up).normalize()
+        : new THREE.Vector3(
+            ...(Math.abs(direction.y) > 0.98
+              ? ([0, 0, direction.y > 0 ? -1 : 1] as [number, number, number])
+              : ([0, 1, 0] as [number, number, number])),
+          )
       const aspect = width / Math.max(height, 1)
       const viewSize = sphere.radius * (width < 640 ? 2.65 : 2.45)
 
       isProgrammaticCameraUpdate = true
       controls.target.copy(sphere.center)
-      camera.up.set(...up)
+      camera.up.copy(up)
       camera.position.copy(sphere.center).add(direction.multiplyScalar(28))
       camera.left = (-viewSize * aspect) / 2
       camera.right = (viewSize * aspect) / 2
@@ -1243,7 +1348,7 @@ function ModelPreview() {
       }
       window.cancelAnimationFrame(viewAnimationFrameID)
       viewAnimationFrameID = null
-      activeOrientation = directionToOrientation(camera.position.clone().sub(controls.target))
+      activeOrientation = cameraToOrientation(camera, controls.target)
       lastEmittedOrientation = activeOrientation
       window.dispatchEvent(new CustomEvent('litecad:view-orientation-change', { detail: { orientation: activeOrientation } }))
     }
@@ -1252,12 +1357,17 @@ function ModelPreview() {
       updateCameraForOrientation(width, height, activeOrientation)
     }
 
+    const setRendererSize = (width: number, height: number) => {
+      renderer.setSize(width, height)
+      controls.handleResize()
+    }
+
     const animateViewOrientation = (nextOrientation: ViewOrientation) => {
       const { width, height } = container.getBoundingClientRect()
       if (width === 0 || height === 0) {
         return
       }
-      renderer.setSize(width, height)
+      setRendererSize(width, height)
       cancelViewAnimation()
       const startOrientation = activeOrientation
       activeOrientation = nextOrientation
@@ -1293,7 +1403,7 @@ function ModelPreview() {
         return
       }
       cancelViewAnimation()
-      renderer.setSize(width, height)
+      setRendererSize(width, height)
       fitCameraToModel(width, height)
       renderScene()
     }
@@ -1314,15 +1424,21 @@ function ModelPreview() {
       if (!isViewOrientation(orientation)) {
         return
       }
-      animateViewOrientation(createOrientation(orientation.yaw, orientation.pitch))
+      animateViewOrientation({
+        ...createOrientation(orientation.yaw, orientation.pitch),
+        ...(orientation.direction ? { direction: orientation.direction } : {}),
+        ...(orientation.up ? { up: orientation.up } : {}),
+      })
     }
     container.addEventListener('litecad:reset-view', handleResetView)
     container.addEventListener('litecad:set-view', handleSetView)
     window.addEventListener('pageshow', handlePageShow)
-    controls.addEventListener('start', cancelViewAnimation)
+    controls.addEventListener('start', startControlsInteraction)
+    controls.addEventListener('end', stopControlsInteraction)
 
     return () => {
       cancelViewAnimation()
+      cancelControlsUpdate()
       window.cancelAnimationFrame(resetFrameID)
       window.clearTimeout(resetTimeoutID)
       resizeObserver.disconnect()
@@ -1333,7 +1449,8 @@ function ModelPreview() {
       renderer.domElement.removeEventListener('pointermove', handlePointerMove)
       renderer.domElement.removeEventListener('pointerup', stopDragging)
       renderer.domElement.removeEventListener('pointercancel', stopDragging)
-      controls.removeEventListener('start', cancelViewAnimation)
+      controls.removeEventListener('start', startControlsInteraction)
+      controls.removeEventListener('end', stopControlsInteraction)
       controls.removeEventListener('change', handleControlsChange)
       controls.dispose()
 
@@ -1399,7 +1516,11 @@ function ProjectView() {
       if (!isViewOrientation(orientation)) {
         return
       }
-      const nextOrientation = createOrientation(orientation.yaw, orientation.pitch)
+      const nextOrientation = {
+        ...createOrientation(orientation.yaw, orientation.pitch),
+        ...(orientation.direction ? { direction: orientation.direction } : {}),
+        ...(orientation.up ? { up: orientation.up } : {}),
+      }
       setAnimateViewCubeOrientation(false)
       setViewOrientation((currentOrientation) =>
         orientationDistance(currentOrientation, nextOrientation) < 0.2 ? currentOrientation : nextOrientation,
@@ -1449,20 +1570,22 @@ function ProjectView() {
   const LeftPanelIcon = isLeftPanelCollapsed ? PanelLeftOpen : PanelLeftClose
   const RightPanelIcon = isRightPanelCollapsed ? PanelRightOpen : PanelRightClose
   const applyCanvasOrientation = (orientation: ViewOrientation) => {
-    const nextOrientation = createOrientation(orientation.yaw, orientation.pitch)
+    const nextOrientation = {
+      ...createOrientation(orientation.yaw, orientation.pitch),
+      ...(orientation.direction ? { direction: orientation.direction } : {}),
+      ...(orientation.up ? { up: orientation.up } : {}),
+    }
     setAnimateViewCubeOrientation(true)
     setViewOrientation(nextOrientation)
     document
       .querySelector('[data-model-preview]')
       ?.dispatchEvent(new CustomEvent('litecad:set-view', { detail: { orientation: nextOrientation } }))
   }
-  const stepCanvasOrientation = (delta: Partial<ViewOrientation>) => {
-    applyCanvasOrientation(
-      createOrientation(viewOrientation.yaw + (delta.yaw ?? 0), viewOrientation.pitch + (delta.pitch ?? 0)),
-    )
+  const stepCanvasOrientation = (step: ViewRotationStep) => {
+    applyCanvasOrientation(rotateOrientation(viewOrientation, step))
   }
   const flipCanvasOrientation = () => {
-    applyCanvasOrientation(createOrientation(viewOrientation.yaw + 180, viewOrientation.pitch))
+    applyCanvasOrientation(rotateOrientation(viewOrientation, { horizontal: 180 }))
   }
 
   return (
