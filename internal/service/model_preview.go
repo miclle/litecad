@@ -114,12 +114,26 @@ func (s *Service) GetOrCreateProjectModelPreview(ctx context.Context, ownerUserI
 		Data:             append([]byte(nil), mesh.Data...),
 	}
 	if err := s.db.WithContext(ctx).Create(&artifact).Error; err != nil {
+		if isUniqueConstraintError(err) {
+			return s.getExistingProjectModelPreview(ctx, model)
+		}
 		return ProjectModelPreviewArtifact{}, fmt.Errorf("store project model preview: %w", err)
 	}
 	if _, err := s.ensureProjectGeometryVersion(ctx, model.ProjectID, model.ID, artifact.ID); err != nil {
 		return ProjectModelPreviewArtifact{}, err
 	}
 	return publicProjectModelPreview(artifact), nil
+}
+
+func (s *Service) getExistingProjectModelPreview(ctx context.Context, model entity.ProjectModel) (ProjectModelPreviewArtifact, error) {
+	var existing entity.ProjectModelPreviewArtifact
+	if err := s.db.WithContext(ctx).First(&existing, "model_id = ?", model.ID).Error; err != nil {
+		return ProjectModelPreviewArtifact{}, fmt.Errorf("load concurrent project model preview: %w", err)
+	}
+	if _, err := s.ensureProjectGeometryVersion(ctx, model.ProjectID, model.ID, existing.ID); err != nil {
+		return ProjectModelPreviewArtifact{}, err
+	}
+	return publicProjectModelPreview(existing), nil
 }
 
 func (s *Service) refreshPreviewArtifact(ctx context.Context, model entity.ProjectModel, artifact entity.ProjectModelPreviewArtifact) (ProjectModelPreviewArtifact, error) {
@@ -203,6 +217,17 @@ func modelPreviewGeneratorVersion(format string) string {
 	default:
 		return ""
 	}
+}
+
+func isUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unique constraint") ||
+		strings.Contains(message, "duplicate key") ||
+		strings.Contains(message, "duplicate entry") ||
+		strings.Contains(message, "violates unique")
 }
 
 func (s *Service) ensureProjectGeometryVersion(ctx context.Context, projectID, modelID, previewArtifactID string) (ProjectGeometryVersion, error) {

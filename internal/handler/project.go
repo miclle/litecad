@@ -103,8 +103,18 @@ func (ctrl *Ctrl) UploadProjectModel(c *fox.Context) error {
 		return err
 	}
 
+	maxUploadBytes := int64(service.MaxProjectModelUploadBytes)
+	if c.Request.ContentLength > maxUploadBytes {
+		return httperr.NewRequestEntityTooLarge("model upload is too large")
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadBytes+1)
+
 	file, header, err := c.Request.FormFile("model")
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			return httperr.NewRequestEntityTooLarge("model upload is too large")
+		}
 		return httperr.NewBadRequest("model file is required")
 	}
 	defer func() {

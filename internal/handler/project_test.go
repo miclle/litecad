@@ -357,6 +357,46 @@ func TestProjectModelRoutesUploadSTLPreview(t *testing.T) {
 	}
 }
 
+func TestProjectModelRoutesRejectOversizedUploadBeforeMultipartParsing(t *testing.T) {
+	router := newTestRouter(t)
+
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name":     "Ada Lovelace",
+		"email":    "oversized@example.com",
+		"password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+
+	create := postJSONWithCookie(t, router, "/api/v1/projects", map[string]string{
+		"name": "Oversized upload",
+	}, sessionCookie)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", create.Code, create.Body.String())
+	}
+	var createResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/projects/"+createResponse.Project.ID+"/models", bytes.NewReader([]byte("not multipart")))
+	req.ContentLength = service.MaxProjectModelUploadBytes + 1
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=oversized")
+	req.AddCookie(sessionCookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("upload status = %d, want %d, body = %s", rec.Code, http.StatusRequestEntityTooLarge, rec.Body.String())
+	}
+}
+
 func minimalHandlerASCIISTL() []byte {
 	return []byte(`solid case
 facet normal 0 0 1

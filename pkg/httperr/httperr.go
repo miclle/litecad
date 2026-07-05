@@ -26,6 +26,11 @@ func NewBadRequest(message string) *StatusError {
 	return &StatusError{Code: http.StatusBadRequest, Message: message}
 }
 
+// NewRequestEntityTooLarge returns a 413 StatusError carrying message.
+func NewRequestEntityTooLarge(message string) *StatusError {
+	return &StatusError{Code: http.StatusRequestEntityTooLarge, Message: message}
+}
+
 // NewUnauthorized returns a 401 StatusError carrying message.
 func NewUnauthorized(message string) *StatusError {
 	return &StatusError{Code: http.StatusUnauthorized, Message: message}

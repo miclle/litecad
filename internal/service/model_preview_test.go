@@ -5,6 +5,8 @@ import (
 	"context"
 	"os"
 	"testing"
+
+	"github.com/miclle/litecad/internal/entity"
 )
 
 type fakePreviewConverter struct{}
@@ -161,6 +163,85 @@ func TestGetOrCreateProjectModelPreviewStoresConverterPreviewFormat(t *testing.T
 	}
 	if !bytes.Equal(preview.Data, minimalGLB()) {
 		t.Fatal("preview data should preserve converter GLB data")
+	}
+}
+
+type hookPreviewConverter struct {
+	beforeReturn func()
+}
+
+func (c hookPreviewConverter) ConvertStepToPreview(ctx context.Context, data []byte) (ModelPreviewMesh, error) {
+	if c.beforeReturn != nil {
+		c.beforeReturn()
+	}
+	return ModelPreviewMesh{
+		Format:      "obj",
+		ContentType: "model/obj",
+		Data:        []byte("# conflict mesh\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"),
+		FacetCount:  1,
+		VertexCount: 3,
+	}, nil
+}
+
+func TestGetOrCreateProjectModelPreviewReloadsConcurrentArtifact(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada",
+		Email:    "ada-concurrent-preview@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Concurrent preview case",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	model, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Filename:    "case.step",
+		Data:        []byte("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1 = PRODUCT('Case','Case','',(#2));\nENDSEC;\nEND-ISO-10303-21;"),
+	})
+	if err != nil {
+		t.Fatalf("UploadProjectModel returned error: %v", err)
+	}
+
+	svc.previewConverter = hookPreviewConverter{beforeReturn: func() {
+		artifact := entity.ProjectModelPreviewArtifact{
+			ID:               "prv_concurrent",
+			ModelID:          model.ID,
+			Format:           "obj",
+			ContentType:      "model/obj",
+			GeneratorVersion: stepPreviewGeneratorVersion,
+			ByteSize:         48,
+			VertexCount:      3,
+			FacetCount:       1,
+			Data:             []byte("# already stored\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"),
+		}
+		if err := svc.DB().Create(&artifact).Error; err != nil {
+			t.Fatalf("store concurrent preview artifact: %v", err)
+		}
+	}}
+
+	preview, err := svc.GetOrCreateProjectModelPreview(ctx, user.ID, project.ID, model.ID)
+	if err != nil {
+		t.Fatalf("GetOrCreateProjectModelPreview returned error: %v", err)
+	}
+	if preview.ID != "prv_concurrent" {
+		t.Fatalf("preview id = %q, want concurrent artifact", preview.ID)
+	}
+	document, err := svc.GetProjectGeometryDocument(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectGeometryDocument returned error: %v", err)
+	}
+	if len(document.Versions) != 1 || document.Versions[0].PreviewArtifactID != preview.ID {
+		t.Fatalf("geometry versions = %+v, want one version for concurrent artifact", document.Versions)
 	}
 }
 
