@@ -81,7 +81,24 @@ website/                      # Embedded SPA (frontend + go:embed glue)
       ├── context/
       └── lib/
 scripts/                      # Shell helpers invoked by Taskfile (build, check, tooling)
+.agents/skills/               # Project-scoped agent skills installed with `npx skills add`
+.agents/rules/                # Additional project rules for compatible agents
 ```
+
+## Project Skills
+
+Project-scoped skills live in `.agents/skills/` and are locked by `skills-lock.json`. Prefer these skills during normal implementation and review work when the task matches their trigger, except where a skill is marked explicit-only:
+
+- Use `vercel-react-best-practices` when writing, reviewing, or refactoring React code under `website/src/`, especially components, hooks, React Query data flow, bundle size, rendering performance, or frontend performance fixes.
+- Use `frontend-design` when creating or reshaping visible UI, layout, interaction polish, CAD workbench surfaces, viewer controls, landing/home preview sections, or visual hierarchy.
+- Use `shadcn` when adding, updating, composing, or debugging shadcn-compatible UI, or any task touching `website/components.json` or shadcn-style components.
+- Use `webapp-testing` when verifying user-visible browser behavior, routing, auth flows, project workflows, frontend regressions, screenshots, console errors, or local dev-server UI behavior.
+- Use `threejs-fundamentals` when setting up or refactoring Three.js scenes, cameras, renderers, resize handling, Object3D hierarchy, transforms, or render loops.
+- Use `threejs-geometry` when creating demo CAD geometry, custom `BufferGeometry`, edges/wireframes, instanced meshes, or geometry performance changes.
+- Use `threejs-materials` when changing mesh materials, PBR appearance, wireframe/solid visual styling, texture usage, material performance, or shader-adjacent rendering behavior.
+- `threejs-interaction` is explicit-only. Do not auto-trigger it for normal viewport work; use it only when the user explicitly requests it and after reviewing its `SKILL.md`, because the skills CLI reported a Critical Risk Gen audit for it at install time.
+
+For feature work that changes the browser experience, combine the relevant frontend/design skill with `webapp-testing` for a rendered verification pass when feasible. For backend-only changes, use these skills only if the change affects frontend API contracts or browser-observable behavior.
 
 ## Core Architecture Constraints
 
