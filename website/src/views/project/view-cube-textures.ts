@@ -50,16 +50,16 @@ export function createViewCubeFaceTexture({ background, color, label }: { backgr
     context.textAlign = 'center'
     context.textBaseline = 'middle'
     context.lineJoin = 'round'
-    context.lineWidth = 12
+    context.lineWidth = 14
     context.strokeStyle = 'rgba(245, 240, 226, 0.42)'
     context.fillStyle = color
 
-    let fontSize = 150
-    const maxTextWidth = canvas.width * 0.82
+    let fontSize = 252
+    const maxTextWidth = canvas.width * 0.9
     do {
       context.font = `800 ${fontSize}px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
       fontSize -= 2
-    } while (context.measureText(label).width > maxTextWidth && fontSize > 56)
+    } while (context.measureText(label).width > maxTextWidth && fontSize > 72)
 
     context.strokeText(label, canvas.width / 2, canvas.height / 2 + 10)
     context.fillText(label, canvas.width / 2, canvas.height / 2 + 10)

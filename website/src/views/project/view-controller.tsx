@@ -7,12 +7,14 @@ import { createCanvasLabelTexture, createViewCubeFaceTexture } from './view-cube
 import {
   createChamferedCubeGeometry,
   createSurfaceGeometry,
+  createTexturedSurfaceGeometry,
   getSurfaceNormal,
   viewCubeChamferHeight,
-  viewCubeFaceSize,
+  viewCubeCornerChamferHeight,
   viewCubeFaces,
   viewCubeHalfSize,
   viewCubeSize,
+  type ChamferedCubeSurface,
 } from './view-cube'
 import {
   createSquaredOrientation,
@@ -91,6 +93,7 @@ function ViewCube3D({
     } = createChamferedCubeGeometry(
       viewCubeSize,
       viewCubeChamferHeight,
+      viewCubeCornerChamferHeight,
     )
     const cubeBody = new THREE.Mesh(
       cubeGeometry,
@@ -116,6 +119,13 @@ function ViewCube3D({
       side: THREE.DoubleSide,
       transparent: true,
     })
+    const cornerDefaultMaterial = new THREE.MeshBasicMaterial({
+      color: 0xa8afa5,
+      depthWrite: false,
+      opacity: 0.88,
+      side: THREE.DoubleSide,
+      transparent: true,
+    })
     const bevelHoverMaterial = new THREE.MeshBasicMaterial({
       color: 0xf2f6dd,
       depthTest: false,
@@ -128,9 +138,12 @@ function ViewCube3D({
       if (surface.kind === 'main') {
         continue
       }
-      const bevelSurface = new THREE.Mesh(createSurfaceGeometry(surface.points, 0.006), bevelDefaultMaterial)
+      const bevelSurface = new THREE.Mesh(
+        createSurfaceGeometry(surface.points, surface.kind === 'corner' ? 0.012 : 0.006),
+        surface.kind === 'corner' ? cornerDefaultMaterial : bevelDefaultMaterial,
+      )
       bevelSurface.renderOrder = 5
-      bevelSurface.userData.defaultMaterial = bevelDefaultMaterial
+      bevelSurface.userData.defaultMaterial = surface.kind === 'corner' ? cornerDefaultMaterial : bevelDefaultMaterial
       bevelSurface.userData.hoverMaterial = bevelHoverMaterial
       bevelSurface.userData.viewDirection = getSurfaceNormal(surface.points)
       cubeGroup.add(bevelSurface)
@@ -145,7 +158,19 @@ function ViewCube3D({
       transparent: true,
     })
 
+    const findMainSurface = (face: (typeof viewCubeFaces)[number]) => {
+      const faceDirection = orientationToViewDirection(face.orientation)
+      return cubeSurfaces.find(
+        (surface): surface is ChamferedCubeSurface =>
+          surface.kind === 'main' && getSurfaceNormal(surface.points).dot(faceDirection) > 0.99,
+      )
+    }
+
     for (const face of viewCubeFaces) {
+      const mainSurface = findMainSurface(face)
+      if (!mainSurface) {
+        continue
+      }
       const faceTexture = createViewCubeFaceTexture({
         background: face.color,
         color: '#1d211d',
@@ -161,21 +186,15 @@ function ViewCube3D({
         side: THREE.FrontSide,
       })
       const facePlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(viewCubeFaceSize, viewCubeFaceSize),
+        createTexturedSurfaceGeometry(mainSurface.points, face.id, 0.012),
         faceMaterial,
       )
-      facePlane.position.set(...face.position)
-      facePlane.position.multiplyScalar(1.006)
-      facePlane.rotation.set(...face.rotation)
       facePlane.renderOrder = 4
       facePlane.userData.defaultTexture = faceTexture
       facePlane.userData.hoverTexture = hoverTexture
       cubeGroup.add(facePlane)
 
-      const hitPlane = new THREE.Mesh(new THREE.PlaneGeometry(viewCubeFaceSize, viewCubeFaceSize), hitMaterial)
-      hitPlane.position.set(...face.position)
-      hitPlane.position.multiplyScalar(1.04)
-      hitPlane.rotation.set(...face.rotation)
+      const hitPlane = new THREE.Mesh(createSurfaceGeometry(mainSurface.points, 0.028), hitMaterial)
       hitPlane.userData.viewDirection = orientationToViewDirection(face.orientation)
       hitPlane.userData.facePlane = facePlane
       cubeGroup.add(hitPlane)
@@ -185,12 +204,12 @@ function ViewCube3D({
     const axisLabel = (label: string, color: number) => {
       const texture = createCanvasLabelTexture({
         color: `#${color.toString(16).padStart(6, '0')}`,
-        fontSize: 54,
+        fontSize: 82,
         height: 96,
         label,
         width: 96,
       })
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, map: texture, transparent: true }))
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: true, depthWrite: false, map: texture, transparent: true }))
       sprite.renderOrder = 10
       sprite.scale.set(0.18, 0.18, 1)
       return sprite
@@ -208,21 +227,20 @@ function ViewCube3D({
     const createMiniAxis = (label: string, direction: THREE.Vector3, color: number) => {
       const group = new THREE.Group()
       const normalizedDirection = direction.clone().normalize()
-      const axisLength = viewCubeFaceSize * 0.54
-      const axisMaterial = new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.95 })
-      const line = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(0, 0, 0),
-          normalizedDirection.clone().multiplyScalar(axisLength),
-        ]),
+      const axisLength = viewCubeSize * 0.85
+      const axisMaterial = new THREE.MeshBasicMaterial({ color, depthTest: true })
+      const line = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.014, 0.014, axisLength, 16),
         axisMaterial,
       )
+      line.position.copy(normalizedDirection.clone().multiplyScalar(axisLength / 2))
+      line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normalizedDirection)
       line.renderOrder = 9
       group.add(line)
 
       const arrow = new THREE.Mesh(
-        new THREE.ConeGeometry(0.036, 0.11, 24),
-        new THREE.MeshBasicMaterial({ color, depthTest: false }),
+        new THREE.ConeGeometry(0.046, 0.13, 24),
+        new THREE.MeshBasicMaterial({ color, depthTest: true }),
       )
       arrow.position.copy(normalizedDirection.clone().multiplyScalar(axisLength))
       arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normalizedDirection)
@@ -230,8 +248,8 @@ function ViewCube3D({
       group.add(arrow)
 
       const labelSprite = axisLabel(label, color)
-      labelSprite.position.copy(normalizedDirection.clone().multiplyScalar(axisLength + 0.1))
-      labelSprite.scale.set(0.12, 0.12, 1)
+      labelSprite.position.copy(normalizedDirection.clone().multiplyScalar(axisLength + 0.11))
+      labelSprite.scale.set(0.168, 0.168, 1)
       group.add(labelSprite)
 
       return group
@@ -411,7 +429,7 @@ function ViewCube3D({
     viewStateRef.current?.syncTo(orientation)
   }, [animateOrientationChanges, orientation])
 
-  return <div ref={containerRef} aria-label="View cube" className="absolute left-1/2 top-1/2 z-10 size-[112px] -translate-x-1/2 -translate-y-1/2" />
+  return <div ref={containerRef} aria-label="View cube" className="absolute left-1/2 top-1/2 z-10 size-[128px] -translate-x-1/2 -translate-y-1/2" />
 }
 
 export function ViewController({

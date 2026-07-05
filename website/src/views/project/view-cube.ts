@@ -17,6 +17,8 @@ export type ViewCubeFace = {
 
 export const viewCubeSize = 1.36
 export const viewCubeChamferHeight = viewCubeSize * 0.15
+export const viewCubeCornerChamferScale = 1.35
+export const viewCubeCornerChamferHeight = viewCubeChamferHeight * viewCubeCornerChamferScale
 export const viewCubeHalfSize = viewCubeSize / 2
 export const viewCubeFaceSize = viewCubeSize - viewCubeChamferHeight * 2
 
@@ -26,14 +28,55 @@ export type ChamferedCubeSurface = {
   points: Point3[]
 }
 
-export const createChamferedCubeGeometry = (size: number, chamferHeight: number) => {
+type ClipPlane = {
+  constant: number
+  kind: ChamferedCubeSurface['kind']
+  normal: THREE.Vector3
+}
+
+const serializePoint = (point: THREE.Vector3) => [point.x, point.y, point.z].map((value) => value.toFixed(5)).join(',')
+
+const planeIntersection = (first: ClipPlane, second: ClipPlane, third: ClipPlane) => {
+  const secondThird = new THREE.Vector3().crossVectors(second.normal, third.normal)
+  const denominator = first.normal.dot(secondThird)
+  if (Math.abs(denominator) < 0.000001) {
+    return null
+  }
+  return secondThird
+    .multiplyScalar(first.constant)
+    .add(new THREE.Vector3().crossVectors(third.normal, first.normal).multiplyScalar(second.constant))
+    .add(new THREE.Vector3().crossVectors(first.normal, second.normal).multiplyScalar(third.constant))
+    .divideScalar(denominator)
+}
+
+const sortFacePoints = (points: THREE.Vector3[], normal: THREE.Vector3) => {
+  const center = points.reduce((sum, point) => sum.add(point), new THREE.Vector3()).divideScalar(points.length)
+  const referenceAxis = Math.abs(normal.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)
+  const tangent = new THREE.Vector3().crossVectors(referenceAxis, normal).normalize()
+  const bitangent = new THREE.Vector3().crossVectors(normal, tangent).normalize()
+
+  return [...points].sort((first, second) => {
+    const firstOffset = first.clone().sub(center)
+    const secondOffset = second.clone().sub(center)
+    return (
+      Math.atan2(firstOffset.dot(bitangent), firstOffset.dot(tangent)) -
+      Math.atan2(secondOffset.dot(bitangent), secondOffset.dot(tangent))
+    )
+  })
+}
+
+export const createChamferedCubeGeometry = (
+  size: number,
+  chamferHeight: number,
+  cornerChamferHeight = chamferHeight,
+) => {
   const half = size / 2
   const inset = half - chamferHeight
+  const cornerInset = half - Math.min(cornerChamferHeight, half * 0.82)
   const positions: number[] = []
   const surfaces: ChamferedCubeSurface[] = []
   const edgeKeys = new Set<string>()
   const edgePoints: number[] = []
-  const makePoint = (x = 0, y = 0, z = 0): Point3 => [x, y, z]
   const edgeKey = (first: Point3, second: Point3) => {
     const serialize = (point: Point3) => point.map((value) => value.toFixed(5)).join(',')
     const a = serialize(first)
@@ -70,46 +113,64 @@ export const createChamferedCubeGeometry = (size: number, chamferHeight: number)
     }
   }
 
-  addFace([makePoint(half, -inset, -inset), makePoint(half, inset, -inset), makePoint(half, inset, inset), makePoint(half, -inset, inset)], 'main')
-  addFace([makePoint(-half, -inset, inset), makePoint(-half, inset, inset), makePoint(-half, inset, -inset), makePoint(-half, -inset, -inset)], 'main')
-  addFace([makePoint(-inset, half, -inset), makePoint(-inset, half, inset), makePoint(inset, half, inset), makePoint(inset, half, -inset)], 'main')
-  addFace([makePoint(-inset, -half, inset), makePoint(-inset, -half, -inset), makePoint(inset, -half, -inset), makePoint(inset, -half, inset)], 'main')
-  addFace([makePoint(-inset, -inset, half), makePoint(inset, -inset, half), makePoint(inset, inset, half), makePoint(-inset, inset, half)], 'main')
-  addFace([makePoint(inset, -inset, -half), makePoint(-inset, -inset, -half), makePoint(-inset, inset, -half), makePoint(inset, inset, -half)], 'main')
-
-  const buildPoint = (axisA: number, valueA: number, axisB: number, valueB: number, axisC: number, valueC: number) => {
-    const point: Point3 = [0, 0, 0]
-    point[axisA] = valueA
-    point[axisB] = valueB
-    point[axisC] = valueC
-    return point
+  const planes: ClipPlane[] = []
+  for (const axis of [0, 1, 2] as const) {
+    for (const sign of [-1, 1] as const) {
+      const normal = new THREE.Vector3()
+      normal.setComponent(axis, sign)
+      planes.push({ constant: half, kind: 'main', normal })
+    }
   }
-  for (const [axisA, axisB, axisC] of [
-    [0, 1, 2],
-    [0, 2, 1],
-    [1, 2, 0],
+  for (const [axisA, axisB] of [
+    [0, 1],
+    [0, 2],
+    [1, 2],
   ] as const) {
     for (const signA of [-1, 1] as const) {
       for (const signB of [-1, 1] as const) {
-        addFace([
-          buildPoint(axisA, signA * half, axisB, signB * inset, axisC, -inset),
-          buildPoint(axisA, signA * half, axisB, signB * inset, axisC, inset),
-          buildPoint(axisA, signA * inset, axisB, signB * half, axisC, inset),
-          buildPoint(axisA, signA * inset, axisB, signB * half, axisC, -inset),
-        ], 'edge')
+        const normal = new THREE.Vector3()
+        normal.setComponent(axisA, signA)
+        normal.setComponent(axisB, signB)
+        planes.push({ constant: half + inset, kind: 'edge', normal })
+      }
+    }
+  }
+  for (const signX of [-1, 1] as const) {
+    for (const signY of [-1, 1] as const) {
+      for (const signZ of [-1, 1] as const) {
+        planes.push({
+          constant: half + cornerInset * 2,
+          kind: 'corner',
+          normal: new THREE.Vector3(signX, signY, signZ),
+        })
       }
     }
   }
 
-  for (const signX of [-1, 1] as const) {
-    for (const signY of [-1, 1] as const) {
-      for (const signZ of [-1, 1] as const) {
-        addFace([
-          makePoint(signX * half, signY * inset, signZ * inset),
-          makePoint(signX * inset, signY * half, signZ * inset),
-          makePoint(signX * inset, signY * inset, signZ * half),
-        ], 'corner')
+  const pointsByKey = new Map<string, THREE.Vector3>()
+  for (let first = 0; first < planes.length - 2; first += 1) {
+    for (let second = first + 1; second < planes.length - 1; second += 1) {
+      for (let third = second + 1; third < planes.length; third += 1) {
+        const point = planeIntersection(planes[first], planes[second], planes[third])
+        if (!point) {
+          continue
+        }
+        const isInside = planes.every((plane) => plane.normal.dot(point) <= plane.constant + 0.00001)
+        if (isInside) {
+          pointsByKey.set(serializePoint(point), point)
+        }
       }
+    }
+  }
+
+  const points = [...pointsByKey.values()]
+  for (const plane of planes) {
+    const planePoints = points.filter((point) => Math.abs(plane.normal.dot(point) - plane.constant) < 0.00001)
+    if (planePoints.length >= 3) {
+      addFace(
+        sortFacePoints(planePoints, plane.normal).map((point) => [point.x, point.y, point.z] as Point3),
+        plane.kind,
+      )
     }
   }
 
@@ -153,11 +214,49 @@ export const createSurfaceGeometry = (points: Point3[], offset = 0) => {
   return geometry
 }
 
+const viewCubeFaceUVAxes: Record<ViewCubeFaceID, { u: [number, number, number]; v: [number, number, number] }> = {
+  back: { u: [-1, 0, 0], v: [0, 1, 0] },
+  bottom: { u: [1, 0, 0], v: [0, 0, 1] },
+  front: { u: [1, 0, 0], v: [0, 1, 0] },
+  left: { u: [0, 0, 1], v: [0, 1, 0] },
+  right: { u: [0, 0, -1], v: [0, 1, 0] },
+  top: { u: [1, 0, 0], v: [0, 0, -1] },
+}
+
+export const createTexturedSurfaceGeometry = (points: Point3[], faceID: ViewCubeFaceID, offset = 0) => {
+  const normal = getSurfaceNormal(points)
+  const offsetPoints = points.map((point) => new THREE.Vector3(...point).addScaledVector(normal, offset))
+  const axes = viewCubeFaceUVAxes[faceID]
+  const uAxis = new THREE.Vector3(...axes.u)
+  const vAxis = new THREE.Vector3(...axes.v)
+  const projected = offsetPoints.map((point) => ({ point, u: point.dot(uAxis), v: point.dot(vAxis) }))
+  const minU = Math.min(...projected.map((point) => point.u))
+  const maxU = Math.max(...projected.map((point) => point.u))
+  const minV = Math.min(...projected.map((point) => point.v))
+  const maxV = Math.max(...projected.map((point) => point.v))
+  const positions: number[] = []
+  const uvs: number[] = []
+  const pushVertex = ({ point, u, v }: (typeof projected)[number]) => {
+    positions.push(point.x, point.y, point.z)
+    uvs.push((u - minU) / (maxU - minU || 1), (v - minV) / (maxV - minV || 1))
+  }
+  for (let index = 1; index < projected.length - 1; index += 1) {
+    pushVertex(projected[0])
+    pushVertex(projected[index])
+    pushVertex(projected[index + 1])
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  geometry.computeVertexNormals()
+  return geometry
+}
+
 export const viewCubeFaces: ViewCubeFace[] = [
   {
     color: 0x9a9f99,
     id: 'front',
-    label: '前视图',
+    label: 'Front',
     orientation: createOrientation(0, 0),
     position: [0, 0, viewCubeHalfSize],
     rotation: [0, 0, 0],
@@ -165,7 +264,7 @@ export const viewCubeFaces: ViewCubeFace[] = [
   {
     color: 0x828981,
     id: 'back',
-    label: '后视图',
+    label: 'Back',
     orientation: createOrientation(180, 0),
     position: [0, 0, -viewCubeHalfSize],
     rotation: [0, Math.PI, 0],
@@ -173,7 +272,7 @@ export const viewCubeFaces: ViewCubeFace[] = [
   {
     color: 0x8e958d,
     id: 'right',
-    label: '右视图',
+    label: 'Right',
     orientation: createOrientation(90, 0),
     position: [viewCubeHalfSize, 0, 0],
     rotation: [0, Math.PI / 2, 0],
@@ -181,7 +280,7 @@ export const viewCubeFaces: ViewCubeFace[] = [
   {
     color: 0x858c84,
     id: 'left',
-    label: '左视图',
+    label: 'Left',
     orientation: createOrientation(270, 0),
     position: [-viewCubeHalfSize, 0, 0],
     rotation: [0, -Math.PI / 2, 0],
@@ -189,7 +288,7 @@ export const viewCubeFaces: ViewCubeFace[] = [
   {
     color: 0xa5aaa3,
     id: 'top',
-    label: '上视图',
+    label: 'Top',
     orientation: createOrientation(0, 89),
     position: [0, viewCubeHalfSize, 0],
     rotation: [-Math.PI / 2, 0, 0],
@@ -197,7 +296,7 @@ export const viewCubeFaces: ViewCubeFace[] = [
   {
     color: 0x747b74,
     id: 'bottom',
-    label: '下视图',
+    label: 'Bottom',
     orientation: createOrientation(0, -89),
     position: [0, -viewCubeHalfSize, 0],
     rotation: [Math.PI / 2, 0, 0],

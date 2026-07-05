@@ -163,7 +163,7 @@ export function ModelPreview({ previewFormat = '', previewUrl = '' }: ModelPrevi
     controls.staticMoving = true
     controls.noPan = false
     controls.noZoom = false
-    controls.rotateSpeed = 1.2
+    controls.rotateSpeed = 2.4
     controls.panSpeed = 0.35
     controls.zoomSpeed = 1.15
     controls.minDistance = 1
