@@ -197,6 +197,24 @@ const rotateOrientation = (orientation: ViewOrientation, step: ViewRotationStep)
 
   return createFreeOrientation(direction.applyQuaternion(rotation), up.applyQuaternion(rotation))
 }
+const rotateOrientationToDirection = (orientation: ViewOrientation, targetDirection: THREE.Vector3) => {
+  const direction = orientationToViewDirection(orientation)
+  const up = orientationToViewUp(orientation)
+  const normalizedTarget = targetDirection.clone().normalize()
+  if (normalizedTarget.lengthSq() < 0.000001) {
+    return orientation
+  }
+  const dot = THREE.MathUtils.clamp(direction.dot(normalizedTarget), -1, 1)
+  if (Math.acos(dot) < THREE.MathUtils.degToRad(0.2)) {
+    return orientation
+  }
+  const rotation =
+    dot < -0.999999
+      ? new THREE.Quaternion().setFromAxisAngle(up, Math.PI)
+      : new THREE.Quaternion().setFromUnitVectors(direction, normalizedTarget)
+
+  return createFreeOrientation(direction.applyQuaternion(rotation), up.applyQuaternion(rotation))
+}
 
 type ViewCubeFaceID = HorizontalFace | 'top' | 'bottom'
 
@@ -578,7 +596,7 @@ function ViewCube3D({
       bevelSurface.renderOrder = 5
       bevelSurface.userData.defaultMaterial = bevelDefaultMaterial
       bevelSurface.userData.hoverMaterial = bevelHoverMaterial
-      bevelSurface.userData.orientation = directionToOrientation(getSurfaceNormal(surface.points))
+      bevelSurface.userData.viewDirection = getSurfaceNormal(surface.points)
       cubeGroup.add(bevelSurface)
       hitMeshes.push(bevelSurface)
     }
@@ -622,7 +640,7 @@ function ViewCube3D({
       hitPlane.position.set(...face.position)
       hitPlane.position.multiplyScalar(1.04)
       hitPlane.rotation.set(...face.rotation)
-      hitPlane.userData.orientation = face.orientation
+      hitPlane.userData.viewDirection = orientationToViewDirection(face.orientation)
       hitPlane.userData.facePlane = facePlane
       cubeGroup.add(hitPlane)
       hitMeshes.push(hitPlane)
@@ -810,8 +828,9 @@ function ViewCube3D({
       if (!hit) {
         return
       }
-      const nextOrientation = hit.object.userData.orientation
-      if (isViewOrientation(nextOrientation)) {
+      const nextDirection = hit.object.userData.viewDirection
+      if (nextDirection instanceof THREE.Vector3) {
+        const nextOrientation = rotateOrientationToDirection(displayedOrientationRef.current, nextDirection)
         onSetOrientationRef.current(nextOrientation)
       }
     }
