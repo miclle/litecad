@@ -98,7 +98,7 @@ function ViewCube3D({
     const cubeBody = new THREE.Mesh(
       cubeGeometry,
       new THREE.MeshStandardMaterial({
-        color: 0x8f968d,
+        color: 0xa4aaa2,
         flatShading: true,
         metalness: 0.05,
         roughness: 0.72,
@@ -119,8 +119,22 @@ function ViewCube3D({
       side: THREE.DoubleSide,
       transparent: true,
     })
+    const bottomBevelDefaultMaterial = new THREE.MeshBasicMaterial({
+      color: 0xa0a088,
+      depthWrite: false,
+      opacity: 1,
+      side: THREE.DoubleSide,
+      transparent: true,
+    })
     const cornerDefaultMaterial = new THREE.MeshBasicMaterial({
-      color: 0xa8afa5,
+      color: 0xbac0b6,
+      depthWrite: false,
+      opacity: 0.88,
+      side: THREE.DoubleSide,
+      transparent: true,
+    })
+    const bottomCornerDefaultMaterial = new THREE.MeshBasicMaterial({
+      color: 0xc3c8bf,
       depthWrite: false,
       opacity: 0.88,
       side: THREE.DoubleSide,
@@ -138,14 +152,23 @@ function ViewCube3D({
       if (surface.kind === 'main') {
         continue
       }
+      const surfaceNormal = getSurfaceNormal(surface.points)
+      const defaultMaterial =
+        surface.kind === 'corner'
+          ? surfaceNormal.y < -0.45
+            ? bottomCornerDefaultMaterial
+            : cornerDefaultMaterial
+          : surfaceNormal.y < -0.45
+            ? bottomBevelDefaultMaterial
+            : bevelDefaultMaterial
       const bevelSurface = new THREE.Mesh(
         createSurfaceGeometry(surface.points, surface.kind === 'corner' ? 0.012 : 0.006),
-        surface.kind === 'corner' ? cornerDefaultMaterial : bevelDefaultMaterial,
+        defaultMaterial,
       )
       bevelSurface.renderOrder = 5
-      bevelSurface.userData.defaultMaterial = surface.kind === 'corner' ? cornerDefaultMaterial : bevelDefaultMaterial
+      bevelSurface.userData.defaultMaterial = bevelSurface.material
       bevelSurface.userData.hoverMaterial = bevelHoverMaterial
-      bevelSurface.userData.viewDirection = getSurfaceNormal(surface.points)
+      bevelSurface.userData.viewDirection = surfaceNormal
       cubeGroup.add(bevelSurface)
       hitMeshes.push(bevelSurface)
     }

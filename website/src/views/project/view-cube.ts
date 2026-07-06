@@ -254,7 +254,7 @@ export const createTexturedSurfaceGeometry = (points: Point3[], faceID: ViewCube
 
 export const viewCubeFaces: ViewCubeFace[] = [
   {
-    color: 0x9a9f99,
+    color: 0xa9aea8,
     id: 'front',
     label: 'Front',
     orientation: createOrientation(0, 0),
@@ -262,7 +262,7 @@ export const viewCubeFaces: ViewCubeFace[] = [
     rotation: [0, 0, 0],
   },
   {
-    color: 0x828981,
+    color: 0xa2a99f,
     id: 'back',
     label: 'Back',
     orientation: createOrientation(180, 0),
@@ -270,7 +270,7 @@ export const viewCubeFaces: ViewCubeFace[] = [
     rotation: [0, Math.PI, 0],
   },
   {
-    color: 0x8e958d,
+    color: 0xa0a79f,
     id: 'right',
     label: 'Right',
     orientation: createOrientation(90, 0),
@@ -278,7 +278,7 @@ export const viewCubeFaces: ViewCubeFace[] = [
     rotation: [0, Math.PI / 2, 0],
   },
   {
-    color: 0x858c84,
+    color: 0x989f97,
     id: 'left',
     label: 'Left',
     orientation: createOrientation(270, 0),
@@ -286,7 +286,7 @@ export const viewCubeFaces: ViewCubeFace[] = [
     rotation: [0, -Math.PI / 2, 0],
   },
   {
-    color: 0xa5aaa3,
+    color: 0xb4bab2,
     id: 'top',
     label: 'Top',
     orientation: createOrientation(0, 89),
@@ -294,7 +294,7 @@ export const viewCubeFaces: ViewCubeFace[] = [
     rotation: [-Math.PI / 2, 0, 0],
   },
   {
-    color: 0x747b74,
+    color: 0xa0a79d,
     id: 'bottom',
     label: 'Bottom',
     orientation: createOrientation(0, -89),
