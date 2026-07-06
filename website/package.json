@@ -14,6 +14,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@base-ui/react": "^1.6.0",
     "@tanstack/react-query": "^5.100.10",
     "axios": "^1.16.1",
     "class-variance-authority": "^0.7.1",

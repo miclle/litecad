@@ -121,7 +121,8 @@ For feature work that changes the browser experience, combine the relevant front
 - API calls go in `website/src/api/` and use the shared Axios client.
 - Type definitions go in `website/src/types/`.
 - Pages go in `website/src/views/`.
-- Prefer existing Tailwind styles, shadcn-compatible component conventions, Lucide icons, and local layout patterns.
+- UI components must be implemented with or composed from shadcn/ui primitives whenever shadcn/ui provides the needed component or a reasonable composition path. Use custom component markup only when shadcn/ui has no suitable primitive for the requirement.
+- Prefer existing Tailwind styles, shadcn/ui component conventions, Lucide icons, and local layout patterns.
 - Do not hard-code backend origins in components; use `/api/v1` through the shared client and Vite proxy.
 
 ### Product Boundaries

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type CSSProperties } from 'react'
 import * as THREE from 'three'
 
 import { disposeObject3DResources } from './three-object-resources'
@@ -439,6 +439,7 @@ export function ViewController({
   onFlip,
   onSetOrientation,
   onStep,
+  style,
 }: {
   animateViewCubeOrientation: boolean
   className?: string
@@ -446,6 +447,7 @@ export function ViewController({
   onFlip: () => void
   onSetOrientation: (orientation: ViewOrientation) => void
   onStep: (step: ViewRotationStep) => void
+  style?: CSSProperties
 }) {
   const arrowButtonClass =
     'absolute z-30 grid size-6 place-items-center outline-none transition hover:scale-110 focus-visible:outline-none'
@@ -458,6 +460,7 @@ export function ViewController({
     <div
       aria-label="View orientation controls"
       className={`absolute right-4 top-4 z-20 hidden size-[135px] select-none text-[#1f2937] sm:block ${className}`}
+      style={style}
     >
       <button
         aria-label="Tilt view up"

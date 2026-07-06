@@ -19,7 +19,9 @@ These rules apply to files under `website/src/`.
 
 ## UI
 
-- Reuse existing shadcn/ui, Tailwind tokens, Lucide icons, and local layout patterns.
+- UI components must be implemented with or composed from shadcn/ui primitives whenever shadcn/ui provides the needed component or a reasonable composition path.
+- Use custom component markup only when shadcn/ui has no suitable primitive for the requirement; keep any exception small, accessible, and aligned with existing Tailwind tokens and local layout patterns.
+- Reuse existing shadcn/ui components, Tailwind tokens, Lucide icons, and local layout patterns.
 - Cover loading, empty, pending, success, and error states for user-facing data flows.
 - Use semantic controls: buttons for actions, labels for form fields, and accessible names for icon-only controls.
 - Do not display secrets or tokens in lists or logs; only show them once at creation if the feature requires it.
