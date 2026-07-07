@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
@@ -30,8 +30,16 @@ type ModelPreviewProps = {
   previewAssets?: ProjectPreviewAsset[]
 }
 
+type ZoomHUDState = {
+  percent: number
+  visible: boolean
+}
+
 const viewportBackground = 0xf8fafc
 const gridPlaneOffset = 0.015
+const modelPreviewZoomSpeed = 4.2
+const modelPreviewZoomHUDHideDelayMS = 1000
+const modelPreviewZoomDistanceEpsilonRatio = 0.002
 const modelPreviewResizeCompleteEventName = 'litecad:model-preview-resize-complete'
 
 const niceGridStep = (radius: number) => {
@@ -135,7 +143,19 @@ const previewMaterialColors = [0xb6c0b8, 0xc4b78a, 0x9fb6c8, 0xc7a0a0, 0xa8bea0]
 export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const deferResizeRef = useRef(deferResize)
+  const zoomHUDHideTimeoutRef = useRef<number | undefined>(undefined)
+  const [zoomHUD, setZoomHUD] = useState<ZoomHUDState>({ percent: 100, visible: false })
   const previewAssetSignature = useMemo(() => projectPreviewAssetSignature(previewAssets), [previewAssets])
+  const clearZoomHUDHideTimeout = () => {
+    if (zoomHUDHideTimeoutRef.current !== undefined) {
+      window.clearTimeout(zoomHUDHideTimeoutRef.current)
+      zoomHUDHideTimeoutRef.current = undefined
+    }
+  }
+  const hideZoomHUD = () => {
+    clearZoomHUDHideTimeout()
+    setZoomHUD((currentHUD) => (currentHUD.visible ? { ...currentHUD, visible: false } : currentHUD))
+  }
 
   useEffect(() => {
     deferResizeRef.current = deferResize
@@ -150,6 +170,7 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
     if (!container) {
       return undefined
     }
+    hideZoomHUD()
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -179,7 +200,7 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
     controls.noZoom = false
     controls.rotateSpeed = 2.4
     controls.panSpeed = 0.35
-    controls.zoomSpeed = 1.15
+    controls.zoomSpeed = modelPreviewZoomSpeed
     controls.minDistance = 1
     controls.maxDistance = 1000
     controls.target.set(0, 0.15, 0)
@@ -191,6 +212,8 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
     let isProgrammaticCameraUpdate = false
     const previewCenter = new THREE.Vector3(0, 0, 0)
     let previewRadius = 4
+    let fitViewDistance = camera.position.distanceTo(controls.target)
+    let lastZoomDistance = fitViewDistance
     const previewGroup = new THREE.Group()
     previewGroup.name = 'Project preview models'
     let isDisposed = false
@@ -229,12 +252,39 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
       lastEmittedOrientation = orientation
       window.dispatchEvent(createViewOrientationChangeEvent(orientation))
     }
+    const scheduleZoomHUDHide = () => {
+      clearZoomHUDHideTimeout()
+      zoomHUDHideTimeoutRef.current = window.setTimeout(() => {
+        setZoomHUD((currentHUD) => (currentHUD.visible ? { ...currentHUD, visible: false } : currentHUD))
+        zoomHUDHideTimeoutRef.current = undefined
+      }, modelPreviewZoomHUDHideDelayMS)
+    }
+    const showZoomHUD = (viewDistance: number) => {
+      if (fitViewDistance <= 0 || viewDistance <= 0) {
+        return
+      }
+      setZoomHUD({
+        percent: Math.max(1, Math.round((fitViewDistance / viewDistance) * 100)),
+        visible: true,
+      })
+      scheduleZoomHUDHide()
+    }
+    const syncZoomHUD = () => {
+      const viewDistance = camera.position.distanceTo(controls.target)
+      const distanceEpsilon = Math.max(previewRadius * modelPreviewZoomDistanceEpsilonRatio, 0.002)
+      if (Math.abs(viewDistance - lastZoomDistance) < distanceEpsilon) {
+        return
+      }
+      lastZoomDistance = viewDistance
+      showZoomHUD(viewDistance)
+    }
     const handleControlsChange = () => {
       if (isProgrammaticCameraUpdate) {
         return
       }
       activeOrientation = cameraToOrientation(camera, controls.target)
       emitOrientationChange(activeOrientation)
+      syncZoomHUD()
       renderScene()
     }
     controls.addEventListener('change', handleControlsChange)
@@ -250,6 +300,7 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
     const startControlsInteraction = () => {
       cancelViewAnimation()
       isControlsInteracting = true
+      controls.update()
       if (controlsFrameID === null) {
         controlsFrameID = window.requestAnimationFrame(updateControls)
       }
@@ -456,6 +507,8 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
       camera.updateMatrixWorld()
       controls.update()
       isProgrammaticCameraUpdate = false
+      fitViewDistance = distance
+      lastZoomDistance = distance
     }
 
     const cancelViewAnimation = () => {
@@ -569,6 +622,7 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
       cancelControlsUpdate()
       window.cancelAnimationFrame(resetFrameID)
       window.clearTimeout(resetTimeoutID)
+      clearZoomHUDHideTimeout()
       resizeObserver.disconnect()
       container.removeEventListener(resetViewEventName, handleResetView)
       container.removeEventListener(modelPreviewResizeCompleteEventName, handleDeferredResizeComplete)
@@ -596,6 +650,15 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
       className="absolute inset-0 overflow-hidden bg-[#f8fafc]"
       data-model-preview
       data-preview-asset-count={previewAssets.length}
-    />
+    >
+      <div
+        aria-hidden={!zoomHUD.visible}
+        className={`pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-md border border-[#d6dbe3] bg-white/92 px-3 py-1.5 font-mono text-[11px] font-semibold uppercase text-[#475569] shadow-[0_10px_28px_rgba(15,23,42,0.08)] backdrop-blur transition duration-300 motion-reduce:transition-none ${
+          zoomHUD.visible ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
+        }`}
+      >
+        View {zoomHUD.percent}%
+      </div>
+    </div>
   )
 }
