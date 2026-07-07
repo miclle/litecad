@@ -1,10 +1,11 @@
-import type { CadKernelMesh } from './kernel-protocol'
+import type { CadKernelMesh, CadKernelOperation } from './kernel-protocol'
 import initReplicadOpenCascade from 'replicad-opencascadejs'
 import replicadWasmUrl from 'replicad-opencascadejs/src/replicad_single.wasm?url'
 
 export type CadKernelStepRoundTripInput = {
   filename: string
   stepText: string
+  operations?: CadKernelOperation[]
 }
 
 export type CadKernelStepPreviewInput = CadKernelStepRoundTripInput
@@ -78,7 +79,7 @@ export async function runStepPreviewWithKernel(
   writeVirtualFile(openCascade, inputStepPath, input.stepText)
 
   try {
-    const shape = importStepShape(openCascade, input)
+    const shape = applyCADOperationsToShape(openCascade, importStepShape(openCascade, input), input.operations)
     return { mesh: tessellateShape(openCascade, shape) }
   } finally {
     cleanupVirtualFile(openCascade, inputStepPath)
@@ -94,7 +95,7 @@ export async function runStepRoundTripWithKernel(
   writeVirtualFile(openCascade, inputStepPath, input.stepText)
 
   try {
-    const shape = importStepShape(openCascade, input)
+    const shape = applyCADOperationsToShape(openCascade, importStepShape(openCascade, input), input.operations)
     const mesh = tessellateShape(openCascade, shape)
     const exportedStepText = exportShapeToStep(openCascade, shape)
     return { mesh, exportedStepText }
@@ -102,6 +103,42 @@ export async function runStepRoundTripWithKernel(
     cleanupVirtualFile(openCascade, inputStepPath)
     cleanupVirtualFile(openCascade, outputStepPath)
   }
+}
+
+export function applyCADOperationsToShape(
+  openCascade: OpenCascadeModule,
+  sourceShape: any,
+  operations: readonly CadKernelOperation[] = [],
+) {
+  return operations.reduce((shape, operation) => {
+    if (operation.type !== 'transform') {
+      throw new Error(`Unsupported CAD operation: ${operation.type}`)
+    }
+    return transformShape(openCascade, shape, operation.matrix)
+  }, sourceShape)
+}
+
+function transformShape(openCascade: OpenCascadeModule, shape: any, matrix: readonly number[]) {
+  if (matrix.length !== 16) {
+    throw new Error('CAD transform operation requires a 4x4 matrix')
+  }
+  const transform = new openCascade.gp_Trsf_1()
+  transform.SetValues(
+    matrix[0] ?? 1,
+    matrix[1] ?? 0,
+    matrix[2] ?? 0,
+    matrix[3] ?? 0,
+    matrix[4] ?? 0,
+    matrix[5] ?? 1,
+    matrix[6] ?? 0,
+    matrix[7] ?? 0,
+    matrix[8] ?? 0,
+    matrix[9] ?? 0,
+    matrix[10] ?? 1,
+    matrix[11] ?? 0,
+  )
+  const builder = new openCascade.BRepBuilderAPI_Transform_2(shape, transform, true)
+  return builder.Shape()
 }
 
 function importStepShape(openCascade: OpenCascadeModule, input: CadKernelStepRoundTripInput) {

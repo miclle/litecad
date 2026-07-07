@@ -185,16 +185,21 @@ Tests and verification:
 
 Introduce a LiteCAD document model for browser-side CAD edits.
 
-Phase 3 acceptance status: in progress. The first Phase 3 increment is complete on 2026-07-07: LiteCAD now stores a project-owned editable CAD document record with schema version, revision, unit, root model nodes, per-model transform matrices, and replayable transform operations. The workbench exposes X/Y/Z per-model transform controls, saves them through the CAD document API, reloads them, and applies them to derived preview assets.
+Phase 3 acceptance status: in progress. The first Phase 3 increment is complete on 2026-07-07: LiteCAD now stores a project-owned editable CAD document record with schema version, revision, unit, root model nodes, per-model transform matrices, and replayable transform operations. The workbench exposes X/Y/Z per-model transform controls, saves them through the CAD document API, and reloads them.
+
+The second Phase 3 increment is complete on 2026-07-08: model-scoped transform operations are now sent to the browser CAD worker for STEP preview and round-trip requests, replayed on the imported OCCT shape through `BRepBuilderAPI_Transform`, and tessellated/exported from the transformed shape. Backend GLB/GLTF/STL preview artifacts still use object-level transforms in the Three.js scene.
 
 Current Phase 3 status:
 
 - `ProjectCADDocument` persists editable document JSON separately from uploaded source bytes, read-only geometry snapshots, and derived preview artifacts.
 - `GET /api/v1/projects/:projectID/cad-document` returns the current owner-scoped editable document, creating identity model nodes for existing project models when needed.
 - `PATCH /api/v1/projects/:projectID/cad-document/models/:modelID/transform` records a transform operation for one project-owned model and increments the document revision.
-- The project workbench fetches the CAD document, includes document transforms in preview asset signatures, and applies row-major transform matrices before rendering the Three.js preview object.
+- The project workbench fetches the CAD document, maps document operations into worker protocol operations, keys STEP preview queries by document revision, and avoids double-applying STEP transforms at the Three.js object layer because the worker-replayed mesh already includes them.
+- The CAD kernel worker protocol accepts replayable transform operations for STEP preview and STEP round-trip requests. `opencascade-step.ts` converts the row-major 4x4 matrix into OCCT `gp_Trsf.SetValues(...)` and applies it with `BRepBuilderAPI_Transform`.
 - Browser verification on 2026-07-08 against a temporary current-code server on `127.0.0.1:46283` created a new signed-in project, uploaded `verify.stl`, rendered one preview mesh, changed the first model's X transform from `0` to `2.5`, reloaded the project route, and confirmed the persisted value remained `2.5` with a present 1280 x 844 preview canvas and no console errors.
-- This increment intentionally does not claim true B-rep edits, kernel shape serialization, boolean/feature operations, operation replay in the worker, or STEP export.
+- Browser worker verification on 2026-07-08 against a temporary Vite server on `127.0.0.1:46285` generated a box STEP in the browser, ran base preview and transform-replayed worker preview with translation matrix `[+25, -3, +7]`, and confirmed mesh bounds moved from min `(0, 0, 0)` to min `(25, -3, 7)` while retaining 24 vertices, 12 triangles, normals, and a transformed STEP round-trip export of 15436 bytes.
+- Workbench browser verification on 2026-07-08 against temporary Go/Vite dev servers on `127.0.0.1:46286` and `127.0.0.1:46287` registered a new user, generated and uploaded `worker-replay-box.step`, rendered one STEP kernel preview canvas at 1280 x 844, changed X translation to `25` through the real workbench controls, observed the authenticated STEP source request count increase from 1 to 2 after document revision changed, and saw no unexpected browser errors.
+- This phase still does not claim feature/B-rep edits, kernel shape serialization, boolean/feature operations, or STEP export UI/storage.
 
 Scope:
 

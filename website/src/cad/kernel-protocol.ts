@@ -10,12 +10,20 @@ export type CadKernelMeshSummary = {
   hasNormals: boolean
 }
 
+export type CadKernelOperation = {
+  id: string
+  type: 'transform'
+  modelId: string
+  matrix: readonly number[]
+}
+
 export type CadKernelStepRoundTripRequest = {
   id: string
   type: 'step-round-trip'
   payload: {
     filename: string
     stepText: string
+    operations?: CadKernelOperation[]
   }
 }
 
@@ -25,6 +33,7 @@ export type CadKernelStepPreviewRequest = {
   payload: {
     filename: string
     stepText: string
+    operations?: CadKernelOperation[]
   }
 }
 
@@ -68,7 +77,31 @@ export function isCadKernelRequest(value: unknown): value is CadKernelRequest {
     return false
   }
   const payload = value.payload
-  return isRecord(payload) && typeof payload.filename === 'string' && typeof payload.stepText === 'string'
+  return (
+    isRecord(payload) &&
+    typeof payload.filename === 'string' &&
+    typeof payload.stepText === 'string' &&
+    isCadKernelOperations(payload.operations)
+  )
+}
+
+function isCadKernelOperations(value: unknown): value is CadKernelOperation[] | undefined {
+  if (value === undefined) {
+    return true
+  }
+  return Array.isArray(value) && value.every(isCadKernelOperation)
+}
+
+function isCadKernelOperation(value: unknown): value is CadKernelOperation {
+  return (
+    isRecord(value) &&
+    value.type === 'transform' &&
+    typeof value.id === 'string' &&
+    typeof value.modelId === 'string' &&
+    Array.isArray(value.matrix) &&
+    value.matrix.length === 16 &&
+    value.matrix.every((entry) => typeof entry === 'number' && Number.isFinite(entry))
+  )
 }
 
 export function summarizeCadKernelMesh(mesh: CadKernelMesh): CadKernelMeshSummary {

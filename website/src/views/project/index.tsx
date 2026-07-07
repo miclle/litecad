@@ -63,6 +63,7 @@ import { cadTransformWithTranslation, translationFromCADTransform, type CADTrans
 import { ModelPreview } from './model-preview'
 import {
   buildProjectPreviewAssets,
+  cadKernelOperationsForModel,
   getModelDisplayName,
   parsedPreviewModels,
   projectPreviewSummary,
@@ -256,15 +257,16 @@ function ProjectView() {
   const latestProductName = latestModel?.metadata.product_names?.[0]
   const browserKernelPreviewQueries = useQueries({
     queries: browserKernelPreviewModels.map((model) => ({
-      queryKey: ['projects', projectId, 'models', model.id, 'kernel-preview'],
+      queryKey: ['projects', projectId, 'models', model.id, 'kernel-preview', projectCADDocument?.revision ?? 0],
       queryFn: async () => {
         const source = (await fetchProjectModelSource(projectId, model.id)).data
         return runStepPreviewInWorker({
           filename: model.original_filename,
           stepText: await source.text(),
+          operations: cadKernelOperationsForModel(projectCADDocument, model.id),
         })
       },
-      enabled: projectId !== '',
+      enabled: projectId !== '' && projectCADDocumentQuery.isSuccess,
       retry: false,
     })),
   })

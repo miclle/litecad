@@ -87,6 +87,44 @@ describe('CAD kernel worker handler', () => {
     })
   })
 
+  test('passes replayable CAD operations into STEP preview execution', async () => {
+    const result: CadKernelStepPreviewResult = {
+      mesh: {
+        positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+        normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+        indices: [0, 1, 2],
+      },
+    }
+    const operations = [
+      {
+        id: 'op_01test',
+        type: 'transform' as const,
+        modelId: 'mdl_01test',
+        matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1],
+      },
+    ]
+    const runStepPreview = vi.fn(async () => result)
+    const runStepRoundTrip = vi.fn()
+    const postMessage = vi.fn()
+    const handler = createCadKernelWorkerHandler({ runStepPreview, runStepRoundTrip, postMessage })
+
+    await handler({
+      id: 'job-preview',
+      type: 'step-preview',
+      payload: {
+        filename: 'part.step',
+        stepText: 'ISO-10303-21;END-ISO-10303-21;',
+        operations,
+      },
+    })
+
+    expect(runStepPreview).toHaveBeenCalledWith({
+      filename: 'part.step',
+      stepText: 'ISO-10303-21;END-ISO-10303-21;',
+      operations,
+    })
+  })
+
   test('rejects invalid requests before invoking the kernel', async () => {
     const runStepPreview = vi.fn()
     const runStepRoundTrip = vi.fn()

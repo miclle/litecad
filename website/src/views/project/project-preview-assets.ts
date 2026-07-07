@@ -1,5 +1,5 @@
 import type { CADTransform, ProjectCADDocument, ProjectModel, ProjectModelPreviewArtifact } from 'src/types/project'
-import type { CadKernelMesh, CadKernelMeshSummary } from 'src/cad/kernel-protocol'
+import type { CadKernelMesh, CadKernelMeshSummary, CadKernelOperation } from 'src/cad/kernel-protocol'
 
 export type ProjectPreviewUrlAsset = {
   modelId: string
@@ -15,7 +15,8 @@ export type ProjectPreviewKernelMeshAsset = {
   previewFormat: 'kernel-mesh'
   mesh: CadKernelMesh
   meshSummary: CadKernelMeshSummary
-  transform?: CADTransform
+  documentRevision?: number
+  transform?: undefined
 }
 
 export type ProjectPreviewAsset = ProjectPreviewUrlAsset | ProjectPreviewKernelMeshAsset
@@ -49,7 +50,7 @@ export function buildProjectPreviewAssets(
           modelId: model.id,
           name: getModelDisplayName(model),
           previewFormat: 'kernel-mesh',
-          transform,
+          documentRevision: cadDocument?.revision,
           ...kernelMesh,
         },
       ]
@@ -77,11 +78,23 @@ export function projectPreviewAssetSignature(assets: readonly ProjectPreviewAsse
     .map((asset) => {
       const transformSignature = asset.transform ? `:${asset.transform.matrix.join(',')}` : ''
       if (asset.previewFormat === 'kernel-mesh') {
-        return `${asset.modelId}:${asset.previewFormat}:${asset.mesh.positions.length}:${asset.mesh.normals.length}:${asset.mesh.indices.length}${transformSignature}`
+        const revisionSignature = asset.documentRevision === undefined ? '' : `:rev${asset.documentRevision}`
+        return `${asset.modelId}:${asset.previewFormat}:${asset.mesh.positions.length}:${asset.mesh.normals.length}:${asset.mesh.indices.length}${revisionSignature}`
       }
       return `${asset.modelId}:${asset.previewFormat}:${asset.previewUrl}${transformSignature}`
     })
     .join('|')
+}
+
+export function cadKernelOperationsForModel(cadDocument: ProjectCADDocument | undefined, modelId: string): CadKernelOperation[] {
+  return (cadDocument?.operations ?? [])
+    .filter((operation) => operation.model_id === modelId)
+    .map((operation) => ({
+      id: operation.id,
+      type: operation.type,
+      modelId: operation.model_id,
+      matrix: operation.transform.matrix,
+    }))
 }
 
 export function getModelDisplayName(model: ProjectModel) {

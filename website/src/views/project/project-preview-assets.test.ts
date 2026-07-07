@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   buildProjectPreviewAssets,
+  cadKernelOperationsForModel,
   getModelDisplayName,
   parsedPreviewModels,
   projectPreviewAssetSignature,
@@ -135,17 +136,54 @@ describe('project preview assets', () => {
     ).toBe('verify')
   })
 
-  test('attaches CAD document transforms to preview assets and signatures', () => {
+  test('attaches CAD document transforms to backend preview assets and signatures', () => {
+    const model = {
+      ...baseModel,
+      id: 'mdl_stl',
+      original_filename: 'bracket.stl',
+      format: 'stl',
+      content_type: 'model/stl',
+    } satisfies ProjectModel
+    const transform = {
+      matrix: [1, 0, 0, 14, 0, 1, 0, -2, 0, 0, 1, 6, 0, 0, 0, 1],
+    }
+    const assets = buildProjectPreviewAssets(
+      [model],
+      [{ ...previewArtifact, id: 'prv_stl', model_id: 'mdl_stl' }],
+      { mdl_stl: 'blob:stl-obj' },
+      {},
+      {
+        project_id: 'prj_01test',
+        id: 'doc_01test',
+        schema_version: 1,
+        revision: 2,
+        unit: 'millimetre',
+        nodes: [
+          {
+            id: 'node_mdl_stl',
+            model_id: 'mdl_stl',
+            parent_node_id: '',
+            name: 'bracket.stl',
+            source_format: 'stl',
+            transform,
+          },
+        ],
+        operations: [],
+        created_at: '2026-07-07T00:00:00Z',
+        updated_at: '2026-07-07T00:00:00Z',
+      },
+    )
+
+    expect(assets[0]).toMatchObject({ modelId: 'mdl_stl', transform })
+    expect(projectPreviewAssetSignature(assets)).toContain(transform.matrix.join(','))
+  })
+
+  test('uses CAD document revision instead of object transforms for kernel mesh signatures', () => {
     const model = {
       ...baseModel,
       id: 'mdl_step',
       original_filename: 'bracket.step',
     } satisfies ProjectModel
-    const mesh = {
-      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
-      normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
-      indices: [0, 1, 2],
-    }
     const transform = {
       matrix: [1, 0, 0, 14, 0, 1, 0, -2, 0, 0, 1, 6, 0, 0, 0, 1],
     }
@@ -153,12 +191,17 @@ describe('project preview assets', () => {
       [model],
       [],
       {},
-      { mdl_step: { mesh, meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true } } },
+      {
+        mdl_step: {
+          mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
+          meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
+        },
+      },
       {
         project_id: 'prj_01test',
         id: 'doc_01test',
         schema_version: 1,
-        revision: 2,
+        revision: 4,
         unit: 'millimetre',
         nodes: [
           {
@@ -176,8 +219,54 @@ describe('project preview assets', () => {
       },
     )
 
-    expect(assets[0]).toMatchObject({ modelId: 'mdl_step', transform })
-    expect(projectPreviewAssetSignature(assets)).toContain(transform.matrix.join(','))
+    expect(assets[0]).toMatchObject({ modelId: 'mdl_step', previewFormat: 'kernel-mesh', documentRevision: 4 })
+    expect(assets[0]).not.toHaveProperty('transform')
+    expect(projectPreviewAssetSignature(assets)).toBe('mdl_step:kernel-mesh:3:3:3:rev4')
+  })
+
+  test('maps CAD document operations into model-scoped kernel replay operations', () => {
+    const transform = {
+      matrix: [1, 0, 0, 14, 0, 1, 0, -2, 0, 0, 1, 6, 0, 0, 0, 1],
+    }
+
+    expect(
+      cadKernelOperationsForModel(
+        {
+          project_id: 'prj_01test',
+          id: 'doc_01test',
+          schema_version: 1,
+          revision: 3,
+          unit: 'millimetre',
+          nodes: [],
+          operations: [
+            {
+              id: 'op_other',
+              type: 'transform',
+              model_id: 'mdl_other',
+              transform: { matrix: [1, 0, 0, 99, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+              created_at: '2026-07-07T00:00:00Z',
+            },
+            {
+              id: 'op_01test',
+              type: 'transform',
+              model_id: 'mdl_step',
+              transform,
+              created_at: '2026-07-07T00:00:01Z',
+            },
+          ],
+          created_at: '2026-07-07T00:00:00Z',
+          updated_at: '2026-07-07T00:00:01Z',
+        },
+        'mdl_step',
+      ),
+    ).toEqual([
+      {
+        id: 'op_01test',
+        type: 'transform',
+        modelId: 'mdl_step',
+        matrix: transform.matrix,
+      },
+    ])
   })
 
   test('summarizes multi-model preview readiness for the workbench chrome', () => {

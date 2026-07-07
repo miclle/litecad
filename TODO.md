@@ -5,9 +5,9 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 ## Product Capability
 
 - Execute the browser CAD kernel migration defined in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md). Each phase must finish with tests/verification, docs updates, and a scoped commit before starting the next phase:
-  - Phase 3: continue the editable LiteCAD CAD document MVP beyond completed persisted per-model transforms by adding one proven kernel-backed CAD edit and operation replay through the browser worker.
+  - Phase 3: continue the editable LiteCAD CAD document MVP beyond completed persisted and worker-replayed per-model transform operations by adding one proven feature/B-rep CAD edit through the browser worker.
   - Phase 4: export the current browser-edited B-rep document to STEP and verify import -> edit -> export -> re-import.
-- Extend the persisted CAD document model beyond the current root model nodes, transform matrices, transform operations, schema version, revision, and unit. Current projects still do not store editable B-rep feature semantics or versioned kernel shape state.
+- Extend the persisted CAD document model beyond the current root model nodes, transform matrices, transform operations, schema version, revision, and unit. Current projects still do not store editable feature/B-rep semantics or versioned kernel shape state.
 - Continue the CAD import and geometry pipeline beyond completed STEP/STP/self-contained GLTF/GLB/STL source upload, lightweight metadata extraction, browser-kernel STEP preview tessellation, GLB/self-contained GLTF preview publishing, STL-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API:
   - Treat OBJ/GLB preview meshes as derived display artifacts, not editable CAD source of truth.
   - Define editable B-rep geometry records and CAD feature/version semantics beyond uploaded sources, persisted transform operations, preview artifacts, and generated read-only version snapshots.

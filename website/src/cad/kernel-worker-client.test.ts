@@ -93,4 +93,40 @@ describe('runStepPreviewInWorker', () => {
     })
     expect(worker.terminated).toBe(true)
   })
+
+  it('posts replayable CAD operations with step-preview requests', async () => {
+    const worker = new FakeWorker()
+    const operations = [
+      {
+        id: 'op_01test',
+        type: 'transform' as const,
+        modelId: 'mdl_01test',
+        matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1],
+      },
+    ]
+    const resultPromise = runStepPreviewInWorker(
+      { filename: 'part.step', stepText: 'ISO-10303-21;', operations },
+      () => worker,
+    )
+
+    expect(worker.postedMessages).toHaveLength(1)
+    const request = worker.postedMessages[0]
+    expect(request).toMatchObject({
+      type: 'step-preview',
+      payload: { filename: 'part.step', stepText: 'ISO-10303-21;', operations },
+    })
+
+    worker.reply({
+      id: (request as { id: string }).id,
+      type: 'step-preview-result',
+      result: {
+        mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
+        meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
+      },
+    })
+
+    await expect(resultPromise).resolves.toMatchObject({
+      meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
+    })
+  })
 })

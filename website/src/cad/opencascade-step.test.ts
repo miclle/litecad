@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createOpenCascadeLoader } from './opencascade-step'
+import { applyCADOperationsToShape, createOpenCascadeLoader } from './opencascade-step'
 
 describe('createOpenCascadeLoader', () => {
   it('loads the OpenCascade factory with an explicit Vite wasm URL', async () => {
@@ -27,5 +27,45 @@ describe('createOpenCascadeLoader', () => {
     }
     expect(locateFile('replicad_single.wasm')).toBe('/assets/replicad_single.wasm')
     expect(locateFile('other.data')).toBe('other.data')
+  })
+})
+
+describe('applyCADOperationsToShape', () => {
+  it('replays transform operations through OpenCascade shape transforms', () => {
+    const sourceShape = { name: 'source-shape' }
+    const transformedShape = { name: 'transformed-shape' }
+    const setValues = vi.fn()
+    const openCascade = {
+      FS: {
+        readFile: vi.fn(),
+        unlink: vi.fn(),
+      },
+      gp_Trsf_1: vi.fn(function gpTrsf(this: { SetValues: typeof setValues }) {
+        this.SetValues = setValues
+      }),
+      BRepBuilderAPI_Transform_2: vi.fn(function transformBuilder(
+        this: { Shape: () => unknown },
+        shape: unknown,
+        transform: unknown,
+        copy: boolean,
+      ) {
+        expect(shape).toBe(sourceShape)
+        expect(transform).toBeDefined()
+        expect(copy).toBe(true)
+        this.Shape = () => transformedShape
+      }),
+    }
+
+    expect(
+      applyCADOperationsToShape(openCascade, sourceShape, [
+        {
+          id: 'op_01test',
+          type: 'transform',
+          modelId: 'mdl_01test',
+          matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1],
+        },
+      ]),
+    ).toBe(transformedShape)
+    expect(setValues).toHaveBeenCalledWith(1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8)
   })
 })
