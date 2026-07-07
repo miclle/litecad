@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type ChangeEvent,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import {
@@ -53,6 +54,7 @@ import {
   viewOrientationChangeEventName,
 } from './view-events'
 import { AgentMarkdown } from './agent-markdown'
+import { shouldSubmitAgentInputFromKey } from './agent-input'
 import { ModelPreview } from './model-preview'
 import {
   buildProjectPreviewAssets,
@@ -535,6 +537,17 @@ function ProjectView() {
     projectAgentMutation.mutate(messageBody)
     setAiChatDraft('')
   }
+  const handleAiChatInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (!shouldSubmitAgentInputFromKey({
+      key: event.key,
+      shiftKey: event.shiftKey,
+      isComposing: event.nativeEvent.isComposing,
+    })) {
+      return
+    }
+    event.preventDefault()
+    event.currentTarget.form?.requestSubmit()
+  }
 
   return (
     <div
@@ -898,6 +911,7 @@ function ProjectView() {
                 className="min-h-20 w-full resize-none rounded-lg bg-transparent px-2 py-2 text-sm leading-6 text-[#0f172a] outline-none placeholder:text-[#94a3b8]"
                 id="project-ai-chat-input"
                 onChange={(event) => setAiChatDraft(event.target.value)}
+                onKeyDown={handleAiChatInputKeyDown}
                 placeholder="Describe what to inspect or change"
                 readOnly={projectAgentMutation.isPending}
                 value={aiChatDraft}
