@@ -5,13 +5,13 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 ## Product Capability
 
 - Execute the browser CAD kernel migration defined in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md). Each phase must finish with tests/verification, docs updates, and a scoped commit before starting the next phase:
-  - Phase 3: introduce an editable LiteCAD CAD document MVP with persisted operation/document state, starting from transforms and one proven kernel-backed CAD edit.
+  - Phase 3: continue the editable LiteCAD CAD document MVP beyond completed persisted per-model transforms by adding one proven kernel-backed CAD edit and operation replay through the browser worker.
   - Phase 4: export the current browser-edited B-rep document to STEP and verify import -> edit -> export -> re-import.
-- Define the persisted CAD document model beyond uploaded source-file records, lightweight metadata, generated preview artifacts, and read-only geometry snapshots. Current projects do not store editable CAD features, B-rep semantics, or versioned editable geometry documents.
+- Extend the persisted CAD document model beyond the current root model nodes, transform matrices, transform operations, schema version, revision, and unit. Current projects still do not store editable B-rep feature semantics or versioned kernel shape state.
 - Continue the CAD import and geometry pipeline beyond completed STEP/STP/self-contained GLTF/GLB/STL source upload, lightweight metadata extraction, browser-kernel STEP preview tessellation, GLB/self-contained GLTF preview publishing, STL-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API:
   - Treat OBJ/GLB preview meshes as derived display artifacts, not editable CAD source of truth.
-  - Define editable geometry records and CAD feature/version semantics beyond uploaded sources, preview artifacts, and generated read-only version snapshots.
-- Define assembly semantics for multi-source projects, including per-model transforms, selection, visibility, persisted placement, and explicit merge/boolean/export behavior. Current multi-model support is browser preview composition only; it does not combine multiple STEP files into one editable CAD part.
+  - Define editable B-rep geometry records and CAD feature/version semantics beyond uploaded sources, persisted transform operations, preview artifacts, and generated read-only version snapshots.
+- Define assembly semantics for multi-source projects beyond completed per-model transform persistence, including selection, explicit merge/boolean behavior, and export behavior. Current multi-model support is browser preview composition plus persisted placement; it does not combine multiple STEP files into one editable CAD part.
 - Add measurement, sectioning, edge display, and export workflows after real editable geometry is available.
 - Define AI orchestration APIs for prompt-to-design iterations, including provider boundaries, request history, failure states, and cost controls.
 

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   buildProjectPreviewAssets,
+  getModelDisplayName,
   parsedPreviewModels,
   projectPreviewAssetSignature,
   projectPreviewSummary,
@@ -120,6 +121,63 @@ describe('project preview assets', () => {
         meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true },
       },
     ])
+  })
+
+  test('falls back to filename when metadata product names are null', () => {
+    expect(
+      getModelDisplayName({
+        ...baseModel,
+        id: 'mdl_stl',
+        original_filename: 'verify.stl',
+        format: 'stl',
+        metadata: { ...baseModel.metadata, product_names: null },
+      }),
+    ).toBe('verify')
+  })
+
+  test('attaches CAD document transforms to preview assets and signatures', () => {
+    const model = {
+      ...baseModel,
+      id: 'mdl_step',
+      original_filename: 'bracket.step',
+    } satisfies ProjectModel
+    const mesh = {
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+      indices: [0, 1, 2],
+    }
+    const transform = {
+      matrix: [1, 0, 0, 14, 0, 1, 0, -2, 0, 0, 1, 6, 0, 0, 0, 1],
+    }
+    const assets = buildProjectPreviewAssets(
+      [model],
+      [],
+      {},
+      { mdl_step: { mesh, meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true } } },
+      {
+        project_id: 'prj_01test',
+        id: 'doc_01test',
+        schema_version: 1,
+        revision: 2,
+        unit: 'millimetre',
+        nodes: [
+          {
+            id: 'node_mdl_step',
+            model_id: 'mdl_step',
+            parent_node_id: '',
+            name: 'bracket.step',
+            source_format: 'step',
+            transform,
+          },
+        ],
+        operations: [],
+        created_at: '2026-07-07T00:00:00Z',
+        updated_at: '2026-07-07T00:00:00Z',
+      },
+    )
+
+    expect(assets[0]).toMatchObject({ modelId: 'mdl_step', transform })
+    expect(projectPreviewAssetSignature(assets)).toContain(transform.matrix.join(','))
   })
 
   test('summarizes multi-model preview readiness for the workbench chrome', () => {

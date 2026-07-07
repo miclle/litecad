@@ -2,18 +2,21 @@ import { describe, expect, test, vi } from 'vitest'
 
 import client from './client'
 import {
+  fetchProjectCADDocument,
   fetchProjectAgentMessages,
   fetchProjectGeometryDocument,
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
   sendProjectAgentMessage,
+  updateProjectCADModelTransform,
   uploadProjectModel,
 } from './projects'
 
 vi.mock('./client', () => ({
   default: {
     get: vi.fn(),
+    patch: vi.fn(),
     post: vi.fn(),
   },
 }))
@@ -51,6 +54,24 @@ describe('project API', () => {
     fetchProjectGeometryDocument('prj_01test')
 
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/geometry')
+  })
+
+  test('fetches a project CAD document', () => {
+    fetchProjectCADDocument('prj_01test')
+
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/cad-document')
+  })
+
+  test('updates a project CAD model transform', () => {
+    const transform = {
+      matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1] as const,
+    }
+
+    updateProjectCADModelTransform('prj_01test', 'mdl_01test', transform)
+
+    expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/cad-document/models/mdl_01test/transform', {
+      transform,
+    })
   })
 
   test('sends project agent messages', () => {

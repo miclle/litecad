@@ -392,6 +392,142 @@ func TestProjectModelRoutesUploadAndListStep(t *testing.T) {
 	}
 }
 
+func TestProjectCADDocumentRoutesPersistModelTransform(t *testing.T) {
+	router := newTestRouter(t)
+
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name":     "Ada Lovelace",
+		"email":    "cad-document@example.com",
+		"password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+
+	create := postJSONWithCookie(t, router, "/api/v1/projects", map[string]string{
+		"name": "Editable case",
+	}, sessionCookie)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", create.Code, create.Body.String())
+	}
+	var createResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	upload := postMultipartFileWithCookie(
+		t,
+		router,
+		"/api/v1/projects/"+createResponse.Project.ID+"/models",
+		"model",
+		"editable.step",
+		[]byte("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"),
+		sessionCookie,
+	)
+	if upload.Code != http.StatusCreated {
+		t.Fatalf("upload status = %d, body = %s", upload.Code, upload.Body.String())
+	}
+	var uploadResponse struct {
+		Model struct {
+			ID string `json:"id"`
+		} `json:"model"`
+	}
+	if err := json.Unmarshal(upload.Body.Bytes(), &uploadResponse); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+
+	document := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document", sessionCookie)
+	if document.Code != http.StatusOK {
+		t.Fatalf("document status = %d, body = %s", document.Code, document.Body.String())
+	}
+	var documentResponse struct {
+		Document struct {
+			ID       string `json:"id"`
+			Revision int    `json:"revision"`
+			Nodes    []struct {
+				ModelID   string `json:"model_id"`
+				Transform struct {
+					Matrix [16]float64 `json:"matrix"`
+				} `json:"transform"`
+			} `json:"nodes"`
+		} `json:"document"`
+	}
+	if err := json.Unmarshal(document.Body.Bytes(), &documentResponse); err != nil {
+		t.Fatalf("decode document response: %v", err)
+	}
+	if documentResponse.Document.ID == "" || documentResponse.Document.Revision != 1 {
+		t.Fatalf("document response = %+v", documentResponse.Document)
+	}
+	if len(documentResponse.Document.Nodes) != 1 || documentResponse.Document.Nodes[0].ModelID != uploadResponse.Model.ID {
+		t.Fatalf("document nodes = %+v, want uploaded model", documentResponse.Document.Nodes)
+	}
+
+	transformMatrix := [16]float64{
+		1, 0, 0, 18,
+		0, 1, 0, 2,
+		0, 0, 1, -6,
+		0, 0, 0, 1,
+	}
+	patch := patchJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/models/"+uploadResponse.Model.ID+"/transform", map[string]any{
+		"transform": map[string]any{
+			"matrix": transformMatrix,
+		},
+	}, sessionCookie)
+	if patch.Code != http.StatusOK {
+		t.Fatalf("patch status = %d, body = %s", patch.Code, patch.Body.String())
+	}
+	var patchResponse struct {
+		Document struct {
+			Revision int `json:"revision"`
+			Nodes    []struct {
+				ModelID   string `json:"model_id"`
+				Transform struct {
+					Matrix [16]float64 `json:"matrix"`
+				} `json:"transform"`
+			} `json:"nodes"`
+			Operations []struct {
+				Type    string `json:"type"`
+				ModelID string `json:"model_id"`
+			} `json:"operations"`
+		} `json:"document"`
+	}
+	if err := json.Unmarshal(patch.Body.Bytes(), &patchResponse); err != nil {
+		t.Fatalf("decode patch response: %v", err)
+	}
+	if patchResponse.Document.Revision != 2 || len(patchResponse.Document.Operations) != 1 {
+		t.Fatalf("patch document = %+v, want revision 2 with one operation", patchResponse.Document)
+	}
+	if len(patchResponse.Document.Nodes) != 1 || patchResponse.Document.Nodes[0].Transform.Matrix != transformMatrix {
+		t.Fatalf("patch document nodes = %+v, want updated transform", patchResponse.Document.Nodes)
+	}
+
+	reloaded := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document", sessionCookie)
+	if reloaded.Code != http.StatusOK {
+		t.Fatalf("reloaded document status = %d, body = %s", reloaded.Code, reloaded.Body.String())
+	}
+	var reloadedResponse struct {
+		Document struct {
+			Revision int `json:"revision"`
+			Nodes    []struct {
+				Transform struct {
+					Matrix [16]float64 `json:"matrix"`
+				} `json:"transform"`
+			} `json:"nodes"`
+		} `json:"document"`
+	}
+	if err := json.Unmarshal(reloaded.Body.Bytes(), &reloadedResponse); err != nil {
+		t.Fatalf("decode reloaded document response: %v", err)
+	}
+	if reloadedResponse.Document.Revision != 2 || len(reloadedResponse.Document.Nodes) != 1 || reloadedResponse.Document.Nodes[0].Transform.Matrix != transformMatrix {
+		t.Fatalf("reloaded document = %+v, want persisted transform", reloadedResponse.Document)
+	}
+}
+
 func TestProjectModelRoutesUploadSTLPreview(t *testing.T) {
 	router := newTestRouter(t)
 

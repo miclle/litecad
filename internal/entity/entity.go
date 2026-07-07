@@ -93,6 +93,19 @@ type ProjectGeometryVersion struct {
 	PreviewArtifact   ProjectModelPreviewArtifact `gorm:"foreignKey:PreviewArtifactID" json:"preview_artifact"`
 }
 
+// ProjectCADDocument stores LiteCAD-owned editable document state for a project.
+type ProjectCADDocument struct {
+	ID            string         `gorm:"size:32;primaryKey" json:"id"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	DeletedAt     gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	ProjectID     string         `gorm:"size:32;uniqueIndex;not null" json:"project_id"`
+	SchemaVersion int            `gorm:"not null;default:1" json:"schema_version"`
+	Revision      int            `gorm:"not null;default:1" json:"revision"`
+	DocumentJSON  []byte         `gorm:"column:document_json;not null" json:"-"`
+	Project       Project        `gorm:"foreignKey:ProjectID" json:"project"`
+}
+
 // ProjectAgentMessage stores one CAD Agent conversation message for a project.
 type ProjectAgentMessage struct {
 	ID        string         `gorm:"size:32;primaryKey" json:"id"`

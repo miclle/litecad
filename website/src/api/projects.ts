@@ -1,8 +1,10 @@
 import client from './client'
 import type {
   CreateProjectPayload,
+  CADTransform,
   ProjectAgentMessageResponse,
   ProjectAgentMessagesResponse,
+  ProjectCADDocumentResponse,
   ProjectGeometryDocumentResponse,
   ProjectModelPreviewArtifactResponse,
   ProjectModelResponse,
@@ -22,6 +24,14 @@ export function fetchProject(projectId: string) {
 
 export function fetchProjectGeometryDocument(projectId: string) {
   return client.get<ProjectGeometryDocumentResponse>(`/projects/${projectId}/geometry`)
+}
+
+export function fetchProjectCADDocument(projectId: string) {
+  return client.get<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document`)
+}
+
+export function updateProjectCADModelTransform(projectId: string, modelId: string, transform: CADTransform) {
+  return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/models/${modelId}/transform`, { transform })
 }
 
 export function sendProjectAgentMessage(projectId: string, payload: SendProjectAgentMessagePayload) {

@@ -41,6 +41,14 @@ type projectGeometryDocumentResponse struct {
 	Document service.ProjectGeometryDocument `json:"document"`
 }
 
+type projectCADDocumentResponse struct {
+	Document service.ProjectCADDocument `json:"document"`
+}
+
+type updateProjectCADModelTransformRequest struct {
+	Transform service.CADTransform `json:"transform" binding:"required"`
+}
+
 type projectAgentMessageRequest struct {
 	Messages []service.AIChatMessage `json:"messages" binding:"required"`
 }
@@ -202,6 +210,37 @@ func (ctrl *Ctrl) GetProjectGeometryDocument(c *fox.Context) (projectGeometryDoc
 	return projectGeometryDocumentResponse{Document: document}, nil
 }
 
+// GetProjectCADDocument returns the editable LiteCAD document for a signed-in user's project.
+func (ctrl *Ctrl) GetProjectCADDocument(c *fox.Context) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.GetProjectCADDocument(c.Request.Context(), user.ID, c.Param("projectID"))
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// UpdateProjectCADModelTransform records a per-model transform in the editable LiteCAD document.
+func (ctrl *Ctrl) UpdateProjectCADModelTransform(c *fox.Context, req *updateProjectCADModelTransformRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.UpdateProjectCADModelTransform(c.Request.Context(), service.UpdateProjectCADModelTransformInput{
+		OwnerUserID: user.ID,
+		ProjectID:   c.Param("projectID"),
+		ModelID:     c.Param("modelID"),
+		Transform:   req.Transform,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
 // ListProjectAgentMessages returns persisted CAD Agent messages for a signed-in user's project.
 func (ctrl *Ctrl) ListProjectAgentMessages(c *fox.Context) (projectAgentMessagesResponse, error) {
 	user, err := ctrl.currentUser(c)
@@ -265,6 +304,8 @@ func projectError(err error) error {
 		return httperr.NewBadRequest("invalid model upload")
 	case errors.Is(err, service.ErrUnsupportedModelFormat):
 		return httperr.NewBadRequest("unsupported model format")
+	case errors.Is(err, service.ErrInvalidCADDocumentInput):
+		return httperr.NewBadRequest("invalid CAD document input")
 	case errors.Is(err, service.ErrModelPreviewUnavailable):
 		return httperr.NewBadRequest("model preview unavailable")
 	case errors.Is(err, service.ErrInvalidAIChatInput):

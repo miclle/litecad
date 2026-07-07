@@ -1,4 +1,4 @@
-import type { ProjectModel, ProjectModelPreviewArtifact } from 'src/types/project'
+import type { CADTransform, ProjectCADDocument, ProjectModel, ProjectModelPreviewArtifact } from 'src/types/project'
 import type { CadKernelMesh, CadKernelMeshSummary } from 'src/cad/kernel-protocol'
 
 export type ProjectPreviewUrlAsset = {
@@ -6,6 +6,7 @@ export type ProjectPreviewUrlAsset = {
   name: string
   previewFormat: ProjectModelPreviewArtifact['format']
   previewUrl: string
+  transform?: CADTransform
 }
 
 export type ProjectPreviewKernelMeshAsset = {
@@ -14,6 +15,7 @@ export type ProjectPreviewKernelMeshAsset = {
   previewFormat: 'kernel-mesh'
   mesh: CadKernelMesh
   meshSummary: CadKernelMeshSummary
+  transform?: CADTransform
 }
 
 export type ProjectPreviewAsset = ProjectPreviewUrlAsset | ProjectPreviewKernelMeshAsset
@@ -33,17 +35,21 @@ export function buildProjectPreviewAssets(
   previewArtifacts: ProjectModelPreviewArtifact[],
   previewUrlsByModelID: Record<string, string>,
   kernelMeshesByModelID: Record<string, { mesh: CadKernelMesh; meshSummary: CadKernelMeshSummary }> = {},
+  cadDocument?: ProjectCADDocument,
 ) {
   const artifactByModelID = new Map(previewArtifacts.map((artifact) => [artifact.model_id, artifact]))
+  const transformByModelID = new Map((cadDocument?.nodes ?? []).map((node) => [node.model_id, node.transform]))
 
   return models.flatMap((model): ProjectPreviewAsset[] => {
     const kernelMesh = model.format === 'step' ? kernelMeshesByModelID[model.id] : undefined
+    const transform = transformByModelID.get(model.id)
     if (kernelMesh) {
       return [
         {
           modelId: model.id,
           name: getModelDisplayName(model),
           previewFormat: 'kernel-mesh',
+          transform,
           ...kernelMesh,
         },
       ]
@@ -60,6 +66,7 @@ export function buildProjectPreviewAssets(
         name: getModelDisplayName(model),
         previewFormat: artifact.format,
         previewUrl,
+        transform,
       },
     ]
   })
@@ -68,16 +75,17 @@ export function buildProjectPreviewAssets(
 export function projectPreviewAssetSignature(assets: readonly ProjectPreviewAsset[]) {
   return assets
     .map((asset) => {
+      const transformSignature = asset.transform ? `:${asset.transform.matrix.join(',')}` : ''
       if (asset.previewFormat === 'kernel-mesh') {
-        return `${asset.modelId}:${asset.previewFormat}:${asset.mesh.positions.length}:${asset.mesh.normals.length}:${asset.mesh.indices.length}`
+        return `${asset.modelId}:${asset.previewFormat}:${asset.mesh.positions.length}:${asset.mesh.normals.length}:${asset.mesh.indices.length}${transformSignature}`
       }
-      return `${asset.modelId}:${asset.previewFormat}:${asset.previewUrl}`
+      return `${asset.modelId}:${asset.previewFormat}:${asset.previewUrl}${transformSignature}`
     })
     .join('|')
 }
 
 export function getModelDisplayName(model: ProjectModel) {
-  const parsedName = model.metadata.product_names[0]?.trim()
+  const parsedName = model.metadata.product_names?.[0]?.trim()
   if (parsedName) {
     return parsedName
   }

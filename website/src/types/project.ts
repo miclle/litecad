@@ -32,7 +32,7 @@ export interface StepMetadata {
   asset_type: string
   version: string
   schema: string
-  product_names: string[]
+  product_names: string[] | null
   length_unit: string
   entity_count: number
   representation_count: number
@@ -94,6 +94,43 @@ export interface ProjectGeometryDocument {
 
 export interface ProjectGeometryDocumentResponse {
   document: ProjectGeometryDocument
+}
+
+export interface CADTransform {
+  matrix: readonly number[]
+}
+
+export interface CADDocumentNode {
+  id: string
+  model_id: string
+  parent_node_id: string
+  name: string
+  source_format: string
+  transform: CADTransform
+}
+
+export interface CADOperation {
+  id: string
+  type: 'transform'
+  model_id: string
+  transform: CADTransform
+  created_at: string
+}
+
+export interface ProjectCADDocument {
+  id: string
+  project_id: string
+  schema_version: number
+  revision: number
+  unit: string
+  nodes: CADDocumentNode[]
+  operations: CADOperation[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectCADDocumentResponse {
+  document: ProjectCADDocument
 }
 
 export interface ProjectAgentMessage {

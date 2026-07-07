@@ -31,11 +31,13 @@ import { Link, useParams } from 'react-router-dom'
 import {
   fetchProjectAgentMessages,
   fetchProject,
+  fetchProjectCADDocument,
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
   fetchProjectModels,
   sendProjectAgentMessage,
+  updateProjectCADModelTransform,
   uploadProjectModel,
 } from 'src/api/projects'
 import { runStepPreviewInWorker, type CadKernelWorkerPreviewResult } from 'src/cad/kernel-worker-client'
@@ -57,6 +59,7 @@ import {
 } from './view-events'
 import { AgentMarkdown } from './agent-markdown'
 import { shouldSubmitAgentInputFromKey } from './agent-input'
+import { cadTransformWithTranslation, translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { ModelPreview } from './model-preview'
 import {
   buildProjectPreviewAssets,
@@ -85,6 +88,8 @@ type AiChatMessage = {
   role: 'assistant' | 'user'
   body: string
 }
+
+type TransformDraft = Record<keyof CADTranslation, string>
 
 const initialAiChatMessages: AiChatMessage[] = [
   {
@@ -117,6 +122,29 @@ function projectAgentErrorMessage(error: unknown) {
   return 'CAD Agent could not answer right now. Check the AI provider configuration and try again.'
 }
 
+function transformDraftFromTranslation(translation: CADTranslation): TransformDraft {
+  return {
+    x: String(translation.x),
+    y: String(translation.y),
+    z: String(translation.z),
+  }
+}
+
+function parseTransformDraft(draft: TransformDraft | undefined): CADTranslation | undefined {
+  if (!draft) {
+    return undefined
+  }
+  const translation = {
+    x: Number(draft.x),
+    y: Number(draft.y),
+    z: Number(draft.z),
+  }
+  if (!Number.isFinite(translation.x) || !Number.isFinite(translation.y) || !Number.isFinite(translation.z)) {
+    return undefined
+  }
+  return translation
+}
+
 function ProjectView() {
   const { projectId = '' } = useParams()
   const queryClient = useQueryClient()
@@ -137,6 +165,8 @@ function ProjectView() {
   const [uploadError, setUploadError] = useState('')
   const [previewUrlsByModelID, setPreviewUrlsByModelID] = useState<Record<string, string>>({})
   const [hiddenModelIDs, setHiddenModelIDs] = useState<Set<string>>(() => new Set())
+  const [transformDraftsByModelID, setTransformDraftsByModelID] = useState<Record<string, TransformDraft>>({})
+  const [transformErrorByModelID, setTransformErrorByModelID] = useState<Record<string, string>>({})
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -158,6 +188,7 @@ function ProjectView() {
     onSuccess: async () => {
       setUploadError('')
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
     },
     onError: () => {
       setUploadError('Model upload failed. Check that the file is STEP, GLTF, GLB, or STL and try again.')
@@ -192,13 +223,37 @@ function ProjectView() {
       ])
     },
   })
+  const updateCADModelTransformMutation = useMutation({
+    mutationFn: async ({ modelId, translation }: { modelId: string; translation: CADTranslation }) => {
+      const currentNode = projectCADDocument?.nodes.find((node) => node.model_id === modelId)
+      const transform = cadTransformWithTranslation(currentNode?.transform, translation)
+      return (await updateProjectCADModelTransform(projectId, modelId, transform)).data.document
+    },
+    onSuccess: async (document, variables) => {
+      setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: '' }))
+      queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
+    },
+    onError: (_error, variables) => {
+      setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: 'Invalid transform' }))
+    },
+  })
   const project = projectQuery.data
   const projectModels = useMemo(() => projectModelsQuery.data ?? [], [projectModelsQuery.data])
+  const projectCADDocumentQuery = useQuery({
+    queryKey: ['projects', projectId, 'cad-document'],
+    queryFn: async () => (await fetchProjectCADDocument(projectId)).data.document,
+    enabled: projectId !== '' && projectModelsQuery.isSuccess,
+  })
+  const projectCADDocument = projectCADDocumentQuery.data
+  const cadNodeByModelID = useMemo(
+    () => new Map((projectCADDocument?.nodes ?? []).map((node) => [node.model_id, node])),
+    [projectCADDocument],
+  )
   const previewModels = useMemo(() => parsedPreviewModels(projectModels), [projectModels])
   const browserKernelPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'step'), [previewModels])
   const backendPreviewModels = useMemo(() => previewModels.filter((model) => model.format !== 'step'), [previewModels])
   const latestModel = projectModels[0]
-  const latestProductName = latestModel?.metadata.product_names[0]
+  const latestProductName = latestModel?.metadata.product_names?.[0]
   const browserKernelPreviewQueries = useQueries({
     queries: browserKernelPreviewModels.map((model) => ({
       queryKey: ['projects', projectId, 'models', model.id, 'kernel-preview'],
@@ -253,9 +308,10 @@ function ProjectView() {
     }),
   })
   const previewAssets = useMemo(
-    () => buildProjectPreviewAssets(previewModels, previewArtifacts, previewUrlsByModelID, kernelMeshesByModelID),
-    [kernelMeshesByModelID, previewArtifacts, previewModels, previewUrlsByModelID],
+    () => buildProjectPreviewAssets(previewModels, previewArtifacts, previewUrlsByModelID, kernelMeshesByModelID, projectCADDocument),
+    [kernelMeshesByModelID, previewArtifacts, previewModels, previewUrlsByModelID, projectCADDocument],
   )
+  const previewAssetModelIDs = useMemo(() => new Set(previewAssets.map((asset) => asset.modelId)), [previewAssets])
   const visibleModelIds = useMemo(
     () => previewAssets.flatMap((asset) => (hiddenModelIDs.has(asset.modelId) ? [] : [asset.modelId])),
     [hiddenModelIDs, previewAssets],
@@ -295,6 +351,19 @@ function ProjectView() {
         : initialAiChatMessages,
     )
   }, [projectAgentMessagesQuery.data])
+
+  useEffect(() => {
+    if (!projectCADDocument) {
+      return
+    }
+    setTransformDraftsByModelID((currentDrafts) => {
+      const nextDrafts = { ...currentDrafts }
+      for (const node of projectCADDocument.nodes ?? []) {
+        nextDrafts[node.model_id] = transformDraftFromTranslation(translationFromCADTransform(node.transform))
+      }
+      return nextDrafts
+    })
+  }, [projectCADDocument])
 
   useEffect(() => {
     const syncAiChatPanelMaxWidth = () => {
@@ -544,6 +613,29 @@ function ProjectView() {
       }
       return nextIDs
     })
+  }
+  const updateTransformDraft = (modelID: string, axis: keyof CADTranslation, value: string) => {
+    setTransformDraftsByModelID((currentDrafts) => {
+      const node = cadNodeByModelID.get(modelID)
+      const currentDraft = currentDrafts[modelID] ?? transformDraftFromTranslation(translationFromCADTransform(node?.transform))
+      return {
+        ...currentDrafts,
+        [modelID]: {
+          ...currentDraft,
+          [axis]: value,
+        },
+      }
+    })
+  }
+  const applyTransformDraft = (modelID: string) => {
+    const node = cadNodeByModelID.get(modelID)
+    const draft = transformDraftsByModelID[modelID] ?? transformDraftFromTranslation(translationFromCADTransform(node?.transform))
+    const translation = parseTransformDraft(draft)
+    if (!translation) {
+      setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: 'Invalid transform' }))
+      return
+    }
+    updateCADModelTransformMutation.mutate({ modelId: modelID, translation })
   }
   const handleModelFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -807,38 +899,73 @@ function ProjectView() {
                     {projectModels.map((model) => {
                       const modelDisplayName = getModelDisplayName(model)
                       const isModelHidden = hiddenModelIDs.has(model.id)
-                      const hasPreviewAsset = previewArtifactByModelID.has(model.id)
+                      const hasPreviewAsset = previewAssetModelIDs.has(model.id)
                       const VisibilityIcon = isModelHidden ? EyeOff : Eye
+                      const node = cadNodeByModelID.get(model.id)
+                      const transformDraft =
+                        transformDraftsByModelID[model.id] ?? transformDraftFromTranslation(translationFromCADTransform(node?.transform))
+                      const transformError = transformErrorByModelID[model.id]
+                      const isTransformUpdating =
+                        updateCADModelTransformMutation.isPending && updateCADModelTransformMutation.variables?.modelId === model.id
 
                       return (
                         <div
-                          className={`group/model-row flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm transition hover:bg-[#f1f5f9] ${
+                          className={`group/model-row min-w-0 rounded-md px-2 py-1.5 text-sm transition hover:bg-[#f1f5f9] ${
                             isModelHidden ? 'text-[#94a3b8]' : 'text-[#1f2937]'
                           }`}
                           key={model.id}
                         >
-                          <Box className={`size-4 shrink-0 ${isModelHidden ? 'text-[#94a3b8]' : 'text-[#475569]'}`} />
-                          <p className="min-w-0 flex-1 truncate">{modelDisplayName}</p>
-                          {hasPreviewAsset && (
-                            <button
-                              aria-label={isModelHidden ? `Show ${modelDisplayName}` : `Hide ${modelDisplayName}`}
-                              aria-pressed={!isModelHidden}
-                              className={`grid size-6 shrink-0 place-items-center rounded text-[#64748b] opacity-0 transition hover:bg-[#e2e8f0] hover:text-[#0f172a] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] group-hover/model-row:opacity-100 ${
-                                isModelHidden ? 'opacity-100 text-[#94a3b8]' : ''
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Box className={`size-4 shrink-0 ${isModelHidden ? 'text-[#94a3b8]' : 'text-[#475569]'}`} />
+                            <p className="min-w-0 flex-1 truncate">{modelDisplayName}</p>
+                            {hasPreviewAsset && (
+                              <button
+                                aria-label={isModelHidden ? `Show ${modelDisplayName}` : `Hide ${modelDisplayName}`}
+                                aria-pressed={!isModelHidden}
+                                className={`grid size-6 shrink-0 place-items-center rounded text-[#64748b] opacity-0 transition hover:bg-[#e2e8f0] hover:text-[#0f172a] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] group-hover/model-row:opacity-100 ${
+                                  isModelHidden ? 'opacity-100 text-[#94a3b8]' : ''
+                                }`}
+                                onClick={() => toggleModelVisibility(model.id)}
+                                title={isModelHidden ? 'Show model' : 'Hide model'}
+                                type="button"
+                              >
+                                <VisibilityIcon className="size-3.5" />
+                              </button>
+                            )}
+                            <div
+                              aria-label={model.parse_status === 'parsed' ? 'Model preview is ready' : 'Model is being processed'}
+                              className={`size-1.5 shrink-0 rounded-full ${
+                                model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'
                               }`}
-                              onClick={() => toggleModelVisibility(model.id)}
-                              title={isModelHidden ? 'Show model' : 'Hide model'}
+                            />
+                          </div>
+                          <div className="mt-2 grid grid-cols-[repeat(3,minmax(0,1fr))_28px] items-center gap-1.5">
+                            {(['x', 'y', 'z'] as const).map((axis) => (
+                              <label className="min-w-0" key={axis}>
+                                <span className="sr-only">{`${axis.toUpperCase()} translation for ${modelDisplayName}`}</span>
+                                <input
+                                  aria-label={`${axis.toUpperCase()} translation for ${modelDisplayName}`}
+                                  className="h-7 w-full rounded border border-[#dbe3ec] bg-white px-1.5 text-right font-mono text-[11px] text-[#334155] outline-none transition focus:border-[#64748b] focus:ring-2 focus:ring-[#cbd5e1]"
+                                  inputMode="decimal"
+                                  onChange={(event) => updateTransformDraft(model.id, axis, event.target.value)}
+                                  title={`${axis.toUpperCase()} translation`}
+                                  type="number"
+                                  value={transformDraft[axis]}
+                                />
+                              </label>
+                            ))}
+                            <button
+                              aria-label={`Apply transform for ${modelDisplayName}`}
+                              className="grid size-7 shrink-0 place-items-center rounded border border-[#dbe3ec] bg-white text-[#64748b] transition hover:border-[#94a3b8] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
+                              disabled={isTransformUpdating || !projectCADDocument}
+                              onClick={() => applyTransformDraft(model.id)}
+                              title="Apply transform"
                               type="button"
                             >
-                              <VisibilityIcon className="size-3.5" />
+                              <CheckCircle2 className="size-3.5" />
                             </button>
-                          )}
-                          <div
-                            aria-label={model.parse_status === 'parsed' ? 'Model preview is ready' : 'Model is being processed'}
-                            className={`size-1.5 shrink-0 rounded-full ${
-                              model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'
-                            }`}
-                          />
+                          </div>
+                          {transformError && <p className="mt-1 text-[11px] leading-4 text-[#8a2f24]">{transformError}</p>}
                         </div>
                       )
                     })}

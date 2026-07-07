@@ -411,6 +411,28 @@ export function ModelPreview({ deferResize = false, previewAssets = [], visibleM
         return
       }
       object.name = asset.name
+      if (asset.transform?.matrix.length === 16) {
+        const matrix = new THREE.Matrix4()
+        matrix.set(
+          asset.transform.matrix[0] ?? 1,
+          asset.transform.matrix[1] ?? 0,
+          asset.transform.matrix[2] ?? 0,
+          asset.transform.matrix[3] ?? 0,
+          asset.transform.matrix[4] ?? 0,
+          asset.transform.matrix[5] ?? 1,
+          asset.transform.matrix[6] ?? 0,
+          asset.transform.matrix[7] ?? 0,
+          asset.transform.matrix[8] ?? 0,
+          asset.transform.matrix[9] ?? 0,
+          asset.transform.matrix[10] ?? 1,
+          asset.transform.matrix[11] ?? 0,
+          asset.transform.matrix[12] ?? 0,
+          asset.transform.matrix[13] ?? 0,
+          asset.transform.matrix[14] ?? 0,
+          asset.transform.matrix[15] ?? 1,
+        )
+        object.applyMatrix4(matrix)
+      }
       if (asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh') {
         orientCADPreviewObject(object)
       }

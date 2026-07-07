@@ -185,6 +185,17 @@ Tests and verification:
 
 Introduce a LiteCAD document model for browser-side CAD edits.
 
+Phase 3 acceptance status: in progress. The first Phase 3 increment is complete on 2026-07-07: LiteCAD now stores a project-owned editable CAD document record with schema version, revision, unit, root model nodes, per-model transform matrices, and replayable transform operations. The workbench exposes X/Y/Z per-model transform controls, saves them through the CAD document API, reloads them, and applies them to derived preview assets.
+
+Current Phase 3 status:
+
+- `ProjectCADDocument` persists editable document JSON separately from uploaded source bytes, read-only geometry snapshots, and derived preview artifacts.
+- `GET /api/v1/projects/:projectID/cad-document` returns the current owner-scoped editable document, creating identity model nodes for existing project models when needed.
+- `PATCH /api/v1/projects/:projectID/cad-document/models/:modelID/transform` records a transform operation for one project-owned model and increments the document revision.
+- The project workbench fetches the CAD document, includes document transforms in preview asset signatures, and applies row-major transform matrices before rendering the Three.js preview object.
+- Browser verification on 2026-07-08 against a temporary current-code server on `127.0.0.1:46283` created a new signed-in project, uploaded `verify.stl`, rendered one preview mesh, changed the first model's X transform from `0` to `2.5`, reloaded the project route, and confirmed the persisted value remained `2.5` with a present 1280 x 844 preview canvas and no console errors.
+- This increment intentionally does not claim true B-rep edits, kernel shape serialization, boolean/feature operations, operation replay in the worker, or STEP export.
+
 Scope:
 
 - Define a minimal operation graph and document serialization.
@@ -257,4 +268,5 @@ As of this roadmap, the current shipped path is:
 - GLB and self-contained GLTF uploads can be published as preview artifacts after backend validation.
 - STL is converted to OBJ preview data in Go.
 - The project workbench renders browser-kernel STEP meshes and backend-provided GLB/GLTF/STL preview artifacts in Three.js.
-- No editable B-rep document or STEP export flow exists yet.
+- The project workbench stores and reloads a LiteCAD editable document for root model nodes and per-model transform operations, then applies those transforms to derived preview objects.
+- No editable B-rep feature operation, kernel shape serialization, or STEP export flow exists yet.
