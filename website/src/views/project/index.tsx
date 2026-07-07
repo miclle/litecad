@@ -15,6 +15,7 @@ import {
   Box,
   BotMessageSquare,
   CheckCircle2,
+  Download,
   Eye,
   EyeOff,
   FileText,
@@ -41,7 +42,11 @@ import {
   updateProjectCADModelTransform,
   uploadProjectModel,
 } from 'src/api/projects'
-import { runStepPreviewInWorker, type CadKernelWorkerPreviewResult } from 'src/cad/kernel-worker-client'
+import {
+  runStepPreviewInWorker,
+  runStepRoundTripInWorker,
+  type CadKernelWorkerPreviewResult,
+} from 'src/cad/kernel-worker-client'
 import { Button } from '@/components/ui/button'
 import {
   Popover,
@@ -68,6 +73,7 @@ import {
 } from './cad-document-box-features'
 import { cadTransformWithTranslation, translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { ModelPreview } from './model-preview'
+import { exportStepTarget } from './project-step-export-action'
 import {
   buildProjectPreviewAssets,
   cadKernelOperationsForModel,
@@ -75,6 +81,7 @@ import {
   parsedPreviewModels,
   projectPreviewSummary,
 } from './project-preview-assets'
+import { buildStepExportTargets, publishStepExportDownload } from './project-step-export'
 import { ViewController } from './view-controller'
 import {
   initialViewOrientation,
@@ -177,6 +184,8 @@ function ProjectView() {
   const [transformErrorByModelID, setTransformErrorByModelID] = useState<Record<string, string>>({})
   const [boxFeatureDraftsByModelID, setBoxFeatureDraftsByModelID] = useState<Record<string, BoxFeatureDraft>>({})
   const [boxFeatureErrorByModelID, setBoxFeatureErrorByModelID] = useState<Record<string, string>>({})
+  const [stepExportErrorByModelID, setStepExportErrorByModelID] = useState<Record<string, string>>({})
+  const [stepExportStatusByModelID, setStepExportStatusByModelID] = useState<Record<string, string>>({})
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -262,6 +271,29 @@ function ProjectView() {
       setBoxFeatureErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: 'Invalid box feature' }))
     },
   })
+  const exportStepModelMutation = useMutation({
+    mutationFn: async (target: ReturnType<typeof buildStepExportTargets>[number]) =>
+      exportStepTarget({
+        target,
+        fetchSourceText: async (modelId) => {
+          const source = (await fetchProjectModelSource(projectId, modelId)).data
+          return source.text()
+        },
+        runStepRoundTrip: runStepRoundTripInWorker,
+        publishDownload: publishStepExportDownload,
+      }),
+    onSuccess: async (_result, target) => {
+      setStepExportErrorByModelID((currentErrors) => ({ ...currentErrors, [target.modelId]: '' }))
+      setStepExportStatusByModelID((currentStatuses) => ({
+        ...currentStatuses,
+        [target.modelId]: `Downloaded ${target.downloadFilename}`,
+      }))
+    },
+    onError: (_error, target) => {
+      setStepExportStatusByModelID((currentStatuses) => ({ ...currentStatuses, [target.modelId]: '' }))
+      setStepExportErrorByModelID((currentErrors) => ({ ...currentErrors, [target.modelId]: 'STEP export failed' }))
+    },
+  })
   const project = projectQuery.data
   const projectModels = useMemo(() => projectModelsQuery.data ?? [], [projectModelsQuery.data])
   const projectCADDocumentQuery = useQuery({
@@ -270,6 +302,14 @@ function ProjectView() {
     enabled: projectId !== '' && projectModelsQuery.isSuccess,
   })
   const projectCADDocument = projectCADDocumentQuery.data
+  const stepExportTargets = useMemo(
+    () => buildStepExportTargets(projectModels, projectCADDocument),
+    [projectModels, projectCADDocument],
+  )
+  const stepExportTargetByModelID = useMemo(
+    () => new Map(stepExportTargets.map((target) => [target.modelId, target])),
+    [stepExportTargets],
+  )
   const cadNodeByModelID = useMemo(
     () => new Map((projectCADDocument?.nodes ?? []).map((node) => [node.model_id, node])),
     [projectCADDocument],
@@ -690,6 +730,14 @@ function ProjectView() {
     }
     addCADModelBoxUnionMutation.mutate({ modelId: modelID, box })
   }
+  const exportStepModel = (modelID: string) => {
+    const target = stepExportTargetByModelID.get(modelID)
+    if (!target) {
+      setStepExportErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: 'STEP export is unavailable' }))
+      return
+    }
+    exportStepModelMutation.mutate(target)
+  }
   const handleModelFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) {
@@ -964,6 +1012,11 @@ function ProjectView() {
                       const boxFeatureError = boxFeatureErrorByModelID[model.id]
                       const isBoxFeatureUpdating =
                         addCADModelBoxUnionMutation.isPending && addCADModelBoxUnionMutation.variables?.modelId === model.id
+                      const stepExportTarget = stepExportTargetByModelID.get(model.id)
+                      const stepExportError = stepExportErrorByModelID[model.id]
+                      const stepExportStatus = stepExportStatusByModelID[model.id]
+                      const isStepExporting =
+                        exportStepModelMutation.isPending && exportStepModelMutation.variables?.modelId === model.id
 
                       return (
                         <div
@@ -987,6 +1040,18 @@ function ProjectView() {
                                 type="button"
                               >
                                 <VisibilityIcon className="size-3.5" />
+                              </button>
+                            )}
+                            {stepExportTarget && (
+                              <button
+                                aria-label={`Export STEP for ${modelDisplayName}`}
+                                className="grid size-6 shrink-0 place-items-center rounded text-[#64748b] opacity-0 transition hover:bg-[#e2e8f0] hover:text-[#0f172a] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] disabled:cursor-not-allowed disabled:opacity-50 group-hover/model-row:opacity-100"
+                                disabled={isStepExporting || !projectCADDocument}
+                                onClick={() => exportStepModel(model.id)}
+                                title="Export STEP"
+                                type="button"
+                              >
+                                <Download className="size-3.5" />
                               </button>
                             )}
                             <div
@@ -1063,6 +1128,8 @@ function ProjectView() {
                               {boxFeatureError && <p className="mt-1 text-[11px] leading-4 text-[#8a2f24]">{boxFeatureError}</p>}
                             </div>
                           )}
+                          {stepExportError && <p className="mt-1 text-[11px] leading-4 text-[#8a2f24]">{stepExportError}</p>}
+                          {stepExportStatus && <p className="mt-1 text-[11px] leading-4 text-[#3f6212]">{stepExportStatus}</p>}
                         </div>
                       )
                     })}

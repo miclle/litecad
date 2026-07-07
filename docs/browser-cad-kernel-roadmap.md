@@ -16,7 +16,7 @@ Import STEP or another CAD source
   -> export the current shape back to STEP or another CAD exchange format
 ```
 
-The current implementation does not do this yet. Today, STEP workbench preview uses browser-kernel tessellation, while GLTF/GLB/STL preview artifacts remain viewer outputs rather than editable CAD documents.
+The current implementation now covers the first browser-kernel loop for one STEP model at a time: STEP workbench preview uses browser-kernel tessellation, persisted transform and constrained box-union operations replay in the worker, and the workbench can directly download a STEP export for the current per-model document state. GLTF/GLB/STL preview artifacts remain viewer outputs rather than editable CAD documents.
 
 ## Architectural Decision
 
@@ -62,7 +62,7 @@ Go backend
   project metadata
   uploaded source storage
   LiteCAD document and operation graph persistence
-  exported artifact storage
+  exported artifact storage or direct download
   embedded frontend and WASM assets
 ```
 
@@ -81,7 +81,7 @@ Recommended concepts:
 - `previewMesh`: derived render data produced from the current shape state.
 - `exportArtifact`: generated STEP/GLB/STL/etc. output from the current document state.
 
-The exact database schema should be designed only after the browser kernel proof of concept proves import, tessellation, edit, and export viability.
+The first browser-kernel proof of concept has proven import, tessellation, constrained per-model edit replay, and direct STEP export. A durable database schema for kernel shape state, richer feature history, and backend export artifact history is still future design work.
 
 ## Phased Implementation Plan
 
@@ -204,7 +204,7 @@ Current Phase 3 status:
 - Workbench browser verification on 2026-07-08 against temporary Go/Vite dev servers on `127.0.0.1:46286` and `127.0.0.1:46287` registered a new user, generated and uploaded `worker-replay-box.step`, rendered one STEP kernel preview canvas at 1280 x 844, changed X translation to `25` through the real workbench controls, observed the authenticated STEP source request count increase from 1 to 2 after document revision changed, and saw no unexpected browser errors.
 - Browser worker verification on 2026-07-08 against a temporary Vite server on `127.0.0.1:46288` generated a box STEP in the browser, ran base preview and `box-union` worker preview with an added box at origin `[10, 0, 0]` and size `[5, 5, 5]`, and confirmed triangle count grew from 12 to 26, vertex count grew from 24 to 48, max X grew from 10 to 15, normals were present, and transformed STEP round-trip export produced 28911 bytes.
 - Workbench browser verification on 2026-07-08 against temporary Go/Vite dev servers on `127.0.0.1:46289` and `127.0.0.1:46290` registered a new user, generated and uploaded `box-union-base.step`, rendered one STEP kernel preview canvas at 1280 x 844, used the real workbench controls to add a box union with origin `[10, 0, 0]` and size `[5, 5, 5]`, observed the `box-union` API return 200 and the authenticated STEP source request count increase from 1 to 2 after document revision changed, and saw no unexpected browser errors.
-- This phase still does not claim durable kernel shape serialization, rich CAD feature-history semantics, general cross-model boolean/merge workflows, or STEP export UI/storage.
+- This phase still does not claim durable kernel shape serialization, rich CAD feature-history semantics, general cross-model boolean/merge workflows, backend STEP export artifact storage, or cross-model assembly export.
 
 Scope:
 
@@ -227,11 +227,21 @@ Tests and verification:
 
 Export the browser-edited B-rep document to STEP.
 
+Phase 4 acceptance status: complete on 2026-07-08. LiteCAD now supports direct per-model STEP downloads from the current browser-kernel document state. The first milestone intentionally uses client-side download rather than backend export artifact storage because the project is not launched and the current product need is to export the edited model without adding another runtime component.
+
+Current Phase 4 status:
+
+- `website/src/views/project/project-step-export.ts` selects parsed STEP models as export targets, generates revision-stamped `.step` filenames, creates browser-downloadable STEP blobs, and publishes downloads through a temporary object URL.
+- `website/src/views/project/project-step-export-action.ts` fetches the authenticated source text for one STEP model, sends it to `runStepRoundTripInWorker(...)` with the current model-scoped CAD document operations, and downloads the worker's `exportedStepText`.
+- The project workbench shows an export control on parsed STEP model rows. Exported filenames follow `<source-base>-litecad-r<document-revision>.step`, so a model edited to CAD document revision 2 downloads as `phase4-base-litecad-r2.step`.
+- Export currently covers one source STEP model plus that model's replayable LiteCAD operations. It does not combine multiple STEP sources into one assembly export, persist generated export artifacts on the backend, preserve source CAD feature history, or serialize durable kernel shape state.
+- Browser verification on 2026-07-08 against temporary Go/Vite dev servers on `127.0.0.1:46291` and `127.0.0.1:46292` generated a box STEP in the browser, registered a user, uploaded `phase4-base.step`, used the real workbench controls to add a box union, clicked the real STEP export control, downloaded `phase4-base-litecad-r2.step`, re-imported that exported STEP through the workbench upload input, and confirmed two parsed models rendered as kernel previews. The downloaded STEP was 28911 bytes, the re-imported project model count was 2, the main preview canvas measured 1280 x 788, and the Workbench phase reported no console, page, or HTTP errors.
+
 Scope:
 
 - Add export command in the workbench UI.
 - Generate STEP from the current kernel shape/document state.
-- Send export artifacts to backend storage or download directly, depending on product decision.
+- Send export artifacts to backend storage or download directly, depending on product decision. The first shipped milestone chooses direct download.
 - Preserve units, basic names, and assembly structure where the kernel path supports them.
 
 Tests and verification:
@@ -249,7 +259,7 @@ Audit runtime dependencies and docs after editable import/preview/export flows a
 Scope:
 
 - Confirm no reintroduced third-party desktop CAD runtime dependency exists in normal import, preview, edit, or export flows.
-- Update API and preview docs to describe browser-kernel or backend-stored artifact behavior after export ships.
+- Update API and preview docs to describe browser-kernel direct download behavior after export ships.
 - Add migration handling for existing preview artifacts if product data created before launch requires it.
 
 Tests and verification:
@@ -264,7 +274,7 @@ Tests and verification:
 
 - Which OCCT WASM package has the right long-term size, licensing, maintenance, and binding coverage for richer edit operations beyond the current `replicad-opencascadejs` spike?
 - Should kernel-generated document state persist as OCCT-native serialized shapes, a LiteCAD operation graph, or both?
-- Should STEP export happen fully client-side with direct download, or should the backend store export artifacts for project history?
+- Should later STEP export milestones add backend-stored export artifact history in addition to the current direct browser download?
 - What maximum file size should the browser worker support before the UI asks the user to use a server-side or queued conversion path?
 - How should assemblies, colors, names, units, and product structure be represented in LiteCAD documents?
 
@@ -280,4 +290,5 @@ As of this roadmap, the current shipped path is:
 - The project workbench renders browser-kernel STEP meshes and backend-provided GLB/GLTF/STL preview artifacts in Three.js.
 - The project workbench stores and reloads a LiteCAD editable document for root model nodes plus per-model transform and constrained box-union operations.
 - STEP preview derives mesh data by replaying persisted transform and box-union operations in the browser CAD worker before tessellation.
-- No durable kernel shape serialization, rich feature-history model, cross-model CAD merge semantics, or STEP export flow exists yet.
+- Direct per-model STEP export derives output by replaying the same persisted operations in the browser CAD worker and downloading the worker-produced STEP text.
+- No durable kernel shape serialization, rich feature-history model, backend export artifact history, or cross-model CAD merge/assembly export semantics exist yet.
