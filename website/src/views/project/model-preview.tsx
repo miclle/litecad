@@ -28,6 +28,7 @@ import { projectPreviewAssetSignature, type ProjectPreviewAsset } from './projec
 type ModelPreviewProps = {
   deferResize?: boolean
   previewAssets?: ProjectPreviewAsset[]
+  visibleModelIds?: readonly string[]
 }
 
 type ZoomHUDState = {
@@ -140,12 +141,17 @@ const createWorldGrid = (radius: number) => {
 
 const previewMaterialColors = [0xb6c0b8, 0xc4b78a, 0x9fb6c8, 0xc7a0a0, 0xa8bea0]
 
-export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelPreviewProps) {
+export function ModelPreview({ deferResize = false, previewAssets = [], visibleModelIds }: ModelPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const deferResizeRef = useRef(deferResize)
+  const visibleModelIdsRef = useRef<readonly string[]>(visibleModelIds)
+  const previewObjectsByModelIDRef = useRef(new Map<string, THREE.Object3D>())
+  const syncPreviewObjectVisibilityRef = useRef<() => void>(() => undefined)
   const zoomHUDHideTimeoutRef = useRef<number | undefined>(undefined)
   const [zoomHUD, setZoomHUD] = useState<ZoomHUDState>({ percent: 100, visible: false })
   const previewAssetSignature = useMemo(() => projectPreviewAssetSignature(previewAssets), [previewAssets])
+  const visibleModelIdSignature = visibleModelIds?.join('|') ?? '*'
+  const isPreviewObjectVisible = (modelId: string) => !visibleModelIdsRef.current || visibleModelIdsRef.current.includes(modelId)
   const clearZoomHUDHideTimeout = () => {
     if (zoomHUDHideTimeoutRef.current !== undefined) {
       window.clearTimeout(zoomHUDHideTimeoutRef.current)
@@ -166,11 +172,19 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
   }, [deferResize])
 
   useEffect(() => {
+    visibleModelIdsRef.current = visibleModelIds
+    syncPreviewObjectVisibilityRef.current()
+    // The signature keeps this effect primitive-stable while allowing callers to pass fresh arrays.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleModelIdSignature])
+
+  useEffect(() => {
     const container = containerRef.current
     if (!container) {
       return undefined
     }
     hideZoomHUD()
+    previewObjectsByModelIDRef.current = new Map()
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -244,6 +258,13 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
     const renderScene = () => {
       updateSceneFog(camera.position.distanceTo(controls.target))
       renderer.render(scene, camera)
+    }
+    syncPreviewObjectVisibilityRef.current = () => {
+      const visibleModelIDs = visibleModelIdsRef.current ? new Set(visibleModelIdsRef.current) : undefined
+      previewObjectsByModelIDRef.current.forEach((object, modelID) => {
+        object.visible = !visibleModelIDs || visibleModelIDs.has(modelID)
+      })
+      renderScene()
     }
     const emitOrientationChange = (orientation: ViewOrientation) => {
       if (orientationDistance(lastEmittedOrientation, orientation) < 0.2) {
@@ -441,6 +462,7 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
       if (asset.previewFormat === 'obj') {
         orientCADPreviewObject(object)
       }
+      object.visible = isPreviewObjectVisible(asset.modelId)
       object.traverse((child) => {
         if (child instanceof THREE.Mesh) {
           const objectName = `${child.name} ${child.parent?.name ?? ''}`
@@ -462,6 +484,7 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
           child.renderOrder = 10
         }
       })
+      previewObjectsByModelIDRef.current.set(asset.modelId, object)
       previewGroup.add(object)
       updatePreviewBounds()
     }
@@ -633,6 +656,8 @@ export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelP
       controls.removeEventListener('change', handleControlsChange)
       controls.dispose()
       isDisposed = true
+      syncPreviewObjectVisibilityRef.current = () => undefined
+      previewObjectsByModelIDRef.current = new Map()
       scene.remove(previewGroup)
       disposeObject3DResources(scene)
       renderer.dispose()

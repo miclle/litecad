@@ -14,6 +14,8 @@ import {
   Box,
   BotMessageSquare,
   CheckCircle2,
+  Eye,
+  EyeOff,
   FileText,
   HardDrive,
   Import,
@@ -130,6 +132,7 @@ function ProjectView() {
   const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
   const [uploadError, setUploadError] = useState('')
   const [previewUrlsByModelID, setPreviewUrlsByModelID] = useState<Record<string, string>>({})
+  const [hiddenModelIDs, setHiddenModelIDs] = useState<Set<string>>(() => new Set())
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -221,12 +224,23 @@ function ProjectView() {
     () => buildProjectPreviewAssets(previewModels, previewArtifacts, previewUrlsByModelID),
     [previewArtifacts, previewModels, previewUrlsByModelID],
   )
+  const visibleModelIds = useMemo(
+    () => previewAssets.flatMap((asset) => (hiddenModelIDs.has(asset.modelId) ? [] : [asset.modelId])),
+    [hiddenModelIDs, previewAssets],
+  )
+  const areAllPreviewAssetsHidden = previewAssets.length > 0 && visibleModelIds.length === 0
   const previewSummary = projectPreviewSummary({
     modelCount: projectModels.length,
     previewAssetCount: previewAssets.length,
     latestPreviewFormat: latestPreviewFormat || previewAssets[0]?.previewFormat,
   })
-  const shouldShowCanvasStatus = !latestModel || previewAssets.length === 0
+  const shouldShowCanvasStatus = !latestModel || previewAssets.length === 0 || areAllPreviewAssetsHidden
+  const canvasStatusLabel = areAllPreviewAssetsHidden ? 'Model layers hidden' : previewSummary.sourceLabel
+  const canvasStatusBody = areAllPreviewAssetsHidden
+    ? 'All preview layers are hidden. Show a model layer from the project tree to inspect the geometry again.'
+    : latestModel
+    ? `${latestProductName || latestModel.original_filename} metadata is parsed. Geometry preview is being prepared.`
+    : 'The canvas is empty until imported geometry is prepared for preview. Import a CAD source file to attach real model data to this project.'
   const previewBlobSignature = projectModelPreviewQueries
     .map((query, index) => {
       const modelID = previewModels[index]?.id ?? ''
@@ -488,6 +502,17 @@ function ProjectView() {
   const flipCanvasOrientation = () => {
     applyCanvasOrientation({ ...rotateOrientation(viewOrientation, { horizontal: 180 }), rotationStep: { horizontal: 180 } })
   }
+  const toggleModelVisibility = (modelID: string) => {
+    setHiddenModelIDs((currentIDs) => {
+      const nextIDs = new Set(currentIDs)
+      if (nextIDs.has(modelID)) {
+        nextIDs.delete(modelID)
+      } else {
+        nextIDs.add(modelID)
+      }
+      return nextIDs
+    })
+  }
   const handleModelFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) {
@@ -627,7 +652,12 @@ function ProjectView() {
         <main className="min-h-0 overflow-x-auto overflow-y-hidden bg-[#f8fafc]">
         <div className="relative h-full min-h-0 overflow-hidden bg-[#f8fafc]">
           <section className="absolute inset-0 overflow-hidden">
-            <ModelPreview deferResize={isAiChatTransitioning} key={project.id} previewAssets={previewAssets} />
+            <ModelPreview
+              deferResize={isAiChatTransitioning}
+              key={project.id}
+              previewAssets={previewAssets}
+              visibleModelIds={visibleModelIds}
+            />
             {shouldShowCanvasStatus && (
               <div
                 className="pointer-events-none absolute bottom-4 left-4 max-w-sm rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 p-4 shadow-xl backdrop-blur lg:left-[var(--canvas-status-left)]"
@@ -635,12 +665,10 @@ function ProjectView() {
               >
                 <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#64748b]">
                   <HardDrive className="size-4 text-[#475569]" />
-                  {previewSummary.sourceLabel}
+                  {canvasStatusLabel}
                 </div>
                 <p className="mt-2 text-sm leading-6 text-[#1f2937]">
-                  {latestModel
-                    ? `${latestProductName || latestModel.original_filename} metadata is parsed. Geometry preview is being prepared.`
-                    : 'The canvas is empty until imported geometry is prepared for preview. Import a CAD source file to attach real model data to this project.'}
+                  {canvasStatusBody}
                 </p>
               </div>
             )}
@@ -733,21 +761,44 @@ function ProjectView() {
                         Import a CAD model to populate the project tree.
                       </div>
                     )}
-                    {projectModels.map((model) => (
-                      <div
-                        className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-[#1f2937] transition hover:bg-[#f1f5f9]"
-                        key={model.id}
-                      >
-                        <Box className="size-4 shrink-0 text-[#475569]" />
-                        <p className="min-w-0 flex-1 truncate">{getModelDisplayName(model)}</p>
+                    {projectModels.map((model) => {
+                      const modelDisplayName = getModelDisplayName(model)
+                      const isModelHidden = hiddenModelIDs.has(model.id)
+                      const hasPreviewAsset = previewArtifactByModelID.has(model.id)
+                      const VisibilityIcon = isModelHidden ? EyeOff : Eye
+
+                      return (
                         <div
-                          aria-label={model.parse_status === 'parsed' ? 'Model preview is ready' : 'Model is being processed'}
-                          className={`size-1.5 shrink-0 rounded-full ${
-                            model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'
+                          className={`group/model-row flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm transition hover:bg-[#f1f5f9] ${
+                            isModelHidden ? 'text-[#94a3b8]' : 'text-[#1f2937]'
                           }`}
-                        />
-                      </div>
-                    ))}
+                          key={model.id}
+                        >
+                          <Box className={`size-4 shrink-0 ${isModelHidden ? 'text-[#94a3b8]' : 'text-[#475569]'}`} />
+                          <p className="min-w-0 flex-1 truncate">{modelDisplayName}</p>
+                          {hasPreviewAsset && (
+                            <button
+                              aria-label={isModelHidden ? `Show ${modelDisplayName}` : `Hide ${modelDisplayName}`}
+                              aria-pressed={!isModelHidden}
+                              className={`grid size-6 shrink-0 place-items-center rounded text-[#64748b] opacity-0 transition hover:bg-[#e2e8f0] hover:text-[#0f172a] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] group-hover/model-row:opacity-100 ${
+                                isModelHidden ? 'opacity-100 text-[#94a3b8]' : ''
+                              }`}
+                              onClick={() => toggleModelVisibility(model.id)}
+                              title={isModelHidden ? 'Show model' : 'Hide model'}
+                              type="button"
+                            >
+                              <VisibilityIcon className="size-3.5" />
+                            </button>
+                          )}
+                          <div
+                            aria-label={model.parse_status === 'parsed' ? 'Model preview is ready' : 'Model is being processed'}
+                            className={`size-1.5 shrink-0 rounded-full ${
+                              model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'
+                            }`}
+                          />
+                        </div>
+                      )
+                    })}
                     {uploadModelMutation.isPending && (
                       <div className="rounded-md border border-[#e2e8f0] bg-[#f1f5f9] px-3 py-3 font-mono text-[11px] uppercase text-[#475569]">
                         Importing model
