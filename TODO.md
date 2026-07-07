@@ -4,13 +4,19 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 
 ## Product Capability
 
+- Execute the browser CAD kernel migration defined in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md). Each phase must finish with tests/verification, docs updates, and a scoped commit before starting the next phase:
+  - Phase 1: isolate an OCCT/OpenCascade.js Web Worker spike that imports STEP, tessellates preview mesh data, and exports unchanged STEP without changing production import behavior.
+  - Phase 2: route a guarded STEP preview path through the browser kernel and render worker-produced mesh buffers in the existing Three.js workbench, with FreeCAD kept only as migration fallback.
+  - Phase 3: introduce an editable LiteCAD CAD document MVP with persisted operation/document state, starting from transforms and one proven kernel-backed CAD edit.
+  - Phase 4: export the current browser-edited B-rep document to STEP and verify import -> edit -> export -> re-import.
+  - Phase 5: remove FreeCAD/Python from the normal runtime conversion path, delete or quarantine `freecad_step_to_obj.py`, and update runtime docs and setup.
 - Define the persisted CAD document model beyond uploaded source-file records, lightweight metadata, generated preview artifacts, and read-only geometry snapshots. Current projects do not store editable CAD features, B-rep semantics, or versioned editable geometry documents.
 - Continue the CAD import and geometry pipeline beyond completed STEP/STP/self-contained GLTF/GLB/STL source upload, lightweight metadata extraction, STEP-to-OBJ preview conversion, GLB/self-contained GLTF preview publishing, STL-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API:
-  - Promote backend preview generation to a canonical Three.js-friendly artifact format, preferably GLB, so STEP and STL previews do not remain OBJ fallback artifacts. FreeCAD's headless `Mesh.export` path currently supports the OBJ fallback but did not export GLB directly in local verification, so GLB likely needs a dedicated converter step or packaged geometry service.
+  - Treat OBJ/GLB preview meshes as derived display artifacts, not editable CAD source of truth.
   - Define editable geometry records and CAD feature/version semantics beyond uploaded sources, preview artifacts, and generated read-only version snapshots.
 - Define assembly semantics for multi-source projects, including per-model transforms, selection, visibility, persisted placement, and explicit merge/boolean/export behavior. Current multi-model support is browser preview composition only; it does not combine multiple STEP files into one editable CAD part.
-- Decide whether STEP preview conversion should remain FreeCAD-backed server-side conversion or move toward a packaged/headless geometry service for production.
-- Add measurement, sectioning, edge display, and export workflows after real geometry is available.
+- Do not deepen the FreeCAD-backed STEP preview path except for short-term bug fixes. The target architecture is an embedded browser CAD kernel, not a third-party desktop CAD application runtime dependency.
+- Add measurement, sectioning, edge display, and export workflows after real editable geometry is available.
 - Define AI orchestration APIs for prompt-to-design iterations, including provider boundaries, request history, failure states, and cost controls.
 
 ## Backend And Data
@@ -29,6 +35,6 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 
 ## Documentation And Operations
 
-- Add a focused architecture document when the CAD document, upload, and conversion boundaries are chosen.
+- Keep [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md) current as browser-kernel feasibility results, package choices, limitations, and phase completions become known.
 - Document production deployment once database provisioning, config injection, and binary release flow are settled.
 - Keep README, AGENTS.md, and `.agents/rules/` aligned whenever shipped capabilities move out of this TODO.

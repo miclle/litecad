@@ -18,6 +18,8 @@ The repository is in an early product milestone. The implemented application inc
 
 AI model orchestration, full STEP geometry/B-rep semantics, assembly placement, CAD merge/boolean operations, normalized editable geometry, measurement tools, export, and design-history persistence are product direction, not completed capabilities yet.
 
+The target CAD architecture is to replace the current FreeCAD-backed STEP preview path with an embedded browser CAD kernel based on OCCT/OpenCascade.js or an equivalent WebAssembly geometry kernel. The long-term loop is STEP import, browser-side B-rep editing, derived Three.js preview meshes, and STEP export without requiring users to install FreeCAD or another desktop CAD application. The current implementation still uses FreeCAD for STEP-to-OBJ preview conversion; the phased migration plan is tracked in [Browser CAD Kernel Roadmap](docs/browser-cad-kernel-roadmap.md) and [TODO.md](TODO.md).
+
 ## Tech Stack
 
 **Backend**
@@ -146,6 +148,8 @@ GET  /api/v1/projects/:projectID/models/:modelID/preview
 Project routes require a valid `litecad_session` cookie. `POST /api/v1/projects/:projectID/models` accepts multipart form data with a `model` file field and currently supports `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl`. Model responses include lightweight source metadata when parsing succeeds. `GET /api/v1/projects/:projectID/geometry` returns the current read-only model tree, preview artifact metadata, and geometry version records. `GET /api/v1/projects/:projectID/models/:modelID/preview-artifact` returns preview artifact metadata without binary data. `GET /api/v1/projects/:projectID/models/:modelID/preview` returns `model/obj` for converted STEP and STL previews, `model/gltf+json` for validated self-contained GLTF previews, or `model/gltf-binary` for validated GLB previews. API clients live in `website/src/api/`, and shared wire types live in `website/src/types/`.
 
 STEP preview conversion uses `freecadcmd`. Override the executable path with `LITECAD_FREECAD_CMD` when FreeCAD is not installed at the platform default.
+
+This FreeCAD dependency is current implementation detail, not the target runtime architecture. Future CAD import/edit/export work should follow the browser-kernel migration plan in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md).
 
 ## Architecture
 

@@ -16,6 +16,8 @@ Current implemented product surface:
 
 Do not document or implement AI generation, full STEP B-rep semantics, measurement, export, CAD merge/boolean operations, normalized geometry APIs, or editable persisted CAD geometry as completed unless the code actually implements them.
 
+Target CAD architecture is documented in `docs/browser-cad-kernel-roadmap.md`: LiteCAD should migrate toward an embedded browser CAD kernel, likely OCCT/OpenCascade.js through WebAssembly in a Web Worker, so users can import, preview, edit, and export CAD models without installing FreeCAD or another desktop CAD application. Treat the current FreeCAD-backed STEP-to-OBJ path as implementation debt and migration fallback, not as the long-term architecture.
+
 ## Tech Stack
 
 - Backend: Go 1.26 + `fox-gonic/fox` + GORM + PostgreSQL (default) / MySQL
@@ -131,6 +133,7 @@ For feature work that changes the browser experience, combine the relevant front
 - Treat AI orchestration, measurement, export, editable geometry documents, and full STEP B-rep semantics as roadmap work until code, tests, and UI flows exist.
 - Project data currently includes project metadata, uploaded STEP/STP/self-contained GLTF/GLB/STL source-file records, lightweight source metadata, preview artifact metadata, derived STEP/STL OBJ preview artifacts, backend-published self-contained GLTF/GLB preview artifacts, multi-source preview composition in the workbench, read-only model tree responses, and generated geometry version snapshots; it does not include editable CAD geometry, persisted assembly placement, or CAD merge semantics.
 - The project workbench must not render hard-coded demo geometry as if it were project-owned model data.
+- Do not expand the FreeCAD runtime dependency for new CAD capabilities. New import/edit/export architecture work should follow `docs/browser-cad-kernel-roadmap.md`; every phase must include tests or browser verification, docs updates, and a scoped commit before the next phase.
 
 ### Single Binary Embedding
 
