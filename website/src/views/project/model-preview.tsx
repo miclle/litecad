@@ -6,7 +6,6 @@ import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls
 
 import { disposeObject3DResources } from './three-object-resources'
 import { orientCADPreviewObject } from './model-preview-orientation'
-import { viewAxisDefinitions } from './view-axis'
 import {
   createViewOrientationChangeEvent,
   orientationFromEvent,
@@ -77,6 +76,33 @@ const createGridLineGeometry = (size: number, step: number, shouldIncludeLine: (
   return geometry
 }
 
+const createWorldAxis = (
+  name: string,
+  direction: THREE.Vector3,
+  length: number,
+  radius: number,
+  color: number,
+  centerOffset = 0,
+) => {
+  const normalizedDirection = direction.clone().normalize()
+  const axis = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, length, 12),
+    new THREE.MeshBasicMaterial({
+      color,
+      fog: true,
+      opacity: 0.7,
+      transparent: true,
+      depthWrite: false,
+    }),
+  )
+
+  axis.name = name
+  axis.position.copy(normalizedDirection.clone().multiplyScalar(centerOffset))
+  axis.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normalizedDirection)
+  axis.renderOrder = 1
+  return axis
+}
+
 const createWorldGrid = (radius: number) => {
   const minorStep = niceGridStep(radius)
   const gridSize = minorStep * 180
@@ -110,31 +136,11 @@ const createWorldGrid = (radius: number) => {
   group.add(majorGrid)
 
   const axisSize = gridSize * 1.04
-  const xAxis = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-axisSize, 0, 0), new THREE.Vector3(axisSize, 0, 0)]),
-    new THREE.LineBasicMaterial({
-      color: 0xe57373,
-      fog: true,
-      opacity: 0.64,
-      transparent: true,
-      depthWrite: false,
-    }),
-  )
-  xAxis.renderOrder = 0
-  group.add(xAxis)
-
-  const zAxis = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -axisSize), new THREE.Vector3(0, 0, axisSize)]),
-    new THREE.LineBasicMaterial({
-      color: 0x6aa875,
-      fog: true,
-      opacity: 0.66,
-      transparent: true,
-      depthWrite: false,
-    }),
-  )
-  zAxis.renderOrder = 0
-  group.add(zAxis)
+  const axisLength = axisSize * 2
+  const axisRadius = Math.max(minorStep * 0.0025, gridSize * 0.000025)
+  group.add(createWorldAxis('World X axis', new THREE.Vector3(1, 0, 0), axisLength, axisRadius, 0xe36b5d))
+  group.add(createWorldAxis('World Y axis', new THREE.Vector3(0, 0, -1), axisLength, axisRadius, 0x55a968))
+  group.add(createWorldAxis('World Z axis', new THREE.Vector3(0, 1, 0), axisSize, axisRadius, 0x5c86d6, axisSize / 2))
 
   return group
 }
@@ -255,6 +261,7 @@ export function ModelPreview({ deferResize = false, previewAssets = [], visibleM
       }
       scene.fog = new THREE.Fog(viewportBackground, nextNear, nextFar)
     }
+
     const renderScene = () => {
       updateSceneFog(camera.position.distanceTo(controls.target))
       renderer.render(scene, camera)
@@ -355,62 +362,6 @@ export function ModelPreview({ deferResize = false, previewAssets = [], visibleM
     const cameraLight = new THREE.DirectionalLight(0xffffff, 1.2)
     camera.add(cameraLight)
     scene.add(camera)
-
-    const createAxisLabel = (label: string, color: number) => {
-      const canvas = document.createElement('canvas')
-      canvas.width = 96
-      canvas.height = 96
-      const context = canvas.getContext('2d')
-      if (context) {
-        context.font = '700 42px ui-monospace, SFMono-Regular, Menlo, monospace'
-        context.textAlign = 'center'
-        context.textBaseline = 'middle'
-        context.lineWidth = 5
-        context.strokeStyle = '#ffffff'
-        context.fillStyle = `#${color.toString(16).padStart(6, '0')}`
-        context.strokeText(label, 48, 50)
-        context.fillText(label, 48, 50)
-      }
-      const texture = new THREE.CanvasTexture(canvas)
-      texture.colorSpace = THREE.SRGBColorSpace
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }))
-      sprite.scale.set(0.36, 0.36, 1)
-      sprite.renderOrder = 3
-      return sprite
-    }
-
-    const createAxis = (label: string, direction: THREE.Vector3, color: number) => {
-      const axis = new THREE.Group()
-      const normalizedDirection = direction.clone().normalize()
-      const axisLength = 2.8
-      const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 })
-      const geometry = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, 0, 0),
-        normalizedDirection.clone().multiplyScalar(axisLength),
-      ])
-      axis.add(new THREE.Line(geometry, material))
-
-      const arrow = new THREE.Mesh(
-        new THREE.ConeGeometry(0.06, 0.22, 28),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 }),
-      )
-      arrow.position.copy(normalizedDirection.clone().multiplyScalar(axisLength))
-      arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normalizedDirection)
-      axis.add(arrow)
-
-      const labelSprite = createAxisLabel(label, color)
-      labelSprite.position.copy(normalizedDirection.clone().multiplyScalar(axisLength + 0.32))
-      axis.add(labelSprite)
-
-      return axis
-    }
-
-    const axesGroup = new THREE.Group()
-    axesGroup.position.set(-2.2, -0.48, -1.65)
-    for (const axis of viewAxisDefinitions) {
-      axesGroup.add(createAxis(axis.label, axis.direction, axis.color))
-    }
-    scene.add(axesGroup)
 
     const createCADPreviewMaterial = (name = '', assetIndex = 0) => {
       const normalizedName = name.toLowerCase()
