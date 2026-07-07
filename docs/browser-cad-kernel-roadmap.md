@@ -16,7 +16,7 @@ Import STEP or another CAD source
   -> export the current shape back to STEP or another CAD exchange format
 ```
 
-The current implementation does not do this yet. Today, STEP preview conversion is server-side and FreeCAD-backed, and OBJ/GLTF/GLB/STL preview artifacts are viewer outputs rather than editable CAD documents.
+The current implementation does not do this yet. Today, STEP workbench preview uses browser-kernel tessellation, while GLTF/GLB/STL preview artifacts remain viewer outputs rather than editable CAD documents. The legacy backend STEP preview endpoint is still FreeCAD-backed until a later removal phase deletes or quarantines it.
 
 ## Architectural Decision
 
@@ -154,8 +154,10 @@ Route STEP preview generation through the browser kernel and replace the current
 Current Phase 2 status:
 
 - First Phase 2 increment complete on 2026-07-07: the backend now exposes an authenticated project-model source download endpoint at `/api/v1/projects/:projectID/models/:modelID/source`, scoped by the current session owner and returning the original uploaded bytes. The frontend API client exposes this as `fetchProjectModelSource(...)` with Blob response handling.
-- This endpoint is the input channel for worker-side STEP import and tessellation in the actual workbench. It does not yet route the visible workbench preview through the browser kernel.
-- The current active workbench preview path still uses backend preview artifacts: STEP/STP sources go through the FreeCAD-backed OBJ converter, GLB/self-contained GLTF preview artifacts are served directly, and STL preview artifacts are generated in Go.
+- Second Phase 2 increment complete on 2026-07-07: parsed STEP/STP models in the project workbench fetch the authenticated source bytes, send them to `kernel.worker.ts` with a `step-preview` request, and render worker-produced mesh buffers directly as Three.js `BufferGeometry`.
+- The current active workbench preview path no longer needs FreeCAD for STEP/STP display. GLB/self-contained GLTF preview artifacts are still served directly, and STL preview artifacts are still generated in Go.
+- The backend FreeCAD-backed STEP preview endpoint still exists for the old `/preview` API path and should be removed or quarantined before treating the FreeCAD runtime dependency as gone.
+- Browser verification on 2026-07-07 against the current project `prj_01kwrpevmc29sg9n487jfh44sv` showed two STEP models rendered as `2 KERNEL meshes`, no console errors, and a present Three.js canvas. Desktop screenshot sampling found 4,775 non-background samples and 990 unique non-background colors in the viewer crop; a 390 x 844 mobile viewport found `previewAssetCount: "2"`, canvas size 390 x 788, no unexpected app error, and screenshot sampling found 13,947 non-background samples and 1,708 unique non-background colors.
 
 Scope:
 
@@ -163,7 +165,7 @@ Scope:
 - Convert imported STEP to preview mesh buffers in the worker.
 - Render worker-produced mesh data in the existing Three.js workbench.
 - Avoid rendering OBJ edge `l` primitives as model data.
-- Decide whether GLB/GLTF/STL remain as direct preview formats or are normalized into the same browser-kernel document model.
+- Keep GLB/GLTF/STL on direct/backend preview formats until the editable document model decides whether to normalize them into browser-kernel document state.
 - Remove or quarantine the FreeCAD preview route once browser-kernel STEP preview passes the current project smoke.
 
 Tests and verification:
@@ -243,11 +245,12 @@ Tests and verification:
 
 ## Current Implementation Notes
 
-As of this roadmap, the current shipped path remains:
+As of this roadmap, the current shipped path is:
 
-- STEP/STP source metadata, source file download, and preview generation are backend-owned.
-- STEP preview uses FreeCAD through `freecadcmd` and emits OBJ.
+- STEP/STP source metadata and source file download are backend-owned.
+- STEP/STP workbench preview uses the browser CAD kernel worker and renders worker-produced mesh buffers in Three.js.
+- The old backend STEP preview endpoint still uses FreeCAD through `freecadcmd` and emits OBJ until the cleanup/removal phase deletes or quarantines that path.
 - GLB and self-contained GLTF uploads can be published as preview artifacts after backend validation.
 - STL is converted to OBJ preview data in Go.
-- The project workbench renders backend-provided preview artifacts in Three.js.
+- The project workbench renders browser-kernel STEP meshes and backend-provided GLB/GLTF/STL preview artifacts in Three.js.
 - No editable B-rep document or STEP export flow exists yet.

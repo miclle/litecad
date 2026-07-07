@@ -11,12 +11,12 @@ Current implemented product surface:
 - Home-page import pipeline status panel and CAD-oriented project workbench shell.
 - Account registration/login/logout with an `HttpOnly` `litecad_session` cookie.
 - Session-scoped project creation, listing, and detail lookup.
-- Session-scoped CAD source upload, lightweight metadata extraction, listing, preview artifact metadata, preview loading, multi-source browser preview composition, read-only geometry document API, and generated geometry version snapshots for project-owned `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files, including FreeCAD-backed OBJ preview conversion for STEP sources, backend-validated self-contained GLTF/GLB preview publication, and Go-based STL-to-OBJ preview conversion.
+- Session-scoped CAD source upload, lightweight metadata extraction, listing, source download, preview artifact metadata, preview loading, multi-source browser preview composition, read-only geometry document API, and generated geometry version snapshots for project-owned `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files, including browser-kernel STEP/STP workbench preview meshes, backend-validated self-contained GLTF/GLB preview publication, Go-based STL-to-OBJ preview conversion, and a legacy FreeCAD-backed STEP-to-OBJ backend preview endpoint that remains scheduled for removal or quarantine.
 - Studio status endpoint for bootstrap/product-state messaging.
 
 Do not document or implement AI generation, full STEP B-rep semantics, measurement, export, CAD merge/boolean operations, normalized geometry APIs, or editable persisted CAD geometry as completed unless the code actually implements them.
 
-Target CAD architecture is documented in `docs/browser-cad-kernel-roadmap.md`: LiteCAD should migrate toward an embedded browser CAD kernel, likely OCCT/OpenCascade.js through WebAssembly in a Web Worker, so users can import, preview, edit, and export CAD models without installing FreeCAD or another desktop CAD application. Treat the current FreeCAD-backed STEP-to-OBJ path as implementation debt and migration fallback, not as the long-term architecture.
+Target CAD architecture is documented in `docs/browser-cad-kernel-roadmap.md`: LiteCAD should migrate toward an embedded browser CAD kernel, likely OCCT/OpenCascade.js through WebAssembly in a Web Worker, so users can import, preview, edit, and export CAD models without installing FreeCAD or another desktop CAD application. The visible workbench STEP preview now uses browser-kernel mesh buffers; treat the remaining FreeCAD-backed backend STEP-to-OBJ endpoint as implementation debt scheduled for removal or quarantine, not as the long-term architecture.
 
 ## Tech Stack
 
@@ -131,7 +131,7 @@ For feature work that changes the browser experience, combine the relevant front
 
 - Keep current docs honest about implemented vs planned CAD features.
 - Treat AI orchestration, measurement, export, editable geometry documents, and full STEP B-rep semantics as roadmap work until code, tests, and UI flows exist.
-- Project data currently includes project metadata, uploaded STEP/STP/self-contained GLTF/GLB/STL source-file records, lightweight source metadata, preview artifact metadata, derived STEP/STL OBJ preview artifacts, backend-published self-contained GLTF/GLB preview artifacts, multi-source preview composition in the workbench, read-only model tree responses, and generated geometry version snapshots; it does not include editable CAD geometry, persisted assembly placement, or CAD merge semantics.
+- Project data currently includes project metadata, uploaded STEP/STP/self-contained GLTF/GLB/STL source-file records, lightweight source metadata, authenticated source download, browser-kernel STEP workbench preview meshes, preview artifact metadata, derived STL OBJ preview artifacts, legacy derived STEP OBJ preview artifacts for the backend preview endpoint, backend-published self-contained GLTF/GLB preview artifacts, multi-source preview composition in the workbench, read-only model tree responses, and generated geometry version snapshots; it does not include editable CAD geometry, persisted assembly placement, or CAD merge semantics.
 - The project workbench must not render hard-coded demo geometry as if it were project-owned model data.
 - Do not expand the FreeCAD runtime dependency for new CAD capabilities. New import/edit/export architecture work should follow `docs/browser-cad-kernel-roadmap.md`; every phase must include tests or browser verification, docs updates, and a scoped commit before the next phase.
 

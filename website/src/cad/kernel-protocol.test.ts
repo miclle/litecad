@@ -21,6 +21,19 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts STEP preview requests with string STEP source', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-1',
+        type: 'step-preview',
+        payload: {
+          filename: 'part.step',
+          stepText: 'ISO-10303-21;END-ISO-10303-21;',
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('rejects malformed worker requests before they reach the kernel', () => {
     expect(isCadKernelRequest({ id: 'job-1', type: 'step-round-trip', payload: { filename: 'part.step' } })).toBe(false)
     expect(isCadKernelRequest({ id: 'job-1', type: 'unknown', payload: { stepText: 'x' } })).toBe(false)

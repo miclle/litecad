@@ -92,6 +92,36 @@ describe('project preview assets', () => {
     ])
   })
 
+  test('uses browser-kernel mesh data for parsed STEP models before backend preview artifacts', () => {
+    const model = {
+      ...baseModel,
+      id: 'mdl_step',
+      original_filename: 'bracket.step',
+    } satisfies ProjectModel
+    const mesh = {
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+      indices: [0, 1, 2],
+    }
+
+    expect(
+      buildProjectPreviewAssets(
+        [model],
+        [{ ...previewArtifact, id: 'prv_step', model_id: 'mdl_step' }],
+        { mdl_step: 'blob:freecad-obj' },
+        { mdl_step: { mesh, meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true } } },
+      ),
+    ).toEqual([
+      {
+        modelId: 'mdl_step',
+        name: 'bracket',
+        previewFormat: 'kernel-mesh',
+        mesh,
+        meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true },
+      },
+    ])
+  })
+
   test('summarizes multi-model preview readiness for the workbench chrome', () => {
     expect(projectPreviewSummary({ modelCount: 2, previewAssetCount: 2, latestPreviewFormat: 'obj' })).toEqual({
       previewLabel: '2 OBJ meshes',
@@ -119,5 +149,23 @@ describe('project preview assets', () => {
     const secondAssets = firstAssets.map((asset) => ({ ...asset }))
 
     expect(projectPreviewAssetSignature(firstAssets)).toBe(projectPreviewAssetSignature(secondAssets))
+  })
+
+  test('includes kernel mesh buffer sizes in preview signatures', () => {
+    expect(
+      projectPreviewAssetSignature([
+        {
+          modelId: 'mdl_step',
+          name: 'bracket',
+          previewFormat: 'kernel-mesh',
+          mesh: {
+            positions: [0, 0, 0],
+            normals: [0, 0, 1],
+            indices: [0, 0, 0],
+          },
+          meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
+        },
+      ]),
+    ).toBe('mdl_step:kernel-mesh:3:3:3')
   })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { runStepRoundTripInWorker, type CadKernelWorkerLike } from './kernel-worker-client'
+import { runStepPreviewInWorker, runStepRoundTripInWorker, type CadKernelWorkerLike } from './kernel-worker-client'
 import type { CadKernelResponse } from './kernel-protocol'
 
 class FakeWorker implements CadKernelWorkerLike {
@@ -59,6 +59,37 @@ describe('runStepRoundTripInWorker', () => {
     await expect(resultPromise).resolves.toMatchObject({
       meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
       exportedStepText: 'ISO-10303-21;',
+    })
+    expect(worker.terminated).toBe(true)
+  })
+})
+
+describe('runStepPreviewInWorker', () => {
+  it('posts a step-preview request and resolves mesh buffers', async () => {
+    const worker = new FakeWorker()
+    const resultPromise = runStepPreviewInWorker(
+      { filename: 'part.step', stepText: 'ISO-10303-21;' },
+      () => worker,
+    )
+
+    expect(worker.postedMessages).toHaveLength(1)
+    const request = worker.postedMessages[0]
+    expect(request).toMatchObject({
+      type: 'step-preview',
+      payload: { filename: 'part.step', stepText: 'ISO-10303-21;' },
+    })
+
+    worker.reply({
+      id: (request as { id: string }).id,
+      type: 'step-preview-result',
+      result: {
+        mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
+        meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
+      },
+    })
+
+    await expect(resultPromise).resolves.toMatchObject({
+      meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
     })
     expect(worker.terminated).toBe(true)
   })

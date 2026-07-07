@@ -5,12 +5,12 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 ## Product Capability
 
 - Execute the browser CAD kernel migration defined in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md). Each phase must finish with tests/verification, docs updates, and a scoped commit before starting the next phase:
-  - Phase 2: continue from the completed authenticated model-source download API to browser-kernel STEP preview mesh generation, then render worker-produced mesh buffers in the existing Three.js workbench and replace the FreeCAD-backed STEP preview path. The project is not launched, so no long-lived compatibility path is required.
+  - Phase 2 cleanup: remove or quarantine the old backend FreeCAD-backed STEP preview endpoint now that the visible workbench STEP preview uses browser-kernel mesh buffers. The project is not launched, so no long-lived compatibility path is required.
   - Phase 3: introduce an editable LiteCAD CAD document MVP with persisted operation/document state, starting from transforms and one proven kernel-backed CAD edit.
   - Phase 4: export the current browser-edited B-rep document to STEP and verify import -> edit -> export -> re-import.
   - Phase 5: remove FreeCAD/Python from the normal runtime conversion path, delete or quarantine `freecad_step_to_obj.py`, and update runtime docs and setup.
 - Define the persisted CAD document model beyond uploaded source-file records, lightweight metadata, generated preview artifacts, and read-only geometry snapshots. Current projects do not store editable CAD features, B-rep semantics, or versioned editable geometry documents.
-- Continue the CAD import and geometry pipeline beyond completed STEP/STP/self-contained GLTF/GLB/STL source upload, lightweight metadata extraction, STEP-to-OBJ preview conversion, GLB/self-contained GLTF preview publishing, STL-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API:
+- Continue the CAD import and geometry pipeline beyond completed STEP/STP/self-contained GLTF/GLB/STL source upload, lightweight metadata extraction, browser-kernel STEP preview tessellation, GLB/self-contained GLTF preview publishing, STL-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API:
   - Treat OBJ/GLB preview meshes as derived display artifacts, not editable CAD source of truth.
   - Define editable geometry records and CAD feature/version semantics beyond uploaded sources, preview artifacts, and generated read-only version snapshots.
 - Define assembly semantics for multi-source projects, including per-model transforms, selection, visibility, persisted placement, and explicit merge/boolean/export behavior. Current multi-model support is browser preview composition only; it does not combine multiple STEP files into one editable CAD part.

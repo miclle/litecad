@@ -12,13 +12,13 @@ The repository is in an early product milestone. The implemented application inc
 - Account registration, login, current-user lookup, and logout through an `HttpOnly` `litecad_session` cookie.
 - User-owned project creation, project listing, and project detail lookup.
 - Project-scoped CAD source uploads for multiple `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files with stored filename, format, content type, byte size, timestamps, lightweight source metadata, preview artifact metadata, and a read-only geometry document API.
-- A project workbench route with a CAD-style Three.js viewer shell, source-file list, upload control, backend-published preview artifacts, and a multi-model frontend viewer that only consumes OBJ, self-contained GLTF, or GLB preview outputs.
+- A project workbench route with a CAD-style Three.js viewer shell, source-file list, upload control, browser-kernel STEP preview meshes, backend-published GLTF/GLB/STL preview artifacts, and multi-model frontend viewer composition.
 - A backend studio status endpoint for the product bootstrap state.
 - Single-binary production builds that embed the Vite frontend output.
 
 AI model orchestration, full STEP geometry/B-rep semantics, assembly placement, CAD merge/boolean operations, normalized editable geometry, measurement tools, export, and design-history persistence are product direction, not completed capabilities yet.
 
-The target CAD architecture is to replace the current FreeCAD-backed STEP preview path with an embedded browser CAD kernel based on OCCT/OpenCascade.js or an equivalent WebAssembly geometry kernel. The long-term loop is STEP import, browser-side B-rep editing, derived Three.js preview meshes, and STEP export without requiring users to install FreeCAD or another desktop CAD application. The current implementation still uses FreeCAD for STEP-to-OBJ preview conversion; the phased migration plan is tracked in [Browser CAD Kernel Roadmap](docs/browser-cad-kernel-roadmap.md) and [TODO.md](TODO.md).
+The target CAD architecture is to replace the FreeCAD-backed STEP preview path with an embedded browser CAD kernel based on OCCT/OpenCascade.js or an equivalent WebAssembly geometry kernel. The long-term loop is STEP import, browser-side B-rep editing, derived Three.js preview meshes, and STEP export without requiring users to install FreeCAD or another desktop CAD application. The current project workbench now previews STEP sources through the browser kernel worker, but editable B-rep documents, STEP export, and full FreeCAD runtime removal are still roadmap work tracked in [Browser CAD Kernel Roadmap](docs/browser-cad-kernel-roadmap.md) and [TODO.md](TODO.md).
 
 ## Tech Stack
 
@@ -111,13 +111,13 @@ Signed-in users can open `/projects`, create a project with a name and optional 
 
 ### CAD Source Imports
 
-Signed-in users can upload multiple `.step`, `.stp`, self-contained `.gltf`, `.glb`, or `.stl` files from a project workbench. The backend stores the uploaded source bytes and returns project-owned model metadata including parse status, detected asset type, STEP schema and product names when available, length unit, entity count, representation count, and STL triangle count when available.
+Signed-in users can upload multiple `.step`, `.stp`, self-contained `.gltf`, `.glb`, or `.stl` files from a project workbench. The backend stores the uploaded source bytes and returns project-owned model metadata including parse status, detected asset type, STEP schema and product names when available, length unit, entity count, representation count, and STL triangle count when available. The authenticated model-source endpoint lets the browser kernel worker fetch a project-owned STEP source for client-side import and tessellation.
 
-The backend converts STEP sources through a format-neutral preview artifact boundary. The current FreeCAD converter emits OBJ because FreeCAD's headless `Mesh.export` path in the local toolchain does not export GLB directly, but the service layer already accepts GLB preview bytes from a converter. GLB uploads and self-contained GLTF uploads without external buffer or image URIs are validated by the backend before being published as preview artifacts, and STL uploads are converted to OBJ preview artifacts in Go. The preview artifact metadata endpoint exposes the artifact format, content type, byte size, and mesh counts separately from the binary payload so clients can choose the correct loader before downloading preview bytes. The read-only geometry document endpoint exposes the current project model tree with both source format and preview format, preview artifacts, and generated geometry version records without claiming editable CAD semantics.
+For STEP/STP workbench preview, the frontend fetches the original source bytes and sends them to the OCCT/OpenCascade.js Web Worker, which tessellates browser-kernel mesh buffers for Three.js. GLB uploads and self-contained GLTF uploads without external buffer or image URIs are validated by the backend before being published as preview artifacts, and STL uploads are converted to OBJ preview artifacts in Go. The preview artifact metadata endpoint exposes backend artifact format, content type, byte size, and mesh counts separately from binary payloads. The read-only geometry document endpoint exposes the current project model tree with source format, backend preview artifacts where available, and generated geometry version records without claiming editable CAD semantics.
 
 ### 3D Preview Shell
 
-The home page no longer renders demo CAD geometry. The project detail route renders a CAD-style viewer shell with grid, axis, view-control, panel UI, parsed source metadata, and backend-generated preview artifacts such as imported OBJ previews for converted STEP files. When a project has multiple parsed source files with ready preview artifacts, the workbench loads them into one preview scene and frames the combined bounds.
+The home page no longer renders demo CAD geometry. The project detail route renders a CAD-style viewer shell with grid, axis, view-control, panel UI, parsed source metadata, browser-kernel STEP meshes, and backend artifacts for GLB/GLTF/STL previews. When a project has multiple parsed source files with ready preview data, the workbench loads them into one preview scene and frames the combined bounds.
 
 The project workbench keeps reusable view orientation math, ViewCube geometry definitions, ViewCube texture helpers, ViewCube controls, multi-model preview behavior, viewer event helpers, and shared Three.js resource cleanup in focused frontend modules under `website/src/views/project/`, while the route component remains responsible for project loading, source-file state, preview artifact queries, upload mutation flow, and shell layout.
 
@@ -141,13 +141,14 @@ GET  /api/v1/projects/:projectID
 GET  /api/v1/projects/:projectID/geometry
 GET  /api/v1/projects/:projectID/models
 POST /api/v1/projects/:projectID/models
+GET  /api/v1/projects/:projectID/models/:modelID/source
 GET  /api/v1/projects/:projectID/models/:modelID/preview-artifact
 GET  /api/v1/projects/:projectID/models/:modelID/preview
 ```
 
-Project routes require a valid `litecad_session` cookie. `POST /api/v1/projects/:projectID/models` accepts multipart form data with a `model` file field and currently supports `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl`. Model responses include lightweight source metadata when parsing succeeds. `GET /api/v1/projects/:projectID/geometry` returns the current read-only model tree, preview artifact metadata, and geometry version records. `GET /api/v1/projects/:projectID/models/:modelID/preview-artifact` returns preview artifact metadata without binary data. `GET /api/v1/projects/:projectID/models/:modelID/preview` returns `model/obj` for converted STEP and STL previews, `model/gltf+json` for validated self-contained GLTF previews, or `model/gltf-binary` for validated GLB previews. API clients live in `website/src/api/`, and shared wire types live in `website/src/types/`.
+Project routes require a valid `litecad_session` cookie. `POST /api/v1/projects/:projectID/models` accepts multipart form data with a `model` file field and currently supports `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl`. Model responses include lightweight source metadata when parsing succeeds. `GET /api/v1/projects/:projectID/models/:modelID/source` returns the original uploaded source bytes for a project-owned model and is the input path for browser-kernel STEP preview. `GET /api/v1/projects/:projectID/geometry` returns the current read-only model tree, preview artifact metadata, and geometry version records. `GET /api/v1/projects/:projectID/models/:modelID/preview-artifact` returns preview artifact metadata without binary data. `GET /api/v1/projects/:projectID/models/:modelID/preview` returns `model/obj` for backend-converted STEP and STL previews, `model/gltf+json` for validated self-contained GLTF previews, or `model/gltf-binary` for validated GLB previews. API clients live in `website/src/api/`, and shared wire types live in `website/src/types/`.
 
-STEP preview conversion uses `freecadcmd`. Override the executable path with `LITECAD_FREECAD_CMD` when FreeCAD is not installed at the platform default.
+The active project workbench STEP preview path does not require `freecadcmd`. The backend STEP preview endpoint still uses `freecadcmd` until the remaining FreeCAD/Python removal phase deletes or quarantines that legacy conversion path. Override the executable path with `LITECAD_FREECAD_CMD` only when explicitly exercising the backend STEP preview endpoint.
 
 This FreeCAD dependency is current implementation detail, not the target runtime architecture. Future CAD import/edit/export work should follow the browser-kernel migration plan in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md).
 

@@ -33,10 +33,12 @@ import {
   fetchProject,
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
+  fetchProjectModelSource,
   fetchProjectModels,
   sendProjectAgentMessage,
   uploadProjectModel,
 } from 'src/api/projects'
+import { runStepPreviewInWorker, type CadKernelWorkerPreviewResult } from 'src/cad/kernel-worker-client'
 import { Button } from '@/components/ui/button'
 import {
   Popover,
@@ -193,10 +195,36 @@ function ProjectView() {
   const project = projectQuery.data
   const projectModels = useMemo(() => projectModelsQuery.data ?? [], [projectModelsQuery.data])
   const previewModels = useMemo(() => parsedPreviewModels(projectModels), [projectModels])
+  const browserKernelPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'step'), [previewModels])
+  const backendPreviewModels = useMemo(() => previewModels.filter((model) => model.format !== 'step'), [previewModels])
   const latestModel = projectModels[0]
   const latestProductName = latestModel?.metadata.product_names[0]
+  const browserKernelPreviewQueries = useQueries({
+    queries: browserKernelPreviewModels.map((model) => ({
+      queryKey: ['projects', projectId, 'models', model.id, 'kernel-preview'],
+      queryFn: async () => {
+        const source = (await fetchProjectModelSource(projectId, model.id)).data
+        return runStepPreviewInWorker({
+          filename: model.original_filename,
+          stepText: await source.text(),
+        })
+      },
+      enabled: projectId !== '',
+      retry: false,
+    })),
+  })
+  const kernelMeshesByModelID = browserKernelPreviewQueries.reduce<Record<string, CadKernelWorkerPreviewResult>>(
+    (meshByModelID, query, index) => {
+      const modelID = browserKernelPreviewModels[index]?.id
+      if (modelID && query.data) {
+        meshByModelID[modelID] = query.data
+      }
+      return meshByModelID
+    },
+    {},
+  )
   const projectModelPreviewArtifactQueries = useQueries({
-    queries: previewModels.map((model) => ({
+    queries: backendPreviewModels.map((model) => ({
       queryKey: ['projects', projectId, 'models', model.id, 'preview-artifact'],
       queryFn: async () => (await fetchProjectModelPreviewArtifact(projectId, model.id)).data.preview,
       enabled: projectId !== '',
@@ -208,11 +236,13 @@ function ProjectView() {
     () => new Map(previewArtifacts.map((artifact) => [artifact.model_id, artifact])),
     [previewArtifacts],
   )
+  const latestKernelPreview = latestModel ? kernelMeshesByModelID[latestModel.id] : undefined
   const latestPreviewArtifact = latestModel ? previewArtifactByModelID.get(latestModel.id) : undefined
-  const latestPreviewFormat = latestPreviewArtifact?.format ?? ''
-  const latestTriangleCount = latestPreviewArtifact?.facet_count ?? latestModel?.metadata.triangle_count ?? 0
+  const latestPreviewFormat = latestKernelPreview ? 'kernel' : (latestPreviewArtifact?.format ?? '')
+  const latestTriangleCount =
+    latestKernelPreview?.meshSummary.triangleCount ?? latestPreviewArtifact?.facet_count ?? latestModel?.metadata.triangle_count ?? 0
   const projectModelPreviewQueries = useQueries({
-    queries: previewModels.map((model) => {
+    queries: backendPreviewModels.map((model) => {
       const artifact = previewArtifactByModelID.get(model.id)
       return {
         queryKey: ['projects', projectId, 'models', model.id, 'preview'],
@@ -223,8 +253,8 @@ function ProjectView() {
     }),
   })
   const previewAssets = useMemo(
-    () => buildProjectPreviewAssets(previewModels, previewArtifacts, previewUrlsByModelID),
-    [previewArtifacts, previewModels, previewUrlsByModelID],
+    () => buildProjectPreviewAssets(previewModels, previewArtifacts, previewUrlsByModelID, kernelMeshesByModelID),
+    [kernelMeshesByModelID, previewArtifacts, previewModels, previewUrlsByModelID],
   )
   const visibleModelIds = useMemo(
     () => previewAssets.flatMap((asset) => (hiddenModelIDs.has(asset.modelId) ? [] : [asset.modelId])),
@@ -245,7 +275,7 @@ function ProjectView() {
     : 'The canvas is empty until imported geometry is prepared for preview. Import a CAD source file to attach real model data to this project.'
   const previewBlobSignature = projectModelPreviewQueries
     .map((query, index) => {
-      const modelID = previewModels[index]?.id ?? ''
+      const modelID = backendPreviewModels[index]?.id ?? ''
       const blob = query.data
       return `${modelID}:${blob ? `${blob.type}:${blob.size}` : 'pending'}`
     })
@@ -285,7 +315,7 @@ function ProjectView() {
 
     projectModelPreviewQueries.forEach((query, index) => {
       const blob = query.data
-      const modelID = previewModels[index]?.id
+      const modelID = backendPreviewModels[index]?.id
       if (!blob || !modelID) {
         return
       }

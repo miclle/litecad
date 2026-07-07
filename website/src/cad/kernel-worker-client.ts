@@ -1,9 +1,11 @@
 import type {
   CadKernelResponse,
+  CadKernelStepPreviewRequest,
+  CadKernelStepPreviewResponse,
   CadKernelStepRoundTripRequest,
   CadKernelStepRoundTripResponse,
 } from './kernel-protocol'
-import type { CadKernelStepRoundTripInput } from './opencascade-step'
+import type { CadKernelStepPreviewInput, CadKernelStepRoundTripInput } from './opencascade-step'
 
 export type CadKernelWorkerLike = {
   addEventListener: (type: 'message', listener: (event: MessageEvent<CadKernelResponse>) => void) => void
@@ -13,6 +15,7 @@ export type CadKernelWorkerLike = {
 }
 
 export type CadKernelWorkerResult = CadKernelStepRoundTripResponse['result']
+export type CadKernelWorkerPreviewResult = CadKernelStepPreviewResponse['result']
 
 const createWorker = (): CadKernelWorkerLike => new Worker(new URL('./kernel.worker.ts', import.meta.url), { type: 'module' })
 
@@ -20,13 +23,39 @@ export function runStepRoundTripInWorker(
   input: CadKernelStepRoundTripInput,
   workerFactory: () => CadKernelWorkerLike = createWorker,
 ): Promise<CadKernelWorkerResult> {
-  const worker = workerFactory()
   const request: CadKernelStepRoundTripRequest = {
     id: createRequestID(),
     type: 'step-round-trip',
     payload: input,
   }
+  return runCadKernelRequestInWorker(request, workerFactory)
+}
 
+export function runStepPreviewInWorker(
+  input: CadKernelStepPreviewInput,
+  workerFactory: () => CadKernelWorkerLike = createWorker,
+): Promise<CadKernelWorkerPreviewResult> {
+  const request: CadKernelStepPreviewRequest = {
+    id: createRequestID(),
+    type: 'step-preview',
+    payload: input,
+  }
+  return runCadKernelRequestInWorker(request, workerFactory)
+}
+
+function runCadKernelRequestInWorker(
+  request: CadKernelStepRoundTripRequest,
+  workerFactory: () => CadKernelWorkerLike,
+): Promise<CadKernelWorkerResult>
+function runCadKernelRequestInWorker(
+  request: CadKernelStepPreviewRequest,
+  workerFactory: () => CadKernelWorkerLike,
+): Promise<CadKernelWorkerPreviewResult>
+function runCadKernelRequestInWorker(
+  request: CadKernelStepRoundTripRequest | CadKernelStepPreviewRequest,
+  workerFactory: () => CadKernelWorkerLike,
+): Promise<CadKernelWorkerResult | CadKernelWorkerPreviewResult> {
+  const worker = workerFactory()
   return new Promise((resolve, reject) => {
     const cleanup = () => {
       worker.removeEventListener('message', handleMessage)

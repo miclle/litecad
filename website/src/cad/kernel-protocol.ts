@@ -19,7 +19,16 @@ export type CadKernelStepRoundTripRequest = {
   }
 }
 
-export type CadKernelRequest = CadKernelStepRoundTripRequest
+export type CadKernelStepPreviewRequest = {
+  id: string
+  type: 'step-preview'
+  payload: {
+    filename: string
+    stepText: string
+  }
+}
+
+export type CadKernelRequest = CadKernelStepRoundTripRequest | CadKernelStepPreviewRequest
 
 export type CadKernelStepRoundTripResponse = {
   id: string
@@ -31,18 +40,31 @@ export type CadKernelStepRoundTripResponse = {
   }
 }
 
+export type CadKernelStepPreviewResponse = {
+  id: string
+  type: 'step-preview-result'
+  result: {
+    mesh: CadKernelMesh
+    meshSummary: CadKernelMeshSummary
+  }
+}
+
 export type CadKernelErrorResponse = {
   id: string
   type: 'error'
   error: string
 }
 
-export type CadKernelResponse = CadKernelStepRoundTripResponse | CadKernelErrorResponse
+export type CadKernelResponse = CadKernelStepRoundTripResponse | CadKernelStepPreviewResponse | CadKernelErrorResponse
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
 export function isCadKernelRequest(value: unknown): value is CadKernelRequest {
-  if (!isRecord(value) || value.type !== 'step-round-trip' || typeof value.id !== 'string') {
+  if (
+    !isRecord(value) ||
+    (value.type !== 'step-round-trip' && value.type !== 'step-preview') ||
+    typeof value.id !== 'string'
+  ) {
     return false
   }
   const payload = value.payload

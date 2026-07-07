@@ -7,6 +7,12 @@ export type CadKernelStepRoundTripInput = {
   stepText: string
 }
 
+export type CadKernelStepPreviewInput = CadKernelStepRoundTripInput
+
+export type CadKernelStepPreviewResult = {
+  mesh: CadKernelMesh
+}
+
 export type CadKernelStepRoundTripResult = {
   mesh: CadKernelMesh
   exportedStepText: string
@@ -59,6 +65,26 @@ export async function runOpenCascadeStepRoundTrip(input: CadKernelStepRoundTripI
   return runStepRoundTripWithKernel(openCascade, input)
 }
 
+export async function runOpenCascadeStepPreview(input: CadKernelStepPreviewInput) {
+  const openCascade = await loadOpenCascade()
+  return runStepPreviewWithKernel(openCascade, input)
+}
+
+export async function runStepPreviewWithKernel(
+  openCascade: OpenCascadeModule,
+  input: CadKernelStepPreviewInput,
+): Promise<CadKernelStepPreviewResult> {
+  cleanupVirtualFile(openCascade, inputStepPath)
+  writeVirtualFile(openCascade, inputStepPath, input.stepText)
+
+  try {
+    const shape = importStepShape(openCascade, input)
+    return { mesh: tessellateShape(openCascade, shape) }
+  } finally {
+    cleanupVirtualFile(openCascade, inputStepPath)
+  }
+}
+
 export async function runStepRoundTripWithKernel(
   openCascade: OpenCascadeModule,
   input: CadKernelStepRoundTripInput,
@@ -68,18 +94,7 @@ export async function runStepRoundTripWithKernel(
   writeVirtualFile(openCascade, inputStepPath, input.stepText)
 
   try {
-    const reader = new openCascade.STEPControl_Reader_1()
-    const readResult = reader.ReadFile(inputStepName)
-    if (readResult !== openCascade.IFSelect_ReturnStatus.IFSelect_RetDone) {
-      throw new Error(`STEP import failed for ${input.filename}`)
-    }
-
-    const rootCount = reader.TransferRoots(new openCascade.Message_ProgressRange_1())
-    if (rootCount <= 0) {
-      throw new Error(`STEP import produced no transferable roots for ${input.filename}`)
-    }
-
-    const shape = reader.OneShape()
+    const shape = importStepShape(openCascade, input)
     const mesh = tessellateShape(openCascade, shape)
     const exportedStepText = exportShapeToStep(openCascade, shape)
     return { mesh, exportedStepText }
@@ -87,6 +102,21 @@ export async function runStepRoundTripWithKernel(
     cleanupVirtualFile(openCascade, inputStepPath)
     cleanupVirtualFile(openCascade, outputStepPath)
   }
+}
+
+function importStepShape(openCascade: OpenCascadeModule, input: CadKernelStepRoundTripInput) {
+  const reader = new openCascade.STEPControl_Reader_1()
+  const readResult = reader.ReadFile(inputStepName)
+  if (readResult !== openCascade.IFSelect_ReturnStatus.IFSelect_RetDone) {
+    throw new Error(`STEP import failed for ${input.filename}`)
+  }
+
+  const rootCount = reader.TransferRoots(new openCascade.Message_ProgressRange_1())
+  if (rootCount <= 0) {
+    throw new Error(`STEP import produced no transferable roots for ${input.filename}`)
+  }
+
+  return reader.OneShape()
 }
 
 function cleanupVirtualFile(openCascade: OpenCascadeModule, path: string) {

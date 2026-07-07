@@ -5,6 +5,7 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
 
 import { disposeObject3DResources } from './three-object-resources'
+import { createKernelMeshPreviewObject } from './model-preview-kernel-mesh'
 import { orientCADPreviewObject } from './model-preview-orientation'
 import {
   createViewOrientationChangeEvent,
@@ -410,14 +411,14 @@ export function ModelPreview({ deferResize = false, previewAssets = [], visibleM
         return
       }
       object.name = asset.name
-      if (asset.previewFormat === 'obj') {
+      if (asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh') {
         orientCADPreviewObject(object)
       }
       object.visible = isPreviewObjectVisible(asset.modelId)
       object.traverse((child) => {
         if (child instanceof THREE.Mesh) {
           const objectName = `${child.name} ${child.parent?.name ?? ''}`
-          if (asset.previewFormat === 'obj') {
+          if (asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh') {
             child.material = createCADPreviewMaterial(`${asset.name} ${objectName}`, assetIndex)
           } else if (child.material instanceof THREE.Material) {
             child.material.side = THREE.DoubleSide
@@ -439,14 +440,6 @@ export function ModelPreview({ deferResize = false, previewAssets = [], visibleM
       previewGroup.add(object)
       updatePreviewBounds()
     }
-
-    previewAssets.forEach((asset, assetIndex) => {
-      if (asset.previewFormat === 'obj') {
-        new OBJLoader().load(asset.previewUrl, (object) => addPreviewObject(asset, assetIndex, object))
-      } else if (asset.previewFormat === 'glb' || asset.previewFormat === 'gltf') {
-        new GLTFLoader().load(asset.previewUrl, (gltf) => addPreviewObject(asset, assetIndex, gltf.scene))
-      }
-    })
 
     renderer.domElement.style.cursor = 'grab'
 
@@ -590,6 +583,16 @@ export function ModelPreview({ deferResize = false, previewAssets = [], visibleM
     window.addEventListener('pageshow', handlePageShow)
     controls.addEventListener('start', startControlsInteraction)
     controls.addEventListener('end', stopControlsInteraction)
+
+    previewAssets.forEach((asset, assetIndex) => {
+      if (asset.previewFormat === 'obj') {
+        new OBJLoader().load(asset.previewUrl, (object) => addPreviewObject(asset, assetIndex, object))
+      } else if (asset.previewFormat === 'kernel-mesh') {
+        addPreviewObject(asset, assetIndex, createKernelMeshPreviewObject(asset.mesh))
+      } else if (asset.previewFormat === 'glb' || asset.previewFormat === 'gltf') {
+        new GLTFLoader().load(asset.previewUrl, (gltf) => addPreviewObject(asset, assetIndex, gltf.scene))
+      }
+    })
 
     return () => {
       cancelViewAnimation()

@@ -4,14 +4,20 @@ import {
   summarizeCadKernelMesh,
   type CadKernelResponse,
 } from './kernel-protocol'
-import type { CadKernelStepRoundTripInput, CadKernelStepRoundTripResult } from './opencascade-step'
+import type {
+  CadKernelStepPreviewInput,
+  CadKernelStepPreviewResult,
+  CadKernelStepRoundTripInput,
+  CadKernelStepRoundTripResult,
+} from './opencascade-step'
 
 type CadKernelWorkerHandlerOptions = {
+  runStepPreview: (input: CadKernelStepPreviewInput) => Promise<CadKernelStepPreviewResult>
   runStepRoundTrip: (input: CadKernelStepRoundTripInput) => Promise<CadKernelStepRoundTripResult>
   postMessage: (message: CadKernelResponse) => void
 }
 
-export function createCadKernelWorkerHandler({ runStepRoundTrip, postMessage }: CadKernelWorkerHandlerOptions) {
+export function createCadKernelWorkerHandler({ runStepPreview, runStepRoundTrip, postMessage }: CadKernelWorkerHandlerOptions) {
   return async (message: unknown) => {
     if (!isCadKernelRequest(message)) {
       postMessage(cadKernelErrorResponse('unknown', 'Invalid CAD kernel worker request'))
@@ -19,6 +25,19 @@ export function createCadKernelWorkerHandler({ runStepRoundTrip, postMessage }: 
     }
 
     try {
+      if (message.type === 'step-preview') {
+        const result = await runStepPreview(message.payload)
+        postMessage({
+          id: message.id,
+          type: 'step-preview-result',
+          result: {
+            ...result,
+            meshSummary: summarizeCadKernelMesh(result.mesh),
+          },
+        })
+        return
+      }
+
       const result = await runStepRoundTrip(message.payload)
       postMessage({
         id: message.id,
