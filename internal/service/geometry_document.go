@@ -65,7 +65,7 @@ func (s *Service) GetProjectGeometryDocument(ctx context.Context, ownerUserID, p
 	var artifacts []entity.ProjectModelPreviewArtifact
 	if err := s.db.WithContext(ctx).
 		Joins("JOIN project_models ON project_models.id = project_model_preview_artifacts.model_id").
-		Where("project_models.project_id = ?", projectID).
+		Where("project_models.project_id = ? AND project_models.format <> ?", projectID, "step").
 		Order("project_model_preview_artifacts.created_at ASC").
 		Find(&artifacts).
 		Error; err != nil {
@@ -83,8 +83,10 @@ func (s *Service) GetProjectGeometryDocument(ctx context.Context, ownerUserID, p
 
 	var versions []entity.ProjectGeometryVersion
 	if err := s.db.WithContext(ctx).
-		Where("project_id = ?", projectID).
-		Order("version_number ASC").
+		Joins("JOIN project_model_preview_artifacts ON project_model_preview_artifacts.id = project_geometry_versions.preview_artifact_id").
+		Joins("JOIN project_models ON project_models.id = project_model_preview_artifacts.model_id").
+		Where("project_geometry_versions.project_id = ? AND project_models.format <> ?", projectID, "step").
+		Order("project_geometry_versions.version_number ASC").
 		Find(&versions).
 		Error; err != nil {
 		return ProjectGeometryDocument{}, fmt.Errorf("load project geometry versions: %w", err)

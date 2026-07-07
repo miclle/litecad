@@ -83,7 +83,7 @@ func newTestRouterWithAI(t *testing.T, aiClient service.AIClient) *fox.Engine {
 		t.Fatalf("migrate test db: %v", err)
 	}
 
-	svc, err := service.NewWithPreviewConverter(context.Background(), db, testPreviewConverter{}, service.WithAIClient(aiClient))
+	svc, err := service.New(context.Background(), db, service.WithAIClient(aiClient))
 	if err != nil {
 		t.Fatalf("create service: %v", err)
 	}

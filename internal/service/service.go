@@ -11,19 +11,13 @@ import (
 
 // Service holds the database connection and provides business logic methods.
 type Service struct {
-	db               *gorm.DB
-	previewConverter ModelPreviewConverter
-	aiClient         AIClient
+	db       *gorm.DB
+	aiClient AIClient
 }
 
 // New creates a new Service instance with the given database handle.
 func New(ctx context.Context, db *gorm.DB, options ...Option) (*Service, error) {
-	return newService(ctx, db, NewFreeCADPreviewConverter(), options...)
-}
-
-// NewWithPreviewConverter creates a Service with an explicit preview converter.
-func NewWithPreviewConverter(ctx context.Context, db *gorm.DB, converter ModelPreviewConverter, options ...Option) (*Service, error) {
-	return newService(ctx, db, converter, options...)
+	return newService(ctx, db, options...)
 }
 
 // Option configures a Service dependency.
@@ -36,19 +30,16 @@ func WithAIClient(client AIClient) Option {
 	}
 }
 
-func newService(ctx context.Context, db *gorm.DB, converter ModelPreviewConverter, options ...Option) (*Service, error) {
+func newService(ctx context.Context, db *gorm.DB, options ...Option) (*Service, error) {
 	l := logger.NewWithContext(ctx)
 
 	if db == nil {
 		return nil, fmt.Errorf("db handle is required")
 	}
-	if converter == nil {
-		converter = NewFreeCADPreviewConverter()
-	}
 
 	l.Info("[Service] initialized")
 
-	svc := &Service{db: db, previewConverter: converter}
+	svc := &Service{db: db}
 	for _, option := range options {
 		if option != nil {
 			option(svc)

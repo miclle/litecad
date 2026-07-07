@@ -16,7 +16,7 @@ Import STEP or another CAD source
   -> export the current shape back to STEP or another CAD exchange format
 ```
 
-The current implementation does not do this yet. Today, STEP workbench preview uses browser-kernel tessellation, while GLTF/GLB/STL preview artifacts remain viewer outputs rather than editable CAD documents. The legacy backend STEP preview endpoint is still FreeCAD-backed until a later removal phase deletes or quarantines it.
+The current implementation does not do this yet. Today, STEP workbench preview uses browser-kernel tessellation, while GLTF/GLB/STL preview artifacts remain viewer outputs rather than editable CAD documents.
 
 ## Architectural Decision
 
@@ -28,7 +28,7 @@ Preferred direction:
 - Keep Three.js as the rendering layer, not as the authoritative CAD model.
 - Treat preview meshes as derived artifacts from B-rep shapes.
 - Keep the Go backend responsible for accounts, projects, storage, collaboration, and artifact persistence.
-- Remove FreeCAD and Python from the runtime conversion path once the browser kernel can import, tessellate, edit, and export the supported CAD formats.
+- Keep FreeCAD and Python out of the normal runtime conversion path; STEP preview now flows through the browser kernel worker.
 
 OpenCascade.js is the first candidate to evaluate because it provides JavaScript/WebAssembly bindings to Open CASCADE Technology, and OCCT includes STEP read/write support. Relevant upstream references:
 
@@ -96,10 +96,12 @@ Every phase must end with:
 
 Document the target architecture, update TODOs, and prevent future work from deepening the FreeCAD runtime dependency.
 
+Phase 0 acceptance status: complete on 2026-07-07.
+
 Acceptance criteria:
 
 - This roadmap exists and is linked from README and TODO.
-- Agent rules explain that FreeCAD is current implementation only, not the target architecture.
+- Agent rules explain that FreeCAD/Python STEP conversion must not be part of normal runtime architecture.
 - TODO phases are explicit enough for future implementation work.
 - Verification includes at least `git diff --check` for the docs-only change.
 
@@ -151,13 +153,16 @@ Tests and verification:
 
 Route STEP preview generation through the browser kernel and replace the current backend FreeCAD/OBJ preview path. The project is not launched, so this phase does not need a long-lived compatibility mode for old FreeCAD artifacts.
 
+Phase 2 acceptance status: complete on 2026-07-07. STEP workbench preview now uses browser-kernel mesh buffers, and the old FreeCAD/Python STEP backend preview converter has been removed from normal runtime code.
+
 Current Phase 2 status:
 
 - First Phase 2 increment complete on 2026-07-07: the backend now exposes an authenticated project-model source download endpoint at `/api/v1/projects/:projectID/models/:modelID/source`, scoped by the current session owner and returning the original uploaded bytes. The frontend API client exposes this as `fetchProjectModelSource(...)` with Blob response handling.
 - Second Phase 2 increment complete on 2026-07-07: parsed STEP/STP models in the project workbench fetch the authenticated source bytes, send them to `kernel.worker.ts` with a `step-preview` request, and render worker-produced mesh buffers directly as Three.js `BufferGeometry`.
 - The current active workbench preview path no longer needs FreeCAD for STEP/STP display. GLB/self-contained GLTF preview artifacts are still served directly, and STL preview artifacts are still generated in Go.
-- The backend FreeCAD-backed STEP preview endpoint still exists for the old `/preview` API path and should be removed or quarantined before treating the FreeCAD runtime dependency as gone.
+- Third Phase 2 increment complete on 2026-07-07: STEP models now return `ErrModelPreviewUnavailable` on the backend preview artifact path, legacy STEP OBJ preview artifacts are filtered out of the read-only geometry document, `internal/service/freecad_preview_converter.go` was deleted, and `scripts/freecad_step_to_obj.py` was deleted.
 - Browser verification on 2026-07-07 against the current project `prj_01kwrpevmc29sg9n487jfh44sv` showed two STEP models rendered as `2 KERNEL meshes`, no console errors, and a present Three.js canvas. Desktop screenshot sampling found 4,775 non-background samples and 990 unique non-background colors in the viewer crop; a 390 x 844 mobile viewport found `previewAssetCount: "2"`, canvas size 390 x 788, no unexpected app error, and screenshot sampling found 13,947 non-background samples and 1,708 unique non-background colors.
+- Cleanup verification for the backend preview quarantine covered service and handler tests proving STEP preview/artifact endpoints are unavailable for STEP, source download still works, and legacy STEP OBJ artifacts are not exposed through the geometry document.
 
 Scope:
 
@@ -216,16 +221,15 @@ Tests and verification:
 - Docs update documenting supported export semantics and known limits.
 - Commit the export milestone separately.
 
-### Phase 5: Remove FreeCAD Runtime Conversion
+### Phase 5: Post-Export Runtime Sweep
 
-Delete the FreeCAD/Python runtime dependency after the browser kernel path covers the supported import/preview/export flows.
+Audit runtime dependencies and docs after editable import/preview/export flows are complete.
 
 Scope:
 
-- Remove `freecad_step_to_obj.py` and the FreeCAD converter from normal runtime code.
-- Remove `LITECAD_FREECAD_CMD` from runtime setup docs unless it remains only as an optional migration/debug tool.
-- Update API and preview docs to describe browser-kernel or backend-stored artifact behavior.
-- Keep migration handling for existing OBJ preview artifacts if needed.
+- Confirm no reintroduced third-party desktop CAD runtime dependency exists in normal import, preview, edit, or export flows.
+- Update API and preview docs to describe browser-kernel or backend-stored artifact behavior after export ships.
+- Add migration handling for existing preview artifacts if product data created before launch requires it.
 
 Tests and verification:
 
@@ -249,7 +253,7 @@ As of this roadmap, the current shipped path is:
 
 - STEP/STP source metadata and source file download are backend-owned.
 - STEP/STP workbench preview uses the browser CAD kernel worker and renders worker-produced mesh buffers in Three.js.
-- The old backend STEP preview endpoint still uses FreeCAD through `freecadcmd` and emits OBJ until the cleanup/removal phase deletes or quarantines that path.
+- STEP/STP backend preview artifact generation is unavailable by design; the workbench uses `/source` plus the browser kernel instead.
 - GLB and self-contained GLTF uploads can be published as preview artifacts after backend validation.
 - STL is converted to OBJ preview data in Go.
 - The project workbench renders browser-kernel STEP meshes and backend-provided GLB/GLTF/STL preview artifacts in Three.js.

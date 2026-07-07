@@ -31,12 +31,12 @@ These rules keep LiteCAD product work aligned with the small Go + React single-b
 
 ## Product Boundaries
 
-- Current projects include metadata, uploaded STEP/STP/self-contained GLTF/GLB/STL source records, lightweight source metadata, authenticated source download, browser-kernel STEP workbench preview meshes, preview artifact metadata, derived STL OBJ preview artifacts, legacy derived STEP OBJ preview artifacts for the backend preview endpoint, backend-published self-contained GLTF/GLB preview artifacts, multi-source preview composition in the workbench, read-only model tree responses, and generated geometry version snapshots; they are not editable persisted CAD documents.
+- Current projects include metadata, uploaded STEP/STP/self-contained GLTF/GLB/STL source records, lightweight source metadata, authenticated source download, browser-kernel STEP workbench preview meshes, preview artifact metadata for backend-published GLTF/GLB/STL previews, derived STL OBJ preview artifacts, multi-source preview composition in the workbench, read-only model tree responses, and generated geometry version snapshots; they are not editable persisted CAD documents.
 - Current STEP workbench preview uses the embedded browser CAD kernel worker described in `docs/browser-cad-kernel-roadmap.md`. The target architecture still needs B-rep editing, persisted document state, and STEP export. Do not add ad hoc frontend raw CAD loaders outside that kernel plan.
 - The home and project workbench Three.js surfaces must use project-owned source or derived preview data instead of hard-coded demo geometry.
 - Treat AI generation, measurement, export, editable geometry documents, and full STEP B-rep semantics as roadmap work unless the code implements the end-to-end flow.
 - Treat CAD merge/boolean operations and persisted assembly placement as roadmap work unless the code implements the end-to-end flow.
-- Treat FreeCAD and `freecad_step_to_obj.py` as current implementation debt and short-term fallback only. New CAD import/edit/export work should avoid deepening the runtime dependency on third-party desktop CAD software.
+- Normal runtime code must not depend on FreeCAD, `freecadcmd`, or Python-based STEP conversion. New CAD import/edit/export work should stay behind the browser CAD kernel worker boundary and avoid third-party desktop CAD software dependencies.
 - When a feature becomes real, update README and remove or rewrite the matching TODO item in the same change.
 
 ## Change Checks

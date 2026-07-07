@@ -12,18 +12,6 @@ import (
 	"github.com/miclle/litecad/internal/service"
 )
 
-type testPreviewConverter struct{}
-
-func (testPreviewConverter) ConvertStepToPreview(ctx context.Context, data []byte) (service.ModelPreviewMesh, error) {
-	return service.ModelPreviewMesh{
-		Format:      "obj",
-		ContentType: "model/obj",
-		Data:        []byte("# test mesh\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"),
-		VertexCount: 3,
-		FacetCount:  1,
-	}, nil
-}
-
 type testAIClient struct {
 	reply string
 }
@@ -346,43 +334,16 @@ func TestProjectModelRoutesUploadAndListStep(t *testing.T) {
 	}
 
 	preview := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/models/"+uploadResponse.Model.ID+"/preview", sessionCookie)
-	if preview.Code != http.StatusOK {
-		t.Fatalf("preview status = %d, body = %s", preview.Code, preview.Body.String())
+	if preview.Code != http.StatusBadRequest {
+		t.Fatalf("preview status = %d, want %d, body = %s", preview.Code, http.StatusBadRequest, preview.Body.String())
 	}
-	if contentType := preview.Header().Get("Content-Type"); contentType != "model/obj" {
-		t.Fatalf("preview content type = %q, want model/obj", contentType)
-	}
-	if !bytes.Contains(preview.Body.Bytes(), []byte("v ")) {
-		t.Fatalf("preview body should contain OBJ vertex data, got %q", preview.Body.String())
+	if !bytes.Contains(preview.Body.Bytes(), []byte("model preview unavailable")) {
+		t.Fatalf("preview body = %q, want unavailable message", preview.Body.String())
 	}
 
 	previewArtifact := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/models/"+uploadResponse.Model.ID+"/preview-artifact", sessionCookie)
-	if previewArtifact.Code != http.StatusOK {
-		t.Fatalf("preview artifact status = %d, body = %s", previewArtifact.Code, previewArtifact.Body.String())
-	}
-	var artifactResponse struct {
-		Preview struct {
-			ID          string `json:"id"`
-			ModelID     string `json:"model_id"`
-			Format      string `json:"format"`
-			ContentType string `json:"content_type"`
-			ByteSize    int64  `json:"byte_size"`
-			VertexCount int    `json:"vertex_count"`
-			FacetCount  int    `json:"facet_count"`
-			Data        []byte `json:"data"`
-		} `json:"preview"`
-	}
-	if err := json.Unmarshal(previewArtifact.Body.Bytes(), &artifactResponse); err != nil {
-		t.Fatalf("decode preview artifact response: %v", err)
-	}
-	if artifactResponse.Preview.ModelID != uploadResponse.Model.ID || artifactResponse.Preview.Format != "obj" {
-		t.Fatalf("preview artifact = %+v", artifactResponse.Preview)
-	}
-	if artifactResponse.Preview.ContentType != "model/obj" || artifactResponse.Preview.VertexCount == 0 || artifactResponse.Preview.FacetCount == 0 {
-		t.Fatalf("preview artifact metadata = %+v", artifactResponse.Preview)
-	}
-	if artifactResponse.Preview.Data != nil {
-		t.Fatal("preview artifact metadata response must not include binary data")
+	if previewArtifact.Code != http.StatusBadRequest {
+		t.Fatalf("preview artifact status = %d, want %d, body = %s", previewArtifact.Code, http.StatusBadRequest, previewArtifact.Body.String())
 	}
 
 	geometry := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/geometry", sessionCookie)
@@ -396,6 +357,7 @@ func TestProjectModelRoutesUploadAndListStep(t *testing.T) {
 				ModelID           string `json:"model_id"`
 				PreviewArtifactID string `json:"preview_artifact_id"`
 				Format            string `json:"format"`
+				PreviewFormat     string `json:"preview_format"`
 			} `json:"model_tree"`
 			PreviewArtifacts []struct {
 				ID     string `json:"id"`
@@ -419,10 +381,13 @@ func TestProjectModelRoutesUploadAndListStep(t *testing.T) {
 	if len(geometryResponse.Document.ModelTree) != 1 || geometryResponse.Document.ModelTree[0].ModelID != uploadResponse.Model.ID || geometryResponse.Document.ModelTree[0].Format != "step" {
 		t.Fatalf("geometry model tree = %+v", geometryResponse.Document.ModelTree)
 	}
-	if len(geometryResponse.Document.PreviewArtifacts) != 1 || geometryResponse.Document.PreviewArtifacts[0].Format != "obj" || geometryResponse.Document.PreviewArtifacts[0].Data != nil {
+	if geometryResponse.Document.ModelTree[0].PreviewArtifactID != "" || geometryResponse.Document.ModelTree[0].PreviewFormat != "" {
+		t.Fatalf("geometry model tree should not expose STEP backend preview artifact = %+v", geometryResponse.Document.ModelTree)
+	}
+	if len(geometryResponse.Document.PreviewArtifacts) != 0 {
 		t.Fatalf("geometry preview artifacts = %+v", geometryResponse.Document.PreviewArtifacts)
 	}
-	if len(geometryResponse.Document.Versions) != 1 || geometryResponse.Document.Versions[0].VersionNumber != 1 {
+	if len(geometryResponse.Document.Versions) != 0 {
 		t.Fatalf("geometry versions = %+v", geometryResponse.Document.Versions)
 	}
 }
