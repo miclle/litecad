@@ -1,5 +1,7 @@
 # Backend Normalized Preview Artifacts Implementation Plan
 
+> Historical note: this plan is superseded by `docs/browser-cad-kernel-roadmap.md`. LiteCAD no longer uses the FreeCAD/Python STEP preview path in normal runtime code; STEP preview, edit replay, and direct STEP export now flow through the browser CAD kernel worker. Keep this file as historical implementation context only, not as current architecture guidance.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Move LiteCAD import preview toward a backend-owned CAD parsing pipeline where frontend only renders normalized Three.js-friendly preview artifacts.

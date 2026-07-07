@@ -256,6 +256,15 @@ Tests and verification:
 
 Audit runtime dependencies and docs after editable import/preview/export flows are complete.
 
+Phase 5 acceptance status: complete on 2026-07-08. The normal import, preview, edit, and direct STEP export flow no longer depends on FreeCAD, `freecadcmd`, or Python-based STEP conversion. Remaining FreeCAD mentions are limited to historical docs, roadmap context, and STEP metadata/test fixture strings.
+
+Current Phase 5 status:
+
+- Production/runtime search across `internal`, `cmd`, `pkg`, non-test `website/src`, `website/*.go`, `scripts`, `go.mod`, and `Taskfile.yaml` found no `freecad`, `freecadcmd`, `python`, or `step_to_obj` runtime references.
+- Repository-wide references to FreeCAD/Python are documentation guardrails, a historical superseded plan under `docs/superpowers/plans/`, STEP metadata fixture text, package-license metadata, or old test fixture labels. The superseded plan now carries an explicit historical note pointing readers to this browser-kernel roadmap.
+- Browser verification for the post-export state used the current Workbench flow on 2026-07-08: generated a real STEP in the browser kernel, imported it, applied a box-union edit, exported `phase4-base-litecad-r2.step`, re-imported that exported STEP, confirmed 2 project models and two kernel preview meshes, measured the main preview canvas at 1280 x 788, and observed no Workbench-phase console, page, or HTTP errors.
+- Verification for this sweep includes `git diff --check`, `task check`, and `task test`.
+
 Scope:
 
 - Confirm no reintroduced third-party desktop CAD runtime dependency exists in normal import, preview, edit, or export flows.

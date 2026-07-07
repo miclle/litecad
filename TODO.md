@@ -4,8 +4,6 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 
 ## Product Capability
 
-- Execute the browser CAD kernel migration defined in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md). Each phase must finish with tests/verification, docs updates, and a scoped commit before starting the next phase:
-  - Phase 5: audit runtime dependencies and docs after editable import, preview, edit, and direct STEP export flows are complete.
 - Extend the persisted CAD document model beyond the current root model nodes, transform matrices, transform operations, constrained box-union operations, schema version, revision, and unit. Current projects still do not store durable kernel shape state, rich feature/version semantics, or a complete design-history graph.
 - Continue the CAD import and geometry pipeline beyond completed STEP/STP/self-contained GLTF/GLB/STL source upload, lightweight metadata extraction, browser-kernel STEP preview tessellation, GLB/self-contained GLTF preview publishing, STL-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API:
   - Treat OBJ/GLB preview meshes as derived display artifacts, not editable CAD source of truth.
