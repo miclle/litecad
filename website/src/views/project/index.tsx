@@ -6,6 +6,7 @@ import {
   useState,
   type CSSProperties,
   type ChangeEvent,
+  type FormEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import {
@@ -16,11 +17,14 @@ import {
   HardDrive,
   Import,
   Info,
+  MessageSquare,
   Orbit,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Send,
+  X,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
@@ -69,6 +73,12 @@ const leftPanelMinWidth = 220
 const leftPanelMaxWidth = 440
 const rightPanelMinWidth = 260
 const rightPanelMaxWidth = 520
+const aiChatPanelWidth = 420
+type AiChatMessage = {
+  id: string
+  role: 'assistant' | 'user'
+  body: string
+}
 
 function clampPanelWidth(width: number, minWidth: number, maxWidth: number) {
   return Math.min(Math.max(width, minWidth), maxWidth)
@@ -80,7 +90,16 @@ function ProjectView() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false)
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false)
+  const [isAiChatOpen, setIsAiChatOpen] = useState(false)
   const [isProjectInfoOpen, setIsProjectInfoOpen] = useState(false)
+  const [aiChatDraft, setAiChatDraft] = useState('')
+  const [aiChatMessages, setAiChatMessages] = useState<AiChatMessage[]>([
+    {
+      id: 'assistant-initial',
+      role: 'assistant',
+      body: 'I can stay beside the model while you inspect sources, metadata, and design notes.',
+    },
+  ])
   const [leftPanelWidth, setLeftPanelWidth] = useState(defaultLeftPanelWidth)
   const [rightPanelWidth, setRightPanelWidth] = useState(defaultRightPanelWidth)
   const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
@@ -108,7 +127,7 @@ function ProjectView() {
     },
   })
   const project = projectQuery.data
-  const projectModels = projectModelsQuery.data ?? []
+  const projectModels = useMemo(() => projectModelsQuery.data ?? [], [projectModelsQuery.data])
   const previewModels = useMemo(() => parsedPreviewModels(projectModels), [projectModels])
   const latestModel = projectModels[0]
   const latestProductName = latestModel?.metadata.product_names[0]
@@ -172,6 +191,8 @@ function ProjectView() {
       objectUrls.push(objectUrl)
     })
 
+    // Object URL publication is tied to query blob lifecycle and revoked in this effect cleanup.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPreviewUrlsByModelID(nextPreviewUrlsByModelID)
     return () => {
       objectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl))
@@ -194,6 +215,21 @@ function ProjectView() {
     window.addEventListener(viewOrientationChangeEventName, handleViewOrientationChange)
     return () => window.removeEventListener(viewOrientationChangeEventName, handleViewOrientationChange)
   }, [])
+
+  useEffect(() => {
+    if (!isAiChatOpen) {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsAiChatOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isAiChatOpen])
 
   if (projectQuery.isLoading) {
     return (
@@ -251,7 +287,13 @@ function ProjectView() {
   ]
   const canvasStatusLeftOffset = isLeftPanelCollapsed ? 16 : leftPanelWidth + 32
   const canvasToolbarLeftOffset = isLeftPanelCollapsed ? 228 : leftPanelWidth + 32
-  const canvasRightOffset = isRightPanelCollapsed ? 260 : rightPanelWidth + 20
+  const inspectorRightOffset = isRightPanelCollapsed ? 260 : rightPanelWidth + 20
+  const canvasRightOffset = inspectorRightOffset
+  const cadWorkspaceMinWidth =
+    (isLeftPanelCollapsed ? 196 : leftPanelWidth) + (isRightPanelCollapsed ? 228 : rightPanelWidth) + 64
+  const mainGridStyle = {
+    gridTemplateColumns: isAiChatOpen ? `minmax(${cadWorkspaceMinWidth}px, 1fr) ${aiChatPanelWidth}px` : 'minmax(0, 1fr)',
+  } as CSSProperties
   const startPanelResize = (side: 'left' | 'right', event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     const startX = event.clientX
@@ -302,6 +344,23 @@ function ProjectView() {
     }
     uploadModelMutation.mutate(file)
     event.target.value = ''
+  }
+  const handleAiChatSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const messageBody = aiChatDraft.trim()
+    if (!messageBody) {
+      return
+    }
+    setAiChatMessages((currentMessages) => [
+      ...currentMessages,
+      { id: `user-${Date.now()}`, role: 'user', body: messageBody },
+      {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        body: 'AI chat is ready in the workbench UI. Connect a project chat endpoint to answer with live model context.',
+      },
+    ])
+    setAiChatDraft('')
   }
 
   return (
@@ -386,6 +445,21 @@ function ProjectView() {
           >
             <Import className="size-4" />
           </button>
+          <button
+            aria-label="Toggle AI Chat"
+            aria-pressed={isAiChatOpen}
+            className={`flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
+              isAiChatOpen
+                ? 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]'
+                : 'border-transparent text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]'
+            }`}
+            onClick={() => setIsAiChatOpen((currentIsOpen) => !currentIsOpen)}
+            title={isAiChatOpen ? 'Close AI Chat' : 'Open AI Chat'}
+            type="button"
+          >
+            <MessageSquare className="size-4" />
+            AI Chat
+          </button>
           <input
             accept=".step,.stp,.gltf,.glb,.stl"
             className="hidden"
@@ -400,25 +474,26 @@ function ProjectView() {
         </div>
       </header>
 
-      <main className="relative min-h-0 overflow-hidden bg-[#f8fafc]">
-        <section className="absolute inset-0 overflow-hidden">
-          <ModelPreview key={project.id} previewAssets={previewAssets} />
-          {shouldShowCanvasStatus && (
-            <div
-              className="pointer-events-none absolute bottom-4 left-4 max-w-sm rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 p-4 shadow-xl backdrop-blur lg:left-[var(--canvas-status-left)]"
-              style={{ '--canvas-status-left': `${canvasStatusLeftOffset}px` } as CSSProperties}
-            >
-              <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#64748b]">
-                <HardDrive className="size-4 text-[#475569]" />
-                {previewSummary.sourceLabel}
+      <main className="grid min-h-0 overflow-x-auto overflow-y-hidden bg-[#f8fafc]" style={mainGridStyle}>
+        <div className="relative min-h-0 overflow-hidden bg-[#f8fafc]">
+          <section className="absolute inset-0 overflow-hidden">
+            <ModelPreview key={project.id} previewAssets={previewAssets} />
+            {shouldShowCanvasStatus && (
+              <div
+                className="pointer-events-none absolute bottom-4 left-4 max-w-sm rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 p-4 shadow-xl backdrop-blur lg:left-[var(--canvas-status-left)]"
+                style={{ '--canvas-status-left': `${canvasStatusLeftOffset}px` } as CSSProperties}
+              >
+                <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#64748b]">
+                  <HardDrive className="size-4 text-[#475569]" />
+                  {previewSummary.sourceLabel}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-[#1f2937]">
+                  {latestModel
+                    ? `${latestProductName || latestModel.original_filename} metadata is parsed. Geometry preview is being prepared.`
+                    : 'The canvas is empty until imported geometry is prepared for preview. Import a CAD source file to attach real model data to this project.'}
+                </p>
               </div>
-              <p className="mt-2 text-sm leading-6 text-[#1f2937]">
-                {latestModel
-                  ? `${latestProductName || latestModel.original_filename} metadata is parsed. Geometry preview is being prepared.`
-                  : 'The canvas is empty until imported geometry is prepared for preview. Import a CAD source file to attach real model data to this project.'}
-              </p>
-            </div>
-          )}
+            )}
 
           <button
             className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-md border border-[#e2e8f0] bg-[#ffffff]/88 px-3 py-2 text-xs text-[#64748b] backdrop-blur transition hover:border-[#475569] hover:text-[#0f172a] lg:left-[var(--canvas-toolbar-left)]"
@@ -621,6 +696,88 @@ function ProjectView() {
             </>
           )}
         </aside>
+        </div>
+
+        {isAiChatOpen && (
+          <aside
+            aria-label="AI Chat panel"
+            className="flex min-h-0 flex-col border-l border-[#d6dbe3] bg-[#ffffff]/96 shadow-[0_10px_28px_rgba(15,23,42,0.06)] backdrop-blur"
+          >
+            <div className="flex items-center justify-between border-b border-[#e2e8f0] px-4 py-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
+                  <MessageSquare className="size-4 text-[#2563eb]" />
+                  AI Chat
+                </div>
+                <p className="mt-1 truncate text-xs text-[#64748b]">
+                  {projectModels.length} project sources attached
+                </p>
+              </div>
+              <button
+                aria-label="Close AI Chat"
+                className="grid size-8 shrink-0 place-items-center rounded-md text-[#64748b] transition hover:bg-[#e2e8f0] hover:text-[#0f172a]"
+                onClick={() => setIsAiChatOpen(false)}
+                title="Close AI Chat"
+                type="button"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="border-b border-[#e2e8f0] px-4 py-3">
+              <div className="rounded-md border border-[#dbeafe] bg-[#eff6ff]/70 p-3">
+                <div className="font-mono text-[10px] uppercase text-[#1d4ed8]">CAD context</div>
+                <p className="mt-2 text-sm leading-6 text-[#475569]">
+                  Ready to use this project, its source list, and preview metadata once a chat endpoint is connected.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
+              {aiChatMessages.map((message) => (
+                <div
+                  className={`max-w-[88%] rounded-md px-3 py-2 text-sm leading-6 ${
+                    message.role === 'user'
+                      ? 'ml-auto bg-[#0f172a] text-white'
+                      : 'mr-auto border border-[#e2e8f0] bg-white/80 text-[#1f2937]'
+                  }`}
+                  key={message.id}
+                >
+                  {message.body}
+                </div>
+              ))}
+            </div>
+
+            <form
+              className="m-4 rounded-xl border border-[#d6dbe3] bg-white/95 p-2 shadow-[0_6px_22px_rgba(15,23,42,0.08)] transition focus-within:border-[#94a3b8] focus-within:shadow-[0_8px_30px_rgba(15,23,42,0.12)]"
+              onSubmit={handleAiChatSubmit}
+            >
+              <label className="sr-only" htmlFor="project-ai-chat-input">
+                Message AI Chat
+              </label>
+              <textarea
+                className="min-h-20 w-full resize-none rounded-lg bg-transparent px-2 py-2 text-sm leading-6 text-[#0f172a] outline-none placeholder:text-[#94a3b8]"
+                id="project-ai-chat-input"
+                onChange={(event) => setAiChatDraft(event.target.value)}
+                placeholder="Ask about this model"
+                value={aiChatDraft}
+              />
+              <div className="flex items-center justify-between gap-2 px-1 pb-1">
+                <div className="h-6 rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-2 font-mono text-[10px] uppercase leading-6 text-[#64748b]">
+                  Project context
+                </div>
+                <button
+                  aria-label="Send AI chat message"
+                  className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#0f172a] text-white shadow-[0_2px_8px_rgba(15,23,42,0.18)] transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:bg-[#d7dde5] disabled:shadow-none"
+                  disabled={aiChatDraft.trim() === ''}
+                  type="submit"
+                >
+                  <Send className="size-3.5" />
+                </button>
+              </div>
+            </form>
+          </aside>
+        )}
       </main>
     </div>
   )
