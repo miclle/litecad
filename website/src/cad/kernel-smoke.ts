@@ -1,11 +1,18 @@
 import { exportShapeToStep, loadOpenCascade, runStepRoundTripWithKernel } from './opencascade-step'
 import { summarizeCadKernelMesh } from './kernel-protocol'
-import { resolveCadKernelSmokeInput, type CadKernelSmokeInput } from './kernel-smoke-input'
+import {
+  resolveCadKernelSmokeInput,
+  resolveCadKernelSmokeTransport,
+  type CadKernelSmokeInput,
+  type CadKernelSmokeTransport,
+} from './kernel-smoke-input'
+import { runStepRoundTripInWorker, type CadKernelWorkerResult } from './kernel-worker-client'
 
 type CadKernelSmokeReport = {
   ok: boolean
   packageName: string
   inputKind: CadKernelSmokeInput['kind']
+  transport: CadKernelSmokeTransport
   filename: string
   sourceStepBytes: number
   exportedStepBytes: number
@@ -33,18 +40,20 @@ function renderReport(report: CadKernelSmokeReport | { ok: false; error: string 
 }
 
 async function runSmoke() {
-  const openCascade = await loadOpenCascade()
-  const input = await loadSmokeStepInput(openCascade, resolveCadKernelSmokeInput(window.location.search))
-  const roundTrip = await runStepRoundTripWithKernel(openCascade, {
+  const search = window.location.search
+  const transport = resolveCadKernelSmokeTransport(search)
+  const input = await loadSmokeStepInput(resolveCadKernelSmokeInput(search))
+  const roundTrip = await runStepRoundTrip(transport, {
     filename: input.filename,
     stepText: input.stepText,
   })
-  const meshSummary = summarizeCadKernelMesh(roundTrip.mesh)
+  const meshSummary = 'meshSummary' in roundTrip ? roundTrip.meshSummary : summarizeCadKernelMesh(roundTrip.mesh)
 
   renderReport({
     ok: true,
     packageName: 'replicad-opencascadejs@0.23.0',
     inputKind: input.kind,
+    transport,
     filename: input.filename,
     sourceStepBytes: input.stepText.length,
     exportedStepBytes: roundTrip.exportedStepText.length,
@@ -53,7 +62,19 @@ async function runSmoke() {
   })
 }
 
-async function loadSmokeStepInput(openCascade: Awaited<ReturnType<typeof loadOpenCascade>>, input: CadKernelSmokeInput) {
+async function runStepRoundTrip(
+  transport: CadKernelSmokeTransport,
+  input: { filename: string; stepText: string },
+): Promise<Awaited<ReturnType<typeof runStepRoundTripWithKernel>> | CadKernelWorkerResult> {
+  if (transport === 'worker') {
+    return runStepRoundTripInWorker(input)
+  }
+
+  const openCascade = await loadOpenCascade()
+  return runStepRoundTripWithKernel(openCascade, input)
+}
+
+async function loadSmokeStepInput(input: CadKernelSmokeInput) {
   if (input.kind === 'step-url') {
     const response = await fetch(input.url)
     if (!response.ok) {
@@ -66,6 +87,7 @@ async function loadSmokeStepInput(openCascade: Awaited<ReturnType<typeof loadOpe
     }
   }
 
+  const openCascade = await loadOpenCascade()
   const box = new openCascade.BRepPrimAPI_MakeBox_2(10, 20, 30)
   box.Build(new openCascade.Message_ProgressRange_1())
 

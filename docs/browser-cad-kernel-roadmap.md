@@ -107,6 +107,8 @@ Acceptance criteria:
 
 Add an isolated browser worker proof of concept under `website/src/cad/` without changing production import behavior.
 
+Phase 1 acceptance status: complete on 2026-07-07. The active browser-kernel candidate can import STEP, tessellate preview mesh arrays, and export STEP through the Web Worker message boundary.
+
 Current Phase 1 status:
 
 - `opencascade.js@1.1.1` was evaluated first. Its package includes a 63 MB WASM binary, and a temporary browser smoke page against a real local STEP source timed out while initializing/running it. Treat this full package as too heavy for LiteCAD's target browser UX unless a custom build is produced.
@@ -119,12 +121,15 @@ Current Phase 1 status:
 - Unit tests cover the protocol, worker handler, WASM loader contract, and smoke input parsing.
 - `npm --prefix website run build` accepts the dependency and TypeScript code, but the app build does not bundle the isolated worker or smoke page into the product route until a later phase references them.
 - Browser smoke result on 2026-07-07 using a clean Vite server on `127.0.0.1:46282`: kernel-created box -> STEP text -> adapter import -> tessellation -> STEP export returned `ok: true`, `sourceStepBytes: 15416`, `exportedStepBytes: 15416`, `vertexCount: 24`, `triangleCount: 12`, `hasNormals: true`, and observed local `elapsedMs` values from 104 to 178 after warm/cold runs.
-- Browser smoke result on 2026-07-07 against real current-project STEP sources exported temporarily from local Postgres and then deleted:
+- Direct browser smoke result on 2026-07-07 against real current-project STEP sources exported temporarily from local Postgres and then deleted:
   - `转向轴承连接器.step`: source 128005 bytes on disk, browser text length 127975, exported STEP 448940 bytes, 2262 vertices, 2256 triangles, normals present, `elapsedMs: 283`.
   - `同步轮.step`: source 498873 bytes on disk, browser text length 498597, exported STEP 1334063 bytes, 7529 vertices, 9220 triangles, normals present, `elapsedMs: 559`.
+- Worker browser smoke result on 2026-07-07 against the same real current-project STEP sources through `kernel.worker.ts`:
+  - `转向轴承连接器.step`: browser text length 127975, exported STEP 448940 bytes, 2262 vertices, 2256 triangles, normals present, `elapsedMs: 297`.
+  - `同步轮.step`: browser text length 498597, exported STEP 1334063 bytes, 7529 vertices, 9220 triangles, normals present, `elapsedMs: 601`.
 - Existing Vite dev servers may return `504 Outdated Optimize Dep` after switching OCCT packages; restart Vite or use a fresh dev port before trusting a browser smoke result.
 - Vite SSR/Node execution was not a valid smoke path for `opencascade.js@1.1.1` because Node could not resolve that package's raw `.wasm` import. The current evidence for `replicad-opencascadejs@0.23.0` is browser-based.
-- Remaining Phase 1 gap: run the same STEP round-trip through the actual `kernel.worker.ts` message boundary, not only the direct browser smoke adapter.
+- Remaining Phase 1 gap: none for the spike. Phase 2 should now wire worker-produced mesh buffers into the actual project workbench preview path.
 
 Scope:
 

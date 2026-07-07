@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveCadKernelSmokeInput } from './kernel-smoke-input'
+import { resolveCadKernelSmokeInput, resolveCadKernelSmokeTransport } from './kernel-smoke-input'
 
 describe('resolveCadKernelSmokeInput', () => {
   it('uses a generated box when no STEP URL is provided', () => {
@@ -12,5 +12,15 @@ describe('resolveCadKernelSmokeInput', () => {
       kind: 'step-url',
       url: '/fixtures/part.step',
     })
+  })
+})
+
+describe('resolveCadKernelSmokeTransport', () => {
+  it('uses direct adapter calls by default', () => {
+    expect(resolveCadKernelSmokeTransport('')).toBe('direct')
+  })
+
+  it('uses the worker message boundary when requested', () => {
+    expect(resolveCadKernelSmokeTransport('?transport=worker')).toBe('worker')
   })
 })
