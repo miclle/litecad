@@ -70,6 +70,12 @@ type ProjectModel struct {
 	UpdatedAt        string       `json:"updated_at"`
 }
 
+// ProjectModelSource is an owned CAD source file and its public metadata.
+type ProjectModelSource struct {
+	Model ProjectModel
+	Data  []byte
+}
+
 // ListProjects returns projects owned by the given user, newest first.
 func (s *Service) ListProjects(ctx context.Context, ownerUserID string) ([]Project, error) {
 	if strings.TrimSpace(ownerUserID) == "" {
@@ -221,6 +227,33 @@ func (s *Service) ListProjectModels(ctx context.Context, ownerUserID, projectID 
 		result = append(result, publicProjectModel(model))
 	}
 	return result, nil
+}
+
+// GetProjectModelSource returns the original uploaded bytes for a user-owned project model.
+func (s *Service) GetProjectModelSource(ctx context.Context, ownerUserID, projectID, modelID string) (ProjectModelSource, error) {
+	ownerUserID = strings.TrimSpace(ownerUserID)
+	projectID = strings.TrimSpace(projectID)
+	modelID = strings.TrimSpace(modelID)
+	if ownerUserID == "" || projectID == "" || modelID == "" {
+		return ProjectModelSource{}, ErrProjectNotFound
+	}
+
+	var model entity.ProjectModel
+	err := s.db.WithContext(ctx).
+		Joins("JOIN projects ON projects.id = project_models.project_id").
+		Where("project_models.id = ? AND project_models.project_id = ? AND projects.owner_user_id = ?", modelID, projectID, ownerUserID).
+		First(&model).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ProjectModelSource{}, ErrProjectNotFound
+		}
+		return ProjectModelSource{}, fmt.Errorf("get project model source: %w", err)
+	}
+
+	return ProjectModelSource{
+		Model: publicProjectModel(model),
+		Data:  append([]byte(nil), model.SourceData...),
+	}, nil
 }
 
 func publicProject(project entity.Project) Project {

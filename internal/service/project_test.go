@@ -167,6 +167,35 @@ func TestUploadProjectModelStoresStepAsset(t *testing.T) {
 	}
 }
 
+func TestGetProjectModelSourceReturnsOwnedSourceBytes(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	user, project := createTestProjectForModel(t, svc, ctx)
+	sourceData := []byte("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;")
+
+	model, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Filename:    "bracket.step",
+		ContentType: "application/step",
+		Data:        sourceData,
+	})
+	if err != nil {
+		t.Fatalf("UploadProjectModel returned error: %v", err)
+	}
+
+	source, err := svc.GetProjectModelSource(ctx, user.ID, project.ID, model.ID)
+	if err != nil {
+		t.Fatalf("GetProjectModelSource returned error: %v", err)
+	}
+	if source.Model.ID != model.ID || source.Model.ProjectID != project.ID {
+		t.Fatalf("source model = %+v, want uploaded model", source.Model)
+	}
+	if string(source.Data) != string(sourceData) {
+		t.Fatalf("source data = %q, want original upload", string(source.Data))
+	}
+}
+
 func TestUploadProjectModelRejectsUnsupportedFormat(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

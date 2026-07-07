@@ -6,6 +6,7 @@ import {
   fetchProjectGeometryDocument,
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
+  fetchProjectModelSource,
   sendProjectAgentMessage,
   uploadProjectModel,
 } from './projects'
@@ -32,6 +33,12 @@ describe('project API', () => {
     fetchProjectModelPreview('prj_01test', 'mdl_01test')
 
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/models/mdl_01test/preview', { responseType: 'blob' })
+  })
+
+  test('fetches a project model source as a blob', () => {
+    fetchProjectModelSource('prj_01test', 'mdl_01test')
+
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/models/mdl_01test/source', { responseType: 'blob' })
   })
 
   test('fetches project model preview artifact metadata', () => {

@@ -5,7 +5,7 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 ## Product Capability
 
 - Execute the browser CAD kernel migration defined in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md). Each phase must finish with tests/verification, docs updates, and a scoped commit before starting the next phase:
-  - Phase 2: replace the FreeCAD-backed STEP preview path with browser-kernel preview mesh generation and render worker-produced mesh buffers in the existing Three.js workbench. The project is not launched, so no long-lived compatibility path is required.
+  - Phase 2: continue from the completed authenticated model-source download API to browser-kernel STEP preview mesh generation, then render worker-produced mesh buffers in the existing Three.js workbench and replace the FreeCAD-backed STEP preview path. The project is not launched, so no long-lived compatibility path is required.
   - Phase 3: introduce an editable LiteCAD CAD document MVP with persisted operation/document state, starting from transforms and one proven kernel-backed CAD edit.
   - Phase 4: export the current browser-edited B-rep document to STEP and verify import -> edit -> export -> re-import.
   - Phase 5: remove FreeCAD/Python from the normal runtime conversion path, delete or quarantine `freecad_step_to_obj.py`, and update runtime docs and setup.

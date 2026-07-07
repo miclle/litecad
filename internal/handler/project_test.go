@@ -261,13 +261,14 @@ func TestProjectModelRoutesUploadAndListStep(t *testing.T) {
 		t.Fatalf("decode create response: %v", err)
 	}
 
+	stepSource := []byte("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;")
 	upload := postMultipartFileWithCookie(
 		t,
 		router,
 		"/api/v1/projects/"+createResponse.Project.ID+"/models",
 		"model",
 		"macintosh_ipad_lcd_case.step",
-		[]byte("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"),
+		stepSource,
 		sessionCookie,
 	)
 	if upload.Code != http.StatusCreated {
@@ -331,6 +332,17 @@ func TestProjectModelRoutesUploadAndListStep(t *testing.T) {
 	}
 	if listResponse.Models[0].ParseStatus != "parsed" {
 		t.Fatalf("listed model parse status = %q, want parsed", listResponse.Models[0].ParseStatus)
+	}
+
+	source := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/models/"+uploadResponse.Model.ID+"/source", sessionCookie)
+	if source.Code != http.StatusOK {
+		t.Fatalf("source status = %d, body = %s", source.Code, source.Body.String())
+	}
+	if !bytes.Equal(source.Body.Bytes(), stepSource) {
+		t.Fatalf("source body = %q, want original upload", source.Body.String())
+	}
+	if disposition := source.Header().Get("Content-Disposition"); disposition != `attachment; filename=macintosh_ipad_lcd_case.step` {
+		t.Fatalf("source content disposition = %q", disposition)
 	}
 
 	preview := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/models/"+uploadResponse.Model.ID+"/preview", sessionCookie)

@@ -151,6 +151,12 @@ Tests and verification:
 
 Route STEP preview generation through the browser kernel and replace the current backend FreeCAD/OBJ preview path. The project is not launched, so this phase does not need a long-lived compatibility mode for old FreeCAD artifacts.
 
+Current Phase 2 status:
+
+- First Phase 2 increment complete on 2026-07-07: the backend now exposes an authenticated project-model source download endpoint at `/api/v1/projects/:projectID/models/:modelID/source`, scoped by the current session owner and returning the original uploaded bytes. The frontend API client exposes this as `fetchProjectModelSource(...)` with Blob response handling.
+- This endpoint is the input channel for worker-side STEP import and tessellation in the actual workbench. It does not yet route the visible workbench preview through the browser kernel.
+- The current active workbench preview path still uses backend preview artifacts: STEP/STP sources go through the FreeCAD-backed OBJ converter, GLB/self-contained GLTF preview artifacts are served directly, and STL preview artifacts are generated in Go.
+
 Scope:
 
 - Add a temporary development verification path only if it makes browser smoke testing easier; do not design a permanent dual pipeline.
@@ -239,7 +245,7 @@ Tests and verification:
 
 As of this roadmap, the current shipped path remains:
 
-- STEP/STP source metadata and preview generation are backend-owned.
+- STEP/STP source metadata, source file download, and preview generation are backend-owned.
 - STEP preview uses FreeCAD through `freecadcmd` and emits OBJ.
 - GLB and self-contained GLTF uploads can be published as preview artifacts after backend validation.
 - STL is converted to OBJ preview data in Go.

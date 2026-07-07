@@ -43,6 +43,7 @@ func (ctrl *Ctrl) RegisterRoutes(r *fox.Engine) {
 	api.GET("/projects/:projectID/geometry", ctrl.GetProjectGeometryDocument)
 	api.GET("/projects/:projectID/models", ctrl.ListProjectModels)
 	api.POST("/projects/:projectID/models", ctrl.UploadProjectModel)
+	api.GET("/projects/:projectID/models/:modelID/source", ctrl.GetProjectModelSource)
 	api.GET("/projects/:projectID/models/:modelID/preview-artifact", ctrl.GetProjectModelPreviewArtifact)
 	api.GET("/projects/:projectID/models/:modelID/preview", ctrl.GetProjectModelPreview)
 }

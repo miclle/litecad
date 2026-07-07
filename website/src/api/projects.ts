@@ -50,6 +50,10 @@ export function fetchProjectModelPreview(projectId: string, modelId: string) {
   return client.get<Blob>(`/projects/${projectId}/models/${modelId}/preview`, { responseType: 'blob' })
 }
 
+export function fetchProjectModelSource(projectId: string, modelId: string) {
+  return client.get<Blob>(`/projects/${projectId}/models/${modelId}/source`, { responseType: 'blob' })
+}
+
 export function fetchProjectModelPreviewArtifact(projectId: string, modelId: string) {
   return client.get<ProjectModelPreviewArtifactResponse>(`/projects/${projectId}/models/${modelId}/preview-artifact`)
 }

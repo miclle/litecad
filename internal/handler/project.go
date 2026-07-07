@@ -3,7 +3,9 @@ package handler
 import (
 	"errors"
 	"io"
+	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/fox-gonic/fox"
 	"github.com/miclle/litecad/internal/service"
@@ -148,6 +150,28 @@ func (ctrl *Ctrl) UploadProjectModel(c *fox.Context) error {
 		return projectError(err)
 	}
 	c.JSON(http.StatusCreated, projectModelResponse{Model: model})
+	return nil
+}
+
+// GetProjectModelSource returns the original uploaded CAD source for browser-side processing.
+func (ctrl *Ctrl) GetProjectModelSource(c *fox.Context) error {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return err
+	}
+	source, err := ctrl.service.GetProjectModelSource(c.Request.Context(), user.ID, c.Param("projectID"), c.Param("modelID"))
+	if err != nil {
+		return projectError(err)
+	}
+
+	contentType := strings.TrimSpace(source.Model.ContentType)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	if filename := strings.TrimSpace(source.Model.OriginalFilename); filename != "" {
+		c.Writer.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
+	}
+	c.Data(http.StatusOK, contentType, source.Data)
 	return nil
 }
 
