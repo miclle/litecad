@@ -42,6 +42,7 @@ OpenCascade.js is the first candidate to evaluate because it provides JavaScript
 - Do not treat OBJ, STL, or GLTF mesh edits as equivalent to editable STEP/B-rep CAD.
 - Do not require users to install FreeCAD or another desktop CAD application for normal LiteCAD runtime behavior.
 - Do not promise preservation of source CAD application feature history. Imported STEP should become an editable B-rep shape plus LiteCAD operations, not the original parametric timeline from another CAD tool.
+- Do not preserve the current FreeCAD/OBJ preview path for deployed-user compatibility. LiteCAD is not launched yet, so migration work can replace the old path once the browser kernel is strong enough.
 
 ## Target Runtime Shape
 
@@ -106,6 +107,18 @@ Acceptance criteria:
 
 Add an isolated browser worker proof of concept under `website/src/cad/` without changing production import behavior.
 
+Current Phase 1 status:
+
+- `opencascade.js@1.1.1` is installed as the first OCCT WASM candidate.
+- `website/src/cad/kernel-protocol.ts` defines the worker request/response contract.
+- `website/src/cad/kernel-worker-handler.ts` keeps message validation and error handling testable without loading WASM.
+- `website/src/cad/kernel.worker.ts` wires the handler to the OpenCascade adapter.
+- `website/src/cad/opencascade-step.ts` contains the first STEP import, tessellation, and STEP export adapter based on the OpenCascade.js examples.
+- Unit tests cover the protocol and worker handler.
+- `npm --prefix website run build` accepts the dependency and TypeScript code, but the app build does not bundle the isolated worker until a later phase references it.
+- A temporary browser smoke page against a real local STEP source timed out while initializing/running the full `opencascade.js` package. Treat the full package as too heavy for the final UX unless a later custom build or alternate OCCT WASM package proves acceptable.
+- Vite SSR/Node execution is not a valid smoke path for this package because Node cannot resolve the package's raw `.wasm` import.
+
 Scope:
 
 - Install/evaluate OpenCascade.js or another OCCT WASM candidate.
@@ -124,15 +137,16 @@ Tests and verification:
 
 ### Phase 2: Preview Through Browser Kernel
 
-Route STEP preview generation through the browser kernel for a guarded path while preserving the existing backend preview path as a fallback during migration.
+Route STEP preview generation through the browser kernel and replace the current backend FreeCAD/OBJ preview path. The project is not launched, so this phase does not need a long-lived compatibility mode for old FreeCAD artifacts.
 
 Scope:
 
-- Add a feature flag or development-only route for browser-kernel preview.
+- Add a temporary development verification path only if it makes browser smoke testing easier; do not design a permanent dual pipeline.
 - Convert imported STEP to preview mesh buffers in the worker.
 - Render worker-produced mesh data in the existing Three.js workbench.
 - Avoid rendering OBJ edge `l` primitives as model data.
-- Keep GLB/GLTF/STL current behavior unchanged unless deliberately migrated.
+- Decide whether GLB/GLTF/STL remain as direct preview formats or are normalized into the same browser-kernel document model.
+- Remove or quarantine the FreeCAD preview route once browser-kernel STEP preview passes the current project smoke.
 
 Tests and verification:
 
