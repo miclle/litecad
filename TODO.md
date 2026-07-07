@@ -5,7 +5,7 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 ## Product Capability
 
 - Execute the browser CAD kernel migration defined in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md). Each phase must finish with tests/verification, docs updates, and a scoped commit before starting the next phase:
-  - Phase 1: continue the OCCT/OpenCascade.js Web Worker spike from the current protocol/handler scaffold to a reliable browser smoke that imports STEP, tessellates preview mesh data, and exports unchanged STEP. Current finding: full `opencascade.js@1.1.1` builds but browser smoke timed out, so evaluate custom builds or an alternate OCCT WASM package before wiring UI.
+  - Phase 1: continue the OCCT/OpenCascade.js Web Worker spike from the current protocol/handler/smoke scaffold toward a real project STEP fixture smoke. Current finding: full `opencascade.js@1.1.1` is too heavy for the target UX, while `replicad-opencascadejs@0.23.0` passed an isolated browser round-trip smoke for kernel-created box STEP data. Next, feed an uploaded project STEP source through the same browser-kernel path and collect failure/performance limits before wiring UI.
   - Phase 2: replace the FreeCAD-backed STEP preview path with browser-kernel preview mesh generation and render worker-produced mesh buffers in the existing Three.js workbench. The project is not launched, so no long-lived compatibility path is required.
   - Phase 3: introduce an editable LiteCAD CAD document MVP with persisted operation/document state, starting from transforms and one proven kernel-backed CAD edit.
   - Phase 4: export the current browser-edited B-rep document to STEP and verify import -> edit -> export -> re-import.

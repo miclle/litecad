@@ -1,4 +1,6 @@
 import type { CadKernelMesh } from './kernel-protocol'
+import initReplicadOpenCascade from 'replicad-opencascadejs'
+import replicadWasmUrl from 'replicad-opencascadejs/src/replicad_single.wasm?url'
 
 export type CadKernelStepRoundTripInput = {
   filename: string
@@ -12,7 +14,8 @@ export type CadKernelStepRoundTripResult = {
 
 type OpenCascadeModule = Record<string, any> & {
   FS: {
-    createDataFile: (
+    writeFile?: (path: string, data: string | Uint8Array) => void
+    createDataFile?: (
       parent: string,
       name: string,
       data: string | Uint8Array,
@@ -25,15 +28,30 @@ type OpenCascadeModule = Record<string, any> & {
 }
 
 type OpenCascadeFactoryModule = {
-  initOpenCascade: () => Promise<OpenCascadeModule>
+  initOpenCascade: OpenCascadeFactory
 }
 
-const inputStepPath = '/litecad-input.step'
-const outputStepPath = '/litecad-output.step'
+type OpenCascadeFactory = (options?: { locateFile?: (path: string) => string }) => Promise<OpenCascadeModule>
+
+const inputStepName = 'litecad-input.step'
+const outputStepName = 'litecad-output.step'
+const inputStepPath = `/${inputStepName}`
+const outputStepPath = `/${outputStepName}`
+
+export function createOpenCascadeLoader(initOpenCascade: OpenCascadeFactory, wasmUrl: string) {
+  return () =>
+    initOpenCascade({
+      locateFile(path) {
+        return path.endsWith('.wasm') ? wasmUrl : path
+      },
+    })
+}
 
 export async function loadOpenCascade(): Promise<OpenCascadeModule> {
-  const module = (await import('opencascade.js')) as unknown as OpenCascadeFactoryModule
-  return module.initOpenCascade()
+  const module: OpenCascadeFactoryModule = {
+    initOpenCascade: initReplicadOpenCascade as unknown as OpenCascadeFactory,
+  }
+  return createOpenCascadeLoader(module.initOpenCascade, replicadWasmUrl)()
 }
 
 export async function runOpenCascadeStepRoundTrip(input: CadKernelStepRoundTripInput) {
@@ -47,11 +65,11 @@ export async function runStepRoundTripWithKernel(
 ): Promise<CadKernelStepRoundTripResult> {
   cleanupVirtualFile(openCascade, inputStepPath)
   cleanupVirtualFile(openCascade, outputStepPath)
-  openCascade.FS.createDataFile('/', inputStepPath.slice(1), input.stepText, true, true)
+  writeVirtualFile(openCascade, inputStepPath, input.stepText)
 
   try {
     const reader = new openCascade.STEPControl_Reader_1()
-    const readResult = reader.ReadFile(inputStepPath)
+    const readResult = reader.ReadFile(inputStepName)
     if (readResult !== openCascade.IFSelect_ReturnStatus.IFSelect_RetDone) {
       throw new Error(`STEP import failed for ${input.filename}`)
     }
@@ -63,7 +81,7 @@ export async function runStepRoundTripWithKernel(
 
     const shape = reader.OneShape()
     const mesh = tessellateShape(openCascade, shape)
-    const exportedStepText = exportStep(openCascade, shape)
+    const exportedStepText = exportShapeToStep(openCascade, shape)
     return { mesh, exportedStepText }
   } finally {
     cleanupVirtualFile(openCascade, inputStepPath)
@@ -77,6 +95,17 @@ function cleanupVirtualFile(openCascade: OpenCascadeModule, path: string) {
   } catch {
     // Missing virtual files are expected between independent smoke runs.
   }
+}
+
+function writeVirtualFile(openCascade: OpenCascadeModule, path: string, data: string | Uint8Array) {
+  if (openCascade.FS.writeFile) {
+    openCascade.FS.writeFile(path, data)
+    return
+  }
+  if (!openCascade.FS.createDataFile) {
+    throw new Error('OpenCascade virtual filesystem cannot write files')
+  }
+  openCascade.FS.createDataFile('/', path.slice(1), data, true, true)
 }
 
 function tessellateShape(openCascade: OpenCascadeModule, shape: any): CadKernelMesh {
@@ -137,7 +166,7 @@ function tessellateShape(openCascade: OpenCascadeModule, shape: any): CadKernelM
   return { positions, normals, indices }
 }
 
-function exportStep(openCascade: OpenCascadeModule, shape: any): string {
+export function exportShapeToStep(openCascade: OpenCascadeModule, shape: any): string {
   const writer = new openCascade.STEPControl_Writer_1()
   const transferStatus = writer.Transfer(
     shape,
@@ -149,7 +178,7 @@ function exportStep(openCascade: OpenCascadeModule, shape: any): string {
     throw new Error('STEP export transfer failed')
   }
 
-  const writeStatus = writer.Write(outputStepPath)
+  const writeStatus = writer.Write(outputStepName)
   if (writeStatus !== openCascade.IFSelect_ReturnStatus.IFSelect_RetDone) {
     throw new Error('STEP export write failed')
   }

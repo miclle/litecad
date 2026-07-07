@@ -109,15 +109,18 @@ Add an isolated browser worker proof of concept under `website/src/cad/` without
 
 Current Phase 1 status:
 
-- `opencascade.js@1.1.1` is installed as the first OCCT WASM candidate.
+- `opencascade.js@1.1.1` was evaluated first. Its package includes a 63 MB WASM binary, and a temporary browser smoke page against a real local STEP source timed out while initializing/running it. Treat this full package as too heavy for LiteCAD's target browser UX unless a custom build is produced.
+- `replicad-opencascadejs@0.23.0` is now the active Phase 1 OCCT WASM candidate. It is a Replicad custom OpenCascade.js build with an approximately 10.8 MB WASM binary and includes the STEP reader/writer plus tessellation bindings needed for the current spike.
 - `website/src/cad/kernel-protocol.ts` defines the worker request/response contract.
 - `website/src/cad/kernel-worker-handler.ts` keeps message validation and error handling testable without loading WASM.
 - `website/src/cad/kernel.worker.ts` wires the handler to the OpenCascade adapter.
-- `website/src/cad/opencascade-step.ts` contains the first STEP import, tessellation, and STEP export adapter based on the OpenCascade.js examples.
-- Unit tests cover the protocol and worker handler.
-- `npm --prefix website run build` accepts the dependency and TypeScript code, but the app build does not bundle the isolated worker until a later phase references it.
-- A temporary browser smoke page against a real local STEP source timed out while initializing/running the full `opencascade.js` package. Treat the full package as too heavy for the final UX unless a later custom build or alternate OCCT WASM package proves acceptable.
-- Vite SSR/Node execution is not a valid smoke path for this package because Node cannot resolve the package's raw `.wasm` import.
+- `website/src/cad/opencascade-step.ts` contains the STEP import, tessellation, and STEP export adapter. It explicitly passes Vite's emitted WASM URL into the kernel loader instead of relying on package-relative runtime discovery.
+- `website/cad-kernel-smoke.html` and `website/src/cad/kernel-smoke.ts` provide an isolated browser smoke page for Phase 1 verification without changing production import behavior.
+- Unit tests cover the protocol, worker handler, and WASM loader contract.
+- `npm --prefix website run build` accepts the dependency and TypeScript code, but the app build does not bundle the isolated worker or smoke page into the product route until a later phase references them.
+- Browser smoke result on 2026-07-07 using a clean Vite server on `127.0.0.1:46282`: kernel-created box -> STEP text -> adapter import -> tessellation -> STEP export returned `ok: true`, `sourceStepBytes: 15416`, `exportedStepBytes: 15416`, `vertexCount: 24`, `triangleCount: 12`, `hasNormals: true`, and observed local `elapsedMs` values from 104 to 178 after warm/cold runs.
+- Existing Vite dev servers may return `504 Outdated Optimize Dep` after switching OCCT packages; restart Vite or use a fresh dev port before trusting a browser smoke result.
+- Vite SSR/Node execution was not a valid smoke path for `opencascade.js@1.1.1` because Node could not resolve that package's raw `.wasm` import. The current evidence for `replicad-opencascadejs@0.23.0` is browser-based.
 
 Scope:
 
