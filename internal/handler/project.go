@@ -49,6 +49,10 @@ type updateProjectCADModelTransformRequest struct {
 	Transform service.CADTransform `json:"transform" binding:"required"`
 }
 
+type addProjectCADModelBoxUnionRequest struct {
+	Box service.CADBoxFeature `json:"box" binding:"required"`
+}
+
 type projectAgentMessageRequest struct {
 	Messages []service.AIChatMessage `json:"messages" binding:"required"`
 }
@@ -234,6 +238,24 @@ func (ctrl *Ctrl) UpdateProjectCADModelTransform(c *fox.Context, req *updateProj
 		ProjectID:   c.Param("projectID"),
 		ModelID:     c.Param("modelID"),
 		Transform:   req.Transform,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// AddProjectCADModelBoxUnion records one kernel-backed box union feature.
+func (ctrl *Ctrl) AddProjectCADModelBoxUnion(c *fox.Context, req *addProjectCADModelBoxUnionRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.AddProjectCADModelBoxUnion(c.Request.Context(), service.AddProjectCADModelBoxUnionInput{
+		OwnerUserID: user.ID,
+		ProjectID:   c.Param("projectID"),
+		ModelID:     c.Param("modelID"),
+		Box:         req.Box,
 	})
 	if err != nil {
 		return projectCADDocumentResponse{}, projectError(err)

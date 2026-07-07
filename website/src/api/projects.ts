@@ -1,6 +1,7 @@
 import client from './client'
 import type {
   CreateProjectPayload,
+  CADBoxFeature,
   CADTransform,
   ProjectAgentMessageResponse,
   ProjectAgentMessagesResponse,
@@ -32,6 +33,10 @@ export function fetchProjectCADDocument(projectId: string) {
 
 export function updateProjectCADModelTransform(projectId: string, modelId: string, transform: CADTransform) {
   return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/models/${modelId}/transform`, { transform })
+}
+
+export function addProjectCADModelBoxUnion(projectId: string, modelId: string, box: CADBoxFeature) {
+  return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/models/${modelId}/box-union`, { box })
 }
 
 export function sendProjectAgentMessage(projectId: string, payload: SendProjectAgentMessagePayload) {

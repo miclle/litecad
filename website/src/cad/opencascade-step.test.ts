@@ -68,4 +68,56 @@ describe('applyCADOperationsToShape', () => {
     ).toBe(transformedShape)
     expect(setValues).toHaveBeenCalledWith(1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8)
   })
+
+  it('replays box-union operations through OpenCascade boolean fuse', () => {
+    const sourceShape = { name: 'source-shape' }
+    const boxShape = { name: 'box-shape' }
+    const fusedShape = { name: 'fused-shape' }
+    const buildBox = vi.fn()
+    const openCascade = {
+      FS: {
+        readFile: vi.fn(),
+        unlink: vi.fn(),
+      },
+      gp_Pnt_3: vi.fn(function point(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      BRepPrimAPI_MakeBox_3: vi.fn(function makeBox(
+        this: { Build: typeof buildBox; Shape: () => unknown },
+        origin: unknown,
+        sizeX: number,
+        sizeY: number,
+        sizeZ: number,
+      ) {
+        expect(origin).toBeDefined()
+        expect([sizeX, sizeY, sizeZ]).toEqual([8, 6, 3])
+        this.Build = buildBox
+        this.Shape = () => boxShape
+      }),
+      Message_ProgressRange_1: vi.fn(function progressRange() {}),
+      BRepAlgoAPI_Fuse_3: vi.fn(function fuse(this: { Shape: () => unknown }, first: unknown, second: unknown) {
+        expect(first).toBe(sourceShape)
+        expect(second).toBe(boxShape)
+        this.Shape = () => fusedShape
+      }),
+    }
+
+    expect(
+      applyCADOperationsToShape(openCascade, sourceShape, [
+        {
+          id: 'op_box',
+          type: 'box-union',
+          modelId: 'mdl_01test',
+          box: {
+            origin: [2, -1, 4],
+            size: [8, 6, 3],
+          },
+        },
+      ]),
+    ).toBe(fusedShape)
+    expect(openCascade.gp_Pnt_3).toHaveBeenCalledWith(2, -1, 4)
+    expect(buildBox).toHaveBeenCalledOnce()
+  })
 })

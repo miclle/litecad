@@ -185,21 +185,26 @@ Tests and verification:
 
 Introduce a LiteCAD document model for browser-side CAD edits.
 
-Phase 3 acceptance status: in progress. The first Phase 3 increment is complete on 2026-07-07: LiteCAD now stores a project-owned editable CAD document record with schema version, revision, unit, root model nodes, per-model transform matrices, and replayable transform operations. The workbench exposes X/Y/Z per-model transform controls, saves them through the CAD document API, and reloads them.
+Phase 3 acceptance status: complete on 2026-07-08. The first Phase 3 increment is complete on 2026-07-07: LiteCAD now stores a project-owned editable CAD document record with schema version, revision, unit, root model nodes, per-model transform matrices, and replayable transform operations. The workbench exposes X/Y/Z per-model transform controls, saves them through the CAD document API, and reloads them.
 
 The second Phase 3 increment is complete on 2026-07-08: model-scoped transform operations are now sent to the browser CAD worker for STEP preview and round-trip requests, replayed on the imported OCCT shape through `BRepBuilderAPI_Transform`, and tessellated/exported from the transformed shape. Backend GLB/GLTF/STL preview artifacts still use object-level transforms in the Three.js scene.
+
+The third Phase 3 increment is complete on 2026-07-08: STEP models now support a constrained per-model `box-union` feature operation. LiteCAD persists the operation in the project CAD document, the workbench exposes origin and size controls for STEP models, and the browser CAD worker creates an OCCT box with `BRepPrimAPI_MakeBox`, fuses it into the imported shape with `BRepAlgoAPI_Fuse`, then tessellates or exports the fused shape.
 
 Current Phase 3 status:
 
 - `ProjectCADDocument` persists editable document JSON separately from uploaded source bytes, read-only geometry snapshots, and derived preview artifacts.
 - `GET /api/v1/projects/:projectID/cad-document` returns the current owner-scoped editable document, creating identity model nodes for existing project models when needed.
 - `PATCH /api/v1/projects/:projectID/cad-document/models/:modelID/transform` records a transform operation for one project-owned model and increments the document revision.
+- `POST /api/v1/projects/:projectID/cad-document/models/:modelID/box-union` records a constrained axis-aligned box union operation for one project-owned STEP model and increments the document revision.
 - The project workbench fetches the CAD document, maps document operations into worker protocol operations, keys STEP preview queries by document revision, and avoids double-applying STEP transforms at the Three.js object layer because the worker-replayed mesh already includes them.
-- The CAD kernel worker protocol accepts replayable transform operations for STEP preview and STEP round-trip requests. `opencascade-step.ts` converts the row-major 4x4 matrix into OCCT `gp_Trsf.SetValues(...)` and applies it with `BRepBuilderAPI_Transform`.
+- The CAD kernel worker protocol accepts replayable transform and box-union operations for STEP preview and STEP round-trip requests. `opencascade-step.ts` converts row-major 4x4 transform matrices into OCCT `gp_Trsf.SetValues(...)`, applies transforms with `BRepBuilderAPI_Transform`, creates box features with `BRepPrimAPI_MakeBox`, and fuses them with `BRepAlgoAPI_Fuse`.
 - Browser verification on 2026-07-08 against a temporary current-code server on `127.0.0.1:46283` created a new signed-in project, uploaded `verify.stl`, rendered one preview mesh, changed the first model's X transform from `0` to `2.5`, reloaded the project route, and confirmed the persisted value remained `2.5` with a present 1280 x 844 preview canvas and no console errors.
 - Browser worker verification on 2026-07-08 against a temporary Vite server on `127.0.0.1:46285` generated a box STEP in the browser, ran base preview and transform-replayed worker preview with translation matrix `[+25, -3, +7]`, and confirmed mesh bounds moved from min `(0, 0, 0)` to min `(25, -3, 7)` while retaining 24 vertices, 12 triangles, normals, and a transformed STEP round-trip export of 15436 bytes.
 - Workbench browser verification on 2026-07-08 against temporary Go/Vite dev servers on `127.0.0.1:46286` and `127.0.0.1:46287` registered a new user, generated and uploaded `worker-replay-box.step`, rendered one STEP kernel preview canvas at 1280 x 844, changed X translation to `25` through the real workbench controls, observed the authenticated STEP source request count increase from 1 to 2 after document revision changed, and saw no unexpected browser errors.
-- This phase still does not claim feature/B-rep edits, kernel shape serialization, boolean/feature operations, or STEP export UI/storage.
+- Browser worker verification on 2026-07-08 against a temporary Vite server on `127.0.0.1:46288` generated a box STEP in the browser, ran base preview and `box-union` worker preview with an added box at origin `[10, 0, 0]` and size `[5, 5, 5]`, and confirmed triangle count grew from 12 to 26, vertex count grew from 24 to 48, max X grew from 10 to 15, normals were present, and transformed STEP round-trip export produced 28911 bytes.
+- Workbench browser verification on 2026-07-08 against temporary Go/Vite dev servers on `127.0.0.1:46289` and `127.0.0.1:46290` registered a new user, generated and uploaded `box-union-base.step`, rendered one STEP kernel preview canvas at 1280 x 844, used the real workbench controls to add a box union with origin `[10, 0, 0]` and size `[5, 5, 5]`, observed the `box-union` API return 200 and the authenticated STEP source request count increase from 1 to 2 after document revision changed, and saw no unexpected browser errors.
+- This phase still does not claim durable kernel shape serialization, rich CAD feature-history semantics, general cross-model boolean/merge workflows, or STEP export UI/storage.
 
 Scope:
 
@@ -257,7 +262,7 @@ Tests and verification:
 
 ## Open Questions
 
-- Which OCCT WASM package has the right size, licensing, maintenance, and binding coverage for STEP import/export, tessellation, and the first edit operations?
+- Which OCCT WASM package has the right long-term size, licensing, maintenance, and binding coverage for richer edit operations beyond the current `replicad-opencascadejs` spike?
 - Should kernel-generated document state persist as OCCT-native serialized shapes, a LiteCAD operation graph, or both?
 - Should STEP export happen fully client-side with direct download, or should the backend store export artifacts for project history?
 - What maximum file size should the browser worker support before the UI asks the user to use a server-side or queued conversion path?
@@ -273,5 +278,6 @@ As of this roadmap, the current shipped path is:
 - GLB and self-contained GLTF uploads can be published as preview artifacts after backend validation.
 - STL is converted to OBJ preview data in Go.
 - The project workbench renders browser-kernel STEP meshes and backend-provided GLB/GLTF/STL preview artifacts in Three.js.
-- The project workbench stores and reloads a LiteCAD editable document for root model nodes and per-model transform operations, then applies those transforms to derived preview objects.
-- No editable B-rep feature operation, kernel shape serialization, or STEP export flow exists yet.
+- The project workbench stores and reloads a LiteCAD editable document for root model nodes plus per-model transform and constrained box-union operations.
+- STEP preview derives mesh data by replaying persisted transform and box-union operations in the browser CAD worker before tessellation.
+- No durable kernel shape serialization, rich feature-history model, cross-model CAD merge semantics, or STEP export flow exists yet.

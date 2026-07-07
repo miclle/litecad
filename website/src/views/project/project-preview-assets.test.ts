@@ -253,6 +253,16 @@ describe('project preview assets', () => {
               transform,
               created_at: '2026-07-07T00:00:01Z',
             },
+            {
+              id: 'op_box',
+              type: 'box-union',
+              model_id: 'mdl_step',
+              box: {
+                origin: [2, -1, 4],
+                size: [8, 6, 3],
+              },
+              created_at: '2026-07-07T00:00:02Z',
+            },
           ],
           created_at: '2026-07-07T00:00:00Z',
           updated_at: '2026-07-07T00:00:01Z',
@@ -265,6 +275,15 @@ describe('project preview assets', () => {
         type: 'transform',
         modelId: 'mdl_step',
         matrix: transform.matrix,
+      },
+      {
+        id: 'op_box',
+        type: 'box-union',
+        modelId: 'mdl_step',
+        box: {
+          origin: [2, -1, 4],
+          size: [8, 6, 3],
+        },
       },
     ])
   })

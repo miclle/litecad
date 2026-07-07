@@ -10,12 +10,26 @@ export type CadKernelMeshSummary = {
   hasNormals: boolean
 }
 
-export type CadKernelOperation = {
+export type CadKernelBoxFeature = {
+  origin: readonly number[]
+  size: readonly number[]
+}
+
+export type CadKernelTransformOperation = {
   id: string
   type: 'transform'
   modelId: string
   matrix: readonly number[]
 }
+
+export type CadKernelBoxUnionOperation = {
+  id: string
+  type: 'box-union'
+  modelId: string
+  box: CadKernelBoxFeature
+}
+
+export type CadKernelOperation = CadKernelTransformOperation | CadKernelBoxUnionOperation
 
 export type CadKernelStepRoundTripRequest = {
   id: string
@@ -93,15 +107,29 @@ function isCadKernelOperations(value: unknown): value is CadKernelOperation[] | 
 }
 
 function isCadKernelOperation(value: unknown): value is CadKernelOperation {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.modelId !== 'string') {
+    return false
+  }
+  if (value.type === 'box-union') {
+    return isCadKernelBoxFeature(value.box)
+  }
   return (
-    isRecord(value) &&
     value.type === 'transform' &&
-    typeof value.id === 'string' &&
-    typeof value.modelId === 'string' &&
     Array.isArray(value.matrix) &&
     value.matrix.length === 16 &&
     value.matrix.every((entry) => typeof entry === 'number' && Number.isFinite(entry))
   )
+}
+
+function isCadKernelBoxFeature(value: unknown): value is CadKernelBoxFeature {
+  if (!isRecord(value) || !isFiniteNumberTuple(value.origin, 3) || !isFiniteNumberTuple(value.size, 3)) {
+    return false
+  }
+  return value.size.every((entry) => entry > 0)
+}
+
+function isFiniteNumberTuple(value: unknown, length: number): value is number[] {
+  return Array.isArray(value) && value.length === length && value.every((entry) => typeof entry === 'number' && Number.isFinite(entry))
 }
 
 export function summarizeCadKernelMesh(mesh: CadKernelMesh): CadKernelMeshSummary {

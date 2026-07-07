@@ -111,10 +111,13 @@ export function applyCADOperationsToShape(
   operations: readonly CadKernelOperation[] = [],
 ) {
   return operations.reduce((shape, operation) => {
-    if (operation.type !== 'transform') {
-      throw new Error(`Unsupported CAD operation: ${operation.type}`)
+    if (operation.type === 'transform') {
+      return transformShape(openCascade, shape, operation.matrix)
     }
-    return transformShape(openCascade, shape, operation.matrix)
+    if (operation.type === 'box-union') {
+      return boxUnionShape(openCascade, shape, operation.box)
+    }
+    throw new Error(`Unsupported CAD operation: ${(operation as { type?: string }).type}`)
   }, sourceShape)
 }
 
@@ -139,6 +142,25 @@ function transformShape(openCascade: OpenCascadeModule, shape: any, matrix: read
   )
   const builder = new openCascade.BRepBuilderAPI_Transform_2(shape, transform, true)
   return builder.Shape()
+}
+
+function boxUnionShape(
+  openCascade: OpenCascadeModule,
+  shape: any,
+  box: { origin: readonly number[]; size: readonly number[] },
+) {
+  if (box.origin.length !== 3 || box.size.length !== 3 || box.size.some((value) => value <= 0)) {
+    throw new Error('CAD box-union operation requires positive box dimensions')
+  }
+  const origin = new openCascade.gp_Pnt_3(box.origin[0] ?? 0, box.origin[1] ?? 0, box.origin[2] ?? 0)
+  const boxBuilder = new openCascade.BRepPrimAPI_MakeBox_3(origin, box.size[0] ?? 1, box.size[1] ?? 1, box.size[2] ?? 1)
+  boxBuilder.Build(new openCascade.Message_ProgressRange_1())
+  const fuseBuilder = new openCascade.BRepAlgoAPI_Fuse_3(
+    shape,
+    boxBuilder.Shape(),
+    new openCascade.Message_ProgressRange_1(),
+  )
+  return fuseBuilder.Shape()
 }
 
 function importStepShape(openCascade: OpenCascadeModule, input: CadKernelStepRoundTripInput) {

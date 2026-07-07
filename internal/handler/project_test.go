@@ -528,6 +528,86 @@ func TestProjectCADDocumentRoutesPersistModelTransform(t *testing.T) {
 	}
 }
 
+func TestProjectCADDocumentRoutesPersistBoxUnionFeature(t *testing.T) {
+	router := newTestRouter(t)
+
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name":     "Ada Lovelace",
+		"email":    "cad-box-union@example.com",
+		"password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+
+	create := postJSONWithCookie(t, router, "/api/v1/projects", map[string]string{
+		"name": "Feature case",
+	}, sessionCookie)
+	var createResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	upload := postMultipartFileWithCookie(
+		t,
+		router,
+		"/api/v1/projects/"+createResponse.Project.ID+"/models",
+		"model",
+		"feature.step",
+		[]byte("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"),
+		sessionCookie,
+	)
+	var uploadResponse struct {
+		Model struct {
+			ID string `json:"id"`
+		} `json:"model"`
+	}
+	if err := json.Unmarshal(upload.Body.Bytes(), &uploadResponse); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+
+	patch := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/models/"+uploadResponse.Model.ID+"/box-union", map[string]any{
+		"box": map[string]any{
+			"origin": [3]float64{2, -1, 4},
+			"size":   [3]float64{8, 6, 3},
+		},
+	}, sessionCookie)
+	if patch.Code != http.StatusOK {
+		t.Fatalf("box-union status = %d, body = %s", patch.Code, patch.Body.String())
+	}
+	var patchResponse struct {
+		Document struct {
+			Revision   int `json:"revision"`
+			Operations []struct {
+				Type    string `json:"type"`
+				ModelID string `json:"model_id"`
+				Box     *struct {
+					Origin [3]float64 `json:"origin"`
+					Size   [3]float64 `json:"size"`
+				} `json:"box"`
+			} `json:"operations"`
+		} `json:"document"`
+	}
+	if err := json.Unmarshal(patch.Body.Bytes(), &patchResponse); err != nil {
+		t.Fatalf("decode box-union response: %v", err)
+	}
+	if patchResponse.Document.Revision != 2 || len(patchResponse.Document.Operations) != 1 {
+		t.Fatalf("document = %+v, want revision 2 with one operation", patchResponse.Document)
+	}
+	operation := patchResponse.Document.Operations[0]
+	if operation.Type != "box-union" || operation.ModelID != uploadResponse.Model.ID || operation.Box == nil {
+		t.Fatalf("operation = %+v, want persisted box-union", operation)
+	}
+	if operation.Box.Origin != [3]float64{2, -1, 4} || operation.Box.Size != [3]float64{8, 6, 3} {
+		t.Fatalf("operation box = %+v", operation.Box)
+	}
+}
+
 func TestProjectModelRoutesUploadSTLPreview(t *testing.T) {
 	router := newTestRouter(t)
 

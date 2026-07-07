@@ -29,6 +29,7 @@ import {
 import { Link, useParams } from 'react-router-dom'
 
 import {
+  addProjectCADModelBoxUnion,
   fetchProjectAgentMessages,
   fetchProject,
   fetchProjectCADDocument,
@@ -59,6 +60,12 @@ import {
 } from './view-events'
 import { AgentMarkdown } from './agent-markdown'
 import { shouldSubmitAgentInputFromKey } from './agent-input'
+import {
+  boxFeatureDraftFromCADBoxFeature,
+  defaultBoxFeatureDraft,
+  parseBoxFeatureDraft,
+  type BoxFeatureDraft,
+} from './cad-document-box-features'
 import { cadTransformWithTranslation, translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { ModelPreview } from './model-preview'
 import {
@@ -168,6 +175,8 @@ function ProjectView() {
   const [hiddenModelIDs, setHiddenModelIDs] = useState<Set<string>>(() => new Set())
   const [transformDraftsByModelID, setTransformDraftsByModelID] = useState<Record<string, TransformDraft>>({})
   const [transformErrorByModelID, setTransformErrorByModelID] = useState<Record<string, string>>({})
+  const [boxFeatureDraftsByModelID, setBoxFeatureDraftsByModelID] = useState<Record<string, BoxFeatureDraft>>({})
+  const [boxFeatureErrorByModelID, setBoxFeatureErrorByModelID] = useState<Record<string, string>>({})
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -236,6 +245,21 @@ function ProjectView() {
     },
     onError: (_error, variables) => {
       setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: 'Invalid transform' }))
+    },
+  })
+  const addCADModelBoxUnionMutation = useMutation({
+    mutationFn: async ({ modelId, box }: { modelId: string; box: ReturnType<typeof parseBoxFeatureDraft> }) => {
+      if (!box) {
+        throw new Error('Invalid box feature')
+      }
+      return (await addProjectCADModelBoxUnion(projectId, modelId, box)).data.document
+    },
+    onSuccess: async (document, variables) => {
+      setBoxFeatureErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: '' }))
+      queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
+    },
+    onError: (_error, variables) => {
+      setBoxFeatureErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: 'Invalid box feature' }))
     },
   })
   const project = projectQuery.data
@@ -639,6 +663,33 @@ function ProjectView() {
     }
     updateCADModelTransformMutation.mutate({ modelId: modelID, translation })
   }
+  const latestBoxFeatureDraftForModel = (modelID: string) => {
+    const latestBoxOperation = [...(projectCADDocument?.operations ?? [])]
+      .reverse()
+      .find((operation) => operation.model_id === modelID && operation.type === 'box-union' && operation.box)
+    return latestBoxOperation?.box ? boxFeatureDraftFromCADBoxFeature(latestBoxOperation.box) : defaultBoxFeatureDraft()
+  }
+  const updateBoxFeatureDraft = (modelID: string, field: keyof BoxFeatureDraft, value: string) => {
+    setBoxFeatureDraftsByModelID((currentDrafts) => {
+      const currentDraft = currentDrafts[modelID] ?? latestBoxFeatureDraftForModel(modelID)
+      return {
+        ...currentDrafts,
+        [modelID]: {
+          ...currentDraft,
+          [field]: value,
+        },
+      }
+    })
+  }
+  const addBoxFeatureDraft = (modelID: string) => {
+    const draft = boxFeatureDraftsByModelID[modelID] ?? latestBoxFeatureDraftForModel(modelID)
+    const box = parseBoxFeatureDraft(draft)
+    if (!box) {
+      setBoxFeatureErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: 'Invalid box feature' }))
+      return
+    }
+    addCADModelBoxUnionMutation.mutate({ modelId: modelID, box })
+  }
   const handleModelFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) {
@@ -909,6 +960,10 @@ function ProjectView() {
                       const transformError = transformErrorByModelID[model.id]
                       const isTransformUpdating =
                         updateCADModelTransformMutation.isPending && updateCADModelTransformMutation.variables?.modelId === model.id
+                      const boxFeatureDraft = boxFeatureDraftsByModelID[model.id] ?? latestBoxFeatureDraftForModel(model.id)
+                      const boxFeatureError = boxFeatureErrorByModelID[model.id]
+                      const isBoxFeatureUpdating =
+                        addCADModelBoxUnionMutation.isPending && addCADModelBoxUnionMutation.variables?.modelId === model.id
 
                       return (
                         <div
@@ -968,6 +1023,46 @@ function ProjectView() {
                             </button>
                           </div>
                           {transformError && <p className="mt-1 text-[11px] leading-4 text-[#8a2f24]">{transformError}</p>}
+                          {model.format === 'step' && (
+                            <div className="mt-2 border-t border-[#e2e8f0] pt-2">
+                              <div className="grid grid-cols-[repeat(3,minmax(0,1fr))_28px] items-center gap-1.5">
+                                {(
+                                  [
+                                    ['originX', 'Origin X'],
+                                    ['originY', 'Origin Y'],
+                                    ['originZ', 'Origin Z'],
+                                    ['sizeX', 'Size X'],
+                                    ['sizeY', 'Size Y'],
+                                    ['sizeZ', 'Size Z'],
+                                  ] as const
+                                ).map(([field, label]) => (
+                                  <label className="min-w-0" key={field}>
+                                    <span className="sr-only">{`${label} for ${modelDisplayName}`}</span>
+                                    <input
+                                      aria-label={`${label} for ${modelDisplayName}`}
+                                      className="h-7 w-full rounded border border-[#dbe3ec] bg-white px-1.5 text-right font-mono text-[11px] text-[#334155] outline-none transition focus:border-[#64748b] focus:ring-2 focus:ring-[#cbd5e1]"
+                                      inputMode="decimal"
+                                      onChange={(event) => updateBoxFeatureDraft(model.id, field, event.target.value)}
+                                      title={label}
+                                      type="number"
+                                      value={boxFeatureDraft[field]}
+                                    />
+                                  </label>
+                                ))}
+                                <button
+                                  aria-label={`Add box union for ${modelDisplayName}`}
+                                  className="col-start-4 row-span-2 grid size-7 shrink-0 place-items-center rounded border border-[#dbe3ec] bg-white text-[#64748b] transition hover:border-[#94a3b8] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
+                                  disabled={isBoxFeatureUpdating || !projectCADDocument}
+                                  onClick={() => addBoxFeatureDraft(model.id)}
+                                  title="Add box union"
+                                  type="button"
+                                >
+                                  <Box className="size-3.5" />
+                                </button>
+                              </div>
+                              {boxFeatureError && <p className="mt-1 text-[11px] leading-4 text-[#8a2f24]">{boxFeatureError}</p>}
+                            </div>
+                          )}
                         </div>
                       )
                     })}

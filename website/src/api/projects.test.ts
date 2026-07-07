@@ -8,6 +8,7 @@ import {
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
+  addProjectCADModelBoxUnion,
   sendProjectAgentMessage,
   updateProjectCADModelTransform,
   uploadProjectModel,
@@ -71,6 +72,19 @@ describe('project API', () => {
 
     expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/cad-document/models/mdl_01test/transform', {
       transform,
+    })
+  })
+
+  test('adds a project CAD model box-union feature', () => {
+    const box = {
+      origin: [2, -1, 4] as const,
+      size: [8, 6, 3] as const,
+    }
+
+    addProjectCADModelBoxUnion('prj_01test', 'mdl_01test', box)
+
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/models/mdl_01test/box-union', {
+      box,
     })
   })
 

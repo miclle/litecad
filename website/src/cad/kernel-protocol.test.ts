@@ -55,6 +55,30 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts STEP preview requests with box-union feature operations', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-1',
+        type: 'step-preview',
+        payload: {
+          filename: 'part.step',
+          stepText: 'ISO-10303-21;END-ISO-10303-21;',
+          operations: [
+            {
+              id: 'op_box',
+              type: 'box-union',
+              modelId: 'mdl_01test',
+              box: {
+                origin: [2, -1, 4],
+                size: [8, 6, 3],
+              },
+            },
+          ],
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('rejects malformed worker requests before they reach the kernel', () => {
     expect(isCadKernelRequest({ id: 'job-1', type: 'step-round-trip', payload: { filename: 'part.step' } })).toBe(false)
     expect(isCadKernelRequest({ id: 'job-1', type: 'unknown', payload: { stepText: 'x' } })).toBe(false)
@@ -75,6 +99,27 @@ describe('CAD kernel worker protocol', () => {
               type: 'transform',
               modelId: 'mdl_01test',
               matrix: [1, 0, 0],
+            },
+          ],
+        },
+      }),
+    ).toBe(false)
+    expect(
+      isCadKernelRequest({
+        id: 'job-1',
+        type: 'step-preview',
+        payload: {
+          filename: 'part.step',
+          stepText: 'ISO-10303-21;END-ISO-10303-21;',
+          operations: [
+            {
+              id: 'op_box',
+              type: 'box-union',
+              modelId: 'mdl_01test',
+              box: {
+                origin: [0, 0, 0],
+                size: [8, 0, 3],
+              },
             },
           ],
         },

@@ -89,12 +89,29 @@ export function projectPreviewAssetSignature(assets: readonly ProjectPreviewAsse
 export function cadKernelOperationsForModel(cadDocument: ProjectCADDocument | undefined, modelId: string): CadKernelOperation[] {
   return (cadDocument?.operations ?? [])
     .filter((operation) => operation.model_id === modelId)
-    .map((operation) => ({
-      id: operation.id,
-      type: operation.type,
-      modelId: operation.model_id,
-      matrix: operation.transform.matrix,
-    }))
+    .flatMap((operation): CadKernelOperation[] => {
+      if (operation.type === 'transform' && operation.transform) {
+        return [
+          {
+            id: operation.id,
+            type: operation.type,
+            modelId: operation.model_id,
+            matrix: operation.transform.matrix,
+          },
+        ]
+      }
+      if (operation.type === 'box-union' && operation.box) {
+        return [
+          {
+            id: operation.id,
+            type: operation.type,
+            modelId: operation.model_id,
+            box: operation.box,
+          },
+        ]
+      }
+      return []
+    })
 }
 
 export function getModelDisplayName(model: ProjectModel) {

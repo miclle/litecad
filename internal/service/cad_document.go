@@ -26,6 +26,12 @@ type CADTransform struct {
 	Matrix [16]float64 `json:"matrix"`
 }
 
+// CADBoxFeature describes an axis-aligned box feature in document units.
+type CADBoxFeature struct {
+	Origin [3]float64 `json:"origin"`
+	Size   [3]float64 `json:"size"`
+}
+
 // ProjectCADDocument is the public editable LiteCAD document state for a project.
 type ProjectCADDocument struct {
 	ID            string            `json:"id"`
@@ -51,11 +57,12 @@ type CADDocumentNode struct {
 
 // CADOperation records a LiteCAD edit operation in replay order.
 type CADOperation struct {
-	ID        string       `json:"id"`
-	Type      string       `json:"type"`
-	ModelID   string       `json:"model_id"`
-	Transform CADTransform `json:"transform"`
-	CreatedAt string       `json:"created_at"`
+	ID        string         `json:"id"`
+	Type      string         `json:"type"`
+	ModelID   string         `json:"model_id"`
+	Transform *CADTransform  `json:"transform,omitempty"`
+	Box       *CADBoxFeature `json:"box,omitempty"`
+	CreatedAt string         `json:"created_at"`
 }
 
 // UpdateProjectCADModelTransformInput updates one model node transform in the editable document.
@@ -64,6 +71,14 @@ type UpdateProjectCADModelTransformInput struct {
 	ProjectID   string
 	ModelID     string
 	Transform   CADTransform
+}
+
+// AddProjectCADModelBoxUnionInput appends one kernel-backed box union feature.
+type AddProjectCADModelBoxUnionInput struct {
+	OwnerUserID string
+	ProjectID   string
+	ModelID     string
+	Box         CADBoxFeature
 }
 
 type cadDocumentState struct {
@@ -144,11 +159,88 @@ func (s *Service) UpdateProjectCADModelTransform(ctx context.Context, input Upda
 			return err
 		}
 		now := time.Now().UTC()
+		transform := input.Transform
 		state.Operations = append(state.Operations, CADOperation{
 			ID:        operationID,
 			Type:      "transform",
 			ModelID:   model.ID,
-			Transform: input.Transform,
+			Transform: &transform,
+			CreatedAt: now.Format(timeFormatRFC3339),
+		})
+
+		document.Revision++
+		document.SchemaVersion = cadDocumentSchemaVersion
+		documentJSON, err := json.Marshal(state)
+		if err != nil {
+			return fmt.Errorf("serialize CAD document: %w", err)
+		}
+		if err := tx.Model(&document).Updates(map[string]any{
+			"schema_version": document.SchemaVersion,
+			"revision":       document.Revision,
+			"document_json":  documentJSON,
+		}).Error; err != nil {
+			return fmt.Errorf("update CAD document: %w", err)
+		}
+		document.DocumentJSON = documentJSON
+		document.UpdatedAt = now
+		publicDocument = publicProjectCADDocument(document, state)
+		return nil
+	})
+	if err != nil {
+		return ProjectCADDocument{}, err
+	}
+	return publicDocument, nil
+}
+
+// AddProjectCADModelBoxUnion persists one box union feature for browser-kernel replay.
+func (s *Service) AddProjectCADModelBoxUnion(ctx context.Context, input AddProjectCADModelBoxUnionInput) (ProjectCADDocument, error) {
+	ownerUserID := strings.TrimSpace(input.OwnerUserID)
+	projectID := strings.TrimSpace(input.ProjectID)
+	modelID := strings.TrimSpace(input.ModelID)
+	if ownerUserID == "" || projectID == "" || modelID == "" {
+		return ProjectCADDocument{}, ErrProjectNotFound
+	}
+	if !isValidCADBoxFeature(input.Box) {
+		return ProjectCADDocument{}, ErrInvalidCADDocumentInput
+	}
+
+	var project entity.Project
+	if err := s.db.WithContext(ctx).First(&project, "id = ? AND owner_user_id = ?", projectID, ownerUserID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ProjectCADDocument{}, ErrProjectNotFound
+		}
+		return ProjectCADDocument{}, fmt.Errorf("load project for CAD box union: %w", err)
+	}
+
+	var model entity.ProjectModel
+	if err := s.db.WithContext(ctx).First(&model, "id = ? AND project_id = ?", modelID, project.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ProjectCADDocument{}, ErrProjectNotFound
+		}
+		return ProjectCADDocument{}, fmt.Errorf("load model for CAD box union: %w", err)
+	}
+	if model.Format != "step" {
+		return ProjectCADDocument{}, ErrInvalidCADDocumentInput
+	}
+
+	var publicDocument ProjectCADDocument
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		document, state, err := s.getOrCreateProjectCADDocumentEntity(ctx, tx, project)
+		if err != nil {
+			return err
+		}
+
+		operationID, err := id.NewPrefixed("op")
+		if err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		box := input.Box
+		state.Operations = append(state.Operations, CADOperation{
+			ID:        operationID,
+			Type:      "box-union",
+			ModelID:   model.ID,
+			Box:       &box,
 			CreatedAt: now.Format(timeFormatRFC3339),
 		})
 
@@ -356,4 +448,18 @@ func isValidCADTransform(transform CADTransform) bool {
 		transform.Matrix[13] == 0 &&
 		transform.Matrix[14] == 0 &&
 		transform.Matrix[15] == 1
+}
+
+func isValidCADBoxFeature(box CADBoxFeature) bool {
+	for _, value := range box.Origin {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return false
+		}
+	}
+	for _, value := range box.Size {
+		if math.IsNaN(value) || math.IsInf(value, 0) || value <= 0 {
+			return false
+		}
+	}
+	return true
 }

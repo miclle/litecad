@@ -100,6 +100,11 @@ export interface CADTransform {
   matrix: readonly number[]
 }
 
+export interface CADBoxFeature {
+  origin: readonly number[]
+  size: readonly number[]
+}
+
 export interface CADDocumentNode {
   id: string
   model_id: string
@@ -111,9 +116,10 @@ export interface CADDocumentNode {
 
 export interface CADOperation {
   id: string
-  type: 'transform'
+  type: 'transform' | 'box-union'
   model_id: string
-  transform: CADTransform
+  transform?: CADTransform
+  box?: CADBoxFeature
   created_at: string
 }
 
