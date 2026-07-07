@@ -1,4 +1,5 @@
 import { useEffect, useRef, type CSSProperties } from 'react'
+import { FlipHorizontal2, Orbit } from 'lucide-react'
 import * as THREE from 'three'
 
 import { disposeObject3DResources } from './three-object-resources'
@@ -460,6 +461,7 @@ export function ViewController({
   className = '',
   orientation,
   onFlip,
+  onResetIsometric,
   onSetOrientation,
   onStep,
   style,
@@ -468,6 +470,7 @@ export function ViewController({
   className?: string
   orientation: ViewOrientation
   onFlip: () => void
+  onResetIsometric: () => void
   onSetOrientation: (orientation: ViewOrientation) => void
   onStep: (step: ViewRotationStep) => void
   style?: CSSProperties
@@ -478,6 +481,8 @@ export function ViewController({
   const horizontalArrowClass = 'block h-5 w-3 bg-[#94a3b8] transition group-hover:bg-[#475569]'
   const arcButtonClass =
     'absolute z-20 grid h-[30px] w-[35px] place-items-center text-[#94a3b8] outline-none transition hover:scale-105 hover:text-[#475569] focus-visible:outline-none'
+  const cornerToolButtonClass =
+    'absolute right-0 z-30 grid size-7 place-items-center text-[#94a3b8] outline-none transition hover:scale-110 hover:text-[#475569] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]'
 
   return (
     <div
@@ -557,12 +562,22 @@ export function ViewController({
 
       <button
         aria-label="Flip view"
-        className="absolute right-0 top-0 z-30 grid size-5 place-items-center outline-none transition hover:scale-110 focus-visible:outline-none"
+        className={`${cornerToolButtonClass} top-0`}
         onClick={onFlip}
         title="Flip view"
         type="button"
       >
-        <span className="block size-4 rounded-full bg-[#94a3b8] transition hover:bg-[#475569]" />
+        <FlipHorizontal2 className="size-4" strokeWidth={2.75} />
+      </button>
+
+      <button
+        aria-label="Reset isometric view"
+        className={`${cornerToolButtonClass} bottom-0`}
+        onClick={onResetIsometric}
+        title="Reset isometric view"
+        type="button"
+      >
+        <Orbit className="size-4" />
       </button>
 
       <ViewCube3D

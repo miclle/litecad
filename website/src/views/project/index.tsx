@@ -18,11 +18,8 @@ import {
   HardDrive,
   Import,
   Info,
-  Orbit,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
   Send,
   X,
 } from 'lucide-react'
@@ -71,11 +68,8 @@ import {
 } from './view-orientation'
 
 const defaultLeftPanelWidth = 270
-const defaultRightPanelWidth = 304
 const leftPanelMinWidth = 220
 const leftPanelMaxWidth = 440
-const rightPanelMinWidth = 260
-const rightPanelMaxWidth = 520
 const defaultAiChatPanelWidth = 420
 const aiChatPanelMinWidth = 340
 const aiChatPanelMaxWidthRatio = 0.5
@@ -122,7 +116,6 @@ function ProjectView() {
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false)
-  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false)
   const [isAiChatOpen, setIsAiChatOpen] = useState(false)
   const [isAiChatColumnVisible, setIsAiChatColumnVisible] = useState(false)
   const [isAiChatTransitioning, setIsAiChatTransitioning] = useState(false)
@@ -131,7 +124,6 @@ function ProjectView() {
   const [aiChatDraft, setAiChatDraft] = useState('')
   const [aiChatMessages, setAiChatMessages] = useState<AiChatMessage[]>(initialAiChatMessages)
   const [leftPanelWidth, setLeftPanelWidth] = useState(defaultLeftPanelWidth)
-  const [rightPanelWidth, setRightPanelWidth] = useState(defaultRightPanelWidth)
   const [aiChatPanelWidth, setAiChatPanelWidth] = useState(defaultAiChatPanelWidth)
   const [aiChatPanelMaxWidth, setAiChatPanelMaxWidth] = useState(getAiChatPanelMaxWidth)
   const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
@@ -406,17 +398,14 @@ function ProjectView() {
     year: 'numeric',
   }).format(new Date(project.updated_at))
   const LeftPanelIcon = isLeftPanelCollapsed ? PanelLeftOpen : PanelLeftClose
-  const RightPanelIcon = isRightPanelCollapsed ? PanelRightOpen : PanelRightClose
   const projectDescription = project.description || 'No description yet. Import a CAD source file to begin the project record.'
   const documentDetails = [
     { label: 'Updated', value: updatedAt },
-    { label: 'Units', value: 'Millimeters' },
-    { label: 'Sources', value: projectModels.length },
     { label: 'Preview', value: previewSummary.previewLabel },
     ...(latestModel
       ? [
           {
-            label: 'STEP',
+            label: 'Schema',
             value: latestModel.metadata.schema || latestModel.metadata.asset_type.toUpperCase() || latestModel.parse_status,
           },
           { label: 'Unit', value: latestModel.metadata.length_unit || 'Unknown' },
@@ -426,20 +415,17 @@ function ProjectView() {
       : []),
   ]
   const canvasStatusLeftOffset = isLeftPanelCollapsed ? 16 : leftPanelWidth + 32
-  const canvasToolbarLeftOffset = isLeftPanelCollapsed ? 228 : leftPanelWidth + 32
-  const inspectorRightOffset = isRightPanelCollapsed ? 260 : rightPanelWidth + 20
-  const canvasRightOffset = inspectorRightOffset
-  const cadWorkspaceMinWidth =
-    (isLeftPanelCollapsed ? 196 : leftPanelWidth) + (isRightPanelCollapsed ? 228 : rightPanelWidth) + 64
+  const canvasRightOffset = 20
+  const cadWorkspaceMinWidth = (isLeftPanelCollapsed ? 196 : leftPanelWidth) + 260
   const workspaceGridStyle = {
     gridTemplateColumns: isAiChatColumnVisible
       ? `minmax(${cadWorkspaceMinWidth}px, 1fr) ${aiChatPanelWidth}px`
       : 'minmax(0, 1fr) 0px',
   } as CSSProperties
-  const startPanelResize = (side: 'left' | 'right', event: ReactPointerEvent<HTMLDivElement>) => {
+  const startLeftPanelResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     const startX = event.clientX
-    const startWidth = side === 'left' ? leftPanelWidth : rightPanelWidth
+    const startWidth = leftPanelWidth
     const previousCursor = document.body.style.cursor
     const previousUserSelect = document.body.style.userSelect
 
@@ -448,13 +434,7 @@ function ProjectView() {
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startX
-
-      if (side === 'left') {
-        setLeftPanelWidth(clampPanelWidth(startWidth + deltaX, leftPanelMinWidth, leftPanelMaxWidth))
-        return
-      }
-
-      setRightPanelWidth(clampPanelWidth(startWidth - deltaX, rightPanelMinWidth, rightPanelMaxWidth))
+      setLeftPanelWidth(clampPanelWidth(startWidth + deltaX, leftPanelMinWidth, leftPanelMaxWidth))
     }
 
     const handlePointerUp = () => {
@@ -665,21 +645,11 @@ function ProjectView() {
               </div>
             )}
 
-          <button
-            className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-md border border-[#e2e8f0] bg-[#ffffff]/88 px-3 py-2 text-xs text-[#64748b] backdrop-blur transition hover:border-[#475569] hover:text-[#0f172a] lg:left-[var(--canvas-toolbar-left)]"
-            onClick={() => applyCanvasOrientation(initialViewOrientation)}
-            style={{ '--canvas-toolbar-left': `${canvasToolbarLeftOffset}px` } as CSSProperties}
-            title="Reset isometric view"
-            type="button"
-          >
-            <Orbit className="size-4 text-[#475569]" />
-            Isometric
-          </button>
-
           <ViewController
             animateViewCubeOrientation={animateViewCubeOrientation}
             className="xl:right-[var(--view-controller-right)]"
             onFlip={flipCanvasOrientation}
+            onResetIsometric={() => applyCanvasOrientation(initialViewOrientation)}
             onSetOrientation={applyCanvasOrientation}
             onStep={stepCanvasOrientation}
             orientation={viewOrientation}
@@ -720,149 +690,85 @@ function ProjectView() {
                 aria-label="Resize left panel"
                 aria-orientation="vertical"
                 className="group absolute right-0 top-0 z-40 h-full w-2 cursor-col-resize"
-                onPointerDown={(event) => startPanelResize('left', event)}
+                onPointerDown={startLeftPanelResize}
                 role="separator"
                 title="Resize left panel"
               >
                 <span className="absolute bottom-3 right-0 top-3 w-px rounded-full bg-transparent transition group-hover:bg-[#94a3b8]" />
               </div>
 
-              <div className="flex items-center justify-between">
-                <p className="font-mono text-[11px] uppercase text-[#64748b]">Project</p>
-                <button
-                  aria-label="Collapse left panel"
-                  className="grid size-8 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
-                  onClick={() => setIsLeftPanelCollapsed(true)}
-                  title="Collapse left panel"
-                  type="button"
-                >
-                  <LeftPanelIcon className="size-4" />
-                </button>
-              </div>
-
-              <section className="mt-3">
-                <p className="text-sm leading-6 text-[#64748b]">
-                  {projectDescription}
-                </p>
-              </section>
-
-              <section className="mt-8">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-mono text-[11px] uppercase text-[#64748b]">Model</p>
+              <div className="flex min-h-full flex-col">
+                <div className="flex items-center justify-between">
+                  <p className="font-mono text-[11px] uppercase text-[#64748b]">Project</p>
+                  <button
+                    aria-label="Collapse left panel"
+                    className="grid size-8 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
+                    onClick={() => setIsLeftPanelCollapsed(true)}
+                    title="Collapse left panel"
+                    type="button"
+                  >
+                    <LeftPanelIcon className="size-4" />
+                  </button>
                 </div>
 
-                <div className="mt-3 grid gap-2">
-                  {projectModelsQuery.isLoading && (
-                    <div className="px-2 py-2 font-mono text-[11px] uppercase text-[#64748b]">
-                      Loading model tree
-                    </div>
-                  )}
-                  {!projectModelsQuery.isLoading && projectModels.length === 0 && (
-                    <div className="px-2 py-3 text-sm leading-6 text-[#64748b]">
-                      Import a CAD model to populate the project tree.
-                    </div>
-                  )}
-                  {projectModels.map((model) => (
-                    <div
-                      className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-[#1f2937] transition hover:bg-[#f1f5f9]"
-                      key={model.id}
-                    >
-                      <Box className="size-4 shrink-0 text-[#475569]" />
-                      <p className="min-w-0 flex-1 truncate">{getModelDisplayName(model)}</p>
+                <section className="mt-3">
+                  <p className="text-sm leading-6 text-[#64748b]">
+                    {projectDescription}
+                  </p>
+                </section>
+
+                <section className="mt-8">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-mono text-[11px] uppercase text-[#64748b]">Model</p>
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    {projectModelsQuery.isLoading && (
+                      <div className="px-2 py-2 font-mono text-[11px] uppercase text-[#64748b]">
+                        Loading model tree
+                      </div>
+                    )}
+                    {!projectModelsQuery.isLoading && projectModels.length === 0 && (
+                      <div className="px-2 py-3 text-sm leading-6 text-[#64748b]">
+                        Import a CAD model to populate the project tree.
+                      </div>
+                    )}
+                    {projectModels.map((model) => (
                       <div
-                        aria-label={model.parse_status === 'parsed' ? 'Model preview is ready' : 'Model is being processed'}
-                        className={`size-1.5 shrink-0 rounded-full ${
-                          model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'
-                        }`}
-                      />
-                    </div>
-                  ))}
-                  {uploadModelMutation.isPending && (
-                    <div className="rounded-md border border-[#e2e8f0] bg-[#f1f5f9] px-3 py-3 font-mono text-[11px] uppercase text-[#475569]">
-                      Importing model
-                    </div>
-                  )}
-                  {uploadError && <p className="text-sm leading-6 text-[#8a2f24]">{uploadError}</p>}
-                </div>
-              </section>
-            </>
-          )}
-        </aside>
+                        className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-[#1f2937] transition hover:bg-[#f1f5f9]"
+                        key={model.id}
+                      >
+                        <Box className="size-4 shrink-0 text-[#475569]" />
+                        <p className="min-w-0 flex-1 truncate">{getModelDisplayName(model)}</p>
+                        <div
+                          aria-label={model.parse_status === 'parsed' ? 'Model preview is ready' : 'Model is being processed'}
+                          className={`size-1.5 shrink-0 rounded-full ${
+                            model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'
+                          }`}
+                        />
+                      </div>
+                    ))}
+                    {uploadModelMutation.isPending && (
+                      <div className="rounded-md border border-[#e2e8f0] bg-[#f1f5f9] px-3 py-3 font-mono text-[11px] uppercase text-[#475569]">
+                        Importing model
+                      </div>
+                    )}
+                    {uploadError && <p className="text-sm leading-6 text-[#8a2f24]">{uploadError}</p>}
+                  </div>
+                </section>
 
-        <aside
-          className={`absolute right-4 top-4 z-30 hidden border border-[#e2e8f0] bg-[#ffffff]/92 shadow-[0_10px_28px_rgba(15,23,42,0.06)] backdrop-blur xl:block ${
-            isRightPanelCollapsed
-              ? 'w-[228px] rounded-[14px] px-3 py-1.5'
-              : 'bottom-4 overflow-y-auto rounded-md p-4'
-          }`}
-          style={isRightPanelCollapsed ? undefined : { width: rightPanelWidth }}
-        >
-          {isRightPanelCollapsed ? (
-            <div className="flex min-h-7 items-center gap-2.5">
-              <CheckCircle2 className="size-3.5 shrink-0 text-[#0f172a]" />
-              <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                <p className="truncate text-sm font-semibold text-[#0f172a]">Inspector</p>
-                <span className="shrink-0 rounded bg-[#eff6ff] px-1.5 py-0.5 text-[11px] font-medium leading-none text-[#0074d9]">
-                  {previewSummary.previewLabel}
-                </span>
+                <section className="mt-auto pt-5">
+                  <p className="font-mono text-[11px] uppercase text-[#64748b]">Document</p>
+                  <dl className="mt-2 grid gap-1.5 text-xs">
+                    {documentDetails.map((detail) => (
+                      <div className="flex items-center justify-between gap-3 border-b border-[#e2e8f0] py-1.5 last:border-b-0" key={detail.label}>
+                        <dt className="text-[#64748b]">{detail.label}</dt>
+                        <dd className="truncate text-[#1f2937]">{detail.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
               </div>
-              <button
-                aria-label="Expand right panel"
-                className="grid size-6 shrink-0 place-items-center rounded text-[#0f172a] transition hover:bg-[#f1f5f9]"
-                onClick={() => setIsRightPanelCollapsed(false)}
-                title="Expand right panel"
-                type="button"
-              >
-                <RightPanelIcon className="size-3.5" />
-              </button>
-            </div>
-          ) : (
-            <>
-              <div
-                aria-label="Resize right panel"
-                aria-orientation="vertical"
-                className="group absolute left-0 top-0 z-40 h-full w-2 cursor-col-resize"
-                onPointerDown={(event) => startPanelResize('right', event)}
-                role="separator"
-                title="Resize right panel"
-              >
-                <span className="absolute bottom-3 left-0 top-3 w-px rounded-full bg-transparent transition group-hover:bg-[#94a3b8]" />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <p className="font-mono text-[11px] uppercase text-[#64748b]">Inspector</p>
-                <button
-                  aria-label="Collapse right panel"
-                  className="grid size-8 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
-                  onClick={() => setIsRightPanelCollapsed(true)}
-                  title="Collapse right panel"
-                  type="button"
-                >
-                  <RightPanelIcon className="size-4" />
-                </button>
-              </div>
-
-              <section className="mt-5 rounded-md border border-[#e2e8f0] bg-white/70 p-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
-                  <CheckCircle2 className="size-4 text-[#475569]" />
-                  {previewSummary.sourceLabel}
-                </div>
-                <p className="mt-2 text-sm leading-6 text-[#64748b]">
-                  {previewSummary.sourceBody}
-                </p>
-              </section>
-
-              <section className="mt-5">
-                <p className="font-mono text-[11px] uppercase text-[#64748b]">Document</p>
-                <dl className="mt-3 grid gap-3 text-sm">
-                  {documentDetails.map((detail) => (
-                    <div className="flex items-center justify-between gap-3 border-b border-[#e2e8f0] pb-2" key={detail.label}>
-                      <dt className="text-[#64748b]">{detail.label}</dt>
-                      <dd className="truncate text-[#1f2937]">{detail.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </section>
             </>
           )}
         </aside>
