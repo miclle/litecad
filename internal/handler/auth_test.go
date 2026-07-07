@@ -69,17 +69,21 @@ func TestAuthRoutesRejectInvalidLogin(t *testing.T) {
 }
 
 func newTestRouter(t *testing.T) *fox.Engine {
+	return newTestRouterWithAI(t, nil)
+}
+
+func newTestRouterWithAI(t *testing.T, aiClient service.AIClient) *fox.Engine {
 	t.Helper()
 
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.NewReplacer("/", "_", " ", "_").Replace(t.Name()))), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.User{}, &entity.UserSession{}, &entity.Project{}, &entity.ProjectModel{}, &entity.ProjectModelPreviewArtifact{}, &entity.ProjectGeometryVersion{}); err != nil {
+	if err := db.AutoMigrate(&entity.User{}, &entity.UserSession{}, &entity.Project{}, &entity.ProjectModel{}, &entity.ProjectModelPreviewArtifact{}, &entity.ProjectGeometryVersion{}, &entity.ProjectAgentMessage{}); err != nil {
 		t.Fatalf("migrate test db: %v", err)
 	}
 
-	svc, err := service.NewWithPreviewConverter(context.Background(), db, testPreviewConverter{})
+	svc, err := service.NewWithPreviewConverter(context.Background(), db, testPreviewConverter{}, service.WithAIClient(aiClient))
 	if err != nil {
 		t.Fatalf("create service: %v", err)
 	}

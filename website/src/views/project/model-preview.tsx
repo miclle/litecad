@@ -26,11 +26,13 @@ import {
 import { projectPreviewAssetSignature, type ProjectPreviewAsset } from './project-preview-assets'
 
 type ModelPreviewProps = {
+  deferResize?: boolean
   previewAssets?: ProjectPreviewAsset[]
 }
 
 const viewportBackground = 0xf8fafc
 const gridPlaneOffset = 0.015
+const modelPreviewResizeCompleteEventName = 'litecad:model-preview-resize-complete'
 
 const niceGridStep = (radius: number) => {
   const targetStep = Math.max(radius / 10, 0.01)
@@ -130,9 +132,18 @@ const createWorldGrid = (radius: number) => {
 
 const previewMaterialColors = [0xb6c0b8, 0xc4b78a, 0x9fb6c8, 0xc7a0a0, 0xa8bea0]
 
-export function ModelPreview({ previewAssets = [] }: ModelPreviewProps) {
+export function ModelPreview({ deferResize = false, previewAssets = [] }: ModelPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const deferResizeRef = useRef(deferResize)
   const previewAssetSignature = useMemo(() => projectPreviewAssetSignature(previewAssets), [previewAssets])
+
+  useEffect(() => {
+    deferResizeRef.current = deferResize
+
+    if (!deferResize) {
+      containerRef.current?.dispatchEvent(new Event(modelPreviewResizeCompleteEventName))
+    }
+  }, [deferResize])
 
   useEffect(() => {
     const container = containerRef.current
@@ -513,7 +524,14 @@ export function ModelPreview({ previewAssets = [] }: ModelPreviewProps) {
       renderScene()
     }
 
+    let hasDeferredResize = false
     const resize = () => {
+      if (deferResizeRef.current) {
+        hasDeferredResize = true
+        return
+      }
+
+      hasDeferredResize = false
       resetView()
     }
     const resizeObserver = new ResizeObserver(resize)
@@ -523,6 +541,14 @@ export function ModelPreview({ previewAssets = [] }: ModelPreviewProps) {
     const resetTimeoutID = window.setTimeout(resetView, 250)
 
     const handleResetView = () => resetView()
+    const handleDeferredResizeComplete = () => {
+      if (!hasDeferredResize) {
+        return
+      }
+
+      hasDeferredResize = false
+      resetView()
+    }
     const handlePageShow = () => resetView()
     const handleSetView = (event: Event) => {
       const orientation = orientationFromEvent(event)
@@ -532,6 +558,7 @@ export function ModelPreview({ previewAssets = [] }: ModelPreviewProps) {
       animateViewOrientation(orientation)
     }
     container.addEventListener(resetViewEventName, handleResetView)
+    container.addEventListener(modelPreviewResizeCompleteEventName, handleDeferredResizeComplete)
     container.addEventListener(setViewEventName, handleSetView)
     window.addEventListener('pageshow', handlePageShow)
     controls.addEventListener('start', startControlsInteraction)
@@ -544,6 +571,7 @@ export function ModelPreview({ previewAssets = [] }: ModelPreviewProps) {
       window.clearTimeout(resetTimeoutID)
       resizeObserver.disconnect()
       container.removeEventListener(resetViewEventName, handleResetView)
+      container.removeEventListener(modelPreviewResizeCompleteEventName, handleDeferredResizeComplete)
       container.removeEventListener(setViewEventName, handleSetView)
       window.removeEventListener('pageshow', handlePageShow)
       controls.removeEventListener('start', startControlsInteraction)

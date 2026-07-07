@@ -10,3 +10,11 @@ dsn: "host=localhost port=5432 user=postgres password=postgres dbname=litecad ss
 # MySQL example:
 # driver: mysql
 # dsn: "root:password@tcp(localhost:3306)/litecad?charset=utf8mb4&parseTime=True&loc=Local"
+
+# Optional CAD Agent AI provider. The API key stays server-side.
+# ai:
+#   provider: openai_compatible
+#   base_url: "${LITECAD_AI_BASE_URL:-https://api.openai.com/v1}"
+#   api_key: "${LITECAD_AI_API_KEY:-}"
+#   model: "${LITECAD_AI_MODEL:-gpt-4.1-mini}"
+#   timeout_seconds: 30

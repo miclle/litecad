@@ -12,12 +12,12 @@ import {
 import {
   ArrowLeft,
   Box,
+  BotMessageSquare,
   CheckCircle2,
   FileText,
   HardDrive,
   Import,
   Info,
-  MessageSquare,
   Orbit,
   PanelLeftClose,
   PanelLeftOpen,
@@ -29,10 +29,12 @@ import {
 import { Link, useParams } from 'react-router-dom'
 
 import {
+  fetchProjectAgentMessages,
   fetchProject,
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
   fetchProjectModels,
+  sendProjectAgentMessage,
   uploadProjectModel,
 } from 'src/api/projects'
 import { Button } from '@/components/ui/button'
@@ -51,6 +53,7 @@ import {
   orientationFromEvent,
   viewOrientationChangeEventName,
 } from './view-events'
+import { AgentMarkdown } from './agent-markdown'
 import { ModelPreview } from './model-preview'
 import {
   buildProjectPreviewAssets,
@@ -73,15 +76,45 @@ const leftPanelMinWidth = 220
 const leftPanelMaxWidth = 440
 const rightPanelMinWidth = 260
 const rightPanelMaxWidth = 520
-const aiChatPanelWidth = 420
+const defaultAiChatPanelWidth = 420
+const aiChatPanelMinWidth = 340
+const aiChatPanelMaxWidthRatio = 0.5
+const aiChatPanelTransitionMs = 220
 type AiChatMessage = {
   id: string
   role: 'assistant' | 'user'
   body: string
 }
 
+const initialAiChatMessages: AiChatMessage[] = [
+  {
+    id: 'assistant-initial',
+    role: 'assistant',
+    body: 'I can stay beside the model while you inspect sources, metadata, and design notes.',
+  },
+]
+
 function clampPanelWidth(width: number, minWidth: number, maxWidth: number) {
   return Math.min(Math.max(width, minWidth), maxWidth)
+}
+
+function getAiChatPanelMaxWidth() {
+  if (typeof window === 'undefined') {
+    return Math.max(defaultAiChatPanelWidth, aiChatPanelMinWidth)
+  }
+  return Math.max(Math.floor(window.innerWidth * aiChatPanelMaxWidthRatio), aiChatPanelMinWidth)
+}
+
+function projectAgentErrorMessage(error: unknown) {
+  const status = (error as { response?: { status?: number } }).response?.status
+  const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message
+  if (status === 503) {
+    return 'CAD Agent is not configured yet. Add the server-side AI provider settings, then try again.'
+  }
+  if (message) {
+    return message
+  }
+  return 'CAD Agent could not answer right now. Check the AI provider configuration and try again.'
 }
 
 function ProjectView() {
@@ -91,21 +124,21 @@ function ProjectView() {
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false)
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false)
   const [isAiChatOpen, setIsAiChatOpen] = useState(false)
+  const [isAiChatColumnVisible, setIsAiChatColumnVisible] = useState(false)
+  const [isAiChatTransitioning, setIsAiChatTransitioning] = useState(false)
+  const [isAiChatPanelResizing, setIsAiChatPanelResizing] = useState(false)
   const [isProjectInfoOpen, setIsProjectInfoOpen] = useState(false)
   const [aiChatDraft, setAiChatDraft] = useState('')
-  const [aiChatMessages, setAiChatMessages] = useState<AiChatMessage[]>([
-    {
-      id: 'assistant-initial',
-      role: 'assistant',
-      body: 'I can stay beside the model while you inspect sources, metadata, and design notes.',
-    },
-  ])
+  const [aiChatMessages, setAiChatMessages] = useState<AiChatMessage[]>(initialAiChatMessages)
   const [leftPanelWidth, setLeftPanelWidth] = useState(defaultLeftPanelWidth)
   const [rightPanelWidth, setRightPanelWidth] = useState(defaultRightPanelWidth)
+  const [aiChatPanelWidth, setAiChatPanelWidth] = useState(defaultAiChatPanelWidth)
+  const [aiChatPanelMaxWidth, setAiChatPanelMaxWidth] = useState(getAiChatPanelMaxWidth)
   const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
   const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
   const [uploadError, setUploadError] = useState('')
   const [previewUrlsByModelID, setPreviewUrlsByModelID] = useState<Record<string, string>>({})
+  const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: async () => (await fetchProject(projectId)).data.project,
@@ -116,6 +149,11 @@ function ProjectView() {
     queryFn: async () => (await fetchProjectModels(projectId)).data.models,
     enabled: projectId !== '' && projectQuery.isSuccess,
   })
+  const projectAgentMessagesQuery = useQuery({
+    queryKey: ['projects', projectId, 'agent', 'messages'],
+    queryFn: async () => (await fetchProjectAgentMessages(projectId)).data.messages,
+    enabled: projectId !== '' && projectQuery.isSuccess,
+  })
   const uploadModelMutation = useMutation({
     mutationFn: (file: File) => uploadProjectModel(projectId, file),
     onSuccess: async () => {
@@ -124,6 +162,35 @@ function ProjectView() {
     },
     onError: () => {
       setUploadError('Model upload failed. Check that the file is STEP, GLTF, GLB, or STL and try again.')
+    },
+  })
+  const projectAgentMutation = useMutation({
+    mutationFn: async (messageBody: string) => {
+      const response = await sendProjectAgentMessage(projectId, {
+        messages: [{ role: 'user', body: messageBody }],
+      })
+      return response.data.message
+    },
+    onSuccess: async (message) => {
+      setAiChatMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: message.id || `assistant-${Date.now()}`,
+          role: 'assistant',
+          body: message.body,
+        },
+      ])
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'agent', 'messages'] })
+    },
+    onError: (error) => {
+      setAiChatMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: `assistant-error-${Date.now()}`,
+          role: 'assistant',
+          body: projectAgentErrorMessage(error),
+        },
+      ])
     },
   })
   const project = projectQuery.data
@@ -177,6 +244,34 @@ function ProjectView() {
     .join('|')
 
   useEffect(() => {
+    if (!projectAgentMessagesQuery.data) {
+      return
+    }
+    setAiChatMessages(
+      projectAgentMessagesQuery.data.length > 0
+        ? projectAgentMessagesQuery.data.map((message) => ({
+            id: message.id,
+            role: message.role,
+            body: message.body,
+          }))
+        : initialAiChatMessages,
+    )
+  }, [projectAgentMessagesQuery.data])
+
+  useEffect(() => {
+    const syncAiChatPanelMaxWidth = () => {
+      const nextMaxWidth = getAiChatPanelMaxWidth()
+
+      setAiChatPanelMaxWidth(nextMaxWidth)
+      setAiChatPanelWidth((currentWidth) => clampPanelWidth(currentWidth, aiChatPanelMinWidth, nextMaxWidth))
+    }
+
+    syncAiChatPanelMaxWidth()
+    window.addEventListener('resize', syncAiChatPanelMaxWidth)
+    return () => window.removeEventListener('resize', syncAiChatPanelMaxWidth)
+  }, [])
+
+  useEffect(() => {
     const nextPreviewUrlsByModelID: Record<string, string> = {}
     const objectUrls: string[] = []
 
@@ -216,6 +311,51 @@ function ProjectView() {
     return () => window.removeEventListener(viewOrientationChangeEventName, handleViewOrientationChange)
   }, [])
 
+  const openAiChat = () => {
+    if (aiChatTransitionTimerRef.current !== undefined) {
+      window.clearTimeout(aiChatTransitionTimerRef.current)
+    }
+
+    setIsAiChatTransitioning(true)
+    setIsAiChatColumnVisible(true)
+    setIsAiChatOpen(true)
+    aiChatTransitionTimerRef.current = window.setTimeout(() => {
+      setIsAiChatTransitioning(false)
+      aiChatTransitionTimerRef.current = undefined
+    }, aiChatPanelTransitionMs)
+  }
+
+  const closeAiChat = () => {
+    if (aiChatTransitionTimerRef.current !== undefined) {
+      window.clearTimeout(aiChatTransitionTimerRef.current)
+    }
+
+    setIsAiChatTransitioning(true)
+    setIsAiChatOpen(false)
+    setIsAiChatColumnVisible(false)
+    aiChatTransitionTimerRef.current = window.setTimeout(() => {
+      setIsAiChatTransitioning(false)
+      aiChatTransitionTimerRef.current = undefined
+    }, aiChatPanelTransitionMs)
+  }
+
+  const toggleAiChat = () => {
+    if (isAiChatOpen) {
+      closeAiChat()
+      return
+    }
+
+    openAiChat()
+  }
+
+  useEffect(() => {
+    return () => {
+      if (aiChatTransitionTimerRef.current !== undefined) {
+        window.clearTimeout(aiChatTransitionTimerRef.current)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     if (!isAiChatOpen) {
       return
@@ -223,7 +363,7 @@ function ProjectView() {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setIsAiChatOpen(false)
+        closeAiChat()
       }
     }
 
@@ -291,8 +431,10 @@ function ProjectView() {
   const canvasRightOffset = inspectorRightOffset
   const cadWorkspaceMinWidth =
     (isLeftPanelCollapsed ? 196 : leftPanelWidth) + (isRightPanelCollapsed ? 228 : rightPanelWidth) + 64
-  const mainGridStyle = {
-    gridTemplateColumns: isAiChatOpen ? `minmax(${cadWorkspaceMinWidth}px, 1fr) ${aiChatPanelWidth}px` : 'minmax(0, 1fr)',
+  const workspaceGridStyle = {
+    gridTemplateColumns: isAiChatColumnVisible
+      ? `minmax(${cadWorkspaceMinWidth}px, 1fr) ${aiChatPanelWidth}px`
+      : 'minmax(0, 1fr) 0px',
   } as CSSProperties
   const startPanelResize = (side: 'left' | 'right', event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -325,6 +467,35 @@ function ProjectView() {
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
   }
+  const startAiChatPanelResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = aiChatPanelWidth
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+
+    setIsAiChatPanelResizing(true)
+    setIsAiChatTransitioning(true)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const deltaX = startX - moveEvent.clientX
+      setAiChatPanelWidth(clampPanelWidth(startWidth + deltaX, aiChatPanelMinWidth, aiChatPanelMaxWidth))
+    }
+
+    const handlePointerUp = () => {
+      setIsAiChatPanelResizing(false)
+      setIsAiChatTransitioning(false)
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+  }
   const applyCanvasOrientation = (orientation: ViewOrientation) => {
     const nextOrientation = normalizeViewOrientation(orientation) ?? initialViewOrientation
     setAnimateViewCubeOrientation(true)
@@ -348,24 +519,27 @@ function ProjectView() {
   const handleAiChatSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const messageBody = aiChatDraft.trim()
-    if (!messageBody) {
+    if (!messageBody || projectAgentMutation.isPending) {
       return
     }
-    setAiChatMessages((currentMessages) => [
-      ...currentMessages,
-      { id: `user-${Date.now()}`, role: 'user', body: messageBody },
-      {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        body: 'AI chat is ready in the workbench UI. Connect a project chat endpoint to answer with live model context.',
-      },
-    ])
+    const nextMessages = [
+      ...aiChatMessages,
+      { id: `user-${Date.now()}`, role: 'user' as const, body: messageBody },
+    ]
+    setAiChatMessages(nextMessages)
+    projectAgentMutation.mutate(messageBody)
     setAiChatDraft('')
   }
 
   return (
-    <div className="grid min-h-screen grid-rows-[56px_minmax(0,1fr)] bg-[#f8fafc] text-[#0f172a]">
-      <header className="relative z-50 flex items-center justify-between border-b border-[#e2e8f0] bg-[#f8fafc]/92 px-3 backdrop-blur">
+    <div
+      className={`grid min-h-screen overflow-x-auto overflow-y-hidden bg-[#f8fafc] text-[#0f172a] motion-reduce:transition-none ${
+        isAiChatPanelResizing ? '' : 'transition-[grid-template-columns] duration-[220ms] ease-out'
+      }`}
+      style={workspaceGridStyle}
+    >
+      <div className="grid min-h-screen min-w-0 grid-rows-[56px_minmax(0,1fr)] bg-[#f8fafc]">
+        <header className="relative z-50 flex items-center justify-between border-b border-[#e2e8f0] bg-[#f8fafc]/92 px-3 backdrop-blur">
         <div className="flex min-w-0 items-center gap-3">
           <Link
             className="grid size-9 shrink-0 place-items-center rounded-md text-[#64748b] no-underline transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
@@ -446,19 +620,19 @@ function ProjectView() {
             <Import className="size-4" />
           </button>
           <button
-            aria-label="Toggle AI Chat"
+            aria-label="Toggle CAD Agent"
             aria-pressed={isAiChatOpen}
             className={`flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
               isAiChatOpen
                 ? 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]'
                 : 'border-transparent text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]'
             }`}
-            onClick={() => setIsAiChatOpen((currentIsOpen) => !currentIsOpen)}
-            title={isAiChatOpen ? 'Close AI Chat' : 'Open AI Chat'}
+            onClick={toggleAiChat}
+            title={isAiChatOpen ? 'Close CAD Agent' : 'Open CAD Agent'}
             type="button"
           >
-            <MessageSquare className="size-4" />
-            AI Chat
+            <BotMessageSquare className="size-4" />
+            CAD Agent
           </button>
           <input
             accept=".step,.stp,.gltf,.glb,.stl"
@@ -467,17 +641,13 @@ function ProjectView() {
             ref={fileInputRef}
             type="file"
           />
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#64748b]">
-            <CheckCircle2 className="size-4 text-[#475569]" />
-            Project saved
-          </div>
         </div>
-      </header>
+        </header>
 
-      <main className="grid min-h-0 overflow-x-auto overflow-y-hidden bg-[#f8fafc]" style={mainGridStyle}>
-        <div className="relative min-h-0 overflow-hidden bg-[#f8fafc]">
+        <main className="min-h-0 overflow-x-auto overflow-y-hidden bg-[#f8fafc]">
+        <div className="relative h-full min-h-0 overflow-hidden bg-[#f8fafc]">
           <section className="absolute inset-0 overflow-hidden">
-            <ModelPreview key={project.id} previewAssets={previewAssets} />
+            <ModelPreview deferResize={isAiChatTransitioning} key={project.id} previewAssets={previewAssets} />
             {shouldShowCanvasStatus && (
               <div
                 className="pointer-events-none absolute bottom-4 left-4 max-w-sm rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 p-4 shadow-xl backdrop-blur lg:left-[var(--canvas-status-left)]"
@@ -697,53 +867,65 @@ function ProjectView() {
           )}
         </aside>
         </div>
+        </main>
+      </div>
 
-        {isAiChatOpen && (
-          <aside
-            aria-label="AI Chat panel"
-            className="flex min-h-0 flex-col border-l border-[#d6dbe3] bg-[#ffffff]/96 shadow-[0_10px_28px_rgba(15,23,42,0.06)] backdrop-blur"
-          >
-            <div className="flex items-center justify-between border-b border-[#e2e8f0] px-4 py-3">
+      <div className="h-screen min-w-0 overflow-hidden">
+        <aside
+          aria-hidden={!isAiChatOpen}
+          aria-label="CAD Agent panel"
+          className={`relative flex h-full w-full min-h-0 flex-col overflow-hidden border-l bg-[#ffffff]/96 shadow-[0_10px_28px_rgba(15,23,42,0.06)] backdrop-blur will-change-transform transition-[border-color,box-shadow,opacity,transform] duration-[220ms] ease-out motion-reduce:transition-none ${
+            isAiChatOpen
+              ? 'pointer-events-auto translate-x-0 border-[#d6dbe3] opacity-100'
+              : 'pointer-events-none translate-x-full border-transparent opacity-0 shadow-none'
+          }`}
+          inert={!isAiChatOpen}
+        >
+            <div
+              aria-label="Resize CAD Agent panel"
+              aria-orientation="vertical"
+              aria-valuemax={aiChatPanelMaxWidth}
+              aria-valuemin={aiChatPanelMinWidth}
+              aria-valuenow={aiChatPanelWidth}
+              className="group absolute left-0 top-0 z-40 h-full w-2 cursor-col-resize"
+              onPointerDown={startAiChatPanelResize}
+              role="separator"
+              title="Resize CAD Agent panel"
+            >
+              <span className="absolute bottom-3 left-0 top-3 w-px rounded-full bg-transparent transition group-hover:bg-[#94a3b8]" />
+            </div>
+            <div className="flex h-14 shrink-0 items-center justify-between border-b border-[#e2e8f0] px-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
-                  <MessageSquare className="size-4 text-[#2563eb]" />
-                  AI Chat
+                  <BotMessageSquare className="size-4 text-[#2563eb]" />
+                  CAD Agent
                 </div>
-                <p className="mt-1 truncate text-xs text-[#64748b]">
+                <p className="mt-0.5 truncate text-[11px] leading-4 text-[#64748b]">
                   {projectModels.length} project sources attached
                 </p>
               </div>
               <button
-                aria-label="Close AI Chat"
+                aria-label="Close CAD Agent"
                 className="grid size-8 shrink-0 place-items-center rounded-md text-[#64748b] transition hover:bg-[#e2e8f0] hover:text-[#0f172a]"
-                onClick={() => setIsAiChatOpen(false)}
-                title="Close AI Chat"
+                onClick={closeAiChat}
+                title="Close CAD Agent"
                 type="button"
               >
                 <X className="size-4" />
               </button>
             </div>
 
-            <div className="border-b border-[#e2e8f0] px-4 py-3">
-              <div className="rounded-md border border-[#dbeafe] bg-[#eff6ff]/70 p-3">
-                <div className="font-mono text-[10px] uppercase text-[#1d4ed8]">CAD context</div>
-                <p className="mt-2 text-sm leading-6 text-[#475569]">
-                  Ready to use this project, its source list, and preview metadata once a chat endpoint is connected.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-4">
               {aiChatMessages.map((message) => (
                 <div
-                  className={`max-w-[88%] rounded-md px-3 py-2 text-sm leading-6 ${
+                  className={`max-w-[96%] rounded-md px-3 py-2 text-sm leading-6 ${
                     message.role === 'user'
                       ? 'ml-auto bg-[#0f172a] text-white'
                       : 'mr-auto border border-[#e2e8f0] bg-white/80 text-[#1f2937]'
                   }`}
                   key={message.id}
                 >
-                  {message.body}
+                  {message.role === 'assistant' ? <AgentMarkdown>{message.body}</AgentMarkdown> : message.body}
                 </div>
               ))}
             </div>
@@ -753,32 +935,32 @@ function ProjectView() {
               onSubmit={handleAiChatSubmit}
             >
               <label className="sr-only" htmlFor="project-ai-chat-input">
-                Message AI Chat
+                Message CAD Agent
               </label>
               <textarea
                 className="min-h-20 w-full resize-none rounded-lg bg-transparent px-2 py-2 text-sm leading-6 text-[#0f172a] outline-none placeholder:text-[#94a3b8]"
                 id="project-ai-chat-input"
                 onChange={(event) => setAiChatDraft(event.target.value)}
-                placeholder="Ask about this model"
+                placeholder="Describe what to inspect or change"
+                readOnly={projectAgentMutation.isPending}
                 value={aiChatDraft}
               />
               <div className="flex items-center justify-between gap-2 px-1 pb-1">
                 <div className="h-6 rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-2 font-mono text-[10px] uppercase leading-6 text-[#64748b]">
-                  Project context
+                  {projectAgentMutation.isPending ? 'Thinking' : 'Project context'}
                 </div>
                 <button
-                  aria-label="Send AI chat message"
+                  aria-label="Send CAD Agent message"
                   className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#0f172a] text-white shadow-[0_2px_8px_rgba(15,23,42,0.18)] transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:bg-[#d7dde5] disabled:shadow-none"
-                  disabled={aiChatDraft.trim() === ''}
+                  disabled={aiChatDraft.trim() === '' || projectAgentMutation.isPending}
                   type="submit"
                 >
                   <Send className="size-3.5" />
                 </button>
               </div>
             </form>
-          </aside>
-        )}
-      </main>
+        </aside>
+      </div>
     </div>
   )
 }

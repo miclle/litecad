@@ -42,7 +42,17 @@ func main() {
 		log.Fatalf("migrate database: %v", err)
 	}
 
-	svc, err := service.New(ctx, db)
+	aiClient, err := service.NewOpenAICompatibleAIClient(service.OpenAICompatibleConfig{
+		BaseURL:        cfg.AI.BaseURL,
+		APIKey:         cfg.AI.APIKey,
+		Model:          cfg.AI.Model,
+		TimeoutSeconds: cfg.AI.TimeoutSeconds,
+	})
+	if err != nil {
+		log.Fatalf("init ai client: %v", err)
+	}
+
+	svc, err := service.New(ctx, db, service.WithAIClient(aiClient))
 	if err != nil {
 		log.Fatalf("init service: %v", err)
 	}

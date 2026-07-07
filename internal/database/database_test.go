@@ -44,4 +44,7 @@ func TestMigrateCreatesUserTable(t *testing.T) {
 	if !db.Migrator().HasTable(&entity.Project{}) {
 		t.Fatal("Migrate should create projects table")
 	}
+	if !db.Migrator().HasTable(&entity.ProjectAgentMessage{}) {
+		t.Fatal("Migrate should create project agent messages table")
+	}
 }

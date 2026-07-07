@@ -13,15 +13,30 @@ import (
 type Service struct {
 	db               *gorm.DB
 	previewConverter ModelPreviewConverter
+	aiClient         AIClient
 }
 
 // New creates a new Service instance with the given database handle.
-func New(ctx context.Context, db *gorm.DB) (*Service, error) {
-	return NewWithPreviewConverter(ctx, db, NewFreeCADPreviewConverter())
+func New(ctx context.Context, db *gorm.DB, options ...Option) (*Service, error) {
+	return newService(ctx, db, NewFreeCADPreviewConverter(), options...)
 }
 
 // NewWithPreviewConverter creates a Service with an explicit preview converter.
-func NewWithPreviewConverter(ctx context.Context, db *gorm.DB, converter ModelPreviewConverter) (*Service, error) {
+func NewWithPreviewConverter(ctx context.Context, db *gorm.DB, converter ModelPreviewConverter, options ...Option) (*Service, error) {
+	return newService(ctx, db, converter, options...)
+}
+
+// Option configures a Service dependency.
+type Option func(*Service)
+
+// WithAIClient configures the optional AI chat client.
+func WithAIClient(client AIClient) Option {
+	return func(s *Service) {
+		s.aiClient = client
+	}
+}
+
+func newService(ctx context.Context, db *gorm.DB, converter ModelPreviewConverter, options ...Option) (*Service, error) {
 	l := logger.NewWithContext(ctx)
 
 	if db == nil {
@@ -33,7 +48,13 @@ func NewWithPreviewConverter(ctx context.Context, db *gorm.DB, converter ModelPr
 
 	l.Info("[Service] initialized")
 
-	return &Service{db: db, previewConverter: converter}, nil
+	svc := &Service{db: db, previewConverter: converter}
+	for _, option := range options {
+		if option != nil {
+			option(svc)
+		}
+	}
+	return svc, nil
 }
 
 // DB returns the underlying GORM database connection.

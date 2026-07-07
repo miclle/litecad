@@ -1,12 +1,15 @@
 import client from './client'
 import type {
   CreateProjectPayload,
+  ProjectAgentMessageResponse,
+  ProjectAgentMessagesResponse,
   ProjectGeometryDocumentResponse,
   ProjectModelPreviewArtifactResponse,
   ProjectModelResponse,
   ProjectModelsResponse,
   ProjectResponse,
   ProjectsResponse,
+  SendProjectAgentMessagePayload,
 } from 'src/types/project'
 
 export function fetchProjects() {
@@ -19,6 +22,14 @@ export function fetchProject(projectId: string) {
 
 export function fetchProjectGeometryDocument(projectId: string) {
   return client.get<ProjectGeometryDocumentResponse>(`/projects/${projectId}/geometry`)
+}
+
+export function sendProjectAgentMessage(projectId: string, payload: SendProjectAgentMessagePayload) {
+  return client.post<ProjectAgentMessageResponse>(`/projects/${projectId}/agent/messages`, payload)
+}
+
+export function fetchProjectAgentMessages(projectId: string) {
+  return client.get<ProjectAgentMessagesResponse>(`/projects/${projectId}/agent/messages`)
 }
 
 export function createProject(payload: CreateProjectPayload) {

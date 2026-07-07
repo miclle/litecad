@@ -92,3 +92,15 @@ type ProjectGeometryVersion struct {
 	SourceModel       ProjectModel                `gorm:"foreignKey:SourceModelID" json:"source_model"`
 	PreviewArtifact   ProjectModelPreviewArtifact `gorm:"foreignKey:PreviewArtifactID" json:"preview_artifact"`
 }
+
+// ProjectAgentMessage stores one CAD Agent conversation message for a project.
+type ProjectAgentMessage struct {
+	ID        string         `gorm:"size:32;primaryKey" json:"id"`
+	CreatedAt time.Time      `gorm:"index" json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	ProjectID string         `gorm:"size:32;index;not null" json:"project_id"`
+	Role      string         `gorm:"size:16;index;not null" json:"role"`
+	Body      string         `gorm:"type:text;not null" json:"body"`
+	Project   Project        `gorm:"foreignKey:ProjectID" json:"project"`
+}

@@ -2,9 +2,11 @@ import { describe, expect, test, vi } from 'vitest'
 
 import client from './client'
 import {
+  fetchProjectAgentMessages,
   fetchProjectGeometryDocument,
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
+  sendProjectAgentMessage,
   uploadProjectModel,
 } from './projects'
 
@@ -42,5 +44,21 @@ describe('project API', () => {
     fetchProjectGeometryDocument('prj_01test')
 
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/geometry')
+  })
+
+  test('sends project agent messages', () => {
+    const payload = {
+      messages: [{ role: 'user' as const, body: 'Inspect the model' }],
+    }
+
+    sendProjectAgentMessage('prj_01test', payload)
+
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/agent/messages', payload)
+  })
+
+  test('fetches project agent messages', () => {
+    fetchProjectAgentMessages('prj_01test')
+
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/agent/messages')
   })
 })

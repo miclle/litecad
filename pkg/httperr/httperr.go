@@ -41,6 +41,11 @@ func NewConflict(message string) *StatusError {
 	return &StatusError{Code: http.StatusConflict, Message: message}
 }
 
+// NewServiceUnavailable returns a 503 StatusError carrying message.
+func NewServiceUnavailable(message string) *StatusError {
+	return &StatusError{Code: http.StatusServiceUnavailable, Message: message}
+}
+
 // NewInternalServerError returns a 500 StatusError carrying message.
 func NewInternalServerError(message string) *StatusError {
 	return &StatusError{Code: http.StatusInternalServerError, Message: message}

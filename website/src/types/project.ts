@@ -96,6 +96,27 @@ export interface ProjectGeometryDocumentResponse {
   document: ProjectGeometryDocument
 }
 
+export interface ProjectAgentMessage {
+  id: string
+  project_id: string
+  role: 'assistant' | 'user'
+  body: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SendProjectAgentMessagePayload {
+  messages: Pick<ProjectAgentMessage, 'body' | 'role'>[]
+}
+
+export interface ProjectAgentMessageResponse {
+  message: ProjectAgentMessage
+}
+
+export interface ProjectAgentMessagesResponse {
+  messages: ProjectAgentMessage[]
+}
+
 export interface CreateProjectPayload {
   name: string
   description: string

@@ -74,6 +74,49 @@ dsn: "${LITECAD_TEST_DSN:-fallback}"
 	}
 }
 
+func TestLoadAIConfig(t *testing.T) {
+	t.Setenv("LITECAD_TEST_AI_KEY", "sk-test")
+	path := writeConfig(t, `addr: "127.0.0.1:46280"
+dsn: "host=localhost port=5432 user=postgres password=postgres dbname=app sslmode=disable"
+ai:
+  provider: openai_compatible
+  base_url: "${LITECAD_TEST_AI_BASE_URL:-https://example.test/v1/}"
+  api_key: "${LITECAD_TEST_AI_KEY:-}"
+  model: "cad-model"
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.AI.Provider != "openai_compatible" {
+		t.Fatalf("AI.Provider = %q, want openai_compatible", cfg.AI.Provider)
+	}
+	if cfg.AI.BaseURL != "https://example.test/v1" {
+		t.Fatalf("AI.BaseURL = %q", cfg.AI.BaseURL)
+	}
+	if cfg.AI.APIKey != "sk-test" || cfg.AI.Model != "cad-model" {
+		t.Fatalf("AI config = %+v", cfg.AI)
+	}
+	if cfg.AI.TimeoutSeconds != 30 {
+		t.Fatalf("AI.TimeoutSeconds = %d, want default 30", cfg.AI.TimeoutSeconds)
+	}
+}
+
+func TestLoadRejectsUnsupportedAIProvider(t *testing.T) {
+	path := writeConfig(t, `addr: "127.0.0.1:46280"
+dsn: "host=localhost port=5432 user=postgres password=postgres dbname=app sslmode=disable"
+ai:
+  provider: custom
+  api_key: "sk-test"
+  model: "cad-model"
+`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load should reject unsupported ai.provider")
+	}
+}
+
 func TestLoadRequiresAddrAndDSN(t *testing.T) {
 	for _, tc := range []struct {
 		name string

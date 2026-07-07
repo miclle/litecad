@@ -39,6 +39,18 @@ type projectGeometryDocumentResponse struct {
 	Document service.ProjectGeometryDocument `json:"document"`
 }
 
+type projectAgentMessageRequest struct {
+	Messages []service.AIChatMessage `json:"messages" binding:"required"`
+}
+
+type projectAgentMessageResponse struct {
+	Message service.ProjectAgentMessage `json:"message"`
+}
+
+type projectAgentMessagesResponse struct {
+	Messages []service.ProjectAgentMessage `json:"messages"`
+}
+
 // ListProjects returns the signed-in user's projects.
 func (ctrl *Ctrl) ListProjects(c *fox.Context) (projectsResponse, error) {
 	user, err := ctrl.currentUser(c)
@@ -166,6 +178,36 @@ func (ctrl *Ctrl) GetProjectGeometryDocument(c *fox.Context) (projectGeometryDoc
 	return projectGeometryDocumentResponse{Document: document}, nil
 }
 
+// ListProjectAgentMessages returns persisted CAD Agent messages for a signed-in user's project.
+func (ctrl *Ctrl) ListProjectAgentMessages(c *fox.Context) (projectAgentMessagesResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectAgentMessagesResponse{}, err
+	}
+	messages, err := ctrl.service.ListProjectAgentMessages(c.Request.Context(), user.ID, c.Param("projectID"))
+	if err != nil {
+		return projectAgentMessagesResponse{}, projectError(err)
+	}
+	return projectAgentMessagesResponse{Messages: messages}, nil
+}
+
+// SendProjectAgentMessage returns a CAD Agent reply grounded in the signed-in user's project.
+func (ctrl *Ctrl) SendProjectAgentMessage(c *fox.Context, req *projectAgentMessageRequest) (projectAgentMessageResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectAgentMessageResponse{}, err
+	}
+	message, err := ctrl.service.SendProjectAgentMessage(c.Request.Context(), service.ProjectAgentMessageInput{
+		OwnerUserID: user.ID,
+		ProjectID:   c.Param("projectID"),
+		Messages:    req.Messages,
+	})
+	if err != nil {
+		return projectAgentMessageResponse{}, projectError(err)
+	}
+	return projectAgentMessageResponse{Message: message}, nil
+}
+
 // GetProjectModelPreviewArtifact returns metadata for the browser-previewable artifact.
 func (ctrl *Ctrl) GetProjectModelPreviewArtifact(c *fox.Context) (projectModelPreviewArtifactResponse, error) {
 	user, err := ctrl.currentUser(c)
@@ -201,6 +243,10 @@ func projectError(err error) error {
 		return httperr.NewBadRequest("unsupported model format")
 	case errors.Is(err, service.ErrModelPreviewUnavailable):
 		return httperr.NewBadRequest("model preview unavailable")
+	case errors.Is(err, service.ErrInvalidAIChatInput):
+		return httperr.NewBadRequest("invalid agent message")
+	case errors.Is(err, service.ErrAIUnavailable):
+		return httperr.NewServiceUnavailable("AI provider is not configured")
 	case errors.Is(err, service.ErrProjectNotFound):
 		return httperr.NewNotFound("project not found")
 	default:

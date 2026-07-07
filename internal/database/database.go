@@ -61,6 +61,7 @@ func Migrate(ctx context.Context, db *gorm.DB) error {
 		&entity.ProjectModel{},
 		&entity.ProjectModelPreviewArtifact{},
 		&entity.ProjectGeometryVersion{},
+		&entity.ProjectAgentMessage{},
 	); err != nil {
 		return fmt.Errorf("auto migrate: %w", err)
 	}
