@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   Box,
   BotMessageSquare,
+  ChevronDown,
   CheckCircle2,
   Download,
   Eye,
@@ -26,6 +27,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Send,
+  SlidersHorizontal,
   Upload,
   X,
 } from 'lucide-react'
@@ -51,6 +53,9 @@ import {
   type CadKernelWorkerPreviewResult,
 } from 'src/cad/kernel-worker-client'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import {
   Popover,
   PopoverArrow,
@@ -80,7 +85,8 @@ import { ModelPreview } from './model-preview'
 import { exportMergedStepTargets, exportStepTarget } from './project-step-export-action'
 import {
   buildProjectPreviewAssets,
-  cadKernelOperationsForModel,
+  cadKernelGeometryOperationSignature,
+  cadKernelGeometryOperationsForModel,
   getModelDisplayName,
   parsedPreviewModels,
   projectPreviewSummary,
@@ -109,6 +115,7 @@ const defaultAiChatPanelWidth = 420
 const aiChatPanelMinWidth = 340
 const aiChatPanelMaxWidthRatio = 0.5
 const aiChatPanelTransitionMs = 220
+const transformAutosaveDelayMS = 500
 type AiChatMessage = {
   id: string
   role: 'assistant' | 'user'
@@ -188,6 +195,66 @@ function parseTransformDraft(draft: TransformDraft | undefined): CADTranslation 
   return translation
 }
 
+function cadUnitLabel(unit: string | undefined) {
+  const normalizedUnit = unit?.trim().toLowerCase()
+  if (normalizedUnit === 'millimetre' || normalizedUnit === 'millimeter' || normalizedUnit === 'millimeters' || normalizedUnit === 'millimetres') {
+    return 'mm'
+  }
+  if (normalizedUnit === 'centimetre' || normalizedUnit === 'centimeter' || normalizedUnit === 'centimeters' || normalizedUnit === 'centimetres') {
+    return 'cm'
+  }
+  if (normalizedUnit === 'metre' || normalizedUnit === 'meter' || normalizedUnit === 'meters' || normalizedUnit === 'metres') {
+    return 'm'
+  }
+  if (normalizedUnit === 'inch' || normalizedUnit === 'inches') {
+    return 'in'
+  }
+  return unit || 'unit'
+}
+
+function transformDraftSummary(draft: TransformDraft, unitLabel: string) {
+  return `X ${draft.x || '0'} · Y ${draft.y || '0'} · Z ${draft.z || '0'} ${unitLabel}`
+}
+
+function translationsEqual(left: CADTranslation | undefined, right: CADTranslation | undefined) {
+  return !!left && !!right && left.x === right.x && left.y === right.y && left.z === right.z
+}
+
+function transformDraftsEqual(left: TransformDraft | undefined, right: TransformDraft | undefined) {
+  return !!left && !!right && left.x === right.x && left.y === right.y && left.z === right.z
+}
+
+function NumericCADField({
+  ariaLabel,
+  label,
+  onChange,
+  unitLabel,
+  value,
+}: {
+  ariaLabel: string
+  label: string
+  onChange: (value: string) => void
+  unitLabel: string
+  value: string
+}) {
+  return (
+    <Field className="gap-1" orientation="vertical">
+      <FieldLabel className="text-[10px] font-medium uppercase tracking-normal text-[#64748b]">{label}</FieldLabel>
+      <div className="relative">
+        <Input
+          aria-label={ariaLabel}
+          className="h-8 rounded-md border-[#dbe3ec] bg-white pr-8 text-right font-mono text-[11px] text-[#334155] focus-visible:border-[#64748b] focus-visible:ring-[#cbd5e1]"
+          inputMode="decimal"
+          onChange={(event) => onChange(event.target.value)}
+          type="number"
+          value={value}
+        />
+        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[#94a3b8]">{unitLabel}</span>
+      </div>
+    </Field>
+  )
+}
+
 function ProjectView() {
   const { projectId = '' } = useParams()
   const queryClient = useQueryClient()
@@ -219,6 +286,9 @@ function ProjectView() {
   const [selectedStepExportTargetIDs, setSelectedStepExportTargetIDs] = useState<Set<string>>(() => new Set())
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
   const hasTouchedStepExportSelectionRef = useRef(false)
+  const latestTransformDraftsRef = useRef<Record<string, TransformDraft>>({})
+  const latestTransformSaveRequestByModelIDRef = useRef<Record<string, number>>({})
+  const transformAutosaveTimersRef = useRef<Record<string, number>>({})
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: async () => (await fetchProject(projectId)).data.project,
@@ -275,16 +345,36 @@ function ProjectView() {
     },
   })
   const updateCADModelTransformMutation = useMutation({
-    mutationFn: async ({ modelId, translation }: { modelId: string; translation: CADTranslation }) => {
+    mutationFn: async ({
+      modelId,
+      translation,
+    }: {
+      modelId: string
+      requestVersion: number
+      translation: CADTranslation
+    }) => {
       const currentNode = projectCADDocument?.nodes.find((node) => node.model_id === modelId)
       const transform = cadTransformWithTranslation(currentNode?.transform, translation)
       return (await updateProjectCADModelTransform(projectId, modelId, transform)).data.document
     },
     onSuccess: async (document, variables) => {
+      if ((latestTransformSaveRequestByModelIDRef.current[variables.modelId] ?? 0) > variables.requestVersion) {
+        return
+      }
+      const latestDraft = latestTransformDraftsRef.current[variables.modelId]
+      if (latestDraft) {
+        const latestTranslation = parseTransformDraft(latestDraft)
+        if (latestTranslation && !translationsEqual(latestTranslation, variables.translation)) {
+          return
+        }
+      }
       setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: '' }))
       queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
     },
     onError: (_error, variables) => {
+      if ((latestTransformSaveRequestByModelIDRef.current[variables.modelId] ?? 0) > variables.requestVersion) {
+        return
+      }
       setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: 'Invalid transform' }))
     },
   })
@@ -375,6 +465,7 @@ function ProjectView() {
     enabled: projectId !== '' && projectModelsQuery.isSuccess,
   })
   const projectCADDocument = projectCADDocumentQuery.data
+  const documentUnitLabel = cadUnitLabel(projectCADDocument?.unit)
   const stepExportTargets = useMemo(
     () => buildStepExportTargets(projectModels, projectCADDocument),
     [projectModels, projectCADDocument],
@@ -388,25 +479,45 @@ function ProjectView() {
     () => new Map((projectCADDocument?.nodes ?? []).map((node) => [node.model_id, node])),
     [projectCADDocument],
   )
+  const modelTranslationsByID = useMemo(() => {
+    const translations: Record<string, CADTranslation> = {}
+    for (const node of projectCADDocument?.nodes ?? []) {
+      translations[node.model_id] = translationFromCADTransform(node.transform)
+    }
+    return translations
+  }, [projectCADDocument])
+  const draftModelTranslationsByID = useMemo(() => {
+    const translations: Record<string, CADTranslation> = {}
+    for (const [modelID, draft] of Object.entries(transformDraftsByModelID)) {
+      const translation = parseTransformDraft(draft)
+      if (translation) {
+        translations[modelID] = translation
+      }
+    }
+    return translations
+  }, [transformDraftsByModelID])
   const previewModels = useMemo(() => parsedPreviewModels(projectModels), [projectModels])
   const browserKernelPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'step'), [previewModels])
   const backendPreviewModels = useMemo(() => previewModels.filter((model) => model.format !== 'step'), [previewModels])
   const latestModel = projectModels[0]
   const latestProductName = latestModel?.metadata.product_names?.[0]
   const browserKernelPreviewQueries = useQueries({
-    queries: browserKernelPreviewModels.map((model) => ({
-      queryKey: ['projects', projectId, 'models', model.id, 'kernel-preview', projectCADDocument?.revision ?? 0],
-      queryFn: async () => {
-        const source = (await fetchProjectModelSource(projectId, model.id)).data
-        return runStepPreviewInWorker({
-          filename: model.original_filename,
-          stepText: await source.text(),
-          operations: cadKernelOperationsForModel(projectCADDocument, model.id),
-        })
-      },
-      enabled: projectId !== '' && projectCADDocumentQuery.isSuccess,
-      retry: false,
-    })),
+    queries: browserKernelPreviewModels.map((model) => {
+      const geometryOperationSignature = cadKernelGeometryOperationSignature(projectCADDocument, model.id)
+      return {
+        queryKey: ['projects', projectId, 'models', model.id, 'kernel-preview', geometryOperationSignature],
+        queryFn: async () => {
+          const source = (await fetchProjectModelSource(projectId, model.id)).data
+          return runStepPreviewInWorker({
+            filename: model.original_filename,
+            stepText: await source.text(),
+            operations: cadKernelGeometryOperationsForModel(projectCADDocument, model.id),
+          })
+        },
+        enabled: projectId !== '' && projectCADDocumentQuery.isSuccess,
+        retry: false,
+      }
+    }),
   })
   const kernelMeshesByModelID = browserKernelPreviewQueries.reduce<Record<string, CadKernelWorkerPreviewResult>>(
     (meshByModelID, query, index) => {
@@ -499,11 +610,31 @@ function ProjectView() {
     setTransformDraftsByModelID((currentDrafts) => {
       const nextDrafts = { ...currentDrafts }
       for (const node of projectCADDocument.nodes ?? []) {
-        nextDrafts[node.model_id] = transformDraftFromTranslation(translationFromCADTransform(node.transform))
+        const savedDraft = transformDraftFromTranslation(translationFromCADTransform(node.transform))
+        const latestDraft = latestTransformDraftsRef.current[node.model_id]
+        if (latestDraft && !transformDraftsEqual(latestDraft, savedDraft)) {
+          nextDrafts[node.model_id] = latestDraft
+          continue
+        }
+        clearTransformAutosaveTimer(node.model_id)
+        delete latestTransformDraftsRef.current[node.model_id]
+        nextDrafts[node.model_id] = savedDraft
       }
       return nextDrafts
     })
+    // clearTransformAutosaveTimer reads a ref and is intentionally kept out of the dependency list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectCADDocument])
+
+  useEffect(
+    () => () => {
+      Object.values(transformAutosaveTimersRef.current).forEach((timerID) => window.clearTimeout(timerID))
+      transformAutosaveTimersRef.current = {}
+      latestTransformDraftsRef.current = {}
+      latestTransformSaveRequestByModelIDRef.current = {}
+    },
+    [projectId],
+  )
 
   useEffect(() => {
     setSelectedStepExportTargetIDs((currentIDs) => {
@@ -766,28 +897,45 @@ function ProjectView() {
       return nextIDs
     })
   }
-  const updateTransformDraft = (modelID: string, axis: keyof CADTranslation, value: string) => {
-    setTransformDraftsByModelID((currentDrafts) => {
-      const node = cadNodeByModelID.get(modelID)
-      const currentDraft = currentDrafts[modelID] ?? transformDraftFromTranslation(translationFromCADTransform(node?.transform))
-      return {
-        ...currentDrafts,
-        [modelID]: {
-          ...currentDraft,
-          [axis]: value,
-        },
-      }
-    })
-  }
-  const applyTransformDraft = (modelID: string) => {
-    const node = cadNodeByModelID.get(modelID)
-    const draft = transformDraftsByModelID[modelID] ?? transformDraftFromTranslation(translationFromCADTransform(node?.transform))
-    const translation = parseTransformDraft(draft)
-    if (!translation) {
-      setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: 'Invalid transform' }))
+  const clearTransformAutosaveTimer = (modelID: string) => {
+    const timerID = transformAutosaveTimersRef.current[modelID]
+    if (timerID === undefined) {
       return
     }
-    updateCADModelTransformMutation.mutate({ modelId: modelID, translation })
+    window.clearTimeout(timerID)
+    delete transformAutosaveTimersRef.current[modelID]
+  }
+  const scheduleTransformAutosave = (modelID: string, draft: TransformDraft) => {
+    clearTransformAutosaveTimer(modelID)
+    transformAutosaveTimersRef.current[modelID] = window.setTimeout(() => {
+      delete transformAutosaveTimersRef.current[modelID]
+      const translation = parseTransformDraft(draft)
+      if (!translation) {
+        setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: 'Invalid transform' }))
+        return
+      }
+      const savedTranslation = modelTranslationsByID[modelID] ?? translationFromCADTransform(cadNodeByModelID.get(modelID)?.transform)
+      if (translationsEqual(translation, savedTranslation)) {
+        delete latestTransformDraftsRef.current[modelID]
+        setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: '' }))
+        return
+      }
+      const requestVersion = (latestTransformSaveRequestByModelIDRef.current[modelID] ?? 0) + 1
+      latestTransformSaveRequestByModelIDRef.current[modelID] = requestVersion
+      updateCADModelTransformMutation.mutate({ modelId: modelID, requestVersion, translation })
+    }, transformAutosaveDelayMS)
+  }
+  const updateTransformDraft = (modelID: string, axis: keyof CADTranslation, value: string) => {
+    const node = cadNodeByModelID.get(modelID)
+    const currentDraft = transformDraftsByModelID[modelID] ?? transformDraftFromTranslation(translationFromCADTransform(node?.transform))
+    const nextDraft = {
+      ...currentDraft,
+      [axis]: value,
+    }
+    latestTransformDraftsRef.current[modelID] = nextDraft
+    setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [modelID]: nextDraft }))
+    setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: '' }))
+    scheduleTransformAutosave(modelID, nextDraft)
   }
   const latestBoxFeatureDraftForModel = (modelID: string) => {
     const latestBoxOperation = [...(projectCADDocument?.operations ?? [])]
@@ -1108,7 +1256,9 @@ function ProjectView() {
           <section className="absolute inset-0 overflow-hidden">
             <ModelPreview
               deferResize={isAiChatTransitioning}
+              draftModelTranslations={draftModelTranslationsByID}
               key={project.id}
+              modelTranslations={modelTranslationsByID}
               previewAssets={previewAssets}
               visibleModelIds={visibleModelIds}
             />
@@ -1224,8 +1374,6 @@ function ProjectView() {
                       const transformDraft =
                         transformDraftsByModelID[model.id] ?? transformDraftFromTranslation(translationFromCADTransform(node?.transform))
                       const transformError = transformErrorByModelID[model.id]
-                      const isTransformUpdating =
-                        updateCADModelTransformMutation.isPending && updateCADModelTransformMutation.variables?.modelId === model.id
                       const boxFeatureDraft = boxFeatureDraftsByModelID[model.id] ?? latestBoxFeatureDraftForModel(model.id)
                       const boxFeatureError = boxFeatureErrorByModelID[model.id]
                       const isBoxFeatureUpdating =
@@ -1260,77 +1408,107 @@ function ProjectView() {
                             <div
                               aria-label={model.parse_status === 'parsed' ? 'Model preview is ready' : 'Model is being processed'}
                               className={`size-1.5 shrink-0 rounded-full ${
-                                model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'
-                              }`}
-                            />
+                              model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'
+                            }`}
+                          />
                           </div>
-                          <div className="mt-2 grid grid-cols-[repeat(3,minmax(0,1fr))_28px] items-center gap-1.5">
-                            {(['x', 'y', 'z'] as const).map((axis) => (
-                              <label className="min-w-0" key={axis}>
-                                <span className="sr-only">{`${axis.toUpperCase()} translation for ${modelDisplayName}`}</span>
-                                <input
-                                  aria-label={`${axis.toUpperCase()} translation for ${modelDisplayName}`}
-                                  className="h-7 w-full rounded border border-[#dbe3ec] bg-white px-1.5 text-right font-mono text-[11px] text-[#334155] outline-none transition focus:border-[#64748b] focus:ring-2 focus:ring-[#cbd5e1]"
-                                  inputMode="decimal"
-                                  onChange={(event) => updateTransformDraft(model.id, axis, event.target.value)}
-                                  title={`${axis.toUpperCase()} translation`}
-                                  type="number"
-                                  value={transformDraft[axis]}
-                                />
-                              </label>
-                            ))}
-                            <button
-                              aria-label={`Apply transform for ${modelDisplayName}`}
-                              className="grid size-7 shrink-0 place-items-center rounded border border-[#dbe3ec] bg-white text-[#64748b] transition hover:border-[#94a3b8] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
-                              disabled={isTransformUpdating || !projectCADDocument}
-                              onClick={() => applyTransformDraft(model.id)}
-                              title="Apply transform"
-                              type="button"
-                            >
-                              <CheckCircle2 className="size-3.5" />
-                            </button>
-                          </div>
-                          {transformError && <p className="mt-1 text-[11px] leading-4 text-[#8a2f24]">{transformError}</p>}
-                          {model.format === 'step' && (
-                            <div className="mt-2 border-t border-[#e2e8f0] pt-2">
-                              <div className="grid grid-cols-[repeat(3,minmax(0,1fr))_28px] items-center gap-1.5">
-                                {(
-                                  [
-                                    ['originX', 'Origin X'],
-                                    ['originY', 'Origin Y'],
-                                    ['originZ', 'Origin Z'],
-                                    ['sizeX', 'Size X'],
-                                    ['sizeY', 'Size Y'],
-                                    ['sizeZ', 'Size Z'],
-                                  ] as const
-                                ).map(([field, label]) => (
-                                  <label className="min-w-0" key={field}>
-                                    <span className="sr-only">{`${label} for ${modelDisplayName}`}</span>
-                                    <input
-                                      aria-label={`${label} for ${modelDisplayName}`}
-                                      className="h-7 w-full rounded border border-[#dbe3ec] bg-white px-1.5 text-right font-mono text-[11px] text-[#334155] outline-none transition focus:border-[#64748b] focus:ring-2 focus:ring-[#cbd5e1]"
-                                      inputMode="decimal"
-                                      onChange={(event) => updateBoxFeatureDraft(model.id, field, event.target.value)}
-                                      title={label}
-                                      type="number"
-                                      value={boxFeatureDraft[field]}
-                                    />
-                                  </label>
-                                ))}
-                                <button
-                                  aria-label={`Add box union for ${modelDisplayName}`}
-                                  className="col-start-4 row-span-2 grid size-7 shrink-0 place-items-center rounded border border-[#dbe3ec] bg-white text-[#64748b] transition hover:border-[#94a3b8] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
-                                  disabled={isBoxFeatureUpdating || !projectCADDocument}
-                                  onClick={() => addBoxFeatureDraft(model.id)}
-                                  title="Add box union"
-                                  type="button"
-                                >
-                                  <Box className="size-3.5" />
-                                </button>
-                              </div>
-                              {boxFeatureError && <p className="mt-1 text-[11px] leading-4 text-[#8a2f24]">{boxFeatureError}</p>}
+                          <Collapsible>
+                            <div className="mt-1.5 flex min-w-0 items-center gap-2 pl-6">
+                              <p className="min-w-0 flex-1 truncate font-mono text-[10px] uppercase text-[#64748b]">
+                                {transformDraftSummary(transformDraft, documentUnitLabel)}
+                              </p>
+                              <CollapsibleTrigger className="group/edit-model inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-[#64748b] transition hover:bg-[#e2e8f0] hover:text-[#0f172a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]">
+                                <SlidersHorizontal className="size-3" />
+                                Edit
+                                <ChevronDown className="size-3 transition group-data-[panel-open]/edit-model:rotate-180" />
+                              </CollapsibleTrigger>
                             </div>
-                          )}
+                            <CollapsibleContent className="mt-2 rounded-md border border-[#e2e8f0] bg-white/80 p-2.5">
+                              <FieldSet className="gap-3">
+                                <FieldGroup className="gap-2">
+                                  <div className="flex min-w-0 items-center justify-between gap-2">
+                                    <FieldTitle className="text-xs text-[#334155]">
+                                      Move position
+                                    </FieldTitle>
+                                    <span className="font-mono text-[10px] uppercase text-[#94a3b8]">{documentUnitLabel}</span>
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-1.5">
+                                    {(['x', 'y', 'z'] as const).map((axis) => (
+                                      <NumericCADField
+                                        ariaLabel={`${axis.toUpperCase()} translation for ${modelDisplayName}`}
+                                        key={axis}
+                                        label={axis.toUpperCase()}
+                                        onChange={(value) => updateTransformDraft(model.id, axis, value)}
+                                        unitLabel={documentUnitLabel}
+                                        value={transformDraft[axis]}
+                                      />
+                                    ))}
+                                  </div>
+                                  {transformError && <FieldError className="text-[11px] leading-4">{transformError}</FieldError>}
+                                </FieldGroup>
+                                {model.format === 'step' && (
+                                  <FieldGroup className="gap-2 border-t border-[#e2e8f0] pt-3">
+                                    <div className="flex min-w-0 flex-col gap-0.5">
+                                      <FieldTitle className="text-xs text-[#334155]">
+                                        Add box feature
+                                      </FieldTitle>
+                                      <p className="text-[11px] leading-4 text-[#64748b]">
+                                        Fuse a rectangular box into this STEP model for preview and export.
+                                      </p>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                      {(
+                                        [
+                                          ['originX', 'Origin X'],
+                                          ['originY', 'Origin Y'],
+                                          ['originZ', 'Origin Z'],
+                                        ] as const
+                                      ).map(([field, label]) => (
+                                        <NumericCADField
+                                          ariaLabel={`${label} for ${modelDisplayName}`}
+                                          key={field}
+                                          label={label.replace('Origin ', '')}
+                                          onChange={(value) => updateBoxFeatureDraft(model.id, field, value)}
+                                          unitLabel={documentUnitLabel}
+                                          value={boxFeatureDraft[field]}
+                                        />
+                                      ))}
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                      {(
+                                        [
+                                          ['sizeX', 'Size X'],
+                                          ['sizeY', 'Size Y'],
+                                          ['sizeZ', 'Size Z'],
+                                        ] as const
+                                      ).map(([field, label]) => (
+                                        <NumericCADField
+                                          ariaLabel={`${label} for ${modelDisplayName}`}
+                                          key={field}
+                                          label={label.replace('Size ', '')}
+                                          onChange={(value) => updateBoxFeatureDraft(model.id, field, value)}
+                                          unitLabel={documentUnitLabel}
+                                          value={boxFeatureDraft[field]}
+                                        />
+                                      ))}
+                                    </div>
+                                    {boxFeatureError && <FieldError className="text-[11px] leading-4">{boxFeatureError}</FieldError>}
+                                    <Button
+                                      className="w-full justify-center"
+                                      disabled={isBoxFeatureUpdating || !projectCADDocument}
+                                      onClick={() => addBoxFeatureDraft(model.id)}
+                                      size="sm"
+                                      type="button"
+                                      variant="outline"
+                                    >
+                                      <Box data-icon="inline-start" />
+                                      Add box feature
+                                    </Button>
+                                  </FieldGroup>
+                                )}
+                              </FieldSet>
+                            </CollapsibleContent>
+                          </Collapsible>
                           {stepExportError && <p className="mt-1 text-[11px] leading-4 text-[#8a2f24]">{stepExportError}</p>}
                           {stepExportStatus && <p className="mt-1 text-[11px] leading-4 text-[#3f6212]">{stepExportStatus}</p>}
                         </div>

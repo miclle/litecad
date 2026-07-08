@@ -2,13 +2,15 @@ import { describe, expect, test } from 'vitest'
 
 import {
   buildProjectPreviewAssets,
+  cadKernelGeometryOperationSignature,
+  cadKernelGeometryOperationsForModel,
   cadKernelOperationsForModel,
   getModelDisplayName,
   parsedPreviewModels,
   projectPreviewAssetSignature,
   projectPreviewSummary,
 } from './project-preview-assets'
-import type { ProjectModel, ProjectModelPreviewArtifact } from 'src/types/project'
+import type { ProjectCADDocument, ProjectModel, ProjectModelPreviewArtifact } from 'src/types/project'
 
 const baseModel = {
   project_id: 'prj_01test',
@@ -136,7 +138,7 @@ describe('project preview assets', () => {
     ).toBe('verify')
   })
 
-  test('attaches CAD document transforms to backend preview assets and signatures', () => {
+  test('attaches CAD document transforms to backend preview assets without rebuilding signatures', () => {
     const model = {
       ...baseModel,
       id: 'mdl_stl',
@@ -175,10 +177,10 @@ describe('project preview assets', () => {
     )
 
     expect(assets[0]).toMatchObject({ modelId: 'mdl_stl', transform })
-    expect(projectPreviewAssetSignature(assets)).toContain(transform.matrix.join(','))
+    expect(projectPreviewAssetSignature(assets)).toBe('mdl_stl:obj:blob:stl-obj')
   })
 
-  test('uses CAD document revision instead of object transforms for kernel mesh signatures', () => {
+  test('uses geometry operation signatures instead of object transforms for kernel mesh signatures', () => {
     const model = {
       ...baseModel,
       id: 'mdl_step',
@@ -219,9 +221,9 @@ describe('project preview assets', () => {
       },
     )
 
-    expect(assets[0]).toMatchObject({ modelId: 'mdl_step', previewFormat: 'kernel-mesh', documentRevision: 4 })
+    expect(assets[0]).toMatchObject({ modelId: 'mdl_step', previewFormat: 'kernel-mesh' })
     expect(assets[0]).not.toHaveProperty('transform')
-    expect(projectPreviewAssetSignature(assets)).toBe('mdl_step:kernel-mesh:3:3:3:rev4')
+    expect(projectPreviewAssetSignature(assets)).toBe('mdl_step:kernel-mesh:3:3:3')
   })
 
   test('maps CAD document operations into model-scoped kernel replay operations', () => {
@@ -286,6 +288,51 @@ describe('project preview assets', () => {
         },
       },
     ])
+  })
+
+  test('keeps transform operations out of geometry preview replay signatures', () => {
+    const document = {
+      project_id: 'prj_01test',
+      id: 'doc_01test',
+      schema_version: 1,
+      revision: 3,
+      unit: 'millimetre',
+      nodes: [],
+      operations: [
+        {
+          id: 'op_transform',
+          type: 'transform',
+          model_id: 'mdl_step',
+          transform: { matrix: [1, 0, 0, 14, 0, 1, 0, -2, 0, 0, 1, 6, 0, 0, 0, 1] },
+          created_at: '2026-07-07T00:00:01Z',
+        },
+        {
+          id: 'op_box',
+          type: 'box-union',
+          model_id: 'mdl_step',
+          box: {
+            origin: [2, -1, 4],
+            size: [8, 6, 3],
+          },
+          created_at: '2026-07-07T00:00:02Z',
+        },
+      ],
+      created_at: '2026-07-07T00:00:00Z',
+      updated_at: '2026-07-07T00:00:01Z',
+    } satisfies ProjectCADDocument
+
+    expect(cadKernelGeometryOperationsForModel(document, 'mdl_step')).toEqual([
+      {
+        id: 'op_box',
+        type: 'box-union',
+        modelId: 'mdl_step',
+        box: {
+          origin: [2, -1, 4],
+          size: [8, 6, 3],
+        },
+      },
+    ])
+    expect(cadKernelGeometryOperationSignature(document, 'mdl_step')).toBe('op_box:box:2,-1,4:8,6,3')
   })
 
   test('summarizes multi-model preview readiness for the workbench chrome', () => {

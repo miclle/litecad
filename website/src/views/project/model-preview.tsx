@@ -24,9 +24,12 @@ import {
   type ViewOrientation,
 } from './view-orientation'
 import { projectPreviewAssetSignature, type ProjectPreviewAsset } from './project-preview-assets'
+import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 
 type ModelPreviewProps = {
   deferResize?: boolean
+  draftModelTranslations?: Record<string, CADTranslation>
+  modelTranslations?: Record<string, CADTranslation>
   previewAssets?: ProjectPreviewAsset[]
   visibleModelIds?: readonly string[]
 }
@@ -42,6 +45,14 @@ const modelPreviewZoomSpeed = 4.2
 const modelPreviewZoomHUDHideDelayMS = 1000
 const modelPreviewZoomDistanceEpsilonRatio = 0.002
 const modelPreviewResizeCompleteEventName = 'litecad:model-preview-resize-complete'
+const zeroTranslation: CADTranslation = { x: 0, y: 0, z: 0 }
+
+const cadTranslationDeltaToPreviewVector = (translation: CADTranslation, shouldOrientCADPreview: boolean) => {
+  if (!shouldOrientCADPreview) {
+    return new THREE.Vector3(translation.x, translation.y, translation.z)
+  }
+  return new THREE.Vector3(translation.x, translation.z, -translation.y)
+}
 
 const niceGridStep = (radius: number) => {
   const targetStep = Math.max(radius / 10, 0.01)
@@ -148,15 +159,35 @@ const createWorldGrid = (radius: number) => {
 
 const previewMaterialColors = [0xb6c0b8, 0xc4b78a, 0x9fb6c8, 0xc7a0a0, 0xa8bea0]
 
-export function ModelPreview({ deferResize = false, previewAssets = [], visibleModelIds }: ModelPreviewProps) {
+const modelTranslationSignature = (translations: Record<string, CADTranslation> | undefined) =>
+  Object.entries(translations ?? {})
+    .sort(([leftID], [rightID]) => leftID.localeCompare(rightID))
+    .map(([modelID, translation]) => `${modelID}:${translation.x},${translation.y},${translation.z}`)
+    .join('|')
+
+export function ModelPreview({
+  deferResize = false,
+  draftModelTranslations,
+  modelTranslations,
+  previewAssets = [],
+  visibleModelIds,
+}: ModelPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const deferResizeRef = useRef(deferResize)
+  const draftModelTranslationsRef = useRef<Record<string, CADTranslation> | undefined>(draftModelTranslations)
+  const modelTranslationsRef = useRef<Record<string, CADTranslation> | undefined>(modelTranslations)
   const visibleModelIdsRef = useRef<readonly string[]>(visibleModelIds)
+  const previewObjectBasePositionsByModelIDRef = useRef(new Map<string, THREE.Vector3>())
+  const previewObjectBaseUsesCADOrientationByModelIDRef = useRef(new Map<string, boolean>())
+  const previewObjectBaseTranslationsByModelIDRef = useRef(new Map<string, CADTranslation>())
   const previewObjectsByModelIDRef = useRef(new Map<string, THREE.Object3D>())
+  const syncPreviewObjectTransformsRef = useRef<() => void>(() => undefined)
   const syncPreviewObjectVisibilityRef = useRef<() => void>(() => undefined)
   const zoomHUDHideTimeoutRef = useRef<number | undefined>(undefined)
   const [zoomHUD, setZoomHUD] = useState<ZoomHUDState>({ percent: 100, visible: false })
   const previewAssetSignature = useMemo(() => projectPreviewAssetSignature(previewAssets), [previewAssets])
+  const draftModelTranslationSignature = modelTranslationSignature(draftModelTranslations)
+  const modelTranslationValueSignature = modelTranslationSignature(modelTranslations)
   const visibleModelIdSignature = visibleModelIds?.join('|') ?? '*'
   const isPreviewObjectVisible = (modelId: string) => !visibleModelIdsRef.current || visibleModelIdsRef.current.includes(modelId)
   const clearZoomHUDHideTimeout = () => {
@@ -186,12 +217,23 @@ export function ModelPreview({ deferResize = false, previewAssets = [], visibleM
   }, [visibleModelIdSignature])
 
   useEffect(() => {
+    draftModelTranslationsRef.current = draftModelTranslations
+    modelTranslationsRef.current = modelTranslations
+    syncPreviewObjectTransformsRef.current()
+    // The signatures keep this effect primitive-stable while allowing callers to pass fresh objects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftModelTranslationSignature, modelTranslationValueSignature])
+
+  useEffect(() => {
     const container = containerRef.current
     if (!container) {
       return undefined
     }
     hideZoomHUD()
     previewObjectsByModelIDRef.current = new Map()
+    previewObjectBasePositionsByModelIDRef.current = new Map()
+    previewObjectBaseUsesCADOrientationByModelIDRef.current = new Map()
+    previewObjectBaseTranslationsByModelIDRef.current = new Map()
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -271,6 +313,30 @@ export function ModelPreview({ deferResize = false, previewAssets = [], visibleM
       const visibleModelIDs = visibleModelIdsRef.current ? new Set(visibleModelIdsRef.current) : undefined
       previewObjectsByModelIDRef.current.forEach((object, modelID) => {
         object.visible = !visibleModelIDs || visibleModelIDs.has(modelID)
+      })
+      renderScene()
+    }
+    syncPreviewObjectTransformsRef.current = () => {
+      previewObjectsByModelIDRef.current.forEach((object, modelID) => {
+        const basePosition = previewObjectBasePositionsByModelIDRef.current.get(modelID)
+        if (!basePosition) {
+          return
+        }
+        const baseTranslation = previewObjectBaseTranslationsByModelIDRef.current.get(modelID) ?? zeroTranslation
+        const activeTranslation = draftModelTranslationsRef.current?.[modelID] ?? modelTranslationsRef.current?.[modelID]
+        if (!activeTranslation) {
+          object.position.copy(basePosition)
+          return
+        }
+        const delta = cadTranslationDeltaToPreviewVector(
+          {
+            x: activeTranslation.x - baseTranslation.x,
+            y: activeTranslation.y - baseTranslation.y,
+            z: activeTranslation.z - baseTranslation.z,
+          },
+          previewObjectBaseUsesCADOrientationByModelIDRef.current.get(modelID) ?? false,
+        )
+        object.position.copy(basePosition).add(delta)
       })
       renderScene()
     }
@@ -436,6 +502,16 @@ export function ModelPreview({ deferResize = false, previewAssets = [], visibleM
       if (asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh') {
         orientCADPreviewObject(object)
       }
+      previewObjectBasePositionsByModelIDRef.current.set(asset.modelId, object.position.clone())
+      previewObjectBaseUsesCADOrientationByModelIDRef.current.set(
+        asset.modelId,
+        asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh',
+      )
+      previewObjectBaseTranslationsByModelIDRef.current.set(
+        asset.modelId,
+        asset.transform ? translationFromCADTransform(asset.transform) : zeroTranslation,
+      )
+      syncPreviewObjectTransformsRef.current()
       object.visible = isPreviewObjectVisible(asset.modelId)
       object.traverse((child) => {
         if (child instanceof THREE.Mesh) {
@@ -460,6 +536,7 @@ export function ModelPreview({ deferResize = false, previewAssets = [], visibleM
       })
       previewObjectsByModelIDRef.current.set(asset.modelId, object)
       previewGroup.add(object)
+      syncPreviewObjectTransformsRef.current()
       updatePreviewBounds()
     }
 
@@ -633,7 +710,11 @@ export function ModelPreview({ deferResize = false, previewAssets = [], visibleM
       controls.dispose()
       isDisposed = true
       syncPreviewObjectVisibilityRef.current = () => undefined
+      syncPreviewObjectTransformsRef.current = () => undefined
       previewObjectsByModelIDRef.current = new Map()
+      previewObjectBasePositionsByModelIDRef.current = new Map()
+      previewObjectBaseUsesCADOrientationByModelIDRef.current = new Map()
+      previewObjectBaseTranslationsByModelIDRef.current = new Map()
       scene.remove(previewGroup)
       disposeObject3DResources(scene)
       renderer.dispose()

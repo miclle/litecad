@@ -15,7 +15,7 @@ export type ProjectPreviewKernelMeshAsset = {
   previewFormat: 'kernel-mesh'
   mesh: CadKernelMesh
   meshSummary: CadKernelMeshSummary
-  documentRevision?: number
+  geometrySignature?: string
   transform?: undefined
 }
 
@@ -45,12 +45,13 @@ export function buildProjectPreviewAssets(
     const kernelMesh = model.format === 'step' ? kernelMeshesByModelID[model.id] : undefined
     const transform = transformByModelID.get(model.id)
     if (kernelMesh) {
+      const geometrySignature = cadKernelGeometryOperationSignature(cadDocument, model.id)
       return [
         {
           modelId: model.id,
           name: getModelDisplayName(model),
           previewFormat: 'kernel-mesh',
-          documentRevision: cadDocument?.revision,
+          ...(geometrySignature ? { geometrySignature } : {}),
           ...kernelMesh,
         },
       ]
@@ -76,14 +77,28 @@ export function buildProjectPreviewAssets(
 export function projectPreviewAssetSignature(assets: readonly ProjectPreviewAsset[]) {
   return assets
     .map((asset) => {
-      const transformSignature = asset.transform ? `:${asset.transform.matrix.join(',')}` : ''
       if (asset.previewFormat === 'kernel-mesh') {
-        const revisionSignature = asset.documentRevision === undefined ? '' : `:rev${asset.documentRevision}`
-        return `${asset.modelId}:${asset.previewFormat}:${asset.mesh.positions.length}:${asset.mesh.normals.length}:${asset.mesh.indices.length}${revisionSignature}`
+        const geometrySignature = asset.geometrySignature ? `:${asset.geometrySignature}` : ''
+        return `${asset.modelId}:${asset.previewFormat}:${asset.mesh.positions.length}:${asset.mesh.normals.length}:${asset.mesh.indices.length}${geometrySignature}`
       }
-      return `${asset.modelId}:${asset.previewFormat}:${asset.previewUrl}${transformSignature}`
+      return `${asset.modelId}:${asset.previewFormat}:${asset.previewUrl}`
     })
     .join('|')
+}
+
+export function cadKernelGeometryOperationsForModel(cadDocument: ProjectCADDocument | undefined, modelId: string): CadKernelOperation[] {
+  return cadKernelOperationsForModel(cadDocument, modelId).filter((operation) => operation.type !== 'transform')
+}
+
+export function cadKernelGeometryOperationSignature(cadDocument: ProjectCADDocument | undefined, modelId: string) {
+  return cadKernelGeometryOperationsForModel(cadDocument, modelId)
+    .map((operation) => {
+      if (operation.type === 'box-union') {
+        return `${operation.id}:box:${operation.box.origin.join(',')}:${operation.box.size.join(',')}`
+      }
+      return operation.id
+    })
+    .join(';')
 }
 
 export function cadKernelOperationsForModel(cadDocument: ProjectCADDocument | undefined, modelId: string): CadKernelOperation[] {
