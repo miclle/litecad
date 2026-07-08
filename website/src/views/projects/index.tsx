@@ -1,13 +1,24 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, Clock3, FileBox, Grid2X2, Loader2, Plus, Sparkles, UserRound, X } from 'lucide-react'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Clock3, FileBox, Grid2X2, Loader2, Plus, Sparkles, UserRound, X } from 'lucide-react'
 import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import axios from 'axios'
 
-import { createProject, fetchProjects } from 'src/api/projects'
+import {
+  createProject,
+  fetchProjectCADDocument,
+  fetchProjectGeometryDocument,
+  fetchProjectModelPreview,
+  fetchProjects,
+} from 'src/api/projects'
 import type { AuthUser } from 'src/types/auth'
 import type { Project } from 'src/types/project'
+import { ModelPreview } from 'src/views/project/model-preview'
+import {
+  buildProjectPreviewAssets,
+  parsedPreviewModels,
+} from 'src/views/project/project-preview-assets'
 
 const projectSwatches = ['#cfd8c0', '#f0c77b', '#b8c7d9', '#d6b7a8', '#a8cfc4', '#d7cfec']
 
@@ -111,7 +122,7 @@ function ProjectsView() {
             title="Start a project library"
           />
         ) : (
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+          <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-8 gap-y-9">
             {projects.map((project, index) => (
               <ProjectCard index={index} key={project.id} project={project} />
             ))}
@@ -190,7 +201,8 @@ function ProjectsView() {
 }
 
 function ProjectCard({ index, project }: { index: number; project: Project }) {
-  const swatch = projectSwatches[index % projectSwatches.length]
+  const models = project.thumbnail?.models ?? []
+  const modelCount = project.thumbnail?.model_count ?? 0
   const updatedAt = new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
@@ -199,47 +211,205 @@ function ProjectCard({ index, project }: { index: number; project: Project }) {
 
   return (
     <Link
-      className="group block overflow-hidden rounded-md border border-[#d8cfbc] bg-[#fcfaf3] text-inherit no-underline shadow-sm transition hover:-translate-y-0.5 hover:border-[#a9b093] hover:shadow-md"
+      className="group flex aspect-[4/3] flex-col overflow-hidden rounded-lg border border-[#ddd6c8] bg-[#fbfaf5] text-inherit no-underline transition hover:-translate-y-0.5 hover:border-[#c9c0ad] hover:shadow-sm"
       to={`/projects/${project.id}`}
     >
-      <div className="relative h-36 border-b border-[#d9d3c2] bg-[#efe6d5]">
-        <div className="absolute inset-0 grid grid-cols-4 grid-rows-3 gap-px p-3">
-          {Array.from({ length: 12 }).map((_, cellIndex) => (
-            <div
-              className="border border-[#171814]/10 bg-white/42"
-              key={cellIndex}
-              style={{ backgroundColor: cellIndex % 5 === 0 ? swatch : undefined }}
-            />
-          ))}
-        </div>
-        <div className="absolute bottom-3 left-3 rounded-md border border-[#171814]/12 bg-[#fcfaf3]/90 px-2.5 py-1.5 font-mono text-xs uppercase text-[#52625a] backdrop-blur">
-          CAD brief
-        </div>
+      <div className="relative min-h-0 flex-1 overflow-hidden border-b border-[#e5e1d8] bg-[#f8fafc]">
+        <ProjectCoverPreview cardIndex={index} models={models} projectId={project.id} />
       </div>
-      <div className="p-4">
-        <h2 className="line-clamp-2 min-h-12 text-base font-semibold leading-6 text-[#171814]">{project.name}</h2>
-        <p className="mt-2 line-clamp-2 min-h-11 text-sm leading-6 text-[#686a60]">
-          {project.description || 'No description yet.'}
-        </p>
-        <div className="mt-5 flex items-center gap-2 border-t border-[#e4ddcd] pt-3 text-xs text-[#7a6c52]">
-          <CalendarDays className="size-4" />
-          Updated {updatedAt}
+      <div className="flex h-16 shrink-0 items-center justify-between gap-4 px-4 py-3.5">
+        <div className="flex min-w-0 items-center">
+          <span className="min-w-0">
+            <h2 className="line-clamp-1 text-sm font-medium leading-5 text-[#171814]">{project.name}</h2>
+            <span className="block truncate text-xs leading-5 text-[#8a857b]">Edited {updatedAt}</span>
+          </span>
         </div>
+        <span className="shrink-0 text-xs font-medium uppercase tracking-normal text-[#686a60]">
+          {modelCount > 0 ? `${modelCount} model${modelCount > 1 ? 's' : ''}` : 'No models'}
+        </span>
       </div>
     </Link>
   )
 }
 
+function ProjectCoverPreview({
+  cardIndex,
+  models,
+  projectId,
+}: {
+  cardIndex: number
+  models: Project['thumbnail']['models']
+  projectId: string
+}) {
+  const hasModels = models.length > 0
+  const geometryDocumentQuery = useQuery({
+    queryKey: ['projects', projectId, 'geometry', 'card-preview'],
+    queryFn: async () => (await fetchProjectGeometryDocument(projectId)).data.document,
+    enabled: hasModels,
+    retry: false,
+    staleTime: 30_000,
+  })
+  const geometryDocument = geometryDocumentQuery.data
+  const previewModels = useMemo(() => parsedPreviewModels(geometryDocument?.models ?? []), [geometryDocument?.models])
+  const previewArtifacts = useMemo(() => geometryDocument?.preview_artifacts ?? [], [geometryDocument?.preview_artifacts])
+  const cadDocumentQuery = useQuery({
+    queryKey: ['projects', projectId, 'cad-document', 'card-preview'],
+    queryFn: async () => (await fetchProjectCADDocument(projectId)).data.document,
+    enabled: hasModels && geometryDocumentQuery.isSuccess && previewArtifacts.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  })
+  const previewBlobQueries = useQueries({
+    queries: previewArtifacts.map((artifact) => ({
+      queryKey: ['projects', projectId, 'models', artifact.model_id, 'preview', 'card-preview'],
+      queryFn: async () => (await fetchProjectModelPreview(projectId, artifact.model_id)).data,
+      enabled: hasModels,
+      retry: false,
+      staleTime: 30_000,
+    })),
+  })
+  const previewBlobSignature = previewBlobQueries
+    .map((query, index) => {
+      const modelID = previewArtifacts[index]?.model_id ?? ''
+      const blob = query.data
+      return `${modelID}:${blob ? `${blob.type}:${blob.size}` : 'pending'}`
+    })
+    .join('|')
+  const [previewUrlsByModelID, setPreviewUrlsByModelID] = useState<Record<string, string>>({})
+  const previewAssets = useMemo(
+    () =>
+      buildProjectPreviewAssets(
+        previewModels,
+        previewArtifacts,
+        previewUrlsByModelID,
+        {},
+        cadDocumentQuery.data,
+      ),
+    [cadDocumentQuery.data, previewArtifacts, previewModels, previewUrlsByModelID],
+  )
+
+  useEffect(() => {
+    const nextPreviewUrlsByModelID: Record<string, string> = {}
+    const objectUrls: string[] = []
+
+    previewBlobQueries.forEach((query, index) => {
+      const blob = query.data
+      const modelID = previewArtifacts[index]?.model_id
+      if (!blob || !modelID) {
+        return
+      }
+      const objectUrl = URL.createObjectURL(blob)
+      nextPreviewUrlsByModelID[modelID] = objectUrl
+      objectUrls.push(objectUrl)
+    })
+
+    setPreviewUrlsByModelID(nextPreviewUrlsByModelID)
+    return () => {
+      objectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl))
+    }
+    // previewBlobSignature captures blob identity without depending on fresh query objects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewBlobSignature, previewArtifacts])
+
+  if (previewAssets.length > 0) {
+    return (
+      <div className="absolute inset-0 overflow-hidden bg-[#f8fafc]">
+        <div className="absolute inset-0 pointer-events-none">
+          <ModelPreview previewAssets={previewAssets} variant="thumbnail" visibleModelIds={previewAssets.map((asset) => asset.modelId)} />
+        </div>
+        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#f8fafc] to-transparent" />
+      </div>
+    )
+  }
+
+  return (
+    <ProjectPlaceholderCover cardIndex={cardIndex} modelCount={Math.max(models.length, hasModels ? 1 : 0)} />
+  )
+}
+
+function ProjectPlaceholderCover({ cardIndex, modelCount }: { cardIndex: number; modelCount: number }) {
+  const objectCount = Math.max(1, Math.min(modelCount || 1, 3))
+  const objects = Array.from({ length: objectCount })
+
+  return (
+    <svg
+      aria-hidden="true"
+      className="absolute inset-0 size-full bg-[#f8fafc]"
+      preserveAspectRatio="xMidYMid slice"
+      viewBox="0 0 320 180"
+    >
+      <defs>
+        <pattern height="12" id={`project-card-grid-${cardIndex}`} patternUnits="userSpaceOnUse" width="12">
+          <path d="M 12 0 L 0 0 0 12" fill="none" stroke="#cbd5e1" strokeOpacity="0.4" strokeWidth="0.7" />
+        </pattern>
+        <filter id={`project-card-shadow-${cardIndex}`} x="-30%" y="-30%" width="160%" height="170%">
+          <feDropShadow dx="0" dy="8" floodColor="#0f172a" floodOpacity="0.16" stdDeviation="7" />
+        </filter>
+        <linearGradient id={`project-card-fade-${cardIndex}`} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#f8fafc" stopOpacity="0" />
+          <stop offset="100%" stopColor="#f8fafc" stopOpacity="0.92" />
+        </linearGradient>
+      </defs>
+
+      <rect fill="#f8fafc" height="180" width="320" />
+      <g opacity="0.62" transform="translate(160 122) rotate(-8) skewX(-24)">
+        <rect fill={`url(#project-card-grid-${cardIndex})`} height="132" width="430" x="-215" y="-66" />
+      </g>
+
+      <g strokeLinecap="round" strokeWidth="0.5" transform="translate(160 108)">
+        <line stroke="#e36b5d" strokeOpacity="0.2" vectorEffect="non-scaling-stroke" x1="-154" x2="154" y1="28" y2="-24" />
+        <line stroke="#55a968" strokeOpacity="0.2" vectorEffect="non-scaling-stroke" x1="-126" x2="124" y1="-12" y2="52" />
+        <line stroke="#5c86d6" strokeOpacity="0.22" vectorEffect="non-scaling-stroke" x1="0" x2="0" y1="4" y2="-36" />
+      </g>
+
+      <g filter={`url(#project-card-shadow-${cardIndex})`}>
+        {objects.map((_, modelIndex) => {
+          const x = 124 + (modelIndex - (objectCount - 1) / 2) * 42
+          const y = 77 + (modelIndex % 2) * 7
+          const color = projectSwatches[(cardIndex + modelIndex) % projectSwatches.length]
+          return (
+            <g key={modelIndex} transform={`translate(${x} ${y}) rotate(-5)`}>
+              <path
+                d="M17 0 H58 Q67 0 66 9 L60 46 Q58 58 47 58 H10 Q0 58 2 46 L8 10 Q10 0 17 0 Z"
+                fill={color}
+                stroke="#0f172a"
+                strokeOpacity="0.15"
+              />
+              <path
+                d="M58 0 L76 10 Q82 14 80 24 L74 60 Q72 70 61 72 L47 58 Q58 58 60 46 L66 9 Q67 0 58 0 Z"
+                fill="#0f172a"
+                fillOpacity="0.14"
+                stroke="#0f172a"
+                strokeOpacity="0.08"
+              />
+              <path
+                d="M8 10 Q10 0 17 0 H58 L76 10 H25 Q17 10 15 20 L10 48 Q9 55 14 58 H10 Q0 58 2 46 Z"
+                fill="#ffffff"
+                fillOpacity="0.22"
+              />
+              <path d="M15 14 H58" stroke="#ffffff" strokeOpacity="0.34" strokeWidth="1" />
+              <ellipse cx="36" cy="29" fill="#f8fafc" fillOpacity="0.42" rx="10" ry="5" />
+            </g>
+          )
+        })}
+      </g>
+
+      <rect fill={`url(#project-card-fade-${cardIndex})`} height="56" width="320" y="124" />
+    </svg>
+  )
+}
+
 function ProjectSkeletonGrid() {
   return (
-    <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+    <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-8 gap-y-9">
       {Array.from({ length: 8 }).map((_, index) => (
-        <div className="overflow-hidden rounded-md border border-[#d8cfbc] bg-[#fcfaf3]" key={index}>
-          <div className="h-36 animate-pulse border-b border-[#d9d3c2] bg-[#e8e1d0]" />
-          <div className="grid gap-3 p-4">
-            <div className="h-5 w-3/4 animate-pulse rounded-sm bg-[#e8e1d0]" />
-            <div className="h-4 w-full animate-pulse rounded-sm bg-[#eee7d8]" />
-            <div className="h-4 w-2/3 animate-pulse rounded-sm bg-[#eee7d8]" />
+        <div className="flex aspect-[4/3] flex-col overflow-hidden rounded-lg border border-[#ddd6c8] bg-[#fbfaf5]" key={index}>
+          <div className="min-h-0 flex-1 animate-pulse border-b border-[#e5e1d8] bg-[#e8e1d0]" />
+          <div className="flex h-16 shrink-0 items-center px-4 py-3.5">
+            <div className="grid flex-1 gap-2">
+              <div className="h-4 w-2/3 animate-pulse rounded-sm bg-[#e8e1d0]" />
+              <div className="h-3 w-1/3 animate-pulse rounded-sm bg-[#eee7d8]" />
+            </div>
           </div>
         </div>
       ))}

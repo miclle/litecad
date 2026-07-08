@@ -31,6 +31,7 @@ type ModelPreviewProps = {
   draftModelTranslations?: Record<string, CADTranslation>
   modelTranslations?: Record<string, CADTranslation>
   previewAssets?: ProjectPreviewAsset[]
+  variant?: 'workspace' | 'thumbnail'
   visibleModelIds?: readonly string[]
 }
 
@@ -170,6 +171,7 @@ export function ModelPreview({
   draftModelTranslations,
   modelTranslations,
   previewAssets = [],
+  variant = 'workspace',
   visibleModelIds,
 }: ModelPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -540,7 +542,7 @@ export function ModelPreview({
       updatePreviewBounds()
     }
 
-    renderer.domElement.style.cursor = 'grab'
+    renderer.domElement.style.cursor = variant === 'thumbnail' ? 'default' : 'grab'
 
     const updateCameraForOrientation = (width: number, height: number, orientation: ViewOrientation) => {
       const direction = orientationToViewDirection(orientation)
@@ -552,10 +554,10 @@ export function ModelPreview({
               : ([0, 1, 0] as [number, number, number])),
           )
       const aspect = width / Math.max(height, 1)
-      const frameSize = previewRadius * (width < 640 ? 3.9 : 3.35)
+      const frameSize = previewRadius * (variant === 'thumbnail' ? 2.15 : width < 640 ? 3.9 : 3.35)
       const distance = Math.max(
         frameSize / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)),
-        previewRadius * 4.5,
+        previewRadius * (variant === 'thumbnail' ? 3.15 : 4.5),
       )
 
       isProgrammaticCameraUpdate = true
@@ -733,14 +735,16 @@ export function ModelPreview({
       data-model-preview
       data-preview-asset-count={previewAssets.length}
     >
-      <div
-        aria-hidden={!zoomHUD.visible}
-        className={`pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-md border border-[#d6dbe3] bg-white/92 px-3 py-1.5 font-mono text-[11px] font-semibold uppercase text-[#475569] shadow-[0_10px_28px_rgba(15,23,42,0.08)] backdrop-blur transition duration-300 motion-reduce:transition-none ${
-          zoomHUD.visible ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
-        }`}
-      >
-        View {zoomHUD.percent}%
-      </div>
+      {variant === 'workspace' && (
+        <div
+          aria-hidden={!zoomHUD.visible}
+          className={`pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-md border border-[#d6dbe3] bg-white/92 px-3 py-1.5 font-mono text-[11px] font-semibold uppercase text-[#475569] shadow-[0_10px_28px_rgba(15,23,42,0.08)] backdrop-blur transition duration-300 motion-reduce:transition-none ${
+            zoomHUD.visible ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
+          }`}
+        >
+          View {zoomHUD.percent}%
+        </div>
+      )}
     </div>
   )
 }
