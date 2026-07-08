@@ -1,7 +1,11 @@
 import { describe, expect, test, vi } from 'vitest'
 
 import { createCadKernelWorkerHandler } from './kernel-worker-handler'
-import type { CadKernelStepPreviewResult, CadKernelStepRoundTripResult } from './opencascade-step'
+import type {
+  CadKernelStepAssemblyExportResult,
+  CadKernelStepPreviewResult,
+  CadKernelStepRoundTripResult,
+} from './opencascade-step'
 
 describe('CAD kernel worker handler', () => {
   test('runs a valid STEP round-trip request and posts the result', async () => {
@@ -13,10 +17,11 @@ describe('CAD kernel worker handler', () => {
       },
       exportedStepText: 'ISO-10303-21;END-ISO-10303-21;',
     }
+    const runStepAssemblyExport = vi.fn()
     const runStepPreview = vi.fn()
     const runStepRoundTrip = vi.fn(async () => result)
     const postMessage = vi.fn()
-    const handler = createCadKernelWorkerHandler({ runStepPreview, runStepRoundTrip, postMessage })
+    const handler = createCadKernelWorkerHandler({ runStepAssemblyExport, runStepPreview, runStepRoundTrip, postMessage })
 
     await handler({
       id: 'job-1',
@@ -28,6 +33,7 @@ describe('CAD kernel worker handler', () => {
     })
 
     expect(runStepPreview).not.toHaveBeenCalled()
+    expect(runStepAssemblyExport).not.toHaveBeenCalled()
     expect(runStepRoundTrip).toHaveBeenCalledWith({
       filename: 'part.step',
       stepText: 'ISO-10303-21;END-ISO-10303-21;',
@@ -54,10 +60,11 @@ describe('CAD kernel worker handler', () => {
         indices: [0, 1, 2],
       },
     }
+    const runStepAssemblyExport = vi.fn()
     const runStepPreview = vi.fn(async () => result)
     const runStepRoundTrip = vi.fn()
     const postMessage = vi.fn()
-    const handler = createCadKernelWorkerHandler({ runStepPreview, runStepRoundTrip, postMessage })
+    const handler = createCadKernelWorkerHandler({ runStepAssemblyExport, runStepPreview, runStepRoundTrip, postMessage })
 
     await handler({
       id: 'job-preview',
@@ -72,6 +79,7 @@ describe('CAD kernel worker handler', () => {
       filename: 'part.step',
       stepText: 'ISO-10303-21;END-ISO-10303-21;',
     })
+    expect(runStepAssemblyExport).not.toHaveBeenCalled()
     expect(runStepRoundTrip).not.toHaveBeenCalled()
     expect(postMessage).toHaveBeenCalledWith({
       id: 'job-preview',
@@ -84,6 +92,44 @@ describe('CAD kernel worker handler', () => {
           hasNormals: true,
         },
       },
+    })
+  })
+
+  test('runs a valid STEP assembly export request without tessellating preview mesh', async () => {
+    const result: CadKernelStepAssemblyExportResult = {
+      exportedStepText: 'ISO-10303-21;END-ISO-10303-21;',
+    }
+    const runStepAssemblyExport = vi.fn(async () => result)
+    const runStepPreview = vi.fn()
+    const runStepRoundTrip = vi.fn()
+    const postMessage = vi.fn()
+    const handler = createCadKernelWorkerHandler({ runStepAssemblyExport, runStepPreview, runStepRoundTrip, postMessage })
+
+    await handler({
+      id: 'job-assembly',
+      type: 'step-assembly-export',
+      payload: {
+        filename: 'assembly.step',
+        sources: [
+          { filename: 'part-a.step', stepText: 'ISO-10303-21;' },
+          { filename: 'part-b.step', stepText: 'ISO-10303-21;' },
+        ],
+      },
+    })
+
+    expect(runStepAssemblyExport).toHaveBeenCalledWith({
+      filename: 'assembly.step',
+      sources: [
+        { filename: 'part-a.step', stepText: 'ISO-10303-21;' },
+        { filename: 'part-b.step', stepText: 'ISO-10303-21;' },
+      ],
+    })
+    expect(runStepPreview).not.toHaveBeenCalled()
+    expect(runStepRoundTrip).not.toHaveBeenCalled()
+    expect(postMessage).toHaveBeenCalledWith({
+      id: 'job-assembly',
+      type: 'step-assembly-export-result',
+      result,
     })
   })
 
@@ -103,10 +149,11 @@ describe('CAD kernel worker handler', () => {
         matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1],
       },
     ]
+    const runStepAssemblyExport = vi.fn()
     const runStepPreview = vi.fn(async () => result)
     const runStepRoundTrip = vi.fn()
     const postMessage = vi.fn()
-    const handler = createCadKernelWorkerHandler({ runStepPreview, runStepRoundTrip, postMessage })
+    const handler = createCadKernelWorkerHandler({ runStepAssemblyExport, runStepPreview, runStepRoundTrip, postMessage })
 
     await handler({
       id: 'job-preview',
@@ -126,14 +173,16 @@ describe('CAD kernel worker handler', () => {
   })
 
   test('rejects invalid requests before invoking the kernel', async () => {
+    const runStepAssemblyExport = vi.fn()
     const runStepPreview = vi.fn()
     const runStepRoundTrip = vi.fn()
     const postMessage = vi.fn()
-    const handler = createCadKernelWorkerHandler({ runStepPreview, runStepRoundTrip, postMessage })
+    const handler = createCadKernelWorkerHandler({ runStepAssemblyExport, runStepPreview, runStepRoundTrip, postMessage })
 
     await handler({ id: 'job-1', type: 'step-round-trip', payload: { filename: 'part.step' } })
 
     expect(runStepPreview).not.toHaveBeenCalled()
+    expect(runStepAssemblyExport).not.toHaveBeenCalled()
     expect(runStepRoundTrip).not.toHaveBeenCalled()
     expect(postMessage).toHaveBeenCalledWith({
       id: 'unknown',
@@ -143,12 +192,13 @@ describe('CAD kernel worker handler', () => {
   })
 
   test('returns kernel failures as structured worker errors', async () => {
+    const runStepAssemblyExport = vi.fn()
     const runStepPreview = vi.fn()
     const runStepRoundTrip = vi.fn(async () => {
       throw new Error('STEP import failed')
     })
     const postMessage = vi.fn()
-    const handler = createCadKernelWorkerHandler({ runStepPreview, runStepRoundTrip, postMessage })
+    const handler = createCadKernelWorkerHandler({ runStepAssemblyExport, runStepPreview, runStepRoundTrip, postMessage })
 
     await handler({
       id: 'job-2',

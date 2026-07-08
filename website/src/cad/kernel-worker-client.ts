@@ -1,11 +1,13 @@
 import type {
   CadKernelResponse,
+  CadKernelStepAssemblyExportRequest,
+  CadKernelStepAssemblyExportResponse,
   CadKernelStepPreviewRequest,
   CadKernelStepPreviewResponse,
   CadKernelStepRoundTripRequest,
   CadKernelStepRoundTripResponse,
 } from './kernel-protocol'
-import type { CadKernelStepPreviewInput, CadKernelStepRoundTripInput } from './opencascade-step'
+import type { CadKernelStepAssemblyExportInput, CadKernelStepPreviewInput, CadKernelStepRoundTripInput } from './opencascade-step'
 
 export type CadKernelWorkerLike = {
   addEventListener: (type: 'message', listener: (event: MessageEvent<CadKernelResponse>) => void) => void
@@ -16,6 +18,7 @@ export type CadKernelWorkerLike = {
 
 export type CadKernelWorkerResult = CadKernelStepRoundTripResponse['result']
 export type CadKernelWorkerPreviewResult = CadKernelStepPreviewResponse['result']
+export type CadKernelWorkerAssemblyExportResult = CadKernelStepAssemblyExportResponse['result']
 
 const createWorker = (): CadKernelWorkerLike => new Worker(new URL('./kernel.worker.ts', import.meta.url), { type: 'module' })
 
@@ -43,6 +46,18 @@ export function runStepPreviewInWorker(
   return runCadKernelRequestInWorker(request, workerFactory)
 }
 
+export function runStepAssemblyExportInWorker(
+  input: CadKernelStepAssemblyExportInput,
+  workerFactory: () => CadKernelWorkerLike = createWorker,
+): Promise<CadKernelWorkerAssemblyExportResult> {
+  const request: CadKernelStepAssemblyExportRequest = {
+    id: createRequestID(),
+    type: 'step-assembly-export',
+    payload: input,
+  }
+  return runCadKernelRequestInWorker(request, workerFactory)
+}
+
 function runCadKernelRequestInWorker(
   request: CadKernelStepRoundTripRequest,
   workerFactory: () => CadKernelWorkerLike,
@@ -52,9 +67,13 @@ function runCadKernelRequestInWorker(
   workerFactory: () => CadKernelWorkerLike,
 ): Promise<CadKernelWorkerPreviewResult>
 function runCadKernelRequestInWorker(
-  request: CadKernelStepRoundTripRequest | CadKernelStepPreviewRequest,
+  request: CadKernelStepAssemblyExportRequest,
   workerFactory: () => CadKernelWorkerLike,
-): Promise<CadKernelWorkerResult | CadKernelWorkerPreviewResult> {
+): Promise<CadKernelWorkerAssemblyExportResult>
+function runCadKernelRequestInWorker(
+  request: CadKernelStepRoundTripRequest | CadKernelStepPreviewRequest | CadKernelStepAssemblyExportRequest,
+  workerFactory: () => CadKernelWorkerLike,
+): Promise<CadKernelWorkerResult | CadKernelWorkerPreviewResult | CadKernelWorkerAssemblyExportResult> {
   const worker = workerFactory()
   return new Promise((resolve, reject) => {
     const cleanup = () => {

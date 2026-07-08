@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { applyCADOperationsToShape, createOpenCascadeLoader } from './opencascade-step'
+import { applyCADOperationsToShape, createOpenCascadeLoader, runStepAssemblyExportWithKernel } from './opencascade-step'
 
 describe('createOpenCascadeLoader', () => {
   it('loads the OpenCascade factory with an explicit Vite wasm URL', async () => {
@@ -11,7 +11,10 @@ describe('createOpenCascadeLoader', () => {
         unlink: vi.fn(),
       },
     }
-    const initOpenCascade = vi.fn(async (_options?: { locateFile?: (path: string) => string }) => openCascade)
+    const initOpenCascade = vi.fn(async (options?: { locateFile?: (path: string) => string }) => {
+      void options
+      return openCascade
+    })
 
     const loadOpenCascade = createOpenCascadeLoader(initOpenCascade, '/assets/replicad_single.wasm')
     const loaded = await loadOpenCascade()
@@ -119,5 +122,84 @@ describe('applyCADOperationsToShape', () => {
     ).toBe(fusedShape)
     expect(openCascade.gp_Pnt_3).toHaveBeenCalledWith(2, -1, 4)
     expect(buildBox).toHaveBeenCalledOnce()
+  })
+})
+
+describe('runStepAssemblyExportWithKernel', () => {
+  it('imports selected STEP sources into one compound shape before writing STEP', async () => {
+    const firstShape = { name: 'first-shape' }
+    const secondShape = { name: 'second-shape' }
+    const compoundShape = { name: 'compound-shape' }
+    const readerShapes = [firstShape, secondShape]
+    const unlink = vi.fn()
+    const writeFile = vi.fn()
+    const addShape = vi.fn()
+    const makeCompound = vi.fn()
+    const transfer = vi.fn()
+    const write = vi.fn()
+    const openCascade = {
+      FS: {
+        writeFile,
+        readFile: vi.fn(() => 'ISO-10303-21;\nEND-ISO-10303-21;'),
+        unlink,
+      },
+      IFSelect_ReturnStatus: {
+        IFSelect_RetDone: 1,
+      },
+      STEPControl_StepModelType: {
+        STEPControl_AsIs: 0,
+      },
+      STEPControl_Reader_1: vi.fn(function reader(this: {
+        ReadFile: (filename: string) => number
+        TransferRoots: () => number
+        OneShape: () => unknown
+      }) {
+        const shape = readerShapes.shift()
+        this.ReadFile = vi.fn(() => 1)
+        this.TransferRoots = vi.fn(() => 1)
+        this.OneShape = () => shape
+      }),
+      STEPControl_Writer_1: vi.fn(function writer(this: {
+        Transfer: typeof transfer
+        Write: typeof write
+      }) {
+        this.Transfer = transfer.mockReturnValue(1)
+        this.Write = write.mockReturnValue(1)
+      }),
+      Message_ProgressRange_1: vi.fn(function progressRange() {}),
+      TopoDS_Compound: vi.fn(function compound(this: { name: string }) {
+        this.name = compoundShape.name
+      }),
+      TopoDS_Builder: vi.fn(function builder(this: {
+        MakeCompound: typeof makeCompound
+        Add: typeof addShape
+      }) {
+        this.MakeCompound = makeCompound
+        this.Add = addShape
+      }),
+    }
+
+    const result = await runStepAssemblyExportWithKernel(openCascade, {
+      filename: 'assembly.step',
+      sources: [
+        { filename: 'part-a.step', stepText: 'ISO-10303-21;' },
+        { filename: 'part-b.step', stepText: 'ISO-10303-21;' },
+      ],
+    })
+
+    expect(writeFile).toHaveBeenCalledWith('/litecad-assembly-input-0.step', 'ISO-10303-21;')
+    expect(writeFile).toHaveBeenCalledWith('/litecad-assembly-input-1.step', 'ISO-10303-21;')
+    expect(makeCompound).toHaveBeenCalledOnce()
+    expect(addShape).toHaveBeenCalledWith(expect.anything(), firstShape)
+    expect(addShape).toHaveBeenCalledWith(expect.anything(), secondShape)
+    expect(transfer).toHaveBeenCalledWith(
+      expect.objectContaining({ name: compoundShape.name }),
+      0,
+      true,
+      expect.anything(),
+    )
+    expect(result.exportedStepText).toContain('END-ISO-10303-21')
+    expect(unlink).toHaveBeenCalledWith('/litecad-assembly-input-0.step')
+    expect(unlink).toHaveBeenCalledWith('/litecad-assembly-input-1.step')
   })
 })

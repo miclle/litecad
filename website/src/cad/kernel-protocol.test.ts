@@ -34,6 +34,36 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts STEP assembly export requests with one or more sources', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-assembly',
+        type: 'step-assembly-export',
+        payload: {
+          filename: 'assembly.step',
+          sources: [
+            {
+              filename: 'part-a.step',
+              stepText: 'ISO-10303-21;END-ISO-10303-21;',
+              operations: [
+                {
+                  id: 'op_01test',
+                  type: 'transform',
+                  modelId: 'mdl_01test',
+                  matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1],
+                },
+              ],
+            },
+            {
+              filename: 'part-b.step',
+              stepText: 'ISO-10303-21;END-ISO-10303-21;',
+            },
+          ],
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('accepts STEP preview requests with replayable CAD operations', () => {
     expect(
       isCadKernelRequest({
@@ -82,6 +112,7 @@ describe('CAD kernel worker protocol', () => {
   test('rejects malformed worker requests before they reach the kernel', () => {
     expect(isCadKernelRequest({ id: 'job-1', type: 'step-round-trip', payload: { filename: 'part.step' } })).toBe(false)
     expect(isCadKernelRequest({ id: 'job-1', type: 'unknown', payload: { stepText: 'x' } })).toBe(false)
+    expect(isCadKernelRequest({ id: 'job-1', type: 'step-assembly-export', payload: { filename: 'assembly.step', sources: [] } })).toBe(false)
     expect(isCadKernelRequest(null)).toBe(false)
   })
 

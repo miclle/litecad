@@ -15,6 +15,8 @@ export type StepExportDownload = {
   stepText: string
 }
 
+export type StepExportMode = 'separate' | 'merged'
+
 export function buildStepExportTargets(models: ProjectModel[], cadDocument: ProjectCADDocument | undefined): StepExportTarget[] {
   return parsedPreviewModels(models)
     .filter((model) => model.format === 'step')
@@ -27,10 +29,24 @@ export function buildStepExportTargets(models: ProjectModel[], cadDocument: Proj
     }))
 }
 
+export function defaultSelectedStepExportTargetIDs(targets: readonly StepExportTarget[]) {
+  return new Set(targets.map((target) => target.modelId))
+}
+
+export function selectedStepExportTargets(targets: readonly StepExportTarget[], selectedTargetIDs: ReadonlySet<string>) {
+  return targets.filter((target) => selectedTargetIDs.has(target.modelId))
+}
+
 export function stepExportFilename(sourceFilename: string, revision: number) {
   const baseName = sourceFilename.replace(/\.[^.]+$/, '').trim() || 'model'
   const safeBaseName = baseName.replace(/[\\/:*?"<>|]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'model'
   return `${safeBaseName}-litecad-r${revision}.step`
+}
+
+export function stepAssemblyExportFilename(projectName: string, revision: number) {
+  const baseName = projectName.trim() || 'assembly'
+  const safeBaseName = baseName.replace(/[\\/:*?"<>|]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'assembly'
+  return `${safeBaseName}-litecad-assembly-r${revision}.step`
 }
 
 export function createStepExportBlob(stepText: string) {

@@ -45,6 +45,7 @@ import {
   uploadProjectModel,
 } from 'src/api/projects'
 import {
+  runStepAssemblyExportInWorker,
   runStepPreviewInWorker,
   runStepRoundTripInWorker,
   type CadKernelWorkerPreviewResult,
@@ -76,7 +77,7 @@ import {
 } from './cad-document-box-features'
 import { cadTransformWithTranslation, translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { ModelPreview } from './model-preview'
-import { exportStepTarget } from './project-step-export-action'
+import { exportMergedStepTargets, exportStepTarget } from './project-step-export-action'
 import {
   buildProjectPreviewAssets,
   cadKernelOperationsForModel,
@@ -84,7 +85,14 @@ import {
   parsedPreviewModels,
   projectPreviewSummary,
 } from './project-preview-assets'
-import { buildStepExportTargets, publishStepExportDownload } from './project-step-export'
+import {
+  buildStepExportTargets,
+  defaultSelectedStepExportTargetIDs,
+  publishStepExportDownload,
+  selectedStepExportTargets,
+  stepAssemblyExportFilename,
+  type StepExportMode,
+} from './project-step-export'
 import { ViewController } from './view-controller'
 import {
   initialViewOrientation,
@@ -207,7 +215,10 @@ function ProjectView() {
   const [boxFeatureErrorByModelID, setBoxFeatureErrorByModelID] = useState<Record<string, string>>({})
   const [stepExportErrorByModelID, setStepExportErrorByModelID] = useState<Record<string, string>>({})
   const [stepExportStatusByModelID, setStepExportStatusByModelID] = useState<Record<string, string>>({})
+  const [stepExportBatchError, setStepExportBatchError] = useState('')
+  const [selectedStepExportTargetIDs, setSelectedStepExportTargetIDs] = useState<Set<string>>(() => new Set())
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
+  const hasTouchedStepExportSelectionRef = useRef(false)
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: async () => (await fetchProject(projectId)).data.project,
@@ -292,27 +303,68 @@ function ProjectView() {
       setBoxFeatureErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: 'Invalid box feature' }))
     },
   })
-  const exportStepModelMutation = useMutation({
-    mutationFn: async (target: ReturnType<typeof buildStepExportTargets>[number]) =>
-      exportStepTarget({
-        target,
-        fetchSourceText: async (modelId) => {
-          const source = (await fetchProjectModelSource(projectId, modelId)).data
-          return source.text()
-        },
-        runStepRoundTrip: runStepRoundTripInWorker,
-        publishDownload: publishStepExportDownload,
-      }),
-    onSuccess: async (_result, target) => {
-      setStepExportErrorByModelID((currentErrors) => ({ ...currentErrors, [target.modelId]: '' }))
-      setStepExportStatusByModelID((currentStatuses) => ({
-        ...currentStatuses,
-        [target.modelId]: `Downloaded ${target.downloadFilename}`,
-      }))
+  const exportStepSelectionMutation = useMutation({
+    mutationFn: async ({
+      mode,
+      targets,
+      downloadFilename,
+    }: {
+      mode: StepExportMode
+      targets: ReturnType<typeof buildStepExportTargets>
+      downloadFilename: string
+    }) => {
+      if (targets.length === 0) {
+        throw new Error('No STEP models selected')
+      }
+      const fetchSourceText = async (modelId: string) => {
+        const source = (await fetchProjectModelSource(projectId, modelId)).data
+        return source.text()
+      }
+      if (mode === 'merged') {
+        return exportMergedStepTargets({
+          targets,
+          downloadFilename,
+          fetchSourceText,
+          runStepAssemblyExport: runStepAssemblyExportInWorker,
+          publishDownload: publishStepExportDownload,
+        })
+      }
+
+      const results = []
+      for (const target of targets) {
+        results.push(
+          await exportStepTarget({
+            target,
+            fetchSourceText,
+            runStepRoundTrip: runStepRoundTripInWorker,
+            publishDownload: publishStepExportDownload,
+          }),
+        )
+      }
+      return results
     },
-    onError: (_error, target) => {
-      setStepExportStatusByModelID((currentStatuses) => ({ ...currentStatuses, [target.modelId]: '' }))
-      setStepExportErrorByModelID((currentErrors) => ({ ...currentErrors, [target.modelId]: 'STEP export failed' }))
+    onSuccess: (_result, variables) => {
+      setStepExportBatchError('')
+      setIsStepExportOpen(false)
+      setStepExportErrorByModelID((currentErrors) => {
+        const nextErrors = { ...currentErrors }
+        variables.targets.forEach((target) => {
+          nextErrors[target.modelId] = ''
+        })
+        return nextErrors
+      })
+      setStepExportStatusByModelID((currentStatuses) => {
+        const nextStatuses = { ...currentStatuses }
+        variables.targets.forEach((target) => {
+          nextStatuses[target.modelId] =
+            variables.mode === 'merged' ? `Included in ${variables.downloadFilename}` : `Downloaded ${target.downloadFilename}`
+        })
+        return nextStatuses
+      })
+    },
+    onError: () => {
+      setStepExportBatchError('STEP export failed')
+      setIsStepExportOpen(true)
     },
   })
   const project = projectQuery.data
@@ -327,10 +379,11 @@ function ProjectView() {
     () => buildStepExportTargets(projectModels, projectCADDocument),
     [projectModels, projectCADDocument],
   )
-  const stepExportTargetByModelID = useMemo(
-    () => new Map(stepExportTargets.map((target) => [target.modelId, target])),
-    [stepExportTargets],
+  const selectedStepExportTargetList = useMemo(
+    () => selectedStepExportTargets(stepExportTargets, selectedStepExportTargetIDs),
+    [selectedStepExportTargetIDs, stepExportTargets],
   )
+  const stepAssemblyDownloadFilename = stepAssemblyExportFilename(project?.name ?? 'assembly', projectCADDocument?.revision ?? 0)
   const cadNodeByModelID = useMemo(
     () => new Map((projectCADDocument?.nodes ?? []).map((node) => [node.model_id, node])),
     [projectCADDocument],
@@ -451,6 +504,16 @@ function ProjectView() {
       return nextDrafts
     })
   }, [projectCADDocument])
+
+  useEffect(() => {
+    setSelectedStepExportTargetIDs((currentIDs) => {
+      if (!hasTouchedStepExportSelectionRef.current) {
+        return defaultSelectedStepExportTargetIDs(stepExportTargets)
+      }
+      const availableIDs = new Set(stepExportTargets.map((target) => target.modelId))
+      return new Set([...currentIDs].filter((modelID) => availableIDs.has(modelID)))
+    })
+  }, [stepExportTargets])
 
   useEffect(() => {
     const syncAiChatPanelMaxWidth = () => {
@@ -616,6 +679,8 @@ function ProjectView() {
         ]
       : []),
   ]
+  const isStepExportPending = exportStepSelectionMutation.isPending
+  const selectedStepExportCount = selectedStepExportTargetList.length
   const canvasStatusLeftOffset = isLeftPanelCollapsed ? 16 : leftPanelWidth + 32
   const canvasRightOffset = 20
   const cadWorkspaceMinWidth = (isLeftPanelCollapsed ? 196 : leftPanelWidth) + 260
@@ -751,27 +816,33 @@ function ProjectView() {
     }
     addCADModelBoxUnionMutation.mutate({ modelId: modelID, box })
   }
-  const exportStepModel = (modelID: string) => {
-    const target = stepExportTargetByModelID.get(modelID)
-    if (!target) {
-      setStepExportErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: 'STEP export is unavailable' }))
-      return
-    }
-    exportStepModelMutation.mutate(target)
-    setIsStepExportOpen(false)
+  const selectAllStepExportTargets = () => {
+    hasTouchedStepExportSelectionRef.current = true
+    setSelectedStepExportTargetIDs(defaultSelectedStepExportTargetIDs(stepExportTargets))
   }
-  const exportAllStepModels = async () => {
-    if (stepExportTargets.length === 0) {
+  const toggleStepExportTarget = (modelID: string) => {
+    hasTouchedStepExportSelectionRef.current = true
+    setSelectedStepExportTargetIDs((currentIDs) => {
+      const nextIDs = new Set(currentIDs)
+      if (nextIDs.has(modelID)) {
+        nextIDs.delete(modelID)
+      } else {
+        nextIDs.add(modelID)
+      }
+      return nextIDs
+    })
+  }
+  const exportSelectedStepModels = (mode: StepExportMode) => {
+    if (selectedStepExportTargetList.length === 0) {
+      setStepExportBatchError('Select at least one STEP model')
       return
     }
-    setIsStepExportOpen(false)
-    for (const target of stepExportTargets) {
-      try {
-        await exportStepModelMutation.mutateAsync(target)
-      } catch {
-        // Per-model errors are already surfaced by the mutation handler.
-      }
-    }
+    setStepExportBatchError('')
+    exportStepSelectionMutation.mutate({
+      mode,
+      targets: selectedStepExportTargetList,
+      downloadFilename: stepAssemblyDownloadFilename,
+    })
   }
   const handleModelFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -921,52 +992,75 @@ function ProjectView() {
             <PopoverContent
               align="end"
               aria-label="Export STEP options"
-              className="relative w-[min(340px,calc(100vw-24px))] gap-0 rounded-md border-[#e2e8f0] bg-white/96 p-2 text-left shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur"
+              className="relative w-[min(420px,calc(100vw-24px))] gap-0 rounded-md border-[#e2e8f0] bg-white/96 p-2 text-left shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur"
               sideOffset={10}
             >
               <PopoverArrow className="border-[#e2e8f0] bg-white/96" />
               <PopoverHeader className="px-2 py-2">
                 <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">Export STEP</PopoverTitle>
                 <PopoverDescription className="text-xs leading-5 text-[#64748b]">
-                  Download browser-kernel STEP output from the current document state.
+                  Select current document models, then choose a download action.
                 </PopoverDescription>
               </PopoverHeader>
-              <div className="mt-1 border-t border-[#e2e8f0] pt-1">
-                <button
-                  className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm font-semibold text-[#0f172a] transition hover:bg-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={exportStepModelMutation.isPending || stepExportTargets.length === 0}
-                  onClick={() => void exportAllStepModels()}
-                  type="button"
-                >
-                  <Download className="size-4 shrink-0 text-[#475569]" />
-                  <span className="min-w-0 flex-1 truncate">All STEP models</span>
-                  <span className="shrink-0 font-mono text-[11px] font-medium uppercase text-[#64748b]">
-                    {stepExportTargets.length}
+              <div className="mt-1 border-t border-[#e2e8f0] px-2 pt-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-mono text-[11px] uppercase text-[#64748b]">
+                    {selectedStepExportCount}/{stepExportTargets.length} selected
                   </span>
-                </button>
-                <div className="my-1 h-px bg-[#e2e8f0]" />
-                {stepExportTargets.map((target) => {
-                  const isStepExporting =
-                    exportStepModelMutation.isPending && exportStepModelMutation.variables?.modelId === target.modelId
+                  <button
+                    className="text-xs font-semibold text-[#475569] transition hover:text-[#0f172a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]"
+                    disabled={isStepExportPending || stepExportTargets.length === 0}
+                    onClick={selectAllStepExportTargets}
+                    type="button"
+                  >
+                    Select all
+                  </button>
+                </div>
+                <div className="mt-2 max-h-56 overflow-y-auto pr-1">
+                  {stepExportTargets.map((target) => {
+                    const isSelected = selectedStepExportTargetIDs.has(target.modelId)
 
-                  return (
-                    <button
-                      aria-label={`Export STEP for ${target.displayName}`}
-                      className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm text-[#1f2937] transition hover:bg-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={exportStepModelMutation.isPending}
-                      key={target.modelId}
-                      onClick={() => exportStepModel(target.modelId)}
-                      title={target.downloadFilename}
-                      type="button"
-                    >
-                      <FileText className="size-4 shrink-0 text-[#64748b]" />
-                      <span className="min-w-0 flex-1 truncate">{target.displayName}</span>
-                      {isStepExporting && (
-                        <span className="shrink-0 font-mono text-[11px] uppercase text-[#64748b]">Exporting</span>
-                      )}
-                    </button>
-                  )
-                })}
+                    return (
+                      <label
+                        className="flex w-full cursor-pointer items-center gap-2 rounded px-2 py-2 text-left text-sm text-[#1f2937] transition hover:bg-[#f1f5f9]"
+                        key={target.modelId}
+                        title={target.downloadFilename}
+                      >
+                        <input
+                          checked={isSelected}
+                          className="size-4 accent-[#0f172a]"
+                          disabled={isStepExportPending}
+                          onChange={() => toggleStepExportTarget(target.modelId)}
+                          type="checkbox"
+                        />
+                        <FileText className="size-4 shrink-0 text-[#64748b]" />
+                        <span className="min-w-0 flex-1 truncate">{target.displayName}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+                {stepExportBatchError && <p className="mt-2 text-xs leading-5 text-[#8a2f24]">{stepExportBatchError}</p>}
+                <div className="my-1 h-px bg-[#e2e8f0]" />
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    className="flex h-[30px] min-w-0 items-center justify-center gap-1.5 rounded bg-[#0f172a] px-2.5 text-xs font-semibold text-white transition hover:bg-[#1f2937] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={isStepExportPending || selectedStepExportCount === 0}
+                    onClick={() => exportSelectedStepModels('merged')}
+                    type="button"
+                  >
+                    <Download className="size-3.5 shrink-0" />
+                    <span className="truncate">{exportStepSelectionMutation.isPending ? 'Exporting' : 'Merged STEP'}</span>
+                  </button>
+                  <button
+                    className="flex h-[30px] min-w-0 items-center justify-center gap-1.5 rounded border border-[#cbd5e1] bg-white px-2.5 text-xs font-semibold text-[#0f172a] transition hover:bg-[#f8fafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={isStepExportPending || selectedStepExportCount === 0}
+                    onClick={() => exportSelectedStepModels('separate')}
+                    type="button"
+                  >
+                    <Download className="size-3.5 shrink-0 text-[#475569]" />
+                    <span className="truncate">{exportStepSelectionMutation.isPending ? 'Exporting' : 'Separate files'}</span>
+                  </button>
+                </div>
               </div>
             </PopoverContent>
           </Popover>

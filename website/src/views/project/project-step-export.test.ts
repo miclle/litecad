@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { buildStepExportTargets, createStepExportBlob, publishStepExportDownload, stepExportFilename } from './project-step-export'
+import {
+  buildStepExportTargets,
+  createStepExportBlob,
+  defaultSelectedStepExportTargetIDs,
+  publishStepExportDownload,
+  selectedStepExportTargets,
+  stepAssemblyExportFilename,
+  stepExportFilename,
+} from './project-step-export'
 import type { ProjectCADDocument, ProjectModel } from 'src/types/project'
 
 const baseModel = {
@@ -99,6 +107,33 @@ describe('project STEP export helpers', () => {
   test('sanitizes exported STEP filenames while preserving the source base name', () => {
     expect(stepExportFilename('gear:alpha.stp', 12)).toBe('gear-alpha-litecad-r12.step')
     expect(stepExportFilename('assembly.step', 0)).toBe('assembly-litecad-r0.step')
+  })
+
+  test('sanitizes merged assembly STEP filenames from the project name', () => {
+    expect(stepAssemblyExportFilename('Portal frame: alpha', 7)).toBe('Portal frame- alpha-litecad-assembly-r7.step')
+    expect(stepAssemblyExportFilename('', 0)).toBe('assembly-litecad-assembly-r0.step')
+  })
+
+  test('builds default and filtered export selections', () => {
+    const targets = [
+      {
+        modelId: 'mdl_a',
+        displayName: 'A',
+        sourceFilename: 'a.step',
+        downloadFilename: 'a-litecad-r7.step',
+        operations: [],
+      },
+      {
+        modelId: 'mdl_b',
+        displayName: 'B',
+        sourceFilename: 'b.step',
+        downloadFilename: 'b-litecad-r7.step',
+        operations: [],
+      },
+    ]
+
+    expect([...defaultSelectedStepExportTargetIDs(targets)]).toEqual(['mdl_a', 'mdl_b'])
+    expect(selectedStepExportTargets(targets, new Set(['mdl_b']))).toEqual([targets[1]])
   })
 
   test('creates a browser-downloadable STEP blob', async () => {

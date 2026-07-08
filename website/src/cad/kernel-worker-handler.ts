@@ -5,6 +5,8 @@ import {
   type CadKernelResponse,
 } from './kernel-protocol'
 import type {
+  CadKernelStepAssemblyExportInput,
+  CadKernelStepAssemblyExportResult,
   CadKernelStepPreviewInput,
   CadKernelStepPreviewResult,
   CadKernelStepRoundTripInput,
@@ -12,12 +14,18 @@ import type {
 } from './opencascade-step'
 
 type CadKernelWorkerHandlerOptions = {
+  runStepAssemblyExport: (input: CadKernelStepAssemblyExportInput) => Promise<CadKernelStepAssemblyExportResult>
   runStepPreview: (input: CadKernelStepPreviewInput) => Promise<CadKernelStepPreviewResult>
   runStepRoundTrip: (input: CadKernelStepRoundTripInput) => Promise<CadKernelStepRoundTripResult>
   postMessage: (message: CadKernelResponse) => void
 }
 
-export function createCadKernelWorkerHandler({ runStepPreview, runStepRoundTrip, postMessage }: CadKernelWorkerHandlerOptions) {
+export function createCadKernelWorkerHandler({
+  runStepAssemblyExport,
+  runStepPreview,
+  runStepRoundTrip,
+  postMessage,
+}: CadKernelWorkerHandlerOptions) {
   return async (message: unknown) => {
     if (!isCadKernelRequest(message)) {
       postMessage(cadKernelErrorResponse('unknown', 'Invalid CAD kernel worker request'))
@@ -34,6 +42,16 @@ export function createCadKernelWorkerHandler({ runStepPreview, runStepRoundTrip,
             ...result,
             meshSummary: summarizeCadKernelMesh(result.mesh),
           },
+        })
+        return
+      }
+
+      if (message.type === 'step-assembly-export') {
+        const result = await runStepAssemblyExport(message.payload)
+        postMessage({
+          id: message.id,
+          type: 'step-assembly-export-result',
+          result,
         })
         return
       }

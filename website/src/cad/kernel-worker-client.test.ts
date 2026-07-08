@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { runStepPreviewInWorker, runStepRoundTripInWorker, type CadKernelWorkerLike } from './kernel-worker-client'
+import {
+  runStepAssemblyExportInWorker,
+  runStepPreviewInWorker,
+  runStepRoundTripInWorker,
+  type CadKernelWorkerLike,
+} from './kernel-worker-client'
 import type { CadKernelResponse } from './kernel-protocol'
 
 class FakeWorker implements CadKernelWorkerLike {
@@ -128,5 +133,47 @@ describe('runStepPreviewInWorker', () => {
     await expect(resultPromise).resolves.toMatchObject({
       meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
     })
+  })
+})
+
+describe('runStepAssemblyExportInWorker', () => {
+  it('posts a step-assembly-export request and resolves exported STEP text', async () => {
+    const worker = new FakeWorker()
+    const resultPromise = runStepAssemblyExportInWorker(
+      {
+        filename: 'assembly.step',
+        sources: [
+          { filename: 'part-a.step', stepText: 'ISO-10303-21;' },
+          { filename: 'part-b.step', stepText: 'ISO-10303-21;' },
+        ],
+      },
+      () => worker,
+    )
+
+    expect(worker.postedMessages).toHaveLength(1)
+    const request = worker.postedMessages[0]
+    expect(request).toMatchObject({
+      type: 'step-assembly-export',
+      payload: {
+        filename: 'assembly.step',
+        sources: [
+          { filename: 'part-a.step', stepText: 'ISO-10303-21;' },
+          { filename: 'part-b.step', stepText: 'ISO-10303-21;' },
+        ],
+      },
+    })
+
+    worker.reply({
+      id: (request as { id: string }).id,
+      type: 'step-assembly-export-result',
+      result: {
+        exportedStepText: 'ISO-10303-21;\nEND-ISO-10303-21;',
+      },
+    })
+
+    await expect(resultPromise).resolves.toEqual({
+      exportedStepText: 'ISO-10303-21;\nEND-ISO-10303-21;',
+    })
+    expect(worker.terminated).toBe(true)
   })
 })

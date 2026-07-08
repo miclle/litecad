@@ -8,7 +8,7 @@ These rules apply to Three.js code under `website/src/views/project/`.
 - Do not render hard-coded demo geometry as project model data. Viewer scenes may show neutral grid, axis, empty-state context, or one or more project-owned backend preview artifacts such as OBJ, self-contained GLTF, or GLB meshes.
 - Do not add raw CAD source loaders directly to the Three.js viewer. STEP import and tessellation for workbench preview live behind the browser CAD kernel worker described in `docs/browser-cad-kernel-roadmap.md`; B-rep editing and STEP export should also stay behind that worker boundary when implemented. The viewer consumes worker-produced STEP mesh buffers plus backend-provided GLB/GLTF/STL preview artifacts.
 - Keep product data fetching, route state, and backend DTOs out of low-level Three.js scene construction.
-- For multi-source preview, load assets into a scene group and frame the combined bounds; do not imply CAD assembly placement or merge semantics until those records exist.
+- For multi-source preview, load assets into a scene group and frame the combined bounds; selected STEP compound download is available through the CAD worker, but do not imply durable CAD assembly placement or merge semantics until those records exist.
 - Prefer small viewer helpers for geometry, orientation math, event contracts, texture creation, and resource cleanup before adding broad renderer abstractions.
 
 ## Lifecycle

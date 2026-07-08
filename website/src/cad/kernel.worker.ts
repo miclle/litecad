@@ -1,7 +1,8 @@
 import { createCadKernelWorkerHandler } from './kernel-worker-handler'
-import { runOpenCascadeStepPreview, runOpenCascadeStepRoundTrip } from './opencascade-step'
+import { runOpenCascadeStepAssemblyExport, runOpenCascadeStepPreview, runOpenCascadeStepRoundTrip } from './opencascade-step'
 
 const handler = createCadKernelWorkerHandler({
+  runStepAssemblyExport: runOpenCascadeStepAssemblyExport,
   runStepPreview: runOpenCascadeStepPreview,
   runStepRoundTrip: runOpenCascadeStepRoundTrip,
   postMessage: (message) => self.postMessage(message),

@@ -51,7 +51,22 @@ export type CadKernelStepPreviewRequest = {
   }
 }
 
-export type CadKernelRequest = CadKernelStepRoundTripRequest | CadKernelStepPreviewRequest
+export type CadKernelStepAssemblyExportSource = {
+  filename: string
+  stepText: string
+  operations?: CadKernelOperation[]
+}
+
+export type CadKernelStepAssemblyExportRequest = {
+  id: string
+  type: 'step-assembly-export'
+  payload: {
+    filename: string
+    sources: CadKernelStepAssemblyExportSource[]
+  }
+}
+
+export type CadKernelRequest = CadKernelStepRoundTripRequest | CadKernelStepPreviewRequest | CadKernelStepAssemblyExportRequest
 
 export type CadKernelStepRoundTripResponse = {
   id: string
@@ -72,30 +87,61 @@ export type CadKernelStepPreviewResponse = {
   }
 }
 
+export type CadKernelStepAssemblyExportResponse = {
+  id: string
+  type: 'step-assembly-export-result'
+  result: {
+    exportedStepText: string
+  }
+}
+
 export type CadKernelErrorResponse = {
   id: string
   type: 'error'
   error: string
 }
 
-export type CadKernelResponse = CadKernelStepRoundTripResponse | CadKernelStepPreviewResponse | CadKernelErrorResponse
+export type CadKernelResponse =
+  | CadKernelStepRoundTripResponse
+  | CadKernelStepPreviewResponse
+  | CadKernelStepAssemblyExportResponse
+  | CadKernelErrorResponse
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
 export function isCadKernelRequest(value: unknown): value is CadKernelRequest {
   if (
     !isRecord(value) ||
-    (value.type !== 'step-round-trip' && value.type !== 'step-preview') ||
+    (value.type !== 'step-round-trip' && value.type !== 'step-preview' && value.type !== 'step-assembly-export') ||
     typeof value.id !== 'string'
   ) {
     return false
   }
   const payload = value.payload
+  if (value.type === 'step-assembly-export') {
+    return (
+      isRecord(payload) &&
+      typeof payload.filename === 'string' &&
+      Array.isArray(payload.sources) &&
+      payload.sources.length > 0 &&
+      payload.sources.every(isCadKernelAssemblyExportSource)
+    )
+  }
+
   return (
     isRecord(payload) &&
     typeof payload.filename === 'string' &&
     typeof payload.stepText === 'string' &&
     isCadKernelOperations(payload.operations)
+  )
+}
+
+function isCadKernelAssemblyExportSource(value: unknown): value is CadKernelStepAssemblyExportSource {
+  return (
+    isRecord(value) &&
+    typeof value.filename === 'string' &&
+    typeof value.stepText === 'string' &&
+    isCadKernelOperations(value.operations)
   )
 }
 

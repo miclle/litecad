@@ -10,12 +10,23 @@ export type CadKernelStepRoundTripInput = {
 
 export type CadKernelStepPreviewInput = CadKernelStepRoundTripInput
 
+export type CadKernelStepAssemblyExportSource = CadKernelStepRoundTripInput
+
+export type CadKernelStepAssemblyExportInput = {
+  filename: string
+  sources: CadKernelStepAssemblyExportSource[]
+}
+
 export type CadKernelStepPreviewResult = {
   mesh: CadKernelMesh
 }
 
 export type CadKernelStepRoundTripResult = {
   mesh: CadKernelMesh
+  exportedStepText: string
+}
+
+export type CadKernelStepAssemblyExportResult = {
   exportedStepText: string
 }
 
@@ -66,6 +77,11 @@ export async function runOpenCascadeStepRoundTrip(input: CadKernelStepRoundTripI
   return runStepRoundTripWithKernel(openCascade, input)
 }
 
+export async function runOpenCascadeStepAssemblyExport(input: CadKernelStepAssemblyExportInput) {
+  const openCascade = await loadOpenCascade()
+  return runStepAssemblyExportWithKernel(openCascade, input)
+}
+
 export async function runOpenCascadeStepPreview(input: CadKernelStepPreviewInput) {
   const openCascade = await loadOpenCascade()
   return runStepPreviewWithKernel(openCascade, input)
@@ -101,6 +117,32 @@ export async function runStepRoundTripWithKernel(
     return { mesh, exportedStepText }
   } finally {
     cleanupVirtualFile(openCascade, inputStepPath)
+    cleanupVirtualFile(openCascade, outputStepPath)
+  }
+}
+
+export async function runStepAssemblyExportWithKernel(
+  openCascade: OpenCascadeModule,
+  input: CadKernelStepAssemblyExportInput,
+): Promise<CadKernelStepAssemblyExportResult> {
+  if (input.sources.length === 0) {
+    throw new Error('STEP assembly export requires at least one source')
+  }
+  cleanupVirtualFile(openCascade, outputStepPath)
+  const sourceShapes: any[] = []
+
+  try {
+    for (const [index, source] of input.sources.entries()) {
+      const sourcePath = stepAssemblyInputPath(index)
+      cleanupVirtualFile(openCascade, sourcePath)
+      writeVirtualFile(openCascade, sourcePath, source.stepText)
+      sourceShapes.push(applyCADOperationsToShape(openCascade, importStepShapeFromFile(openCascade, sourcePath, source), source.operations))
+    }
+
+    const assemblyShape = sourceShapes.length === 1 ? sourceShapes[0] : compoundShapes(openCascade, sourceShapes)
+    return { exportedStepText: exportShapeToStep(openCascade, assemblyShape) }
+  } finally {
+    input.sources.forEach((_source, index) => cleanupVirtualFile(openCascade, stepAssemblyInputPath(index)))
     cleanupVirtualFile(openCascade, outputStepPath)
   }
 }
@@ -164,8 +206,12 @@ function boxUnionShape(
 }
 
 function importStepShape(openCascade: OpenCascadeModule, input: CadKernelStepRoundTripInput) {
+  return importStepShapeFromFile(openCascade, inputStepPath, input)
+}
+
+function importStepShapeFromFile(openCascade: OpenCascadeModule, path: string, input: CadKernelStepRoundTripInput) {
   const reader = new openCascade.STEPControl_Reader_1()
-  const readResult = reader.ReadFile(inputStepName)
+  const readResult = reader.ReadFile(path.slice(1))
   if (readResult !== openCascade.IFSelect_ReturnStatus.IFSelect_RetDone) {
     throw new Error(`STEP import failed for ${input.filename}`)
   }
@@ -176,6 +222,18 @@ function importStepShape(openCascade: OpenCascadeModule, input: CadKernelStepRou
   }
 
   return reader.OneShape()
+}
+
+function compoundShapes(openCascade: OpenCascadeModule, shapes: readonly any[]) {
+  const compound = new openCascade.TopoDS_Compound()
+  const builder = new openCascade.TopoDS_Builder()
+  builder.MakeCompound(compound)
+  shapes.forEach((shape) => builder.Add(compound, shape))
+  return compound
+}
+
+function stepAssemblyInputPath(index: number) {
+  return `/litecad-assembly-input-${index}.step`
 }
 
 function cleanupVirtualFile(openCascade: OpenCascadeModule, path: string) {
