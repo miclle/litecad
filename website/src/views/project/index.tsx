@@ -950,18 +950,6 @@ function ProjectView() {
       updateCADModelTransformMutation.mutate({ modelId: modelID, requestVersion, translation })
     }, transformAutosaveDelayMS)
   }
-  const updateTransformDraft = (modelID: string, axis: keyof CADTranslation, value: string) => {
-    const node = cadNodeByModelID.get(modelID)
-    const currentDraft = transformDraftsByModelID[modelID] ?? transformDraftFromTranslation(translationFromCADTransform(node?.transform))
-    const nextDraft = {
-      ...currentDraft,
-      [axis]: value,
-    }
-    latestTransformDraftsRef.current[modelID] = nextDraft
-    setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [modelID]: nextDraft }))
-    setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: '' }))
-    scheduleTransformAutosave(modelID, nextDraft)
-  }
   const updateTransformDraftFromTranslation = (modelID: string, translation: CADTranslation) => {
     const nextDraft = transformDraftFromTranslation(translation)
     latestTransformDraftsRef.current[modelID] = nextDraft
@@ -1509,16 +1497,19 @@ function ProjectView() {
                             <FieldTitle className="text-xs text-[#334155]">Move position</FieldTitle>
                             <span className="font-mono text-[10px] uppercase text-[#94a3b8]">{documentUnitLabel}</span>
                           </div>
-                          <div className="grid grid-cols-3 gap-1.5">
+                          <div className="grid grid-cols-3 gap-1.5" role="list">
                             {(['x', 'y', 'z'] as const).map((axis) => (
-                              <NumericCADField
-                                ariaLabel={`${axis.toUpperCase()} translation for ${selectedModelDisplayName}`}
+                              <div
+                                aria-label={`${axis.toUpperCase()} translation for ${selectedModelDisplayName}`}
+                                className="min-w-0 rounded border border-[#e2e8f0] bg-[#f8fafc] px-2 py-1.5"
                                 key={axis}
-                                label={axis.toUpperCase()}
-                                onChange={(value) => updateTransformDraft(selectedModel.id, axis, value)}
-                                unitLabel={documentUnitLabel}
-                                value={selectedModelTransformDraft[axis]}
-                              />
+                                role="listitem"
+                              >
+                                <div className="font-mono text-[10px] font-semibold uppercase leading-3 text-[#64748b]">{axis}</div>
+                                <div className="mt-1 truncate font-mono text-xs text-[#0f172a]" title={selectedModelTransformDraft[axis]}>
+                                  {selectedModelTransformDraft[axis]}
+                                </div>
+                              </div>
                             ))}
                           </div>
                           {selectedModelTransformError && (

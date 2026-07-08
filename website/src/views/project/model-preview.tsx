@@ -53,6 +53,7 @@ const gridPlaneOffset = 0.015
 const modelPreviewZoomSpeed = 4.2
 const modelPreviewZoomHUDHideDelayMS = 1000
 const modelPreviewZoomDistanceEpsilonRatio = 0.002
+const transformControlSize = 0.58
 const modelPreviewResizeCompleteEventName = 'litecad:model-preview-resize-complete'
 const zeroTranslation: CADTranslation = { x: 0, y: 0, z: 0 }
 
@@ -289,11 +290,20 @@ export function ModelPreview({
     controls.target.set(0, 0.15, 0)
     const transformControls = new TransformControls(camera, renderer.domElement)
     transformControls.setMode('translate')
-    transformControls.setSize(0.84)
+    transformControls.setSize(transformControlSize)
     transformControls.showX = true
     transformControls.showY = true
     transformControls.showZ = true
     const transformControlsHelper = transformControls.getHelper()
+    transformControlsHelper.traverse((child) => {
+      if (child instanceof THREE.Line) {
+        child.material.transparent = true
+        child.material.opacity = 0.7
+      } else if (child instanceof THREE.Mesh) {
+        child.material.transparent = true
+        child.material.opacity = 0.76
+      }
+    })
     scene.add(transformControlsHelper)
     let activeOrientation = initialViewOrientation
     let lastEmittedOrientation = initialViewOrientation
@@ -695,12 +705,12 @@ export function ModelPreview({
       if (isTransformDragging || Math.hypot(deltaX, deltaY) > 5) {
         return
       }
-      if (isTransformControlPointerEvent(event)) {
-        return
-      }
       const modelID = modelIDFromPointerEvent(event)
       if (modelID) {
         onSelectModelRef.current?.(modelID)
+        return
+      }
+      if (isTransformControlPointerEvent(event)) {
         return
       }
       onClearSelectionRef.current?.()
