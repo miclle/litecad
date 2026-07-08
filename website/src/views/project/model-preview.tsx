@@ -305,6 +305,10 @@ export function ModelPreview({
       }
     })
     scene.add(transformControlsHelper)
+    const visibleTransformControlObjects = () => {
+      const gizmo = (transformControls as unknown as { _gizmo?: { gizmo?: Record<string, THREE.Object3D> } })._gizmo?.gizmo
+      return gizmo?.translate?.children.filter((child) => child.visible) ?? []
+    }
     let activeOrientation = initialViewOrientation
     let lastEmittedOrientation = initialViewOrientation
     let viewAnimationFrameID: number | null = null
@@ -686,13 +690,18 @@ export function ModelPreview({
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       pointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1)
       raycaster.setFromCamera(pointer, camera)
-      return raycaster.intersectObject(transformControlsHelper, true).length > 0
+      return raycaster.intersectObjects(visibleTransformControlObjects(), true).length > 0
     }
     const handlePointerDown = (event: PointerEvent) => {
       if (event.button !== 0) {
         return
       }
+      const modelID = modelIDFromPointerEvent(event)
+      const isTransformControlPointer = isTransformControlPointerEvent(event)
       pointerDown = { x: event.clientX, y: event.clientY, pointerID: event.pointerId }
+      if (!modelID && !isTransformControlPointer) {
+        onClearSelectionRef.current?.()
+      }
     }
     const handlePointerUp = (event: PointerEvent) => {
       if (!pointerDown || pointerDown.pointerID !== event.pointerId) {
