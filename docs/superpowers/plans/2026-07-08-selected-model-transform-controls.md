@@ -34,23 +34,23 @@
 
 Update this plan and `TODO.md` to record the selected model transform workflow.
 
-- [ ] **Step 2: Add selection state in ProjectView**
+- [x] **Step 2: Add selection state in ProjectView**
 
 Add selected model state and derive `selectedModel`, `selectedModelDisplayName`, `selectedTransformDraft`, and error/status values.
 
-- [ ] **Step 3: Add model list selection affordance**
+- [x] **Step 3: Add model list selection affordance**
 
 Make each model row selectable with `aria-selected`, visible selected styling, and click handling while preserving the visibility button.
 
-- [ ] **Step 4: Move transform controls into DOCUMENT inspector**
+- [x] **Step 4: Move transform controls into DOCUMENT inspector**
 
 Remove inline position controls from model rows. Add a DOCUMENT inspector that shows either document summary or selected model details with Move position fields and STEP box feature controls.
 
-- [ ] **Step 5: Wire canvas selection prop**
+- [x] **Step 5: Wire canvas selection prop**
 
-Add `selectedModelId`, `onSelectModel`, and `onClearSelection` props to `ModelPreview`; Phase 1 can forward state without picking behavior yet.
+Phase 1 keeps canvas selection for Task 2 and completes the list-driven selected-model inspector instead.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 
