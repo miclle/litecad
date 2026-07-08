@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { AgentMarkdown } from './agent-markdown'
 
 describe('AgentMarkdown', () => {
-  test('renders common markdown syntax in CAD Agent replies', () => {
+  test('renders common markdown syntax in assistant replies', () => {
     const html = renderToStaticMarkup(
       <AgentMarkdown>{'Hi **Evo**\n\n- source\n\n`unit`'}</AgentMarkdown>,
     )

@@ -8,6 +8,8 @@ import {
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactElement,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import {
@@ -20,11 +22,11 @@ import {
   EyeOff,
   FileText,
   HardDrive,
-  Import,
   Info,
   PanelLeftClose,
   PanelLeftOpen,
   Send,
+  Upload,
   X,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
@@ -57,6 +59,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   dispatchModelPreviewSetViewEvent,
   normalizeViewOrientation,
@@ -106,6 +109,23 @@ type AiChatMessage = {
 
 type TransformDraft = Record<keyof CADTranslation, string>
 
+function TopbarTooltip({
+  label,
+  render,
+  children,
+}: {
+  label: string
+  render: ReactElement
+  children: ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={render}>{children}</TooltipTrigger>
+      <TooltipContent sideOffset={8}>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 const initialAiChatMessages: AiChatMessage[] = [
   {
     id: 'assistant-initial',
@@ -129,12 +149,12 @@ function projectAgentErrorMessage(error: unknown) {
   const status = (error as { response?: { status?: number } }).response?.status
   const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message
   if (status === 503) {
-    return 'CAD Agent is not configured yet. Add the server-side AI provider settings, then try again.'
+    return 'Assistant is not configured yet. Add the server-side AI provider settings, then try again.'
   }
   if (message) {
     return message
   }
-  return 'CAD Agent could not answer right now. Check the AI provider configuration and try again.'
+  return 'Assistant could not answer right now. Check the AI provider configuration and try again.'
 }
 
 function transformDraftFromTranslation(translation: CADTranslation): TransformDraft {
@@ -170,6 +190,7 @@ function ProjectView() {
   const [isAiChatTransitioning, setIsAiChatTransitioning] = useState(false)
   const [isAiChatPanelResizing, setIsAiChatPanelResizing] = useState(false)
   const [isProjectInfoOpen, setIsProjectInfoOpen] = useState(false)
+  const [isStepExportOpen, setIsStepExportOpen] = useState(false)
   const [aiChatDraft, setAiChatDraft] = useState('')
   const [aiChatMessages, setAiChatMessages] = useState<AiChatMessage[]>(initialAiChatMessages)
   const [leftPanelWidth, setLeftPanelWidth] = useState(defaultLeftPanelWidth)
@@ -737,6 +758,20 @@ function ProjectView() {
       return
     }
     exportStepModelMutation.mutate(target)
+    setIsStepExportOpen(false)
+  }
+  const exportAllStepModels = async () => {
+    if (stepExportTargets.length === 0) {
+      return
+    }
+    setIsStepExportOpen(false)
+    for (const target of stepExportTargets) {
+      try {
+        await exportStepModelMutation.mutateAsync(target)
+      } catch {
+        // Per-model errors are already surfaced by the mutation handler.
+      }
+    }
   }
   const handleModelFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -782,30 +817,41 @@ function ProjectView() {
       <div className="grid min-h-screen min-w-0 grid-rows-[56px_minmax(0,1fr)] bg-[#f8fafc]">
         <header className="relative z-50 flex items-center justify-between border-b border-[#e2e8f0] bg-[#f8fafc]/92 px-3 backdrop-blur">
         <div className="flex min-w-0 items-center gap-3">
-          <Link
-            className="grid size-9 shrink-0 place-items-center rounded-md text-[#64748b] no-underline transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
-            title="All projects"
-            to="/projects"
+          <TopbarTooltip
+            label="All projects"
+            render={
+              <Link
+                aria-label="All projects"
+                className="grid size-9 shrink-0 place-items-center rounded-md text-[#64748b] no-underline transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
+                to="/projects"
+              />
+            }
           >
             <ArrowLeft className="size-4" />
-          </Link>
+          </TopbarTooltip>
           <div className="relative flex min-w-0 items-center gap-1.5">
             <h1 className="truncate text-sm font-semibold leading-tight text-[#0f172a]">{project.name}</h1>
             <Popover onOpenChange={setIsProjectInfoOpen} open={isProjectInfoOpen}>
-              <PopoverTrigger
-                render={
-                  <Button
-                    aria-label="Project info"
-                    className="shrink-0"
-                    size="icon-sm"
-                    title="Project info"
-                    type="button"
-                    variant="ghost"
-                  />
-                }
-              >
-                <Info />
-              </PopoverTrigger>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <PopoverTrigger
+                      render={
+                        <Button
+                          aria-label="Project info"
+                          className="shrink-0"
+                          size="icon-sm"
+                          type="button"
+                          variant="ghost"
+                        />
+                      }
+                    >
+                      <Info />
+                    </PopoverTrigger>
+                  }
+                />
+                <TooltipContent sideOffset={8}>Project info</TooltipContent>
+              </Tooltip>
               <PopoverContent
                 align="center"
                 aria-label="Project info"
@@ -849,19 +895,97 @@ function ProjectView() {
           </div>
         </div>
 
-        <div className="hidden items-center justify-end gap-3 lg:flex">
-          <button
-            aria-label="Import model"
-            className="grid size-9 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={uploadModelMutation.isPending}
-            onClick={() => fileInputRef.current?.click()}
-            title="Import model"
-            type="button"
+        <div className="hidden items-center justify-end gap-1.5 lg:flex">
+          <Popover onOpenChange={setIsStepExportOpen} open={isStepExportOpen}>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        aria-label="Export STEP"
+                        className="border-transparent text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]"
+                        disabled={stepExportTargets.length === 0 || !projectCADDocument}
+                        size="icon-lg"
+                        type="button"
+                        variant="ghost"
+                      />
+                    }
+                  >
+                    <Download className="size-4" />
+                  </PopoverTrigger>
+                }
+              />
+              <TooltipContent sideOffset={8}>Export STEP</TooltipContent>
+            </Tooltip>
+            <PopoverContent
+              align="end"
+              aria-label="Export STEP options"
+              className="relative w-[min(340px,calc(100vw-24px))] gap-0 rounded-md border-[#e2e8f0] bg-white/96 p-2 text-left shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur"
+              sideOffset={10}
+            >
+              <PopoverArrow className="border-[#e2e8f0] bg-white/96" />
+              <PopoverHeader className="px-2 py-2">
+                <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">Export STEP</PopoverTitle>
+                <PopoverDescription className="text-xs leading-5 text-[#64748b]">
+                  Download browser-kernel STEP output from the current document state.
+                </PopoverDescription>
+              </PopoverHeader>
+              <div className="mt-1 border-t border-[#e2e8f0] pt-1">
+                <button
+                  className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm font-semibold text-[#0f172a] transition hover:bg-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={exportStepModelMutation.isPending || stepExportTargets.length === 0}
+                  onClick={() => void exportAllStepModels()}
+                  type="button"
+                >
+                  <Download className="size-4 shrink-0 text-[#475569]" />
+                  <span className="min-w-0 flex-1 truncate">All STEP models</span>
+                  <span className="shrink-0 font-mono text-[11px] font-medium uppercase text-[#64748b]">
+                    {stepExportTargets.length}
+                  </span>
+                </button>
+                <div className="my-1 h-px bg-[#e2e8f0]" />
+                {stepExportTargets.map((target) => {
+                  const isStepExporting =
+                    exportStepModelMutation.isPending && exportStepModelMutation.variables?.modelId === target.modelId
+
+                  return (
+                    <button
+                      aria-label={`Export STEP for ${target.displayName}`}
+                      className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm text-[#1f2937] transition hover:bg-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={exportStepModelMutation.isPending}
+                      key={target.modelId}
+                      onClick={() => exportStepModel(target.modelId)}
+                      title={target.downloadFilename}
+                      type="button"
+                    >
+                      <FileText className="size-4 shrink-0 text-[#64748b]" />
+                      <span className="min-w-0 flex-1 truncate">{target.displayName}</span>
+                      {isStepExporting && (
+                        <span className="shrink-0 font-mono text-[11px] uppercase text-[#64748b]">Exporting</span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
+          <TopbarTooltip
+            label="Import model"
+            render={
+              <button
+                aria-label="Import model"
+                className="grid size-9 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={uploadModelMutation.isPending}
+                onClick={() => fileInputRef.current?.click()}
+                type="button"
+              />
+            }
           >
-            <Import className="size-4" />
-          </button>
+            <Upload className="size-4" />
+          </TopbarTooltip>
           <button
-            aria-label="Toggle CAD Agent"
+            aria-label="Toggle Assistant"
             aria-pressed={isAiChatOpen}
             className={`flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
               isAiChatOpen
@@ -869,11 +993,11 @@ function ProjectView() {
                 : 'border-transparent text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]'
             }`}
             onClick={toggleAiChat}
-            title={isAiChatOpen ? 'Close CAD Agent' : 'Open CAD Agent'}
+            title={isAiChatOpen ? 'Close Assistant' : 'Open Assistant'}
             type="button"
           >
             <BotMessageSquare className="size-4" />
-            CAD Agent
+            Assistant
           </button>
           <input
             accept=".step,.stp,.gltf,.glb,.stl"
@@ -1012,11 +1136,8 @@ function ProjectView() {
                       const boxFeatureError = boxFeatureErrorByModelID[model.id]
                       const isBoxFeatureUpdating =
                         addCADModelBoxUnionMutation.isPending && addCADModelBoxUnionMutation.variables?.modelId === model.id
-                      const stepExportTarget = stepExportTargetByModelID.get(model.id)
                       const stepExportError = stepExportErrorByModelID[model.id]
                       const stepExportStatus = stepExportStatusByModelID[model.id]
-                      const isStepExporting =
-                        exportStepModelMutation.isPending && exportStepModelMutation.variables?.modelId === model.id
 
                       return (
                         <div
@@ -1040,18 +1161,6 @@ function ProjectView() {
                                 type="button"
                               >
                                 <VisibilityIcon className="size-3.5" />
-                              </button>
-                            )}
-                            {stepExportTarget && (
-                              <button
-                                aria-label={`Export STEP for ${modelDisplayName}`}
-                                className="grid size-6 shrink-0 place-items-center rounded text-[#64748b] opacity-0 transition hover:bg-[#e2e8f0] hover:text-[#0f172a] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] disabled:cursor-not-allowed disabled:opacity-50 group-hover/model-row:opacity-100"
-                                disabled={isStepExporting || !projectCADDocument}
-                                onClick={() => exportStepModel(model.id)}
-                                title="Export STEP"
-                                type="button"
-                              >
-                                <Download className="size-3.5" />
                               </button>
                             )}
                             <div
@@ -1164,7 +1273,7 @@ function ProjectView() {
       <div className="h-screen min-w-0 overflow-hidden">
         <aside
           aria-hidden={!isAiChatOpen}
-          aria-label="CAD Agent panel"
+          aria-label="Assistant panel"
           className={`relative flex h-full w-full min-h-0 flex-col overflow-hidden border-l bg-[#ffffff]/96 shadow-[0_10px_28px_rgba(15,23,42,0.06)] backdrop-blur will-change-transform transition-[border-color,box-shadow,opacity,transform] duration-[220ms] ease-out motion-reduce:transition-none ${
             isAiChatOpen
               ? 'pointer-events-auto translate-x-0 border-[#d6dbe3] opacity-100'
@@ -1173,7 +1282,7 @@ function ProjectView() {
           inert={!isAiChatOpen}
         >
             <div
-              aria-label="Resize CAD Agent panel"
+              aria-label="Resize Assistant panel"
               aria-orientation="vertical"
               aria-valuemax={aiChatPanelMaxWidth}
               aria-valuemin={aiChatPanelMinWidth}
@@ -1181,7 +1290,7 @@ function ProjectView() {
               className="group absolute left-0 top-0 z-40 h-full w-2 cursor-col-resize"
               onPointerDown={startAiChatPanelResize}
               role="separator"
-              title="Resize CAD Agent panel"
+              title="Resize Assistant panel"
             >
               <span className="absolute bottom-3 left-0 top-3 w-px rounded-full bg-transparent transition group-hover:bg-[#94a3b8]" />
             </div>
@@ -1189,17 +1298,17 @@ function ProjectView() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
                   <BotMessageSquare className="size-4 text-[#2563eb]" />
-                  CAD Agent
+                  Assistant
                 </div>
                 <p className="mt-0.5 truncate text-[11px] leading-4 text-[#64748b]">
                   {projectModels.length} project sources attached
                 </p>
               </div>
               <button
-                aria-label="Close CAD Agent"
+                aria-label="Close Assistant"
                 className="grid size-8 shrink-0 place-items-center rounded-md text-[#64748b] transition hover:bg-[#e2e8f0] hover:text-[#0f172a]"
                 onClick={closeAiChat}
-                title="Close CAD Agent"
+                title="Close Assistant"
                 type="button"
               >
                 <X className="size-4" />
@@ -1226,7 +1335,7 @@ function ProjectView() {
               onSubmit={handleAiChatSubmit}
             >
               <label className="sr-only" htmlFor="project-ai-chat-input">
-                Message CAD Agent
+                Message Assistant
               </label>
               <textarea
                 className="min-h-20 w-full resize-none rounded-lg bg-transparent px-2 py-2 text-sm leading-6 text-[#0f172a] outline-none placeholder:text-[#94a3b8]"
@@ -1242,7 +1351,7 @@ function ProjectView() {
                   {projectAgentMutation.isPending ? 'Thinking' : 'Project context'}
                 </div>
                 <button
-                  aria-label="Send CAD Agent message"
+                  aria-label="Send Assistant message"
                   className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#0f172a] text-white shadow-[0_2px_8px_rgba(15,23,42,0.18)] transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:bg-[#d7dde5] disabled:shadow-none"
                   disabled={aiChatDraft.trim() === '' || projectAgentMutation.isPending}
                   type="submit"
