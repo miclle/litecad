@@ -695,7 +695,7 @@ export function ModelPreview({
       pointerDown = { x: event.clientX, y: event.clientY, pointerID: event.pointerId }
     }
     const handlePointerUp = (event: PointerEvent) => {
-      if (event.button !== 0 || !pointerDown || pointerDown.pointerID !== event.pointerId) {
+      if (!pointerDown || pointerDown.pointerID !== event.pointerId) {
         pointerDown = undefined
         return
       }
