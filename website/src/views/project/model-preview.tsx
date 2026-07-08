@@ -3,10 +3,15 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
+import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
 
 import { disposeObject3DResources } from './three-object-resources'
 import { createKernelMeshPreviewObject } from './model-preview-kernel-mesh'
 import { orientCADPreviewObject } from './model-preview-orientation'
+import {
+  cadTranslationDeltaToPreviewTranslation,
+  previewTranslationDeltaToCADTranslation,
+} from './model-preview-transforms'
 import {
   createViewOrientationChangeEvent,
   orientationFromEvent,
@@ -30,7 +35,11 @@ type ModelPreviewProps = {
   deferResize?: boolean
   draftModelTranslations?: Record<string, CADTranslation>
   modelTranslations?: Record<string, CADTranslation>
+  onClearSelection?: () => void
+  onModelTranslationChange?: (modelID: string, translation: CADTranslation) => void
+  onSelectModel?: (modelID: string) => void
   previewAssets?: ProjectPreviewAsset[]
+  selectedModelId?: string
   visibleModelIds?: readonly string[]
 }
 
@@ -46,13 +55,6 @@ const modelPreviewZoomHUDHideDelayMS = 1000
 const modelPreviewZoomDistanceEpsilonRatio = 0.002
 const modelPreviewResizeCompleteEventName = 'litecad:model-preview-resize-complete'
 const zeroTranslation: CADTranslation = { x: 0, y: 0, z: 0 }
-
-const cadTranslationDeltaToPreviewVector = (translation: CADTranslation, shouldOrientCADPreview: boolean) => {
-  if (!shouldOrientCADPreview) {
-    return new THREE.Vector3(translation.x, translation.y, translation.z)
-  }
-  return new THREE.Vector3(translation.x, translation.z, -translation.y)
-}
 
 const niceGridStep = (radius: number) => {
   const targetStep = Math.max(radius / 10, 0.01)
@@ -169,18 +171,27 @@ export function ModelPreview({
   deferResize = false,
   draftModelTranslations,
   modelTranslations,
+  onClearSelection,
+  onModelTranslationChange,
+  onSelectModel,
   previewAssets = [],
+  selectedModelId,
   visibleModelIds,
 }: ModelPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const deferResizeRef = useRef(deferResize)
   const draftModelTranslationsRef = useRef<Record<string, CADTranslation> | undefined>(draftModelTranslations)
   const modelTranslationsRef = useRef<Record<string, CADTranslation> | undefined>(modelTranslations)
+  const onClearSelectionRef = useRef<ModelPreviewProps['onClearSelection']>(onClearSelection)
+  const onModelTranslationChangeRef = useRef<ModelPreviewProps['onModelTranslationChange']>(onModelTranslationChange)
+  const onSelectModelRef = useRef<ModelPreviewProps['onSelectModel']>(onSelectModel)
+  const selectedModelIdRef = useRef<string | undefined>(selectedModelId)
   const visibleModelIdsRef = useRef<readonly string[]>(visibleModelIds)
   const previewObjectBasePositionsByModelIDRef = useRef(new Map<string, THREE.Vector3>())
   const previewObjectBaseUsesCADOrientationByModelIDRef = useRef(new Map<string, boolean>())
   const previewObjectBaseTranslationsByModelIDRef = useRef(new Map<string, CADTranslation>())
   const previewObjectsByModelIDRef = useRef(new Map<string, THREE.Object3D>())
+  const syncSelectedPreviewObjectRef = useRef<() => void>(() => undefined)
   const syncPreviewObjectTransformsRef = useRef<() => void>(() => undefined)
   const syncPreviewObjectVisibilityRef = useRef<() => void>(() => undefined)
   const zoomHUDHideTimeoutRef = useRef<number | undefined>(undefined)
@@ -210,6 +221,14 @@ export function ModelPreview({
   }, [deferResize])
 
   useEffect(() => {
+    onClearSelectionRef.current = onClearSelection
+    onModelTranslationChangeRef.current = onModelTranslationChange
+    onSelectModelRef.current = onSelectModel
+    selectedModelIdRef.current = selectedModelId
+    syncSelectedPreviewObjectRef.current()
+  }, [onClearSelection, onModelTranslationChange, onSelectModel, selectedModelId])
+
+  useEffect(() => {
     visibleModelIdsRef.current = visibleModelIds
     syncPreviewObjectVisibilityRef.current()
     // The signature keeps this effect primitive-stable while allowing callers to pass fresh arrays.
@@ -234,6 +253,7 @@ export function ModelPreview({
     previewObjectBasePositionsByModelIDRef.current = new Map()
     previewObjectBaseUsesCADOrientationByModelIDRef.current = new Map()
     previewObjectBaseTranslationsByModelIDRef.current = new Map()
+    syncSelectedPreviewObjectRef.current = () => undefined
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -267,11 +287,20 @@ export function ModelPreview({
     controls.minDistance = 1
     controls.maxDistance = 1000
     controls.target.set(0, 0.15, 0)
+    const transformControls = new TransformControls(camera, renderer.domElement)
+    transformControls.setMode('translate')
+    transformControls.setSize(0.84)
+    transformControls.showX = true
+    transformControls.showY = true
+    transformControls.showZ = true
+    const transformControlsHelper = transformControls.getHelper()
+    scene.add(transformControlsHelper)
     let activeOrientation = initialViewOrientation
     let lastEmittedOrientation = initialViewOrientation
     let viewAnimationFrameID: number | null = null
     let controlsFrameID: number | null = null
     let isControlsInteracting = false
+    let isTransformDragging = false
     let isProgrammaticCameraUpdate = false
     const previewCenter = new THREE.Vector3(0, 0, 0)
     let previewRadius = 4
@@ -281,8 +310,15 @@ export function ModelPreview({
     previewGroup.name = 'Project preview models'
     let isDisposed = false
     let worldGrid = createWorldGrid(previewRadius)
+    const selectionBox = new THREE.BoxHelper(new THREE.Object3D(), 0x2563eb)
+    selectionBox.visible = false
+    selectionBox.renderOrder = 30
+    selectionBox.material.depthTest = false
+    selectionBox.material.transparent = true
+    selectionBox.material.opacity = 0.85
     scene.add(worldGrid)
     scene.add(previewGroup)
+    scene.add(selectionBox)
     const updateWorldGrid = (bounds?: THREE.Box3) => {
       scene.remove(worldGrid)
       disposeObject3DResources(worldGrid)
@@ -314,6 +350,7 @@ export function ModelPreview({
       previewObjectsByModelIDRef.current.forEach((object, modelID) => {
         object.visible = !visibleModelIDs || visibleModelIDs.has(modelID)
       })
+      syncSelectedPreviewObjectRef.current()
       renderScene()
     }
     syncPreviewObjectTransformsRef.current = () => {
@@ -328,7 +365,7 @@ export function ModelPreview({
           object.position.copy(basePosition)
           return
         }
-        const delta = cadTranslationDeltaToPreviewVector(
+        const previewTranslation = cadTranslationDeltaToPreviewTranslation(
           {
             x: activeTranslation.x - baseTranslation.x,
             y: activeTranslation.y - baseTranslation.y,
@@ -336,10 +373,71 @@ export function ModelPreview({
           },
           previewObjectBaseUsesCADOrientationByModelIDRef.current.get(modelID) ?? false,
         )
-        object.position.copy(basePosition).add(delta)
+        object.position.copy(basePosition).add(new THREE.Vector3(previewTranslation.x, previewTranslation.y, previewTranslation.z))
       })
+      syncSelectedPreviewObjectRef.current()
       renderScene()
     }
+    const updateSelectionBox = (object?: THREE.Object3D) => {
+      if (!object || !object.visible) {
+        selectionBox.visible = false
+        return
+      }
+      selectionBox.setFromObject(object)
+      selectionBox.visible = true
+    }
+    const selectedPreviewObjectTranslation = (modelID: string, object: THREE.Object3D) => {
+      const basePosition = previewObjectBasePositionsByModelIDRef.current.get(modelID)
+      if (!basePosition) {
+        return undefined
+      }
+      const baseTranslation = previewObjectBaseTranslationsByModelIDRef.current.get(modelID) ?? zeroTranslation
+      const previewTranslation = object.position.clone().sub(basePosition)
+      return previewTranslationDeltaToCADTranslation(
+        { x: previewTranslation.x, y: previewTranslation.y, z: previewTranslation.z },
+        baseTranslation,
+        previewObjectBaseUsesCADOrientationByModelIDRef.current.get(modelID) ?? false,
+      )
+    }
+    syncSelectedPreviewObjectRef.current = () => {
+      const selectedModelID = selectedModelIdRef.current
+      const selectedObject = selectedModelID ? previewObjectsByModelIDRef.current.get(selectedModelID) : undefined
+      if (!selectedObject || !selectedObject.visible) {
+        transformControls.detach()
+        updateSelectionBox()
+        renderer.domElement.style.cursor = 'grab'
+        renderScene()
+        return
+      }
+      transformControls.attach(selectedObject)
+      updateSelectionBox(selectedObject)
+      renderer.domElement.style.cursor = isTransformDragging ? 'grabbing' : 'pointer'
+      renderScene()
+    }
+    const handleTransformDraggingChanged = (event: { value?: unknown }) => {
+      isTransformDragging = Boolean(event.value)
+      controls.enabled = !isTransformDragging
+      renderer.domElement.style.cursor = isTransformDragging ? 'grabbing' : selectedModelIdRef.current ? 'pointer' : 'grab'
+      if (isTransformDragging) {
+        cancelViewAnimation()
+      }
+      renderScene()
+    }
+    const handleTransformObjectChange = () => {
+      const selectedModelID = selectedModelIdRef.current
+      const selectedObject = selectedModelID ? previewObjectsByModelIDRef.current.get(selectedModelID) : undefined
+      if (!selectedModelID || !selectedObject) {
+        return
+      }
+      updateSelectionBox(selectedObject)
+      const translation = selectedPreviewObjectTranslation(selectedModelID, selectedObject)
+      if (translation) {
+        onModelTranslationChangeRef.current?.(selectedModelID, translation)
+      }
+      renderScene()
+    }
+    transformControls.addEventListener('dragging-changed', handleTransformDraggingChanged)
+    transformControls.addEventListener('objectChange', handleTransformObjectChange)
     const emitOrientationChange = (orientation: ViewOrientation) => {
       if (orientationDistance(lastEmittedOrientation, orientation) < 0.2) {
         return
@@ -477,6 +575,7 @@ export function ModelPreview({
         return
       }
       object.name = asset.name
+      object.userData.litecadModelId = asset.modelId
       if (asset.transform?.matrix.length === 16) {
         const matrix = new THREE.Matrix4()
         matrix.set(
@@ -514,6 +613,7 @@ export function ModelPreview({
       syncPreviewObjectTransformsRef.current()
       object.visible = isPreviewObjectVisible(asset.modelId)
       object.traverse((child) => {
+        child.userData.litecadModelId = asset.modelId
         if (child instanceof THREE.Mesh) {
           const objectName = `${child.name} ${child.parent?.name ?? ''}`
           if (asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh') {
@@ -537,10 +637,76 @@ export function ModelPreview({
       previewObjectsByModelIDRef.current.set(asset.modelId, object)
       previewGroup.add(object)
       syncPreviewObjectTransformsRef.current()
+      syncSelectedPreviewObjectRef.current()
       updatePreviewBounds()
     }
 
     renderer.domElement.style.cursor = 'grab'
+
+    const raycaster = new THREE.Raycaster()
+    const pointer = new THREE.Vector2()
+    let pointerDown: { x: number; y: number; pointerID: number } | undefined
+    const findModelIDFromObject = (object: THREE.Object3D) => {
+      let currentObject: THREE.Object3D | null = object
+      while (currentObject) {
+        if (typeof currentObject.userData.litecadModelId === 'string') {
+          return currentObject.userData.litecadModelId as string
+        }
+        currentObject = currentObject.parent
+      }
+      return undefined
+    }
+    const modelIDFromPointerEvent = (event: PointerEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect()
+      if (rect.width === 0 || rect.height === 0) {
+        return undefined
+      }
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      pointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1)
+      raycaster.setFromCamera(pointer, camera)
+      const visibleObjects = [...previewObjectsByModelIDRef.current.values()].filter((object) => object.visible)
+      const intersection = raycaster.intersectObjects(visibleObjects, true)[0]
+      return intersection ? findModelIDFromObject(intersection.object) : undefined
+    }
+    const isTransformControlPointerEvent = (event: PointerEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect()
+      if (!selectedModelIdRef.current || rect.width === 0 || rect.height === 0) {
+        return false
+      }
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      pointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1)
+      raycaster.setFromCamera(pointer, camera)
+      return raycaster.intersectObject(transformControlsHelper, true).length > 0
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) {
+        return
+      }
+      pointerDown = { x: event.clientX, y: event.clientY, pointerID: event.pointerId }
+    }
+    const handlePointerUp = (event: PointerEvent) => {
+      if (event.button !== 0 || !pointerDown || pointerDown.pointerID !== event.pointerId) {
+        pointerDown = undefined
+        return
+      }
+      const deltaX = event.clientX - pointerDown.x
+      const deltaY = event.clientY - pointerDown.y
+      pointerDown = undefined
+      if (isTransformDragging || Math.hypot(deltaX, deltaY) > 5) {
+        return
+      }
+      if (isTransformControlPointerEvent(event)) {
+        return
+      }
+      const modelID = modelIDFromPointerEvent(event)
+      if (modelID) {
+        onSelectModelRef.current?.(modelID)
+        return
+      }
+      onClearSelectionRef.current?.()
+    }
+    renderer.domElement.addEventListener('pointerdown', handlePointerDown)
+    renderer.domElement.addEventListener('pointerup', handlePointerUp)
 
     const updateCameraForOrientation = (width: number, height: number, orientation: ViewOrientation) => {
       const direction = orientationToViewDirection(orientation)
@@ -707,10 +873,17 @@ export function ModelPreview({
       controls.removeEventListener('start', startControlsInteraction)
       controls.removeEventListener('end', stopControlsInteraction)
       controls.removeEventListener('change', handleControlsChange)
+      transformControls.removeEventListener('dragging-changed', handleTransformDraggingChanged)
+      transformControls.removeEventListener('objectChange', handleTransformObjectChange)
+      renderer.domElement.removeEventListener('pointerdown', handlePointerDown)
+      renderer.domElement.removeEventListener('pointerup', handlePointerUp)
       controls.dispose()
+      transformControls.detach()
+      transformControls.dispose()
       isDisposed = true
       syncPreviewObjectVisibilityRef.current = () => undefined
       syncPreviewObjectTransformsRef.current = () => undefined
+      syncSelectedPreviewObjectRef.current = () => undefined
       previewObjectsByModelIDRef.current = new Map()
       previewObjectBasePositionsByModelIDRef.current = new Map()
       previewObjectBaseUsesCADOrientationByModelIDRef.current = new Map()

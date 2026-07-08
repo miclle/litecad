@@ -72,7 +72,8 @@ git commit -m "feat(cad): add selected model inspector"
 **Files:**
 - Modify: `website/src/views/project/model-preview.tsx`
 - Modify: `website/src/views/project/index.tsx`
-- Modify: `website/src/views/project/model-preview*.test.ts` or add focused helper tests if transform math is extracted.
+- Add: `website/src/views/project/model-preview-transforms.ts`
+- Add: `website/src/views/project/model-preview-transforms.test.ts`
 - Modify: `TODO.md`
 - Modify: `docs/superpowers/plans/2026-07-08-selected-model-transform-controls.md`
 
@@ -80,23 +81,23 @@ git commit -m "feat(cad): add selected model inspector"
 - Consumes: `selectedModelId`, `onSelectModel(modelID)`, `onClearSelection()`, and `onModelTranslationChange(modelID, translation)`.
 - Produces: canvas click selection, selection highlight, and Three.js `TransformControls` translate drag events that update the same transform draft/autosave path as numeric inputs.
 
-- [ ] **Step 1: Add raycast picking**
+- [x] **Step 1: Add raycast picking**
 
 Use a canvas-local `Raycaster` against preview objects. Click selects the closest visible model object; clicking empty canvas clears selection.
 
-- [ ] **Step 2: Add selected model highlight**
+- [x] **Step 2: Add selected model highlight**
 
 Apply a restrained selected-state visual treatment to the selected preview object without replacing source materials permanently.
 
-- [ ] **Step 3: Add TransformControls translate mode**
+- [x] **Step 3: Add TransformControls translate mode**
 
 Attach `TransformControls` to the selected preview object. Disable trackball controls while dragging, then re-enable them on drag end.
 
-- [ ] **Step 4: Convert preview position back to CAD translation**
+- [x] **Step 4: Convert preview position back to CAD translation**
 
 For CAD-oriented STEP/OBJ preview assets, convert preview-space deltas back to CAD `(x, y, z)` before calling the parent transform draft handler. Preserve direct Three.js coordinates for GLTF/GLB assets.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 
@@ -109,6 +110,6 @@ cd website && npm run build
 Commit:
 
 ```bash
-git add TODO.md docs/superpowers/plans/2026-07-08-selected-model-transform-controls.md website/src/views/project/index.tsx website/src/views/project/model-preview.tsx website/src/views/project
+git add README.md TODO.md docs/superpowers/plans/2026-07-08-selected-model-transform-controls.md website/src/views/project/index.tsx website/src/views/project/model-preview.tsx website/src/views/project/model-preview-transforms.ts website/src/views/project/model-preview-transforms.test.ts
 git commit -m "feat(cad): add canvas translate controls"
 ```

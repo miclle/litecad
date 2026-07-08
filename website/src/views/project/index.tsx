@@ -962,6 +962,13 @@ function ProjectView() {
     setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: '' }))
     scheduleTransformAutosave(modelID, nextDraft)
   }
+  const updateTransformDraftFromTranslation = (modelID: string, translation: CADTranslation) => {
+    const nextDraft = transformDraftFromTranslation(translation)
+    latestTransformDraftsRef.current[modelID] = nextDraft
+    setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [modelID]: nextDraft }))
+    setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: '' }))
+    scheduleTransformAutosave(modelID, nextDraft)
+  }
   function latestBoxFeatureDraftForModel(modelID: string) {
     const latestBoxOperation = [...(projectCADDocument?.operations ?? [])]
       .reverse()
@@ -1284,7 +1291,11 @@ function ProjectView() {
               draftModelTranslations={draftModelTranslationsByID}
               key={project.id}
               modelTranslations={modelTranslationsByID}
+              onClearSelection={() => setSelectedModelID('')}
+              onModelTranslationChange={updateTransformDraftFromTranslation}
+              onSelectModel={setSelectedModelID}
               previewAssets={previewAssets}
+              selectedModelId={selectedModelID}
               visibleModelIds={visibleModelIds}
             />
             {shouldShowCanvasStatus && (
