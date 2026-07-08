@@ -36,6 +36,7 @@ These rules keep LiteCAD product work aligned with the small Go + React single-b
 - The home and project workbench Three.js surfaces must use project-owned source or derived preview data instead of hard-coded demo geometry.
 - Treat AI generation, measurement, backend export artifact persistence, combined assembly export, editable B-rep geometry documents, and full STEP B-rep semantics as roadmap work unless the code implements the end-to-end flow.
 - Treat general CAD merge/boolean operations as roadmap work unless the code implements the end-to-end flow. A constrained per-model STEP box-union operation and direct per-model STEP export are implemented.
+- STEP/STP upload metadata extraction is Go-only lightweight source scanning, not geometric B-rep import. Keep full STEP geometry import, preview, edit replay, and export behind the browser CAD kernel worker boundary.
 - Normal runtime code must not depend on FreeCAD, `freecadcmd`, or Python-based STEP conversion. New CAD import/edit/export work should stay behind the browser CAD kernel worker boundary and avoid third-party desktop CAD software dependencies.
 - When a feature becomes real, update README and remove or rewrite the matching TODO item in the same change.
 
