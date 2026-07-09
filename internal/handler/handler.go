@@ -39,6 +39,7 @@ func (ctrl *Ctrl) RegisterRoutes(r *fox.Engine) {
 	api.POST("/projects", ctrl.CreateProject)
 	api.GET("/projects/:projectID", ctrl.GetProject)
 	api.GET("/projects/:projectID/thumbnail", ctrl.GetProjectThumbnailSnapshot)
+	api.POST("/projects/:projectID/thumbnail", ctrl.SaveProjectThumbnailSnapshot)
 	api.GET("/projects/:projectID/agent/messages", ctrl.ListProjectAgentMessages)
 	api.POST("/projects/:projectID/agent/messages", ctrl.SendProjectAgentMessage)
 	api.GET("/projects/:projectID/geometry", ctrl.GetProjectGeometryDocument)

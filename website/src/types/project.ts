@@ -22,6 +22,10 @@ export interface ProjectThumbnailSnapshot {
   updated_at: string
 }
 
+export interface ProjectThumbnailSnapshotResponse {
+  snapshot: ProjectThumbnailSnapshot
+}
+
 export interface ProjectModelSummary {
   id: string
   format: 'step' | 'glb' | 'gltf' | 'stl'

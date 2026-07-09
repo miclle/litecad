@@ -1,6 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   useEffect,
+  useCallback,
   useMemo,
   useRef,
   useState,
@@ -42,6 +43,7 @@ import {
   fetchProjectModels,
   sendProjectAgentMessage,
   updateProjectCADModelTransform,
+  uploadProjectThumbnailSnapshot,
   uploadProjectModel,
 } from 'src/api/projects'
 import {
@@ -79,7 +81,7 @@ import {
   type BoxFeatureDraft,
 } from './cad-document-box-features'
 import { cadTransformWithTranslation, translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
-import { ModelPreview } from './model-preview'
+import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
 import { exportMergedStepTargets, exportStepTarget } from './project-step-export-action'
 import {
   buildProjectPreviewAssets,
@@ -88,6 +90,7 @@ import {
   getModelDisplayName,
   parsedPreviewModels,
   projectPreviewSummary,
+  projectPreviewAssetSignature,
 } from './project-preview-assets'
 import {
   buildStepExportTargets,
@@ -326,6 +329,7 @@ function ProjectView() {
   const latestTransformDraftsRef = useRef<Record<string, TransformDraft>>({})
   const latestTransformSaveRequestByModelIDRef = useRef<Record<string, number>>({})
   const transformAutosaveTimersRef = useRef<Record<string, number>>({})
+  const lastRequestedThumbnailSignatureRef = useRef('')
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: async () => (await fetchProject(projectId)).data.project,
@@ -428,6 +432,25 @@ function ProjectView() {
     },
     onError: (_error, variables) => {
       setBoxFeatureErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: 'Invalid box feature' }))
+    },
+  })
+  const thumbnailSnapshotMutation = useMutation({
+    mutationFn: async ({
+      snapshot,
+      revision,
+    }: {
+      snapshot: ModelPreviewSnapshotCapture
+      revision: number
+    }) =>
+      (
+        await uploadProjectThumbnailSnapshot(projectId, snapshot.blob, {
+          width: snapshot.width,
+          height: snapshot.height,
+          revision,
+        })
+      ).data.snapshot,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
   })
   const exportStepSelectionMutation = useMutation({
@@ -603,6 +626,7 @@ function ProjectView() {
     () => buildProjectPreviewAssets(previewModels, previewArtifacts, previewUrlsByModelID, kernelMeshesByModelID, projectCADDocument),
     [kernelMeshesByModelID, previewArtifacts, previewModels, previewUrlsByModelID, projectCADDocument],
   )
+  const thumbnailPreviewSignature = useMemo(() => projectPreviewAssetSignature(previewAssets), [previewAssets])
   const previewAssetModelIDs = useMemo(() => new Set(previewAssets.map((asset) => asset.modelId)), [previewAssets])
   const visibleModelIds = useMemo(
     () => previewAssets.flatMap((asset) => (hiddenModelIDs.has(asset.modelId) ? [] : [asset.modelId])),
@@ -621,6 +645,22 @@ function ProjectView() {
     : latestModel
     ? `${latestProductName || latestModel.original_filename} metadata is parsed. Geometry preview is being prepared.`
     : 'The canvas is empty until imported geometry is prepared for preview. Import a CAD source file to attach real model data to this project.'
+  const handlePreviewSnapshotCapture = useCallback(
+    (snapshot: ModelPreviewSnapshotCapture) => {
+      const revision = projectCADDocument?.revision ?? 0
+      const visibleSignature = visibleModelIds.join('|')
+      if (!projectId || previewAssets.length === 0 || visibleModelIds.length === 0 || revision <= 0) {
+        return
+      }
+      const signature = `${projectId}:${revision}:${thumbnailPreviewSignature}:${visibleSignature}`
+      if (lastRequestedThumbnailSignatureRef.current === signature) {
+        return
+      }
+      lastRequestedThumbnailSignatureRef.current = signature
+      thumbnailSnapshotMutation.mutate({ snapshot, revision })
+    },
+    [previewAssets.length, projectCADDocument?.revision, projectId, thumbnailPreviewSignature, thumbnailSnapshotMutation, visibleModelIds],
+  )
   const previewBlobSignature = projectModelPreviewQueries
     .map((query, index) => {
       const modelID = backendPreviewModels[index]?.id ?? ''
@@ -1341,6 +1381,7 @@ function ProjectView() {
               onClearSelection={() => setSelectedModelID('')}
               onModelTranslationChange={updateTransformDraftFromTranslation}
               onSelectModel={setSelectedModelID}
+              onSnapshotCapture={handlePreviewSnapshotCapture}
               previewAssets={previewAssets}
               selectedModelId={selectedModelID}
               visibleModelIds={visibleModelIds}

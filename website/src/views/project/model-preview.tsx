@@ -31,12 +31,19 @@ import {
 import { projectPreviewAssetSignature, type ProjectPreviewAsset } from './project-preview-assets'
 import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 
+export type ModelPreviewSnapshotCapture = {
+  blob: Blob
+  width: number
+  height: number
+}
+
 type ModelPreviewProps = {
   deferResize?: boolean
   draftModelTranslations?: Record<string, CADTranslation>
   modelTranslations?: Record<string, CADTranslation>
   onClearSelection?: () => void
   onModelTranslationChange?: (modelID: string, translation: CADTranslation) => void
+  onSnapshotCapture?: (snapshot: ModelPreviewSnapshotCapture) => void
   onSelectModel?: (modelID: string) => void
   previewAssets?: ProjectPreviewAsset[]
   selectedModelId?: string
@@ -54,6 +61,8 @@ const gridPlaneOffset = 0.015
 const modelPreviewZoomSpeed = 4.2
 const modelPreviewZoomHUDHideDelayMS = 1000
 const modelPreviewZoomDistanceEpsilonRatio = 0.002
+const modelPreviewSnapshotWidth = 640
+const modelPreviewSnapshotDelayMS = 900
 const transformControlSize = 0.58
 const modelPreviewResizeCompleteEventName = 'litecad:model-preview-resize-complete'
 const zeroTranslation: CADTranslation = { x: 0, y: 0, z: 0 }
@@ -175,6 +184,7 @@ export function ModelPreview({
   modelTranslations,
   onClearSelection,
   onModelTranslationChange,
+  onSnapshotCapture,
   onSelectModel,
   previewAssets = [],
   selectedModelId,
@@ -187,6 +197,7 @@ export function ModelPreview({
   const modelTranslationsRef = useRef<Record<string, CADTranslation> | undefined>(modelTranslations)
   const onClearSelectionRef = useRef<ModelPreviewProps['onClearSelection']>(onClearSelection)
   const onModelTranslationChangeRef = useRef<ModelPreviewProps['onModelTranslationChange']>(onModelTranslationChange)
+  const onSnapshotCaptureRef = useRef<ModelPreviewProps['onSnapshotCapture']>(onSnapshotCapture)
   const onSelectModelRef = useRef<ModelPreviewProps['onSelectModel']>(onSelectModel)
   const selectedModelIdRef = useRef<string | undefined>(selectedModelId)
   const visibleModelIdsRef = useRef<readonly string[]>(visibleModelIds)
@@ -226,10 +237,11 @@ export function ModelPreview({
   useEffect(() => {
     onClearSelectionRef.current = onClearSelection
     onModelTranslationChangeRef.current = onModelTranslationChange
+    onSnapshotCaptureRef.current = onSnapshotCapture
     onSelectModelRef.current = onSelectModel
     selectedModelIdRef.current = selectedModelId
     syncSelectedPreviewObjectRef.current()
-  }, [onClearSelection, onModelTranslationChange, onSelectModel, selectedModelId])
+  }, [onClearSelection, onModelTranslationChange, onSnapshotCapture, onSelectModel, selectedModelId])
 
   useEffect(() => {
     visibleModelIdsRef.current = visibleModelIds
@@ -258,7 +270,7 @@ export function ModelPreview({
     previewObjectBaseTranslationsByModelIDRef.current = new Map()
     syncSelectedPreviewObjectRef.current = () => undefined
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setClearColor(viewportBackground, 1)
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -315,6 +327,7 @@ export function ModelPreview({
     let lastEmittedOrientation = initialViewOrientation
     let viewAnimationFrameID: number | null = null
     let controlsFrameID: number | null = null
+    let snapshotTimeoutID: number | undefined
     let isControlsInteracting = false
     let isTransformDragging = false
     let isProgrammaticCameraUpdate = false
@@ -358,6 +371,67 @@ export function ModelPreview({
       scene.fog = new THREE.Fog(viewportBackground, nextNear, nextFar)
     }
 
+    const captureSnapshot = () => {
+      if (isDisposed || variant !== 'workspace' || previewObjectsByModelIDRef.current.size === 0 || !onSnapshotCaptureRef.current) {
+        return
+      }
+      const sourceCanvas = renderer.domElement
+      if (sourceCanvas.width === 0 || sourceCanvas.height === 0) {
+        return
+      }
+
+      const wasSelectionBoxVisible = selectionBox.visible
+      const wasTransformControlsVisible = transformControlsHelper.visible
+      selectionBox.visible = false
+      transformControlsHelper.visible = false
+      renderer.render(scene, camera)
+
+      const width = Math.min(modelPreviewSnapshotWidth, sourceCanvas.width)
+      const height = Math.max(1, Math.round(width * (sourceCanvas.height / sourceCanvas.width)))
+      const snapshotCanvas = document.createElement('canvas')
+      snapshotCanvas.width = width
+      snapshotCanvas.height = height
+      const context = snapshotCanvas.getContext('2d')
+      if (!context) {
+        selectionBox.visible = wasSelectionBoxVisible
+        transformControlsHelper.visible = wasTransformControlsVisible
+        renderer.render(scene, camera)
+        return
+      }
+      context.drawImage(sourceCanvas, 0, 0, width, height)
+
+      selectionBox.visible = wasSelectionBoxVisible
+      transformControlsHelper.visible = wasTransformControlsVisible
+      renderer.render(scene, camera)
+
+      const publishBlob = (blob: Blob | null) => {
+        if (!blob || isDisposed) {
+          return
+        }
+        onSnapshotCaptureRef.current?.({ blob, width, height })
+      }
+      snapshotCanvas.toBlob((blob) => {
+        if (blob) {
+          publishBlob(blob)
+          return
+        }
+        snapshotCanvas.toBlob((fallbackBlob) => {
+          publishBlob(fallbackBlob)
+        }, 'image/png')
+      }, 'image/webp', 0.76)
+    }
+    const scheduleSnapshotCapture = () => {
+      if (variant !== 'workspace' || !onSnapshotCaptureRef.current) {
+        return
+      }
+      if (snapshotTimeoutID !== undefined) {
+        window.clearTimeout(snapshotTimeoutID)
+      }
+      snapshotTimeoutID = window.setTimeout(() => {
+        snapshotTimeoutID = undefined
+        captureSnapshot()
+      }, modelPreviewSnapshotDelayMS)
+    }
     const renderScene = () => {
       updateSceneFog(camera.position.distanceTo(controls.target))
       renderer.render(scene, camera)
@@ -369,6 +443,7 @@ export function ModelPreview({
       })
       syncSelectedPreviewObjectRef.current()
       renderScene()
+      scheduleSnapshotCapture()
     }
     syncPreviewObjectTransformsRef.current = () => {
       previewObjectsByModelIDRef.current.forEach((object, modelID) => {
@@ -394,6 +469,7 @@ export function ModelPreview({
       })
       syncSelectedPreviewObjectRef.current()
       renderScene()
+      scheduleSnapshotCapture()
     }
     const updateSelectionBox = (object?: THREE.Object3D) => {
       if (!object || !object.visible) {
@@ -656,6 +732,7 @@ export function ModelPreview({
       syncPreviewObjectTransformsRef.current()
       syncSelectedPreviewObjectRef.current()
       updatePreviewBounds()
+      scheduleSnapshotCapture()
     }
 
     renderer.domElement.style.cursor = idleCursor
@@ -882,10 +959,13 @@ export function ModelPreview({
     })
 
     return () => {
-      cancelViewAnimation()
-      cancelControlsUpdate()
-      window.cancelAnimationFrame(resetFrameID)
-      window.clearTimeout(resetTimeoutID)
+	      cancelViewAnimation()
+	      cancelControlsUpdate()
+	      window.cancelAnimationFrame(resetFrameID)
+	      window.clearTimeout(resetTimeoutID)
+	      if (snapshotTimeoutID !== undefined) {
+	        window.clearTimeout(snapshotTimeoutID)
+	      }
       clearZoomHUDHideTimeout()
       resizeObserver.disconnect()
       container.removeEventListener(resetViewEventName, handleResetView)

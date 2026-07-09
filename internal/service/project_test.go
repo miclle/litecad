@@ -240,6 +240,88 @@ func TestGetProjectThumbnailSnapshotScopesByOwner(t *testing.T) {
 	}
 }
 
+func TestSaveProjectThumbnailSnapshotReplacesCoverAndScopesByOwner(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	owner, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada",
+		Email:    "save-thumbnail-owner@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser owner returned error: %v", err)
+	}
+	other, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Grace",
+		Email:    "save-thumbnail-other@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser other returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: owner.ID,
+		Name:        "Saved thumbnail",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	summary, err := svc.SaveProjectThumbnailSnapshot(ctx, SaveProjectThumbnailSnapshotInput{
+		OwnerUserID: owner.ID,
+		ProjectID:   project.ID,
+		ContentType: "image/webp",
+		Data:        []byte("first"),
+		Width:       640,
+		Height:      360,
+		Revision:    1,
+	})
+	if err != nil {
+		t.Fatalf("SaveProjectThumbnailSnapshot returned error: %v", err)
+	}
+	if summary.URL != "/api/v1/projects/"+project.ID+"/thumbnail?revision=1" || summary.Status != "ready" {
+		t.Fatalf("summary = %+v", summary)
+	}
+
+	summary, err = svc.SaveProjectThumbnailSnapshot(ctx, SaveProjectThumbnailSnapshotInput{
+		OwnerUserID: owner.ID,
+		ProjectID:   project.ID,
+		ContentType: "image/png",
+		Data:        []byte("second"),
+		Width:       320,
+		Height:      180,
+		Revision:    2,
+	})
+	if err != nil {
+		t.Fatalf("second SaveProjectThumbnailSnapshot returned error: %v", err)
+	}
+	if summary.URL != "/api/v1/projects/"+project.ID+"/thumbnail?revision=2" || summary.Width != 320 || summary.Height != 180 {
+		t.Fatalf("updated summary = %+v", summary)
+	}
+
+	snapshot, err := svc.GetProjectThumbnailSnapshot(ctx, owner.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectThumbnailSnapshot returned error: %v", err)
+	}
+	if snapshot.ContentType != "image/png" || string(snapshot.Data) != "second" || snapshot.Revision != 2 {
+		t.Fatalf("stored snapshot = %+v", snapshot)
+	}
+
+	_, err = svc.SaveProjectThumbnailSnapshot(ctx, SaveProjectThumbnailSnapshotInput{
+		OwnerUserID: other.ID,
+		ProjectID:   project.ID,
+		ContentType: "image/png",
+		Data:        []byte("other"),
+		Width:       320,
+		Height:      180,
+		Revision:    3,
+	})
+	if !errors.Is(err, ErrProjectNotFound) {
+		t.Fatalf("cross-owner SaveProjectThumbnailSnapshot error = %v, want ErrProjectNotFound", err)
+	}
+}
+
 func TestCreateProjectRejectsInvalidInput(t *testing.T) {
 	svc := newTestService(t)
 

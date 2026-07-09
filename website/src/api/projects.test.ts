@@ -11,6 +11,7 @@ import {
   addProjectCADModelBoxUnion,
   sendProjectAgentMessage,
   updateProjectCADModelTransform,
+  uploadProjectThumbnailSnapshot,
   uploadProjectModel,
 } from './projects'
 
@@ -31,6 +32,19 @@ describe('project API', () => {
     expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/models', expect.any(FormData))
     const formData = vi.mocked(client.post).mock.calls[0]?.[1] as FormData
     expect(formData.get('model')).toBe(file)
+  })
+
+  test('uploads a project thumbnail snapshot as multipart form data', () => {
+    const snapshot = new Blob(['snapshot'], { type: 'image/webp' })
+
+    uploadProjectThumbnailSnapshot('prj_01test', snapshot, { width: 640, height: 360, revision: 4 })
+
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/thumbnail', expect.any(FormData))
+    const formData = vi.mocked(client.post).mock.calls.at(-1)?.[1] as FormData
+    expect(formData.get('snapshot')).toBeInstanceOf(File)
+    expect(formData.get('width')).toBe('640')
+    expect(formData.get('height')).toBe('360')
+    expect(formData.get('revision')).toBe('4')
   })
 
   test('fetches a project model preview as a blob', () => {

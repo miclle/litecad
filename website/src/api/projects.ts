@@ -7,6 +7,7 @@ import type {
   ProjectAgentMessagesResponse,
   ProjectCADDocumentResponse,
   ProjectGeometryDocumentResponse,
+  ProjectThumbnailSnapshotResponse,
   ProjectModelPreviewArtifactResponse,
   ProjectModelResponse,
   ProjectModelsResponse,
@@ -49,6 +50,19 @@ export function fetchProjectAgentMessages(projectId: string) {
 
 export function createProject(payload: CreateProjectPayload) {
   return client.post<ProjectResponse>('/projects', payload)
+}
+
+export function uploadProjectThumbnailSnapshot(
+  projectId: string,
+  snapshot: Blob,
+  metadata: { width: number; height: number; revision: number },
+) {
+  const formData = new FormData()
+  formData.append('snapshot', snapshot, 'thumbnail.webp')
+  formData.append('width', String(metadata.width))
+  formData.append('height', String(metadata.height))
+  formData.append('revision', String(metadata.revision))
+  return client.post<ProjectThumbnailSnapshotResponse>(`/projects/${projectId}/thumbnail`, formData)
 }
 
 export function fetchProjectModels(projectId: string) {

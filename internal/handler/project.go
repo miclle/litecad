@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/fox-gonic/fox"
@@ -28,6 +29,10 @@ type projectResponse struct {
 
 type projectModelsResponse struct {
 	Models []service.ProjectModel `json:"models"`
+}
+
+type projectThumbnailSnapshotResponse struct {
+	Snapshot service.ProjectThumbnailSnapshotSummary `json:"snapshot"`
 }
 
 type projectModelResponse struct {
@@ -105,6 +110,64 @@ func (ctrl *Ctrl) GetProjectThumbnailSnapshot(c *fox.Context) error {
 	c.Writer.Header().Set("Cache-Control", "private, max-age=300")
 	c.Writer.Header().Set("ETag", fmt.Sprintf("\"litecad-thumbnail-%d\"", snapshot.Revision))
 	c.Data(http.StatusOK, snapshot.ContentType, snapshot.Data)
+	return nil
+}
+
+// SaveProjectThumbnailSnapshot stores the current static project-list cover image.
+func (ctrl *Ctrl) SaveProjectThumbnailSnapshot(c *fox.Context) error {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return err
+	}
+
+	maxUploadBytes := int64(service.MaxProjectThumbnailSnapshotBytes)
+	if c.Request.ContentLength > maxUploadBytes {
+		return httperr.NewRequestEntityTooLarge("thumbnail upload is too large")
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadBytes+4096)
+
+	file, header, err := c.Request.FormFile("snapshot")
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			return httperr.NewRequestEntityTooLarge("thumbnail upload is too large")
+		}
+		return httperr.NewBadRequest("thumbnail snapshot is required")
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	width, err := strconv.Atoi(c.Request.FormValue("width"))
+	if err != nil {
+		return httperr.NewBadRequest("thumbnail width is required")
+	}
+	height, err := strconv.Atoi(c.Request.FormValue("height"))
+	if err != nil {
+		return httperr.NewBadRequest("thumbnail height is required")
+	}
+	revision, err := strconv.Atoi(c.Request.FormValue("revision"))
+	if err != nil {
+		return httperr.NewBadRequest("thumbnail revision is required")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, service.MaxProjectThumbnailSnapshotBytes+1))
+	if err != nil {
+		return err
+	}
+
+	snapshot, err := ctrl.service.SaveProjectThumbnailSnapshot(c.Request.Context(), service.SaveProjectThumbnailSnapshotInput{
+		OwnerUserID: user.ID,
+		ProjectID:   c.Param("projectID"),
+		ContentType: header.Header.Get("Content-Type"),
+		Data:        data,
+		Width:       width,
+		Height:      height,
+		Revision:    revision,
+	})
+	if err != nil {
+		return projectError(err)
+	}
+	c.JSON(http.StatusOK, projectThumbnailSnapshotResponse{Snapshot: snapshot})
 	return nil
 }
 
