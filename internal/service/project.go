@@ -15,6 +15,7 @@ import (
 )
 
 const maxProjectDescriptionRunes = 350
+const projectThumbnailModelLimit = 3
 
 // MaxProjectModelUploadBytes is the largest CAD source file accepted by the import pipeline.
 const MaxProjectModelUploadBytes = 100 * 1024 * 1024
@@ -39,11 +40,27 @@ type CreateProjectInput struct {
 
 // Project is the public project shape returned by project APIs.
 type Project struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Thumbnail   ProjectThumbnail `json:"thumbnail"`
+	CreatedAt   string           `json:"created_at"`
+	UpdatedAt   string           `json:"updated_at"`
+}
+
+// ProjectThumbnail is the lightweight model context needed for project-list cards.
+type ProjectThumbnail struct {
+	ModelCount int                   `json:"model_count"`
+	Models     []ProjectModelSummary `json:"models"`
+}
+
+// ProjectModelSummary is safe to include in project-list responses without source bytes.
+type ProjectModelSummary struct {
+	ID          string       `json:"id"`
+	Format      string       `json:"format"`
+	ParseStatus string       `json:"parse_status"`
+	Metadata    StepMetadata `json:"metadata"`
+	UpdatedAt   string       `json:"updated_at"`
 }
 
 // UploadProjectModelInput is the data required to attach a CAD source file to a project.
@@ -91,8 +108,13 @@ func (s *Service) ListProjects(ctx context.Context, ownerUserID string) ([]Proje
 	}
 
 	result := make([]Project, 0, len(projects))
+	projectIDs := make([]string, 0, len(projects))
 	for _, project := range projects {
 		result = append(result, publicProject(project))
+		projectIDs = append(projectIDs, project.ID)
+	}
+	if err := s.attachProjectThumbnails(ctx, result, projectIDs); err != nil {
+		return nil, err
 	}
 	return result, nil
 }
@@ -261,8 +283,78 @@ func publicProject(project entity.Project) Project {
 		ID:          project.ID,
 		Name:        project.Name,
 		Description: project.Description,
+		Thumbnail:   ProjectThumbnail{},
 		CreatedAt:   project.CreatedAt.Format(timeFormatRFC3339),
 		UpdatedAt:   project.UpdatedAt.Format(timeFormatRFC3339),
+	}
+}
+
+func (s *Service) attachProjectThumbnails(ctx context.Context, projects []Project, projectIDs []string) error {
+	if len(projectIDs) == 0 {
+		return nil
+	}
+
+	var counts []struct {
+		ProjectID  string
+		ModelCount int
+	}
+	if err := s.db.WithContext(ctx).
+		Model(&entity.ProjectModel{}).
+		Select("project_id, COUNT(*) AS model_count").
+		Where("project_id IN ?", projectIDs).
+		Group("project_id").
+		Scan(&counts).Error; err != nil {
+		return fmt.Errorf("count project thumbnail models: %w", err)
+	}
+
+	var models []entity.ProjectModel
+	if err := s.db.WithContext(ctx).Raw(`
+		SELECT id, project_id, original_filename, format, parse_status, metadata_json, updated_at, created_at
+		FROM (
+			SELECT id, project_id, original_filename, format, parse_status, metadata_json, updated_at, created_at,
+				ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY created_at DESC) AS row_number
+			FROM project_models
+			WHERE project_id IN ? AND deleted_at IS NULL
+		) ranked_project_models
+		WHERE row_number <= ?
+		ORDER BY project_id ASC, created_at DESC
+	`, projectIDs, projectThumbnailModelLimit).Scan(&models).Error; err != nil {
+		return fmt.Errorf("list project thumbnail models: %w", err)
+	}
+
+	projectIndexes := make(map[string]int, len(projects))
+	for index, project := range projects {
+		projectIndexes[project.ID] = index
+	}
+	for _, count := range counts {
+		index, ok := projectIndexes[count.ProjectID]
+		if !ok {
+			continue
+		}
+		projects[index].Thumbnail.ModelCount = count.ModelCount
+	}
+	for _, model := range models {
+		index, ok := projectIndexes[model.ProjectID]
+		if !ok {
+			continue
+		}
+		thumbnail := &projects[index].Thumbnail
+		thumbnail.Models = append(thumbnail.Models, publicProjectModelSummary(model))
+	}
+	return nil
+}
+
+func publicProjectModelSummary(model entity.ProjectModel) ProjectModelSummary {
+	metadata := StepMetadata{}
+	if len(model.MetadataJSON) > 0 {
+		_ = json.Unmarshal(model.MetadataJSON, &metadata)
+	}
+	return ProjectModelSummary{
+		ID:          model.ID,
+		Format:      model.Format,
+		ParseStatus: model.ParseStatus,
+		Metadata:    metadata,
+		UpdatedAt:   model.UpdatedAt.Format(timeFormatRFC3339),
 	}
 }
 

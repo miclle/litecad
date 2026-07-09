@@ -2,7 +2,21 @@ export interface Project {
   id: string
   name: string
   description: string
+  thumbnail: ProjectThumbnail
   created_at: string
+  updated_at: string
+}
+
+export interface ProjectThumbnail {
+  model_count: number
+  models: ProjectModelSummary[]
+}
+
+export interface ProjectModelSummary {
+  id: string
+  format: 'step' | 'glb' | 'gltf' | 'stl'
+  parse_status: 'pending' | 'parsed' | 'error'
+  metadata: StepMetadata
   updated_at: string
 }
 

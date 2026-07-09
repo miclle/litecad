@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/miclle/litecad/internal/entity"
 )
@@ -50,6 +51,9 @@ func TestCreateProjectStoresOwnerScopedProject(t *testing.T) {
 	if projects[0].ID != project.ID {
 		t.Fatalf("listed project id = %q, want %q", projects[0].ID, project.ID)
 	}
+	if projects[0].Thumbnail.ModelCount != 0 {
+		t.Fatalf("new project thumbnail model count = %d, want 0", projects[0].Thumbnail.ModelCount)
+	}
 
 	loaded, err := svc.GetProject(ctx, user.ID, project.ID)
 	if err != nil {
@@ -57,6 +61,76 @@ func TestCreateProjectStoresOwnerScopedProject(t *testing.T) {
 	}
 	if loaded.ID != project.ID {
 		t.Fatalf("loaded project id = %q, want %q", loaded.ID, project.ID)
+	}
+}
+
+func TestListProjectsIncludesModelThumbnailSummaries(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada",
+		Email:    "thumbnail@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Imported case",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	var latest ProjectModel
+	for index, filename := range []string{"first.step", "second.stl", "third.stl", "fourth.stl", "latest.stl"} {
+		data := []byte("solid latest\nendsolid latest\n")
+		contentType := "model/stl"
+		if strings.HasSuffix(filename, ".step") {
+			data = []byte("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('CONFIG_CONTROL_DESIGN'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;")
+			contentType = "application/step"
+		}
+		model, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+			OwnerUserID: user.ID,
+			ProjectID:   project.ID,
+			Filename:    filename,
+			ContentType: contentType,
+			Data:        data,
+		})
+		if err != nil {
+			t.Fatalf("UploadProjectModel %s returned error: %v", filename, err)
+		}
+		createdAt := time.Date(2026, time.July, 8, 12, index, 0, 0, time.UTC)
+		if err := svc.db.Model(&entity.ProjectModel{}).Where("id = ?", model.ID).Updates(map[string]any{
+			"created_at": createdAt,
+			"updated_at": createdAt,
+		}).Error; err != nil {
+			t.Fatalf("update model timestamps returned error: %v", err)
+		}
+		latest = model
+	}
+
+	projects, err := svc.ListProjects(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("ListProjects returned error: %v", err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("project count = %d, want 1", len(projects))
+	}
+	thumbnail := projects[0].Thumbnail
+	if thumbnail.ModelCount != 5 {
+		t.Fatalf("thumbnail model count = %d, want 5", thumbnail.ModelCount)
+	}
+	if len(thumbnail.Models) != 3 {
+		t.Fatalf("thumbnail models = %d, want 3", len(thumbnail.Models))
+	}
+	if thumbnail.Models[0].ID != latest.ID {
+		t.Fatalf("first thumbnail model id = %q, want %q", thumbnail.Models[0].ID, latest.ID)
+	}
+	if thumbnail.Models[0].Format != "stl" {
+		t.Fatalf("first thumbnail model format = %q", thumbnail.Models[0].Format)
 	}
 }
 

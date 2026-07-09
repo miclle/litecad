@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   runStepAssemblyExportInWorker,
@@ -35,6 +35,10 @@ class FakeWorker implements CadKernelWorkerLike {
     this.messageListener?.({ data: message } as MessageEvent<CadKernelResponse>)
   }
 }
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe('runStepRoundTripInWorker', () => {
   it('posts a step-round-trip request and resolves the matching worker result', async () => {
@@ -133,6 +137,22 @@ describe('runStepPreviewInWorker', () => {
     await expect(resultPromise).resolves.toMatchObject({
       meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
     })
+  })
+
+  it('rejects and terminates the worker when a preview request times out', async () => {
+    vi.useFakeTimers()
+    const worker = new FakeWorker()
+    const resultPromise = runStepPreviewInWorker(
+      { filename: 'part.step', stepText: 'ISO-10303-21;' },
+      () => worker,
+      { timeoutMs: 100 },
+    )
+    const rejectionExpectation = expect(resultPromise).rejects.toThrow('CAD kernel worker timed out after 100ms')
+
+    await vi.advanceTimersByTimeAsync(100)
+
+    await rejectionExpectation
+    expect(worker.terminated).toBe(true)
   })
 })
 
