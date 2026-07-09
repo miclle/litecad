@@ -63,6 +63,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 import {
   dispatchModelPreviewSetViewEvent,
   normalizeViewOrientation,
@@ -120,6 +121,7 @@ type AiChatMessage = {
 }
 
 type TransformDraft = Record<keyof CADTranslation, string>
+type CADTool = 'inspect' | 'fuse-box'
 
 function TopbarTooltip({
   label,
@@ -217,6 +219,46 @@ function transformDraftsEqual(left: TransformDraft | undefined, right: Transform
   return !!left && !!right && left.x === right.x && left.y === right.y && left.z === right.z
 }
 
+function formatCADReadout(value: string) {
+  const numberValue = Number(value)
+  if (!Number.isFinite(numberValue)) {
+    return value
+  }
+  const roundedValue = Math.abs(numberValue) < 0.0005 ? 0 : numberValue
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 3,
+    useGrouping: false,
+  }).format(roundedValue)
+}
+
+function CompactPositionField({
+  ariaLabel,
+  label,
+  onChange,
+  value,
+}: {
+  ariaLabel: string
+  label: string
+  onChange: (value: string) => void
+  value: string
+}) {
+  return (
+    <Field className="min-w-0 gap-1" orientation="vertical">
+      <FieldLabel className="font-mono text-[10px] font-semibold uppercase leading-3 text-[#64748b]">{label}</FieldLabel>
+      <Input
+        aria-label={ariaLabel}
+        className="h-7 rounded border-[#dbe3ec] bg-white px-1 text-right font-mono text-[10px] text-[#0f172a] focus-visible:border-[#64748b] focus-visible:ring-[#cbd5e1]"
+        inputMode="decimal"
+        onChange={(event) => onChange(event.target.value)}
+        step="0.1"
+        title={value}
+        type="number"
+        value={formatCADReadout(value)}
+      />
+    </Field>
+  )
+}
+
 function NumericCADField({
   ariaLabel,
   label,
@@ -239,7 +281,7 @@ function NumericCADField({
           className="h-8 rounded-md border-[#dbe3ec] bg-white pr-8 text-right font-mono text-[11px] text-[#334155] focus-visible:border-[#64748b] focus-visible:ring-[#cbd5e1]"
           inputMode="decimal"
           onChange={(event) => onChange(event.target.value)}
-          type="number"
+          type="text"
           value={value}
         />
         <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[#94a3b8]">{unitLabel}</span>
@@ -270,6 +312,7 @@ function ProjectView() {
   const [previewUrlsByModelID, setPreviewUrlsByModelID] = useState<Record<string, string>>({})
   const [hiddenModelIDs, setHiddenModelIDs] = useState<Set<string>>(() => new Set())
   const [selectedModelID, setSelectedModelID] = useState('')
+  const [activeCADTool, setActiveCADTool] = useState<CADTool>('inspect')
   const [transformDraftsByModelID, setTransformDraftsByModelID] = useState<Record<string, TransformDraft>>({})
   const [transformErrorByModelID, setTransformErrorByModelID] = useState<Record<string, string>>({})
   const [boxFeatureDraftsByModelID, setBoxFeatureDraftsByModelID] = useState<Record<string, BoxFeatureDraft>>({})
@@ -608,6 +651,12 @@ function ProjectView() {
   }, [selectedModel, selectedModelID])
 
   useEffect(() => {
+    if (activeCADTool === 'fuse-box' && selectedModel?.format !== 'step') {
+      setActiveCADTool('inspect')
+    }
+  }, [activeCADTool, selectedModel?.format])
+
+  useEffect(() => {
     if (!projectCADDocument) {
       return
     }
@@ -805,6 +854,7 @@ function ProjectView() {
     ? transformDraftsByModelID[selectedModel.id] ?? transformDraftFromTranslation(translationFromCADTransform(selectedModelNode?.transform))
     : undefined
   const selectedModelTransformError = selectedModel ? transformErrorByModelID[selectedModel.id] : ''
+  const selectedModelSupportsFuseBox = selectedModel?.format === 'step'
   const selectedModelBoxFeatureDraft = selectedModel ? boxFeatureDraftsByModelID[selectedModel.id] ?? latestBoxFeatureDraftForModel(selectedModel.id) : undefined
   const selectedModelBoxFeatureError = selectedModel ? boxFeatureErrorByModelID[selectedModel.id] : ''
   const isSelectedModelBoxFeatureUpdating =
@@ -952,6 +1002,15 @@ function ProjectView() {
   }
   const updateTransformDraftFromTranslation = (modelID: string, translation: CADTranslation) => {
     const nextDraft = transformDraftFromTranslation(translation)
+    latestTransformDraftsRef.current[modelID] = nextDraft
+    setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [modelID]: nextDraft }))
+    setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: '' }))
+    scheduleTransformAutosave(modelID, nextDraft)
+  }
+  const updateTransformDraftField = (modelID: string, axis: keyof CADTranslation, value: string) => {
+    const currentDraft =
+      transformDraftsByModelID[modelID] ?? transformDraftFromTranslation(modelTranslationsByID[modelID] ?? translationFromCADTransform())
+    const nextDraft = { ...currentDraft, [axis]: value }
     latestTransformDraftsRef.current[modelID] = nextDraft
     setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [modelID]: nextDraft }))
     setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: '' }))
@@ -1301,6 +1360,139 @@ function ProjectView() {
               </div>
             )}
 
+          <div
+            aria-label="CAD tools"
+            className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-md border border-[#dbe3ec] bg-white/94 p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur"
+            role="toolbar"
+          >
+            <span className="px-1.5 font-mono text-[10px] font-semibold uppercase text-[#64748b]">CAD tools</span>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    aria-pressed={activeCADTool === 'fuse-box'}
+                    className={cn(
+                      'min-w-[96px] justify-center',
+                      activeCADTool === 'fuse-box' && 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8] hover:bg-[#dbeafe]',
+                    )}
+                    disabled={!selectedModelSupportsFuseBox}
+                    onClick={() => setActiveCADTool((currentTool) => (currentTool === 'fuse-box' ? 'inspect' : 'fuse-box'))}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  />
+                }
+              >
+                <Box data-icon="inline-start" />
+                <span className="truncate">Fuse box</span>
+              </TooltipTrigger>
+              {!selectedModel ? (
+                <TooltipContent sideOffset={8}>Select a model first</TooltipContent>
+              ) : !selectedModelSupportsFuseBox ? (
+                <TooltipContent sideOffset={8}>STEP models only</TooltipContent>
+              ) : null}
+            </Tooltip>
+          </div>
+
+          {activeCADTool === 'fuse-box' && selectedModelSupportsFuseBox && selectedModelBoxFeatureDraft && selectedModel && (
+            <aside
+              aria-label="Fuse box tool"
+              className="absolute right-4 top-40 z-20 w-[min(320px,calc(100vw-32px))] rounded-md border border-[#dbe3ec] bg-white/94 p-3 shadow-[0_14px_36px_rgba(15,23,42,0.12)] backdrop-blur"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-mono text-[11px] uppercase text-[#64748b]">Tool</p>
+                  <h2 className="mt-1 text-sm font-semibold text-[#0f172a]">Fuse box</h2>
+                  <p className="mt-1 text-xs leading-5 text-[#64748b]">
+                    Add a rectangular union to the selected STEP model for preview and export.
+                  </p>
+                </div>
+                <Button
+                  aria-label="Close Fuse box tool"
+                  className="shrink-0"
+                  onClick={() => setActiveCADTool('inspect')}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <X />
+                </Button>
+              </div>
+
+              <div className="mt-3 flex min-w-0 items-center gap-2 rounded border border-[#e2e8f0] bg-[#f8fafc] px-2 py-1.5">
+                <Box className="size-3.5 shrink-0 text-[#1d4ed8]" />
+                <span className="min-w-0 flex-1 truncate text-xs font-medium text-[#334155]" title={selectedModelDisplayName}>
+                  {selectedModelDisplayName}
+                </span>
+                <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">{documentUnitLabel}</span>
+              </div>
+
+              <FieldSet className="mt-3 gap-3">
+                <FieldGroup className="gap-2">
+                  <FieldTitle className="text-xs text-[#334155]">Origin</FieldTitle>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(
+                      [
+                        ['originX', 'Origin X'],
+                        ['originY', 'Origin Y'],
+                        ['originZ', 'Origin Z'],
+                      ] as const
+                    ).map(([field, label]) => (
+                      <NumericCADField
+                        ariaLabel={`${label} for ${selectedModelDisplayName}`}
+                        key={field}
+                        label={label.replace('Origin ', '')}
+                        onChange={(value) => updateBoxFeatureDraft(selectedModel.id, field, value)}
+                        unitLabel={documentUnitLabel}
+                        value={selectedModelBoxFeatureDraft[field]}
+                      />
+                    ))}
+                  </div>
+                </FieldGroup>
+
+                <FieldGroup className="gap-2">
+                  <FieldTitle className="text-xs text-[#334155]">Size</FieldTitle>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(
+                      [
+                        ['sizeX', 'Size X'],
+                        ['sizeY', 'Size Y'],
+                        ['sizeZ', 'Size Z'],
+                      ] as const
+                    ).map(([field, label]) => (
+                      <NumericCADField
+                        ariaLabel={`${label} for ${selectedModelDisplayName}`}
+                        key={field}
+                        label={label.replace('Size ', '')}
+                        onChange={(value) => updateBoxFeatureDraft(selectedModel.id, field, value)}
+                        unitLabel={documentUnitLabel}
+                        value={selectedModelBoxFeatureDraft[field]}
+                      />
+                    ))}
+                  </div>
+                </FieldGroup>
+
+                {selectedModelBoxFeatureError && <FieldError className="text-[11px] leading-4">{selectedModelBoxFeatureError}</FieldError>}
+
+                <div className="grid grid-cols-[1fr_auto] gap-1.5">
+                  <Button
+                    className="justify-center"
+                    disabled={isSelectedModelBoxFeatureUpdating || !projectCADDocument}
+                    onClick={() => addBoxFeatureDraft(selectedModel.id)}
+                    size="sm"
+                    type="button"
+                  >
+                    <Box data-icon="inline-start" />
+                    {isSelectedModelBoxFeatureUpdating ? 'Applying' : 'Apply fuse'}
+                  </Button>
+                  <Button onClick={() => setActiveCADTool('inspect')} size="sm" type="button" variant="outline">
+                    Cancel
+                  </Button>
+                </div>
+              </FieldSet>
+            </aside>
+          )}
+
           <ViewController
             animateViewCubeOrientation={animateViewCubeOrientation}
             className="xl:right-[var(--view-controller-right)]"
@@ -1470,7 +1662,7 @@ function ProjectView() {
                     )}
                   </div>
                   {selectedModel && selectedModelTransformDraft ? (
-                    <div className="mt-3 grid gap-3 rounded-md border border-[#e2e8f0] bg-white/80 p-2.5">
+                    <div className="mt-2 grid gap-2 text-xs">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <Box className="size-4 shrink-0 text-[#1d4ed8]" />
@@ -1491,93 +1683,28 @@ function ProjectView() {
                         </dl>
                       </div>
 
-                      <FieldSet className="gap-3">
-                        <FieldGroup className="gap-2">
-                          <div className="flex min-w-0 items-center justify-between gap-2">
-                            <FieldTitle className="text-xs text-[#334155]">Move position</FieldTitle>
-                            <span className="font-mono text-[10px] uppercase text-[#94a3b8]">{documentUnitLabel}</span>
+                      <div className="border-t border-[#e2e8f0] pt-2.5">
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <p className="text-xs font-medium text-[#334155]">Position</p>
                           </div>
-                          <div className="grid grid-cols-3 gap-1.5" role="list">
-                            {(['x', 'y', 'z'] as const).map((axis) => (
-                              <div
-                                aria-label={`${axis.toUpperCase()} translation for ${selectedModelDisplayName}`}
-                                className="min-w-0 rounded border border-[#e2e8f0] bg-[#f8fafc] px-2 py-1.5"
-                                key={axis}
-                                role="listitem"
-                              >
-                                <div className="font-mono text-[10px] font-semibold uppercase leading-3 text-[#64748b]">{axis}</div>
-                                <div className="mt-1 truncate font-mono text-xs text-[#0f172a]" title={selectedModelTransformDraft[axis]}>
-                                  {selectedModelTransformDraft[axis]}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                          {selectedModelTransformError && (
-                            <FieldError className="text-[11px] leading-4">{selectedModelTransformError}</FieldError>
-                          )}
-                        </FieldGroup>
-
-                        {selectedModel.format === 'step' && selectedModelBoxFeatureDraft && (
-                          <FieldGroup className="gap-2 border-t border-[#e2e8f0] pt-3">
-                            <div className="flex min-w-0 flex-col gap-0.5">
-                              <FieldTitle className="text-xs text-[#334155]">Add box feature</FieldTitle>
-                              <p className="text-[11px] leading-4 text-[#64748b]">
-                                Fuse a rectangular box into this STEP model for preview and export.
-                              </p>
-                            </div>
-                            <div className="grid grid-cols-3 gap-1.5">
-                              {(
-                                [
-                                  ['originX', 'Origin X'],
-                                  ['originY', 'Origin Y'],
-                                  ['originZ', 'Origin Z'],
-                                ] as const
-                              ).map(([field, label]) => (
-                                <NumericCADField
-                                  ariaLabel={`${label} for ${selectedModelDisplayName}`}
-                                  key={field}
-                                  label={label.replace('Origin ', '')}
-                                  onChange={(value) => updateBoxFeatureDraft(selectedModel.id, field, value)}
-                                  unitLabel={documentUnitLabel}
-                                  value={selectedModelBoxFeatureDraft[field]}
-                                />
-                              ))}
-                            </div>
-                            <div className="grid grid-cols-3 gap-1.5">
-                              {(
-                                [
-                                  ['sizeX', 'Size X'],
-                                  ['sizeY', 'Size Y'],
-                                  ['sizeZ', 'Size Z'],
-                                ] as const
-                              ).map(([field, label]) => (
-                                <NumericCADField
-                                  ariaLabel={`${label} for ${selectedModelDisplayName}`}
-                                  key={field}
-                                  label={label.replace('Size ', '')}
-                                  onChange={(value) => updateBoxFeatureDraft(selectedModel.id, field, value)}
-                                  unitLabel={documentUnitLabel}
-                                  value={selectedModelBoxFeatureDraft[field]}
-                                />
-                              ))}
-                            </div>
-                            {selectedModelBoxFeatureError && (
-                              <FieldError className="text-[11px] leading-4">{selectedModelBoxFeatureError}</FieldError>
-                            )}
-                            <Button
-                              className="w-full justify-center"
-                              disabled={isSelectedModelBoxFeatureUpdating || !projectCADDocument}
-                              onClick={() => addBoxFeatureDraft(selectedModel.id)}
-                              size="sm"
-                              type="button"
-                              variant="outline"
-                            >
-                              <Box data-icon="inline-start" />
-                              Add box feature
-                            </Button>
-                          </FieldGroup>
+                          <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">{documentUnitLabel}</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1 pb-2 pt-1.5">
+                          {(['x', 'y', 'z'] as const).map((axis) => (
+                            <CompactPositionField
+                              ariaLabel={`${axis.toUpperCase()} position for ${selectedModelDisplayName}`}
+                              key={axis}
+                              label={axis}
+                              onChange={(value) => updateTransformDraftField(selectedModel.id, axis, value)}
+                              value={selectedModelTransformDraft[axis]}
+                            />
+                          ))}
+                        </div>
+                        {selectedModelTransformError && (
+                          <p className="mt-2 text-[11px] leading-4 text-[#8a2f24]">{selectedModelTransformError}</p>
                         )}
-                      </FieldSet>
+                      </div>
 
                       {selectedModelStepExportError && (
                         <p className="text-[11px] leading-4 text-[#8a2f24]">{selectedModelStepExportError}</p>
