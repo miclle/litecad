@@ -10,6 +10,16 @@ export interface Project {
 export interface ProjectThumbnail {
   model_count: number
   models: ProjectModelSummary[]
+  snapshot?: ProjectThumbnailSnapshot
+}
+
+export interface ProjectThumbnailSnapshot {
+  url: string
+  status: 'ready' | 'dirty' | 'pending' | 'error'
+  revision: number
+  width: number
+  height: number
+  updated_at: string
 }
 
 export interface ProjectModelSummary {

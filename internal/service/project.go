@@ -50,8 +50,19 @@ type Project struct {
 
 // ProjectThumbnail is the lightweight model context needed for project-list cards.
 type ProjectThumbnail struct {
-	ModelCount int                   `json:"model_count"`
-	Models     []ProjectModelSummary `json:"models"`
+	ModelCount int                              `json:"model_count"`
+	Models     []ProjectModelSummary            `json:"models"`
+	Snapshot   *ProjectThumbnailSnapshotSummary `json:"snapshot,omitempty"`
+}
+
+// ProjectThumbnailSnapshotSummary is the cached static image metadata for project-list covers.
+type ProjectThumbnailSnapshotSummary struct {
+	URL       string `json:"url"`
+	Status    string `json:"status"`
+	Revision  int    `json:"revision"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // ProjectModelSummary is safe to include in project-list responses without source bytes.
@@ -322,6 +333,13 @@ func (s *Service) attachProjectThumbnails(ctx context.Context, projects []Projec
 		return fmt.Errorf("list project thumbnail models: %w", err)
 	}
 
+	var snapshots []entity.ProjectThumbnailSnapshot
+	if err := s.db.WithContext(ctx).
+		Where("project_id IN ?", projectIDs).
+		Find(&snapshots).Error; err != nil {
+		return fmt.Errorf("list project thumbnail snapshots: %w", err)
+	}
+
 	projectIndexes := make(map[string]int, len(projects))
 	for index, project := range projects {
 		projectIndexes[project.ID] = index
@@ -341,7 +359,25 @@ func (s *Service) attachProjectThumbnails(ctx context.Context, projects []Projec
 		thumbnail := &projects[index].Thumbnail
 		thumbnail.Models = append(thumbnail.Models, publicProjectModelSummary(model))
 	}
+	for _, snapshot := range snapshots {
+		index, ok := projectIndexes[snapshot.ProjectID]
+		if !ok {
+			continue
+		}
+		projects[index].Thumbnail.Snapshot = publicProjectThumbnailSnapshotSummary(snapshot)
+	}
 	return nil
+}
+
+func publicProjectThumbnailSnapshotSummary(snapshot entity.ProjectThumbnailSnapshot) *ProjectThumbnailSnapshotSummary {
+	return &ProjectThumbnailSnapshotSummary{
+		URL:       fmt.Sprintf("/api/v1/projects/%s/thumbnail?revision=%d", snapshot.ProjectID, snapshot.Revision),
+		Status:    snapshot.Status,
+		Revision:  snapshot.Revision,
+		Width:     snapshot.Width,
+		Height:    snapshot.Height,
+		UpdatedAt: snapshot.UpdatedAt.Format(timeFormatRFC3339),
+	}
 }
 
 func publicProjectModelSummary(model entity.ProjectModel) ProjectModelSummary {

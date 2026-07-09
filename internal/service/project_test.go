@@ -134,6 +134,112 @@ func TestListProjectsIncludesModelThumbnailSummaries(t *testing.T) {
 	}
 }
 
+func TestListProjectsIncludesThumbnailSnapshot(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada",
+		Email:    "thumbnail-snapshot@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Snapshot case",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	snapshot := entity.ProjectThumbnailSnapshot{
+		ID:          "pth_test",
+		ProjectID:   project.ID,
+		ContentType: "image/webp",
+		ByteSize:    12,
+		Width:       640,
+		Height:      360,
+		Revision:    4,
+		Status:      "ready",
+		Data:        []byte("thumbnail"),
+	}
+	if err := svc.db.Create(&snapshot).Error; err != nil {
+		t.Fatalf("store thumbnail snapshot: %v", err)
+	}
+
+	projects, err := svc.ListProjects(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("ListProjects returned error: %v", err)
+	}
+	thumbnail := projects[0].Thumbnail
+	if thumbnail.Snapshot == nil {
+		t.Fatal("thumbnail snapshot should be included")
+	}
+	if thumbnail.Snapshot.URL != "/api/v1/projects/"+project.ID+"/thumbnail?revision=4" {
+		t.Fatalf("thumbnail snapshot url = %q", thumbnail.Snapshot.URL)
+	}
+	if thumbnail.Snapshot.Status != "ready" || thumbnail.Snapshot.Width != 640 || thumbnail.Snapshot.Height != 360 {
+		t.Fatalf("thumbnail snapshot = %+v", thumbnail.Snapshot)
+	}
+}
+
+func TestGetProjectThumbnailSnapshotScopesByOwner(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	owner, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada",
+		Email:    "thumbnail-owner@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser owner returned error: %v", err)
+	}
+	other, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Grace",
+		Email:    "thumbnail-other@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser other returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: owner.ID,
+		Name:        "Private snapshot",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	if err := svc.db.Create(&entity.ProjectThumbnailSnapshot{
+		ID:          "pth_private",
+		ProjectID:   project.ID,
+		ContentType: "image/png",
+		ByteSize:    7,
+		Width:       320,
+		Height:      180,
+		Revision:    2,
+		Status:      "ready",
+		Data:        []byte("cover"),
+	}).Error; err != nil {
+		t.Fatalf("store thumbnail snapshot: %v", err)
+	}
+
+	snapshot, err := svc.GetProjectThumbnailSnapshot(ctx, owner.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectThumbnailSnapshot returned error: %v", err)
+	}
+	if snapshot.ContentType != "image/png" || string(snapshot.Data) != "cover" || snapshot.Revision != 2 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+
+	_, err = svc.GetProjectThumbnailSnapshot(ctx, other.ID, project.ID)
+	if !errors.Is(err, ErrProjectNotFound) {
+		t.Fatalf("cross-owner GetProjectThumbnailSnapshot error = %v, want ErrProjectNotFound", err)
+	}
+}
+
 func TestCreateProjectRejectsInvalidInput(t *testing.T) {
 	svc := newTestService(t)
 

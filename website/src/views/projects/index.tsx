@@ -1,36 +1,18 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Clock3, FileBox, Grid2X2, Loader2, Plus, Sparkles, UserRound, X } from 'lucide-react'
 import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import axios from 'axios'
 
 import {
-  fetchProjectModelSource,
   createProject,
-  fetchProjectCADDocument,
-  fetchProjectGeometryDocument,
-  fetchProjectModelPreview,
   fetchProjects,
 } from 'src/api/projects'
-import {
-  runStepPreviewInWorker,
-  type CadKernelWorkerPreviewResult,
-} from 'src/cad/kernel-worker-client'
 import type { AuthUser } from 'src/types/auth'
 import type { Project } from 'src/types/project'
-import { ModelPreview } from 'src/views/project/model-preview'
-import {
-  buildProjectPreviewAssets,
-  cadKernelGeometryOperationSignature,
-  cadKernelGeometryOperationsForModel,
-  parsedPreviewModels,
-} from 'src/views/project/project-preview-assets'
 
 const projectSwatches = ['#cfd8c0', '#f0c77b', '#b8c7d9', '#d6b7a8', '#a8cfc4', '#d7cfec']
-
-let projectCardKernelPreviewQueue = Promise.resolve()
-const projectCardKernelPreviewTimeoutMs = 20_000
 
 interface MainLayoutContext {
   currentUser?: AuthUser
@@ -225,7 +207,7 @@ function ProjectCard({ index, project }: { index: number; project: Project }) {
       to={`/projects/${project.id}`}
     >
       <div className="relative min-h-0 flex-1 overflow-hidden border-b border-[#e5e1d8] bg-[#f8fafc]">
-        <ProjectCoverPreview cardIndex={index} models={models} projectId={project.id} />
+        <ProjectCoverPreview cardIndex={index} models={models} snapshot={project.thumbnail?.snapshot} />
       </div>
       <div className="flex h-16 shrink-0 items-center justify-between gap-4 px-4 py-3.5">
         <div className="flex min-w-0 items-center">
@@ -242,132 +224,21 @@ function ProjectCard({ index, project }: { index: number; project: Project }) {
   )
 }
 
-function ProjectCoverPreview({
+export function ProjectCoverPreview({
   cardIndex,
   models,
-  projectId,
+  snapshot,
 }: {
   cardIndex: number
   models: Project['thumbnail']['models']
-  projectId: string
+  snapshot?: Project['thumbnail']['snapshot']
 }) {
   const hasModels = models.length > 0
-  const geometryDocumentQuery = useQuery({
-    queryKey: ['projects', projectId, 'geometry', 'card-preview'],
-    queryFn: async () => (await fetchProjectGeometryDocument(projectId)).data.document,
-    enabled: hasModels,
-    retry: false,
-    staleTime: 30_000,
-  })
-  const geometryDocument = geometryDocumentQuery.data
-  const previewModels = useMemo(() => parsedPreviewModels(geometryDocument?.models ?? []), [geometryDocument?.models])
-  const browserKernelPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'step'), [previewModels])
-  const previewArtifacts = useMemo(() => geometryDocument?.preview_artifacts ?? [], [geometryDocument?.preview_artifacts])
-  const cadDocumentQuery = useQuery({
-    queryKey: ['projects', projectId, 'cad-document', 'card-preview'],
-    queryFn: async () => (await fetchProjectCADDocument(projectId)).data.document,
-    enabled: hasModels && geometryDocumentQuery.isSuccess && previewModels.length > 0,
-    retry: false,
-    staleTime: 30_000,
-  })
-  const browserKernelPreviewQueries = useQueries({
-    queries: browserKernelPreviewModels.map((model) => {
-      const geometryOperationSignature = cadKernelGeometryOperationSignature(cadDocumentQuery.data, model.id)
-      return {
-        queryKey: ['projects', projectId, 'models', model.id, 'kernel-preview', 'card-preview', geometryOperationSignature],
-        queryFn: async () => {
-          const previewJob = projectCardKernelPreviewQueue.then(async () => {
-            const source = (await fetchProjectModelSource(projectId, model.id)).data
-            return runStepPreviewInWorker(
-              {
-                filename: model.original_filename,
-                stepText: await source.text(),
-                operations: cadKernelGeometryOperationsForModel(cadDocumentQuery.data, model.id),
-              },
-              undefined,
-              { timeoutMs: projectCardKernelPreviewTimeoutMs },
-            )
-          })
-          projectCardKernelPreviewQueue = previewJob.then(
-            () => undefined,
-            () => undefined,
-          )
-          return previewJob
-        },
-        enabled: hasModels && cadDocumentQuery.isSuccess,
-        retry: false,
-        staleTime: 30_000,
-      }
-    }),
-  })
-  const kernelMeshesByModelID = browserKernelPreviewQueries.reduce<Record<string, CadKernelWorkerPreviewResult>>(
-    (meshByModelID, query, index) => {
-      const modelID = browserKernelPreviewModels[index]?.id
-      if (modelID && query.data) {
-        meshByModelID[modelID] = query.data
-      }
-      return meshByModelID
-    },
-    {},
-  )
-  const previewBlobQueries = useQueries({
-    queries: previewArtifacts.map((artifact) => ({
-      queryKey: ['projects', projectId, 'models', artifact.model_id, 'preview', 'card-preview'],
-      queryFn: async () => (await fetchProjectModelPreview(projectId, artifact.model_id)).data,
-      enabled: hasModels,
-      retry: false,
-      staleTime: 30_000,
-    })),
-  })
-  const previewBlobSignature = previewBlobQueries
-    .map((query, index) => {
-      const modelID = previewArtifacts[index]?.model_id ?? ''
-      const blob = query.data
-      return `${modelID}:${blob ? `${blob.type}:${blob.size}` : 'pending'}`
-    })
-    .join('|')
-  const [previewUrlsByModelID, setPreviewUrlsByModelID] = useState<Record<string, string>>({})
-  const previewAssets = useMemo(
-    () =>
-      buildProjectPreviewAssets(
-        previewModels,
-        previewArtifacts,
-        previewUrlsByModelID,
-        kernelMeshesByModelID,
-        cadDocumentQuery.data,
-      ),
-    [cadDocumentQuery.data, kernelMeshesByModelID, previewArtifacts, previewModels, previewUrlsByModelID],
-  )
 
-  useEffect(() => {
-    const nextPreviewUrlsByModelID: Record<string, string> = {}
-    const objectUrls: string[] = []
-
-    previewBlobQueries.forEach((query, index) => {
-      const blob = query.data
-      const modelID = previewArtifacts[index]?.model_id
-      if (!blob || !modelID) {
-        return
-      }
-      const objectUrl = URL.createObjectURL(blob)
-      nextPreviewUrlsByModelID[modelID] = objectUrl
-      objectUrls.push(objectUrl)
-    })
-
-    setPreviewUrlsByModelID(nextPreviewUrlsByModelID)
-    return () => {
-      objectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl))
-    }
-    // previewBlobSignature captures blob identity without depending on fresh query objects.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewBlobSignature, previewArtifacts])
-
-  if (previewAssets.length > 0) {
+  if (snapshot) {
     return (
       <div className="absolute inset-0 overflow-hidden bg-[#f8fafc]">
-        <div className="absolute inset-0 pointer-events-none">
-          <ModelPreview previewAssets={previewAssets} variant="thumbnail" visibleModelIds={previewAssets.map((asset) => asset.modelId)} />
-        </div>
+        <img alt="" className="size-full object-cover" loading="lazy" src={snapshot.url} />
         <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#f8fafc] to-transparent" />
       </div>
     )

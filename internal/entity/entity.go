@@ -77,6 +77,23 @@ type ProjectModelPreviewArtifact struct {
 	Model            ProjectModel   `gorm:"foreignKey:ModelID" json:"model"`
 }
 
+// ProjectThumbnailSnapshot stores the static project-list cover image generated from the browser workbench.
+type ProjectThumbnailSnapshot struct {
+	ID          string         `gorm:"size:32;primaryKey" json:"id"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	ProjectID   string         `gorm:"size:32;uniqueIndex;not null" json:"project_id"`
+	ContentType string         `gorm:"size:80;not null" json:"content_type"`
+	ByteSize    int64          `gorm:"not null" json:"byte_size"`
+	Width       int            `gorm:"not null" json:"width"`
+	Height      int            `gorm:"not null" json:"height"`
+	Revision    int            `gorm:"not null;default:0" json:"revision"`
+	Status      string         `gorm:"size:32;index;not null;default:ready" json:"status"`
+	Data        []byte         `gorm:"not null" json:"-"`
+	Project     Project        `gorm:"foreignKey:ProjectID" json:"project"`
+}
+
 // ProjectGeometryVersion records a project geometry snapshot produced from a preview artifact.
 type ProjectGeometryVersion struct {
 	ID                string                      `gorm:"size:32;primaryKey" json:"id"`

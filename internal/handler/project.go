@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -89,6 +90,22 @@ func (ctrl *Ctrl) GetProject(c *fox.Context) (projectResponse, error) {
 		return projectResponse{}, projectError(err)
 	}
 	return projectResponse{Project: project}, nil
+}
+
+// GetProjectThumbnailSnapshot returns the static project-list cover image.
+func (ctrl *Ctrl) GetProjectThumbnailSnapshot(c *fox.Context) error {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return err
+	}
+	snapshot, err := ctrl.service.GetProjectThumbnailSnapshot(c.Request.Context(), user.ID, c.Param("projectID"))
+	if err != nil {
+		return projectError(err)
+	}
+	c.Writer.Header().Set("Cache-Control", "private, max-age=300")
+	c.Writer.Header().Set("ETag", fmt.Sprintf("\"litecad-thumbnail-%d\"", snapshot.Revision))
+	c.Data(http.StatusOK, snapshot.ContentType, snapshot.Data)
+	return nil
 }
 
 // CreateProject creates a signed-in user's project.
