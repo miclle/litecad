@@ -1,60 +1,51 @@
-# litecad
+# LiteCAD
 
-Web-based AI-driven 3D design and preview workspace.
+LiteCAD is a browser-native workspace for exploring real CAD sources with an AI-assisted design companion.
 
-litecad started from [miclle/goblet](https://github.com/miclle/goblet) and keeps the Go + React single-binary deployment model while becoming a product surface for prompt-driven CAD exploration, project-scoped design work, and browser-native 3D inspection.
+It is built for an early but concrete product loop: sign in, create a project, upload CAD files, inspect them in a 3D workbench, make lightweight document-level edits, export STEP results, and keep a CAD Agent beside the model for project-aware discussion.
 
-## Current State
+## What Works Today
 
-The repository is in an early product milestone. The implemented application includes:
+LiteCAD currently supports:
 
-- A branded LiteCAD home screen that reports the current import pipeline state without rendering demo CAD geometry.
-- Account registration, login, current-user lookup, and logout through an `HttpOnly` `litecad_session` cookie.
-- User-owned project creation, project listing with lightweight static thumbnail snapshots, and project detail lookup.
-- Project-scoped CAD source uploads for multiple `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files with stored filename, format, content type, byte size, timestamps, lightweight source metadata, preview artifact metadata, a read-only geometry document API, and a LiteCAD-owned editable document record for per-model transform and box-union operations.
-- A project workbench route with a CAD-style Three.js viewer shell, source-file list, upload control, browser-kernel STEP preview meshes with persisted transform and box-union operation replay, workbench-generated static project thumbnail snapshots for the project list, direct per-model STEP export downloads, selected multi-model STEP compound downloads from the current document state, backend-published GLTF/GLB/STL preview artifacts, selected-model transform controls in the document inspector, canvas model selection with axis translate controls, a constrained STEP box-union feature control, and multi-model frontend viewer composition.
-- A backend studio status endpoint for the product bootstrap state.
-- Single-binary production builds that embed the Vite frontend output.
+- Account registration, login, current-user lookup, and logout with an `HttpOnly` session cookie.
+- User-owned projects with names, descriptions, project-list cards, and static thumbnail snapshots generated from the workbench.
+- Uploads for `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files.
+- Lightweight CAD source metadata, including STEP schema/product/unit/entity summaries and STL triangle counts where available.
+- A project workbench with a Three.js viewer, source list, document inspector, ViewCube/orientation controls, model visibility toggles, and multi-model preview composition.
+- Browser-kernel STEP/STP preview through an OCCT/OpenCascade.js Web Worker, without requiring FreeCAD or another desktop CAD application at runtime.
+- Persisted per-model transform edits and a constrained STEP box-union operation in a LiteCAD document.
+- Direct per-model STEP downloads and selected multi-model STEP compound downloads from the current document state.
+- Backend-published preview artifacts for validated GLB, self-contained GLTF, and STL-to-OBJ previews.
+- A project-scoped CAD Agent chat panel when an OpenAI-compatible provider is configured.
 
-AI model orchestration, full STEP geometry/B-rep semantics, general CAD merge/boolean workflows beyond the constrained per-model box union and selected STEP compound download, normalized editable B-rep geometry, measurement tools, backend export artifact history, durable cross-model assembly semantics, and rich design-history persistence are product direction, not completed capabilities yet.
+The home page and workbench use project-owned CAD data rather than hard-coded demo geometry.
 
-The target CAD architecture is an embedded browser CAD kernel based on OCCT/OpenCascade.js or an equivalent WebAssembly geometry kernel. The long-term loop is STEP import, browser-side B-rep editing, derived Three.js preview meshes, and STEP export without requiring users to install FreeCAD or another desktop CAD application. The current project workbench previews STEP sources through the browser kernel worker and persists per-model transform edits plus a constrained box-union feature in a LiteCAD document; STEP preview, direct per-model STEP export, and selected multi-model STEP compound export replay those operations inside the worker. Richer feature operations, durable kernel shape state, backend export storage, and durable cross-model assembly semantics are still roadmap work tracked in [Browser CAD Kernel Roadmap](docs/browser-cad-kernel-roadmap.md) and [TODO.md](TODO.md).
+## Product Boundaries
 
-## Tech Stack
+LiteCAD is not a full parametric CAD system yet. Current edits are limited to persisted placement and a constrained STEP box-union operation. The browser kernel can replay those operations for preview and STEP export, but projects do not yet store durable kernel shape state, general feature history, editable B-rep geometry, durable assemblies, measurement data, sectioning, or backend export artifact history.
 
-**Backend**
+The CAD Agent is advisory today. It can use project and source metadata as context for chat, but it cannot mutate CAD documents, call geometry tools, run measurements, or generate durable CAD features.
 
-- Go 1.26
-- [fox-gonic/fox](https://github.com/fox-gonic/fox)
-- GORM with PostgreSQL by default, MySQL supported
-- Viper YAML configuration
+Future CAD architecture and phase notes live in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md). Active follow-up work lives in [TODO.md](TODO.md).
 
-**Frontend**
+## Quick Start
 
-- React 19 + TypeScript 6 + Vite 8
-- Tailwind CSS 4
-- React Router v7
-- React Query v5
-- Axios
-- Lucide React
-- Three.js
-
-## Requirements
+Requirements:
 
 - Go 1.26+
 - Node.js 22.14+
-- PostgreSQL or MySQL for normal runtime
+- PostgreSQL or MySQL
 - [Task](https://taskfile.dev/)
-- `reflex` for `task dev`
-- `staticcheck` and `golangci-lint` for local checks
+- `reflex`, `staticcheck`, and `golangci-lint` for local development checks
 
-Install or refresh Go tooling with:
+Install or refresh local Go tools:
 
 ```bash
 task update-tools
 ```
 
-## Quick Start
+Install dependencies:
 
 ```bash
 git clone https://github.com/miclle/litecad.git
@@ -74,7 +65,7 @@ Start the development environment:
 task dev
 ```
 
-This starts Vite on port `46281` and the Go server on port `46280`.
+This starts the Go server on `http://localhost:46280` and Vite on `http://localhost:46281`.
 
 To avoid port conflicts:
 
@@ -82,9 +73,53 @@ To avoid port conflicts:
 LITECAD_HTTP_PORT=47280 LITECAD_VITE_PORT=47281 task dev
 ```
 
-`task dev` wires those values through Vite, the Vite `/api/v1` proxy, and the development asset reverse proxy.
+## Using LiteCAD
 
-## Common Commands
+### Projects
+
+After signing in, open `/projects`, create a project, and enter its workbench at `/projects/:projectId`. Project data is scoped to the signed-in user.
+
+### CAD Imports
+
+Upload STEP/STP, self-contained GLTF/GLB, or STL files from the workbench. LiteCAD stores the original source bytes, extracts lightweight metadata, and shows parsed sources in the project tree.
+
+For STEP/STP files, the browser fetches the original source and sends it to the CAD kernel worker for tessellation. Transform and box-union operations from the LiteCAD document are replayed before preview and export. For GLB/GLTF/STL files, the workbench uses backend-published preview artifacts.
+
+### Workbench
+
+The workbench is the main product surface. It combines:
+
+- A CAD-style viewer with grid, axes, ViewCube, model selection, and combined-bounds framing.
+- A source/model tree with visibility controls and parse status.
+- A document inspector for selected-model placement and STEP box-union controls.
+- STEP export controls for selected files or a merged compound download.
+- A CAD Agent panel for project-aware design discussion when AI configuration is present.
+
+### CAD Agent
+
+The CAD Agent sends project and source metadata context to a configured OpenAI-compatible chat provider and stores the final user/assistant messages for the project. If no provider is configured, sending a message returns a configuration error while the rest of LiteCAD continues to run.
+
+## Configuration
+
+The local config file is `cmd/litecad/config.local.yaml`, copied from `cmd/litecad/config.example.yaml`.
+
+```yaml
+addr: "0.0.0.0:${LITECAD_HTTP_PORT:-46280}"
+driver: postgres
+dsn: "host=localhost port=5432 user=postgres password=postgres dbname=litecad sslmode=disable"
+
+# Optional CAD Agent AI provider. Keep api_key in an environment variable.
+ai:
+  provider: openai_compatible
+  base_url: "${LITECAD_AI_BASE_URL:-https://api.openai.com/v1}"
+  api_key: "${LITECAD_AI_API_KEY:-}"
+  model: "${LITECAD_AI_MODEL:-gpt-4.1-mini}"
+  timeout_seconds: 30
+```
+
+Configuration supports `${NAME}` and `${NAME:-fallback}` environment variable expansion. Runtime database drivers are `postgres` and `mysql`. Leaving `ai.api_key` or `ai.model` empty disables CAD Agent sends.
+
+## Development Commands
 
 ```bash
 task install        # Install Go modules and frontend dependencies
@@ -99,106 +134,7 @@ task clean          # Remove build artifacts
 task update-tools   # Install/update reflex, staticcheck, golangci-lint
 ```
 
-## Product Workflows
-
-### Accounts
-
-Users can register or log in at `/register` and `/login`. Successful authentication issues an `HttpOnly` `litecad_session` cookie. The frontend uses `/api/v1/auth/me` to decide whether to show account or navigation actions.
-
-### Projects
-
-Signed-in users can open `/projects`, create a project with a name and optional description, and then navigate to `/projects/:projectId`. Project API queries are scoped to the session user.
-
-### CAD Source Imports
-
-Signed-in users can upload multiple `.step`, `.stp`, self-contained `.gltf`, `.glb`, or `.stl` files from a project workbench. The backend stores the uploaded source bytes and returns project-owned model metadata including parse status, detected asset type, STEP schema and product names when available, length unit, entity count, representation count, and STL triangle count when available. STEP/STP upload metadata extraction is a lightweight Go-only scan of the uploaded ISO-10303-21 text for headers, product names, units, and entity counts; it does not shell out to Python, FreeCAD, or another desktop CAD application. The authenticated model-source endpoint lets the browser kernel worker fetch a project-owned STEP source for client-side import and tessellation.
-
-For STEP/STP workbench preview, the frontend fetches the original source bytes and sends them to the OCCT/OpenCascade.js Web Worker with the model-scoped CAD document operations. The worker replays transform and box-union operations on the imported shape before tessellating browser-kernel mesh buffers for Three.js. The same worker path powers direct per-model STEP export downloads and selected multi-model STEP compound downloads from the current document state. GLB uploads and self-contained GLTF uploads without external buffer or image URIs are validated by the backend before being published as preview artifacts, and STL uploads are converted to OBJ preview artifacts in Go. The preview artifact metadata endpoint exposes backend artifact format, content type, byte size, and mesh counts separately from binary payloads. The read-only geometry document endpoint exposes the current project model tree with source format, backend preview artifacts where available, and generated geometry version records. The editable CAD document endpoint persists LiteCAD-owned document JSON, root model nodes, replayable transform and box-union operations, and revision numbers separately from uploaded source bytes and derived preview meshes.
-
-### 3D Preview Shell
-
-The home page no longer renders demo CAD geometry. The project detail route renders a CAD-style viewer shell with grid, axis, view-control, panel UI, parsed source metadata, browser-kernel STEP meshes, backend artifacts for GLB/GLTF/STL previews, selected-model X/Y/Z transform controls in the document inspector, canvas click selection with a selected-model highlight and translate gizmo, constrained box-union controls for STEP models, and STEP export controls for selected per-model or merged downloads. When a project has multiple parsed source files with ready preview data, the workbench loads them into one preview scene, uses worker-replayed transform and box-union operations for STEP previews and STEP export, applies object-level transforms to backend preview artifacts, and frames the combined bounds.
-
-The project workbench keeps reusable view orientation math, ViewCube geometry definitions, ViewCube texture helpers, ViewCube controls, multi-model preview behavior, viewer event helpers, and shared Three.js resource cleanup in focused frontend modules under `website/src/views/project/`, while the route component remains responsible for project loading, source-file state, preview artifact queries, upload mutation flow, and shell layout.
-
-## API Surface
-
-Current backend routes:
-
-```text
-GET  /health
-
-GET  /api/v1/studio/status
-
-POST /api/v1/auth/register
-POST /api/v1/auth/login
-GET  /api/v1/auth/me
-POST /api/v1/auth/logout
-
-GET  /api/v1/projects
-POST /api/v1/projects
-GET  /api/v1/projects/:projectID
-GET  /api/v1/projects/:projectID/thumbnail
-POST /api/v1/projects/:projectID/thumbnail
-GET  /api/v1/projects/:projectID/geometry
-GET  /api/v1/projects/:projectID/cad-document
-PATCH /api/v1/projects/:projectID/cad-document/models/:modelID/transform
-POST /api/v1/projects/:projectID/cad-document/models/:modelID/box-union
-GET  /api/v1/projects/:projectID/models
-POST /api/v1/projects/:projectID/models
-GET  /api/v1/projects/:projectID/models/:modelID/source
-GET  /api/v1/projects/:projectID/models/:modelID/preview-artifact
-GET  /api/v1/projects/:projectID/models/:modelID/preview
-```
-
-Project routes require a valid `litecad_session` cookie. `GET /api/v1/projects` returns lightweight project cards with model counts, up to three model summaries, and a static thumbnail snapshot URL when one is available; the project list does not download source CAD files or generate browser-kernel meshes for card covers. `GET /api/v1/projects/:projectID/thumbnail` returns the authenticated static cover image for a project-owned snapshot, and `POST /api/v1/projects/:projectID/thumbnail` stores the workbench-generated `image/webp` or `image/png` snapshot used by project-list cards. `POST /api/v1/projects/:projectID/models` accepts multipart form data with a `model` file field and currently supports `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl`. Model responses include lightweight source metadata when parsing succeeds. `GET /api/v1/projects/:projectID/models/:modelID/source` returns the original uploaded source bytes for a project-owned model and is the input path for browser-kernel STEP preview and direct browser STEP export, including selected multi-model compound downloads. `GET /api/v1/projects/:projectID/geometry` returns the current read-only model tree, backend preview artifact metadata where applicable, and generated geometry version records. `GET /api/v1/projects/:projectID/cad-document` returns the editable LiteCAD document state, including root model nodes, per-model transform matrices, operation history, unit, schema version, and revision. `PATCH /api/v1/projects/:projectID/cad-document/models/:modelID/transform` persists a transform operation for one project-owned model. `POST /api/v1/projects/:projectID/cad-document/models/:modelID/box-union` persists a constrained axis-aligned box-union operation for a STEP model. STEP models intentionally have no backend preview artifact in the geometry document because the workbench renders and exports them from browser-kernel shape state derived from `/source` plus document operations. `GET /api/v1/projects/:projectID/models/:modelID/preview-artifact` returns preview artifact metadata without binary data for backend-published GLB/GLTF/STL previews and returns `model preview unavailable` for STEP models. `GET /api/v1/projects/:projectID/models/:modelID/preview` returns `model/obj` for STL previews, `model/gltf+json` for validated self-contained GLTF previews, or `model/gltf-binary` for validated GLB previews; STEP previews are browser-kernel generated from `/source`. API clients live in `website/src/api/`, and shared wire types live in `website/src/types/`.
-
-Normal LiteCAD runtime no longer shells out to FreeCAD or Python for STEP preview, edit replay, or STEP export. Future CAD work should stay behind the browser-kernel migration plan in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md).
-
-## Architecture
-
-```text
-cmd/litecad/                  # Application entry point and local config
-internal/config/              # YAML config loading
-internal/database/            # GORM database connection and migration
-internal/entity/              # GORM models and persistence types
-internal/handler/             # HTTP handlers, route registration, middleware
-internal/service/             # Business logic and database operations
-internal/errors/              # Legacy centralized status errors
-pkg/httperr/                  # HTTP-status-aware error helpers used by handlers
-pkg/id/                       # Prefixed ULID helpers
-pkg/secret/                   # Random secret and digest helpers
-pkg/strutil/                  # Pure string helpers
-pkg/gormlog/                  # GORM logger adapter
-website/                      # Embedded SPA
-  assets_development.go       # Dev mode: reverse-proxy to Vite
-  assets_production.go        # Prod mode: go:embed static assets
-  src/
-    api/                      # Axios API modules
-    types/                    # Shared frontend contract types
-    views/                    # Route-level UI
-      project/                # Project workbench route plus focused viewer helpers
-    components/               # Reusable UI components
-    layouts/                  # Page layouts
-    lib/                      # Shared frontend utilities
-scripts/                      # Shell helpers invoked by Taskfile
-```
-
-## Single Binary Embedding
-
-- Development builds use `website/assets_development.go` and reverse-proxy static requests to the Vite dev server.
-- Production builds use `website/assets_production.go` and embed `website/build/*` with `//go:embed`.
-- `/api` paths return JSON 404s when not found; other unknown GET/HEAD paths fall back to the SPA index.
-
-## Configuration
-
-```yaml
-addr: "0.0.0.0:${LITECAD_HTTP_PORT:-46280}"
-driver: postgres
-dsn: "host=localhost port=5432 user=postgres password=postgres dbname=litecad sslmode=disable"
-```
-
-Configuration files support `${NAME}` and `${NAME:-fallback}` environment variable expansion. Supported runtime database drivers are `postgres` and `mysql`.
+Production builds keep the compact single-binary deployment model inherited from `miclle/goblet`: the Go backend embeds the built Vite frontend, so deployment needs one executable plus a configured database.
 
 ## Verification
 
@@ -208,7 +144,7 @@ Run before committing:
 task check
 ```
 
-Run tests when backend behavior, API contracts, database models, shared frontend behavior, or viewer interactions change:
+Run tests when behavior, API contracts, database models, shared frontend behavior, or viewer interactions change:
 
 ```bash
 task test
@@ -218,7 +154,9 @@ CI also runs Go tests, frontend lint/type/test/build, actionlint, dependency rev
 
 ## Roadmap
 
-Active follow-up work is tracked in [TODO.md](TODO.md). Keep completed items out of the roadmap and move durable product or architecture facts back into this README or focused docs.
+Near-term product work is focused on turning the current preview/edit/export loop into a richer CAD workflow: durable kernel shape state, broader feature operations, measurement and sectioning, clearer assembly semantics, stronger CAD Agent tool boundaries, project management polish, and production deployment guidance.
+
+Active follow-up items are tracked in [TODO.md](TODO.md). The browser-kernel architecture plan and phase history live in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md).
 
 ## License
 

@@ -10,7 +10,7 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
   - Define editable B-rep geometry records and CAD feature/version semantics beyond uploaded sources, persisted transform/box-union operations, preview artifacts, and generated read-only version snapshots.
 - Define durable assembly semantics for multi-source projects beyond completed per-model transform persistence, per-model box-union edits, per-model direct STEP export, and selected multi-model STEP compound download, including explicit cross-model merge/boolean behavior and editable assembly records. Current multi-model support is browser preview composition, persisted placement, and selected STEP compound export; it does not combine multiple STEP files into one editable CAD part.
 - Add measurement, sectioning, edge display, backend export artifact history, and richer export workflows after real editable geometry is available.
-- Define AI orchestration APIs for prompt-to-design iterations, including provider boundaries, request history, failure states, and cost controls.
+- Extend the current CAD Agent beyond project-scoped OpenAI-compatible chat and persisted messages: define tool-call boundaries, prompt-to-design iteration records, geometry mutation permissions, richer failure states, cost controls, and tests for cross-project context isolation.
 
 ## Backend And Data
 
