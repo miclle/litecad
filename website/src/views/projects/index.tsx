@@ -6,21 +6,31 @@ import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import axios from 'axios'
 
 import {
+  fetchProjectModelSource,
   createProject,
   fetchProjectCADDocument,
   fetchProjectGeometryDocument,
   fetchProjectModelPreview,
   fetchProjects,
 } from 'src/api/projects'
+import {
+  runStepPreviewInWorker,
+  type CadKernelWorkerPreviewResult,
+} from 'src/cad/kernel-worker-client'
 import type { AuthUser } from 'src/types/auth'
 import type { Project } from 'src/types/project'
 import { ModelPreview } from 'src/views/project/model-preview'
 import {
   buildProjectPreviewAssets,
+  cadKernelGeometryOperationSignature,
+  cadKernelGeometryOperationsForModel,
   parsedPreviewModels,
 } from 'src/views/project/project-preview-assets'
 
 const projectSwatches = ['#cfd8c0', '#f0c77b', '#b8c7d9', '#d6b7a8', '#a8cfc4', '#d7cfec']
+
+let projectCardKernelPreviewQueue = Promise.resolve()
+const projectCardKernelPreviewTimeoutMs = 20_000
 
 interface MainLayoutContext {
   currentUser?: AuthUser
@@ -251,14 +261,55 @@ function ProjectCoverPreview({
   })
   const geometryDocument = geometryDocumentQuery.data
   const previewModels = useMemo(() => parsedPreviewModels(geometryDocument?.models ?? []), [geometryDocument?.models])
+  const browserKernelPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'step'), [previewModels])
   const previewArtifacts = useMemo(() => geometryDocument?.preview_artifacts ?? [], [geometryDocument?.preview_artifacts])
   const cadDocumentQuery = useQuery({
     queryKey: ['projects', projectId, 'cad-document', 'card-preview'],
     queryFn: async () => (await fetchProjectCADDocument(projectId)).data.document,
-    enabled: hasModels && geometryDocumentQuery.isSuccess && previewArtifacts.length > 0,
+    enabled: hasModels && geometryDocumentQuery.isSuccess && previewModels.length > 0,
     retry: false,
     staleTime: 30_000,
   })
+  const browserKernelPreviewQueries = useQueries({
+    queries: browserKernelPreviewModels.map((model) => {
+      const geometryOperationSignature = cadKernelGeometryOperationSignature(cadDocumentQuery.data, model.id)
+      return {
+        queryKey: ['projects', projectId, 'models', model.id, 'kernel-preview', 'card-preview', geometryOperationSignature],
+        queryFn: async () => {
+          const previewJob = projectCardKernelPreviewQueue.then(async () => {
+            const source = (await fetchProjectModelSource(projectId, model.id)).data
+            return runStepPreviewInWorker(
+              {
+                filename: model.original_filename,
+                stepText: await source.text(),
+                operations: cadKernelGeometryOperationsForModel(cadDocumentQuery.data, model.id),
+              },
+              undefined,
+              { timeoutMs: projectCardKernelPreviewTimeoutMs },
+            )
+          })
+          projectCardKernelPreviewQueue = previewJob.then(
+            () => undefined,
+            () => undefined,
+          )
+          return previewJob
+        },
+        enabled: hasModels && cadDocumentQuery.isSuccess,
+        retry: false,
+        staleTime: 30_000,
+      }
+    }),
+  })
+  const kernelMeshesByModelID = browserKernelPreviewQueries.reduce<Record<string, CadKernelWorkerPreviewResult>>(
+    (meshByModelID, query, index) => {
+      const modelID = browserKernelPreviewModels[index]?.id
+      if (modelID && query.data) {
+        meshByModelID[modelID] = query.data
+      }
+      return meshByModelID
+    },
+    {},
+  )
   const previewBlobQueries = useQueries({
     queries: previewArtifacts.map((artifact) => ({
       queryKey: ['projects', projectId, 'models', artifact.model_id, 'preview', 'card-preview'],
@@ -282,10 +333,10 @@ function ProjectCoverPreview({
         previewModels,
         previewArtifacts,
         previewUrlsByModelID,
-        {},
+        kernelMeshesByModelID,
         cadDocumentQuery.data,
       ),
-    [cadDocumentQuery.data, previewArtifacts, previewModels, previewUrlsByModelID],
+    [cadDocumentQuery.data, kernelMeshesByModelID, previewArtifacts, previewModels, previewUrlsByModelID],
   )
 
   useEffect(() => {
