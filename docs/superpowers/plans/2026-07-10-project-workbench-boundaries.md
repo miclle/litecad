@@ -342,7 +342,7 @@ Commit: `refactor(errors): remove legacy status package`
 **Files:**
 - Modify as required: `README.md`, `TODO.md`, `AGENTS.md`, `docs/browser-cad-kernel-roadmap.md`, `.agents/rules/litecad-architecture.md`, `.agents/rules/threejs-viewer.md`
 
-- [ ] **Step 1: Re-run every supported gate**
+- [x] **Step 1: Re-run every supported gate**
 
 Run:
 
@@ -354,10 +354,10 @@ npm --prefix website run build
 git diff --check main...HEAD
 ```
 
-- [ ] **Step 2: Audit boundaries and documentation**
+- [x] **Step 2: Audit boundaries and documentation**
 
 Confirm `ProjectView`, `ModelPreview`, project handlers, and large Go tests are smaller and that docs describe only behavior present at HEAD. Confirm no product-capability claims were added.
 
-- [ ] **Step 3: Record final plan status**
+- [x] **Step 3: Record final plan status**
 
 Mark every completed checkbox in this plan and create a final docs-only commit only if the acceptance audit changes documentation.
