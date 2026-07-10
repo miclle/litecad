@@ -34,7 +34,7 @@ Future CAD architecture and phase notes live in [docs/browser-cad-kernel-roadmap
 
 Requirements:
 
-- Go 1.26+
+- Go 1.26.2+
 - Node.js 22.14+
 - PostgreSQL or MySQL
 - [Task](https://taskfile.dev/)
@@ -84,7 +84,7 @@ After signing in, open `/projects`, create a project, and enter its workbench at
 
 Upload STEP/STP, self-contained GLTF/GLB, or STL files from the workbench. LiteCAD stores the original source bytes, extracts lightweight metadata, and shows parsed sources in the project tree. STEP product/component names are displayed as children under the uploaded source file when the STEP text exposes them.
 
-For STEP/STP files, the browser fetches the original source and sends it to the CAD kernel worker for tessellation. Transform and box-union operations from the LiteCAD document are replayed before preview and export. For GLB/GLTF/STL files, the workbench uses backend-published preview artifacts.
+For STEP/STP files, the browser fetches the original source and sends it to the CAD kernel worker for tessellation. The workbench replays box-union geometry in the worker, then applies the persisted absolute transform in the Three.js scene. STEP export replays the geometry operations followed by the latest absolute transform in the worker. For GLB/GLTF/STL files, the workbench uses backend-published preview artifacts and applies persisted transforms in the viewer.
 
 ### Workbench
 

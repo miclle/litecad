@@ -29,3 +29,9 @@ These rules apply to HTTP APIs, frontend API clients, tests, examples, and futur
 - Successful deletes or commands with no response body should usually return `204 No Content`.
 - Map internal, database, and provider errors to stable HTTP status responses before they reach clients.
 - Do not expose DSNs, credentials, SQL details, or provider internals in error responses.
+
+## CAD Document Concurrency
+
+- CAD document edit, Undo, and Redo requests must include `expected_revision` from the latest server document response.
+- Reject stale CAD document mutations with `409 Conflict`; never silently overwrite a newer revision from another browser or device.
+- Keep the database-backed History head and materialized CAD document update in the same service transaction.

@@ -83,7 +83,7 @@ Run `task check`, `task test`, `git diff --check`, then commit this stage.
 - [x] **Step 1: Write failing converter/service tests**
 - [x] **Step 2: Verify failure**
 - [x] **Step 3: Implement FreeCAD GLB or deterministic fallback strategy**
-- [x] **Step 4: Verify sample STEP import with `/Users/miclle/github/miclle/Macintosh/exports/macintosh_ipad_lcd_case.step`**
+- [x] **Step 4: Verify sample STEP import with a local `macintosh_ipad_lcd_case.step` fixture**
 - [x] **Step 5: Update docs and commit**
 
 ### Task 3: Source Format Normalization for GLTF/GLB/STL Uploads

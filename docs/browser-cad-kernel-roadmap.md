@@ -1,6 +1,6 @@
 # Browser CAD Kernel Roadmap
 
-This document records the target architecture for LiteCAD's long-term CAD import, browser editing, preview, and export pipeline. It is a roadmap, not the current shipped implementation.
+This document records both the target architecture and dated implementation status for LiteCAD's CAD import, browser editing, preview, and export pipeline. Target sections remain roadmap work unless a phase status explicitly marks them complete.
 
 ## Goal
 
@@ -16,7 +16,7 @@ Import STEP or another CAD source
   -> export the current shape back to STEP or another CAD exchange format
 ```
 
-The current implementation now covers the first browser-kernel loop for STEP models: STEP workbench preview uses browser-kernel tessellation, persisted transform and constrained box-union operations replay in the worker, and the workbench can download selected STEP models either as separate per-model STEP files or as one browser-kernel compound STEP file. GLTF/GLB/STL preview artifacts remain viewer outputs rather than editable CAD documents.
+The current implementation covers the first browser-kernel loop for STEP models: STEP workbench preview replays constrained box-union geometry during worker tessellation and applies the latest persisted absolute transform in the Three.js scene. STEP export replays geometry operations followed by that latest transform in the worker, and the workbench can download selected STEP models either as separate files or as one browser-kernel compound STEP file. GLTF/GLB/STL preview artifacts remain viewer outputs rather than editable CAD documents.
 
 ## Architectural Decision
 
@@ -42,7 +42,7 @@ OpenCascade.js is the first candidate to evaluate because it provides JavaScript
 - Do not treat OBJ, STL, or GLTF mesh edits as equivalent to editable STEP/B-rep CAD.
 - Do not require users to install FreeCAD or another desktop CAD application for normal LiteCAD runtime behavior.
 - Do not promise preservation of source CAD application feature history. Imported STEP should become an editable B-rep shape plus LiteCAD operations, not the original parametric timeline from another CAD tool.
-- Do not preserve the current FreeCAD/OBJ preview path for deployed-user compatibility. LiteCAD is not launched yet, so migration work can replace the old path once the browser kernel is strong enough.
+- Do not reintroduce the removed FreeCAD/OBJ preview path for compatibility. LiteCAD is not launched yet, so current browser-kernel work does not need a legacy desktop-CAD conversion mode.
 
 ## Target Runtime Shape
 
@@ -81,7 +81,7 @@ Recommended concepts:
 - `previewMesh`: derived render data produced from the current shape state.
 - `exportArtifact`: generated STEP/GLB/STL/etc. output from the current document state.
 
-The first browser-kernel proof of concept has proven import, tessellation, constrained per-model edit replay, direct per-model STEP export, and selected multi-model compound STEP export. A durable database schema for kernel shape state, richer feature history, and backend export artifact history is still future design work.
+The first browser-kernel proof of concept has proven import, tessellation, constrained per-model edit replay, direct per-model STEP export, and selected multi-model compound STEP export. LiteCAD now persists reversible command History for its supported edits, but a durable database schema for kernel shape state, rich parametric B-rep feature semantics, and backend export artifact history is still future design work.
 
 ## Phased Implementation Plan
 
@@ -185,9 +185,9 @@ Tests and verification:
 
 Introduce a LiteCAD document model for browser-side CAD edits.
 
-Phase 3 acceptance status: complete on 2026-07-08. The first Phase 3 increment is complete on 2026-07-07: LiteCAD now stores a project-owned editable CAD document record with schema version, revision, unit, root model nodes, per-model transform matrices, and replayable transform operations. The workbench exposes X/Y/Z per-model transform controls, saves them through the CAD document API, and reloads them.
+Phase 3 baseline acceptance status: complete on 2026-07-08. The first Phase 3 increment is complete on 2026-07-07: LiteCAD now stores a project-owned editable CAD document record with schema version, revision, unit, root model nodes, per-model transform matrices, and replayable transform operations. The workbench exposes X/Y/Z per-model transform controls, saves them through the CAD document API, and reloads them.
 
-The second Phase 3 increment is complete on 2026-07-08: model-scoped transform operations are now sent to the browser CAD worker for STEP preview and round-trip requests, replayed on the imported OCCT shape through `BRepBuilderAPI_Transform`, and tessellated/exported from the transformed shape. Backend GLB/GLTF/STL preview artifacts still use object-level transforms in the Three.js scene.
+The second Phase 3 increment proved on 2026-07-08 that model-scoped transform operations could be replayed on an imported OCCT shape through `BRepBuilderAPI_Transform` for worker preview and round-trip export. The production workbench later moved preview placement to the Three.js scene so repeated absolute transforms are not compounded; STEP export still applies the latest absolute transform in the worker. Backend GLB/GLTF/STL preview artifacts also use viewer-level transforms.
 
 The third Phase 3 increment is complete on 2026-07-08: STEP models now support a constrained per-model `box-union` feature operation. LiteCAD persists the operation in the project CAD document, the workbench exposes origin and size controls for STEP models, and the browser CAD worker creates an OCCT box with `BRepPrimAPI_MakeBox`, fuses it into the imported shape with `BRepAlgoAPI_Fuse`, then tessellates or exports the fused shape.
 
@@ -202,8 +202,8 @@ Current Phase 3 status:
 - `GET /api/v1/projects/:projectID/cad-document/history` returns newest-first persisted edit summaries; `POST .../history/undo` and `POST .../history/redo` move the database-backed history head and materialize the resulting document state.
 - Every edit, Undo, and Redo requires the caller's expected document revision. A stale revision returns `409 Conflict`, and every successful state transition increments the document revision monotonically.
 - A new edit after Undo marks the old redo path as discarded while retaining its records for History inspection.
-- The project workbench fetches the CAD document, maps document operations into worker protocol operations, keys STEP preview queries by document revision, and avoids double-applying STEP transforms at the Three.js object layer because the worker-replayed mesh already includes them.
-- The CAD kernel worker protocol accepts replayable transform and box-union operations for STEP preview and STEP round-trip requests. `opencascade-step.ts` converts row-major 4x4 transform matrices into OCCT `gp_Trsf.SetValues(...)`, applies transforms with `BRepBuilderAPI_Transform`, creates box features with `BRepPrimAPI_MakeBox`, and fuses them with `BRepAlgoAPI_Fuse`.
+- The project workbench keys STEP preview queries by geometry-operation signature, sends box-union operations to the worker for tessellation, and applies the latest persisted absolute transform at the Three.js object/node layer.
+- The CAD kernel worker protocol accepts replayable transform and box-union operations. Production STEP export sends geometry operations first and only the latest absolute transform last. `opencascade-step.ts` converts row-major 4x4 transform matrices into OCCT `gp_Trsf.SetValues(...)`, applies transforms with `BRepBuilderAPI_Transform`, creates box features with `BRepPrimAPI_MakeBox`, and fuses them with `BRepAlgoAPI_Fuse`.
 - Browser verification on 2026-07-08 against a temporary current-code server on `127.0.0.1:46283` created a new signed-in project, uploaded `verify.stl`, rendered one preview mesh, changed the first model's X transform from `0` to `2.5`, reloaded the project route, and confirmed the persisted value remained `2.5` with a present 1280 x 844 preview canvas and no console errors.
 - Browser worker verification on 2026-07-08 against a temporary Vite server on `127.0.0.1:46285` generated a box STEP in the browser, ran base preview and transform-replayed worker preview with translation matrix `[+25, -3, +7]`, and confirmed mesh bounds moved from min `(0, 0, 0)` to min `(25, -3, 7)` while retaining 24 vertices, 12 triangles, normals, and a transformed STEP round-trip export of 15436 bytes.
 - Workbench browser verification on 2026-07-08 against temporary Go/Vite dev servers on `127.0.0.1:46286` and `127.0.0.1:46287` registered a new user, generated and uploaded `worker-replay-box.step`, rendered one STEP kernel preview canvas at 1280 x 844, changed X translation to `25` through the real workbench controls, observed the authenticated STEP source request count increase from 1 to 2 after document revision changed, and saw no unexpected browser errors.
@@ -303,7 +303,8 @@ As of this roadmap, the current shipped path is:
 - GLB and self-contained GLTF uploads can be published as preview artifacts after backend validation.
 - STL is converted to OBJ preview data in Go.
 - The project workbench renders browser-kernel STEP meshes and backend-provided GLB/GLTF/STL preview artifacts in Three.js.
-- The project workbench stores and reloads a LiteCAD editable document for root model nodes plus per-model transform and constrained box-union operations.
-- STEP preview derives mesh data by replaying persisted transform and box-union operations in the browser CAD worker before tessellation.
-- Direct per-model STEP export and selected multi-model compound STEP export derive output by replaying the same persisted operations in the browser CAD worker and downloading the worker-produced STEP text.
-- No durable kernel shape serialization, rich feature-history model, backend export artifact history, or durable cross-model CAD merge/assembly semantics exist yet.
+- The project workbench stores and reloads a LiteCAD editable document for root model nodes plus transform, component-delete, and constrained box-union operations.
+- Database-backed History stores reversible transform, component-delete, and box-union commands, the active Undo/Redo head, and discarded alternate paths; every mutation uses an expected document revision.
+- STEP preview derives mesh data by replaying box-union geometry in the browser CAD worker before tessellation, then applies the latest persisted absolute transform in the Three.js scene.
+- Direct per-model STEP export and selected multi-model compound STEP export replay geometry operations followed by the latest absolute transform in the browser CAD worker and download the worker-produced STEP text.
+- No durable kernel shape serialization, rich parametric B-rep feature model, backend export artifact history, or durable cross-model CAD merge/assembly semantics exist yet.

@@ -21,10 +21,10 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 
 ## Frontend
 
-- Continue shrinking the project workbench hotspot by extracting focused pieces from `website/src/views/project/view-controller.tsx` and `website/src/views/project/model-preview.tsx`, while keeping renderer lifecycle, view events, and resource disposal aligned with `.agents/rules/threejs-viewer.md`.
+- Continue shrinking the project workbench hotspots by extracting focused pieces from `website/src/views/project/index.tsx`, `website/src/views/project/model-preview.tsx`, and `website/src/views/project/view-controller.tsx`, while keeping React Query document/history coordination, renderer lifecycle, view events, and resource disposal aligned with the project rules.
 - Add route protection UX for `/projects` and `/projects/:projectId` so signed-out users get a deliberate sign-in flow instead of only relying on the Axios 401 redirect.
 - Add focused tests for project creation UI behavior and project detail loading/error states.
-- Introduce Playwright-based browser verification for the CAD workbench after the first stable viewer flows exist. Start with an optional task for installing Chromium and local screenshot/interaction smoke checks; only fold Playwright browser installation into `task install` or CI once real Playwright tests are part of the supported test suite.
+- Introduce Playwright-based browser verification for the existing CAD workbench flows. Start with an optional task for installing Chromium and local screenshot/interaction smoke checks; only fold Playwright browser installation into `task install` or CI once real Playwright tests are part of the supported test suite.
 
 ## Documentation And Operations
 
