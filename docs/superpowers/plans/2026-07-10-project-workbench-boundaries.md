@@ -309,17 +309,17 @@ Commit: `refactor(projects): split handler domains`
 - `pkg/httperr` remains the application HTTP-status-aware error package.
 - `github.com/fox-gonic/fox/httperrors` remains the framework-level SPA/API NotFound response used by website asset handlers.
 
-- [ ] **Step 1: Prove the legacy package is unused**
+- [x] **Step 1: Prove the legacy package is unused**
 
 Run: `rg 'github.com/miclle/litecad/internal/errors' --glob '*.go'`
 
 Expected: no imports.
 
-- [ ] **Step 2: Delete the package and update docs**
+- [x] **Step 2: Delete the package and update docs**
 
 Remove the package, remove the resolved TODO decision, and state the `pkg/httperr` ownership boundary in AGENTS and architecture rules.
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run:
 
@@ -331,7 +331,7 @@ task test
 
 Expected: no imports and all checks pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Commit: `refactor(errors): remove legacy status package`
 

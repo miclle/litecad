@@ -54,8 +54,7 @@ internal/database/            # GORM database connection and schema migration
 internal/entity/              # GORM models and persistence types
 internal/handler/             # HTTP handlers, route registration, middleware
 internal/service/             # Business logic, database operations
-internal/errors/              # Legacy centralized status errors
-pkg/httperr/                  # Generic HTTP-status-aware errors
+pkg/httperr/                  # Application HTTP-status-aware errors
 pkg/id/                       # Prefixed ULID helpers
 pkg/secret/                   # Random secret and digest helpers
 pkg/strutil/                  # Pure string helpers
