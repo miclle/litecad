@@ -134,7 +134,7 @@ task test
 
 Update `TODO.md` and `.agents/rules/litecad-architecture.md` so new workbench responsibilities are added to the extracted surfaces, not to the route component.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit: `refactor(project): split workbench surfaces`
 
@@ -159,7 +159,7 @@ Commit: `refactor(project): split workbench surfaces`
 - `useModelPreviewResources(sceneRuntime, previewAssets)` owns loader cancellation, object maps, base transforms, resource replacement, and disposal.
 - `useModelPreviewSelection(sceneRuntime, resourceRuntime, options)` owns raycasting, transform controls, selection synchronization, visibility, and draft/persisted translation synchronization.
 
-- [ ] **Step 1: Write failing lifecycle tests**
+- [x] **Step 1: Write failing lifecycle tests**
 
 Use lightweight fake runtime objects to verify one listener/animation lifecycle, cancellation during asset replacement, exactly-once resource disposal, selection clearing, and transform synchronization.
 
@@ -167,15 +167,15 @@ Run: `npm --prefix website test -- use-model-preview-scene use-model-preview-res
 
 Expected: FAIL because the hooks do not exist.
 
-- [ ] **Step 2: Extract scene lifecycle**
+- [x] **Step 2: Extract scene lifecycle**
 
 Move renderer/camera/control creation and cleanup without changing camera defaults, pixel-ratio cap, resize-complete event, zoom behavior, or snapshot timing.
 
-- [ ] **Step 3: Extract resource and selection lifecycles**
+- [x] **Step 3: Extract resource and selection lifecycles**
 
 Move preview asset loading/replacement and node/model selection/transform synchronization behind explicit runtime handles. Reuse `disposeObject3DResources` and preserve existing orientation behavior.
 
-- [ ] **Step 4: Verify and update docs**
+- [x] **Step 4: Verify and update docs**
 
 Run:
 

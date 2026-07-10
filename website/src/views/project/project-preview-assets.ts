@@ -118,7 +118,7 @@ export function buildProjectPreviewAssets(
               .map((target) => (target.componentIndex === undefined ? undefined : kernelMesh.componentMeshes?.[target.componentIndex]))
               .filter((mesh): mesh is CadKernelMesh => Boolean(mesh))
           : undefined
-      const pickTargets = pickTargetsWithIndex.map(({ componentIndex: _componentIndex, ...target }) => target)
+      const pickTargets = pickTargetsWithIndex.map(({ modelId, nodeId, name }) => ({ modelId, nodeId, name }))
       return [
         {
           modelId: model.id,
