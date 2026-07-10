@@ -39,11 +39,11 @@
 - Produces: command error state and `isPending` while owning the document/history query keys, command queue, latest transform request versions, autosave timers, and conflict refresh.
 - Produces: controlled `ProjectStepExportPopover` whose failure state remains mounted and visible.
 
-- [ ] **Step 1: Add the React integration-test harness**
+- [x] **Step 1: Add the React integration-test harness**
 
 Add `@testing-library/react` and `@testing-library/user-event` as dev dependencies. Tests must mount real hooks/components inside `QueryClientProvider`; API modules may be mocked only at the HTTP boundary.
 
-- [ ] **Step 2: Write and run failing integration tests**
+- [x] **Step 2: Write and run failing integration tests**
 
 Cover these three behaviors:
 
@@ -62,11 +62,11 @@ Run: `npm --prefix website test -- use-cad-document-commands project-step-export
 
 Expected: FAIL because the hook and controlled export surface do not exist.
 
-- [ ] **Step 3: Implement the command hook and controlled export popover**
+- [x] **Step 3: Implement the command hook and controlled export popover**
 
 Move the queue, latest revision lookup, transform autosave timers, conflict invalidation, and mutation state out of `ProjectView`. Keep API calls in `website/src/api/projects.ts` and use the existing React Query client.
 
-- [ ] **Step 4: Verify behavior and update docs**
+- [x] **Step 4: Verify behavior and update docs**
 
 Run:
 
@@ -362,4 +362,3 @@ Confirm `ProjectView`, `ModelPreview`, project handlers, and large Go tests are 
 - [ ] **Step 3: Record final plan status**
 
 Mark every completed checkbox in this plan and create a final docs-only commit only if the acceptance audit changes documentation.
-

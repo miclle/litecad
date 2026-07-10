@@ -18,7 +18,6 @@ import {
   Box,
   BotMessageSquare,
   CheckCircle2,
-  Download,
   Eye,
   EyeOff,
   FileText,
@@ -35,11 +34,8 @@ import {
   X,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
-import type { ProjectCADDocument } from 'src/types/project'
 
 import {
-  addProjectCADModelBoxUnion,
-  deleteProjectCADNode,
   fetchProjectAgentMessages,
   fetchProject,
   fetchProjectCADDocument,
@@ -49,9 +45,6 @@ import {
   fetchProjectModelSource,
   fetchProjectModels,
   sendProjectAgentMessage,
-  redoProjectCADDocument,
-  undoProjectCADDocument,
-  updateProjectCADNodeTransform,
   uploadProjectThumbnailSnapshot,
   uploadProjectModel,
 } from 'src/api/projects'
@@ -89,11 +82,11 @@ import {
   parseBoxFeatureDraft,
   type BoxFeatureDraft,
 } from './cad-document-box-features'
-import { shouldAcceptCADNodeTransformDocument } from './cad-document-cache'
 import { cadHistoryActionForKey, cadHistoryStatusLabel } from './cad-document-history'
-import { cadTransformWithTranslation, translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
+import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
+import { ProjectStepExportPopover } from './project-step-export-popover'
 import { exportMergedStepTargets, exportStepTarget } from './project-step-export-action'
 import {
   buildProjectPreviewAssets,
@@ -114,6 +107,7 @@ import {
   type StepExportMode,
 } from './project-step-export'
 import { ViewController } from './view-controller'
+import { useCADDocumentCommands } from './use-cad-document-commands'
 import {
   initialViewOrientation,
   orientationDistance,
@@ -129,7 +123,6 @@ const defaultAiChatPanelWidth = 420
 const aiChatPanelMinWidth = 340
 const aiChatPanelMaxWidthRatio = 0.5
 const aiChatPanelTransitionMs = 220
-const transformAutosaveDelayMS = 500
 type AiChatMessage = {
   id: string
   role: 'assistant' | 'user'
@@ -330,50 +323,38 @@ function ProjectView() {
   const [hiddenModelIDs, setHiddenModelIDs] = useState<Set<string>>(() => new Set())
   const [selectedModelID, setSelectedModelID] = useState('')
   const [selectedDocumentNodeID, setSelectedDocumentNodeID] = useState('')
-  const [selectedNodeDeleteError, setSelectedNodeDeleteError] = useState('')
   const [activeCADTool, setActiveCADTool] = useState<CADTool>('inspect')
   const [transformDraftsByModelID, setTransformDraftsByModelID] = useState<Record<string, TransformDraft>>({})
-  const [transformErrorByModelID, setTransformErrorByModelID] = useState<Record<string, string>>({})
   const [boxFeatureDraftsByModelID, setBoxFeatureDraftsByModelID] = useState<Record<string, BoxFeatureDraft>>({})
-  const [boxFeatureErrorByModelID, setBoxFeatureErrorByModelID] = useState<Record<string, string>>({})
   const [stepExportErrorByModelID, setStepExportErrorByModelID] = useState<Record<string, string>>({})
   const [stepExportStatusByModelID, setStepExportStatusByModelID] = useState<Record<string, string>>({})
-  const [stepExportBatchError, setStepExportBatchError] = useState('')
-  const [cadHistoryError, setCADHistoryError] = useState('')
   const [selectedStepExportTargetIDs, setSelectedStepExportTargetIDs] = useState<Set<string>>(() => new Set())
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
   const hasTouchedStepExportSelectionRef = useRef(false)
-  const latestTransformDraftsRef = useRef<Record<string, TransformDraft>>({})
-  const latestTransformSaveRequestByModelIDRef = useRef<Record<string, number>>({})
-  const transformAutosaveTimersRef = useRef<Record<string, number>>({})
   const lastRequestedThumbnailSignatureRef = useRef('')
-  const cadDocumentCommandQueueRef = useRef<Promise<unknown>>(Promise.resolve())
-
-  function enqueueCADDocumentCommand<T>(command: () => Promise<T>) {
-    const queuedCommand = cadDocumentCommandQueueRef.current.then(command, command)
-    cadDocumentCommandQueueRef.current = queuedCommand.then(
-      () => undefined,
-      () => undefined,
-    )
-    return queuedCommand
-  }
-
-  function currentCADDocument() {
-    return queryClient.getQueryData<ProjectCADDocument>(['projects', projectId, 'cad-document'])
-  }
-
-  async function refreshCADDocumentAfterConflict(error: unknown) {
-    if ((error as { response?: { status?: number } }).response?.status !== 409) {
-      return false
-    }
-    setCADHistoryError('Document changed in another session. Latest version loaded.')
-    setIsHistoryOpen(true)
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] }),
-      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] }),
-    ])
-    return true
-  }
+  const handleCADDocumentConflict = useCallback(() => setIsHistoryOpen(true), [])
+  const handleCADDocumentNodeDeleted = useCallback((nodeId: string) => {
+    setTransformDraftsByModelID((currentDrafts) => {
+      const nextDrafts = { ...currentDrafts }
+      delete nextDrafts[nodeId]
+      return nextDrafts
+    })
+    setSelectedModelID('')
+    setSelectedDocumentNodeID('')
+  }, [])
+  const cadDocumentCommands = useCADDocumentCommands({
+    projectId,
+    onConflict: handleCADDocumentConflict,
+    onNodeDeleted: handleCADDocumentNodeDeleted,
+  })
+  const {
+    cancelTransformAutosave,
+    changeHistory,
+    clearDeleteError,
+    deleteNode,
+    hasPendingTransform,
+    isPending: isCADDocumentCommandPending,
+  } = cadDocumentCommands
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: async () => (await fetchProject(projectId)).data.project,
@@ -429,145 +410,6 @@ function ProjectView() {
       ])
     },
   })
-  const updateCADNodeTransformMutation = useMutation({
-    mutationFn: async ({
-      nodeId,
-      translation,
-    }: {
-      nodeId: string
-      requestVersion: number
-      translation: CADTranslation
-    }) => {
-      return enqueueCADDocumentCommand(async () => {
-        const currentDocument = currentCADDocument()
-        if (!currentDocument) {
-          throw new Error('CAD document is not loaded')
-        }
-        const currentNode = currentDocument.nodes.find((node) => node.id === nodeId)
-        const transform = cadTransformWithTranslation(currentNode?.transform, translation)
-        const document = (await updateProjectCADNodeTransform(projectId, nodeId, transform, currentDocument.revision)).data.document
-        queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
-        return document
-      })
-    },
-    onSuccess: async (document, variables) => {
-      if ((latestTransformSaveRequestByModelIDRef.current[variables.nodeId] ?? 0) > variables.requestVersion) {
-        return
-      }
-      const currentDocument = queryClient.getQueryData<ProjectCADDocument>(['projects', projectId, 'cad-document'])
-      if (!shouldAcceptCADNodeTransformDocument(currentDocument, variables.nodeId)) {
-        return
-      }
-      const latestDraft = latestTransformDraftsRef.current[variables.nodeId]
-      if (latestDraft) {
-        const latestTranslation = parseTransformDraft(latestDraft)
-        if (latestTranslation && !translationsEqual(latestTranslation, variables.translation)) {
-          return
-        }
-      }
-      setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.nodeId]: '' }))
-      queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
-      setCADHistoryError('')
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
-    },
-    onError: async (error, variables) => {
-      if ((latestTransformSaveRequestByModelIDRef.current[variables.nodeId] ?? 0) > variables.requestVersion) {
-        return
-      }
-      if (!(await refreshCADDocumentAfterConflict(error))) {
-        setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.nodeId]: 'Invalid transform' }))
-      }
-    },
-  })
-  const deleteCADNodeMutation = useMutation({
-    mutationFn: async ({ nodeId }: { nodeId: string }) =>
-      enqueueCADDocumentCommand(async () => {
-        const currentDocument = currentCADDocument()
-        if (!currentDocument) {
-          throw new Error('CAD document is not loaded')
-        }
-        const document = (await deleteProjectCADNode(projectId, nodeId, currentDocument.revision)).data.document
-        queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
-        return document
-      }),
-    onSuccess: async (document, variables) => {
-      clearTransformAutosaveTimer(variables.nodeId)
-      delete latestTransformDraftsRef.current[variables.nodeId]
-      delete latestTransformSaveRequestByModelIDRef.current[variables.nodeId]
-      setTransformDraftsByModelID((currentDrafts) => {
-        const nextDrafts = { ...currentDrafts }
-        delete nextDrafts[variables.nodeId]
-        return nextDrafts
-      })
-      setTransformErrorByModelID((currentErrors) => {
-        const nextErrors = { ...currentErrors }
-        delete nextErrors[variables.nodeId]
-        return nextErrors
-      })
-      setSelectedNodeDeleteError('')
-      setSelectedModelID('')
-      setSelectedDocumentNodeID('')
-      queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
-      setCADHistoryError('')
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
-    },
-    onError: async (error) => {
-      if (!(await refreshCADDocumentAfterConflict(error))) {
-        setSelectedNodeDeleteError('Could not delete this model')
-      }
-    },
-  })
-  const addCADModelBoxUnionMutation = useMutation({
-    mutationFn: async ({ modelId, box }: { modelId: string; box: ReturnType<typeof parseBoxFeatureDraft> }) => {
-      if (!box) {
-        throw new Error('Invalid box feature')
-      }
-      return enqueueCADDocumentCommand(async () => {
-        const currentDocument = currentCADDocument()
-        if (!currentDocument) {
-          throw new Error('CAD document is not loaded')
-        }
-        const document = (await addProjectCADModelBoxUnion(projectId, modelId, box, currentDocument.revision)).data.document
-        queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
-        return document
-      })
-    },
-    onSuccess: async (document, variables) => {
-      setBoxFeatureErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: '' }))
-      queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
-      setCADHistoryError('')
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
-    },
-    onError: async (error, variables) => {
-      if (!(await refreshCADDocumentAfterConflict(error))) {
-        setBoxFeatureErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: 'Invalid box feature' }))
-      }
-    },
-  })
-  const cadHistoryMutation = useMutation({
-    mutationFn: async (action: 'undo' | 'redo') =>
-      enqueueCADDocumentCommand(async () => {
-        const currentDocument = currentCADDocument()
-        if (!currentDocument) {
-          throw new Error('CAD document is not loaded')
-        }
-        const request = action === 'undo' ? undoProjectCADDocument : redoProjectCADDocument
-        const document = (await request(projectId, currentDocument.revision)).data.document
-        queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
-        return document
-      }),
-    onSuccess: async () => {
-      setCADHistoryError('')
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
-    },
-    onError: async (error) => {
-      if (!(await refreshCADDocumentAfterConflict(error))) {
-        setCADHistoryError('Could not change document history')
-      }
-    },
-  })
-  const isCADDocumentMutationPending =
-    updateCADNodeTransformMutation.isPending || deleteCADNodeMutation.isPending || addCADModelBoxUnionMutation.isPending || cadHistoryMutation.isPending
   const thumbnailSnapshotMutation = useMutation({
     mutationFn: async ({
       snapshot,
@@ -585,70 +427,6 @@ function ProjectView() {
       ).data.snapshot,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['projects'] })
-    },
-  })
-  const exportStepSelectionMutation = useMutation({
-    mutationFn: async ({
-      mode,
-      targets,
-      downloadFilename,
-    }: {
-      mode: StepExportMode
-      targets: ReturnType<typeof buildStepExportTargets>
-      downloadFilename: string
-    }) => {
-      if (targets.length === 0) {
-        throw new Error('No STEP models selected')
-      }
-      const fetchSourceText = async (modelId: string) => {
-        const source = (await fetchProjectModelSource(projectId, modelId)).data
-        return source.text()
-      }
-      if (mode === 'merged') {
-        return exportMergedStepTargets({
-          targets,
-          downloadFilename,
-          fetchSourceText,
-          runStepAssemblyExport: runStepAssemblyExportInWorker,
-          publishDownload: publishStepExportDownload,
-        })
-      }
-
-      const results = []
-      for (const target of targets) {
-        results.push(
-          await exportStepTarget({
-            target,
-            fetchSourceText,
-            runStepRoundTrip: runStepRoundTripInWorker,
-            publishDownload: publishStepExportDownload,
-          }),
-        )
-      }
-      return results
-    },
-    onSuccess: (_result, variables) => {
-      setStepExportBatchError('')
-      setIsStepExportOpen(false)
-      setStepExportErrorByModelID((currentErrors) => {
-        const nextErrors = { ...currentErrors }
-        variables.targets.forEach((target) => {
-          nextErrors[target.modelId] = ''
-        })
-        return nextErrors
-      })
-      setStepExportStatusByModelID((currentStatuses) => {
-        const nextStatuses = { ...currentStatuses }
-        variables.targets.forEach((target) => {
-          nextStatuses[target.modelId] =
-            variables.mode === 'merged' ? `Included in ${variables.downloadFilename}` : `Downloaded ${target.downloadFilename}`
-        })
-        return nextStatuses
-      })
-    },
-    onError: () => {
-      setStepExportBatchError('STEP export failed')
-      setIsStepExportOpen(true)
     },
   })
   const project = projectQuery.data
@@ -842,9 +620,9 @@ function ProjectView() {
     if (selectedModelID && !selectedModel) {
       setSelectedModelID('')
       setSelectedDocumentNodeID('')
-      setSelectedNodeDeleteError('')
+      clearDeleteError()
     }
-  }, [selectedModel, selectedModelID])
+  }, [clearDeleteError, selectedModel, selectedModelID])
 
   useEffect(() => {
     if (!projectCADDocument) {
@@ -852,7 +630,7 @@ function ProjectView() {
     }
     if (selectedDocumentNodeID && !cadNodeByID.has(selectedDocumentNodeID)) {
       setSelectedDocumentNodeID('')
-      setSelectedNodeDeleteError('')
+      clearDeleteError()
       return
     }
     if (selectedModelID && !selectedDocumentNodeID) {
@@ -861,7 +639,7 @@ function ProjectView() {
         setSelectedDocumentNodeID(sourceNodeID)
       }
     }
-  }, [cadNodeByID, projectCADDocument, selectedDocumentNodeID, selectedModelID, sourceNodeIDByModelID])
+  }, [cadNodeByID, clearDeleteError, projectCADDocument, selectedDocumentNodeID, selectedModelID, sourceNodeIDByModelID])
 
   useEffect(() => {
     if (activeCADTool === 'fuse-box' && selectedModel?.format !== 'step') {
@@ -872,7 +650,7 @@ function ProjectView() {
   useEffect(() => {
     const handleHistoryKeyDown = (event: KeyboardEvent) => {
       const action = cadHistoryActionForKey(event)
-      if (!action || isCADDocumentMutationPending) {
+      if (!action || isCADDocumentCommandPending) {
         return
       }
       const canRun = action === 'undo' ? projectCADDocument?.history.can_undo : projectCADDocument?.history.can_redo
@@ -880,15 +658,15 @@ function ProjectView() {
         return
       }
       event.preventDefault()
-      cadHistoryMutation.mutate(action)
+      changeHistory(action)
     }
 
     window.addEventListener('keydown', handleHistoryKeyDown)
     return () => window.removeEventListener('keydown', handleHistoryKeyDown)
-  }, [cadHistoryMutation, isCADDocumentMutationPending, projectCADDocument?.history.can_redo, projectCADDocument?.history.can_undo])
+  }, [changeHistory, isCADDocumentCommandPending, projectCADDocument?.history.can_redo, projectCADDocument?.history.can_undo])
 
   useEffect(() => {
-    if (!keyboardDeleteNode || !canDeleteNodeFromKeyboard || isCADDocumentMutationPending) {
+    if (!keyboardDeleteNode || !canDeleteNodeFromKeyboard || isCADDocumentCommandPending) {
       return
     }
 
@@ -897,13 +675,13 @@ function ProjectView() {
         return
       }
       event.preventDefault()
-      setSelectedNodeDeleteError('')
-      deleteCADNodeMutation.mutate({ nodeId: keyboardDeleteNode.id })
+      clearDeleteError()
+      deleteNode(keyboardDeleteNode.id)
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [canDeleteNodeFromKeyboard, deleteCADNodeMutation, isCADDocumentMutationPending, keyboardDeleteNode])
+  }, [canDeleteNodeFromKeyboard, clearDeleteError, deleteNode, isCADDocumentCommandPending, keyboardDeleteNode])
 
   useEffect(() => {
     if (!projectCADDocument) {
@@ -913,30 +691,17 @@ function ProjectView() {
       const nextDrafts = { ...currentDrafts }
       for (const node of projectCADDocument.nodes ?? []) {
         const savedDraft = transformDraftFromTranslation(translationFromCADTransform(node.transform))
-        const latestDraft = latestTransformDraftsRef.current[node.id]
-        if (latestDraft && !transformDraftsEqual(latestDraft, savedDraft)) {
-          nextDrafts[node.id] = latestDraft
+        const currentDraft = currentDrafts[node.id]
+        if (currentDraft && hasPendingTransform(node.id) && !transformDraftsEqual(currentDraft, savedDraft)) {
+          nextDrafts[node.id] = currentDraft
           continue
         }
-        clearTransformAutosaveTimer(node.id)
-        delete latestTransformDraftsRef.current[node.id]
+        cancelTransformAutosave(node.id)
         nextDrafts[node.id] = savedDraft
       }
       return nextDrafts
     })
-    // clearTransformAutosaveTimer reads a ref and is intentionally kept out of the dependency list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectCADDocument])
-
-  useEffect(
-    () => () => {
-      Object.values(transformAutosaveTimersRef.current).forEach((timerID) => window.clearTimeout(timerID))
-      transformAutosaveTimersRef.current = {}
-      latestTransformDraftsRef.current = {}
-      latestTransformSaveRequestByModelIDRef.current = {}
-    },
-    [projectId],
-  )
+  }, [cancelTransformAutosave, hasPendingTransform, projectCADDocument])
 
   useEffect(() => {
     setSelectedStepExportTargetIDs((currentIDs) => {
@@ -1109,17 +874,15 @@ function ProjectView() {
   const selectedModelTransformDraft = selectedDocumentNode
     ? transformDraftsByModelID[selectedDocumentNode.id] ?? transformDraftFromTranslation(translationFromCADTransform(selectedDocumentNode.transform))
     : undefined
-  const selectedModelTransformError = selectedDocumentNode ? transformErrorByModelID[selectedDocumentNode.id] : ''
+  const selectedModelTransformError = selectedDocumentNode ? cadDocumentCommands.transformErrorsByNodeId[selectedDocumentNode.id] : ''
   const selectedDocumentNodeCanDelete = selectedDocumentNode?.source_format === 'step-component'
-  const isSelectedDocumentNodeDeleting =
-    Boolean(selectedDocumentNode) && deleteCADNodeMutation.isPending && deleteCADNodeMutation.variables?.nodeId === selectedDocumentNode?.id
+  const isSelectedDocumentNodeDeleting = selectedDocumentNode ? cadDocumentCommands.isDeletingNode(selectedDocumentNode.id) : false
   const selectedModelSupportsFuseBox = selectedSourceModel?.format === 'step'
   const selectedModelBoxFeatureDraft = selectedSourceModel
     ? boxFeatureDraftsByModelID[selectedSourceModel.id] ?? latestBoxFeatureDraftForModel(selectedSourceModel.id)
     : undefined
-  const selectedModelBoxFeatureError = selectedSourceModel ? boxFeatureErrorByModelID[selectedSourceModel.id] : ''
-  const isSelectedModelBoxFeatureUpdating =
-    Boolean(selectedSourceModel) && addCADModelBoxUnionMutation.isPending && addCADModelBoxUnionMutation.variables?.modelId === selectedSourceModel?.id
+  const selectedModelBoxFeatureError = selectedSourceModel ? cadDocumentCommands.boxErrorsByModelId[selectedSourceModel.id] : ''
+  const isSelectedModelBoxFeatureUpdating = selectedSourceModel ? cadDocumentCommands.isBoxUnionPendingFor(selectedSourceModel.id) : false
   const selectedModelStepExportError = selectedSourceModel ? stepExportErrorByModelID[selectedSourceModel.id] : ''
   const selectedModelStepExportStatus = selectedSourceModel ? stepExportStatusByModelID[selectedSourceModel.id] : ''
   const selectedModelDetails = selectedSourceModel
@@ -1146,8 +909,6 @@ function ProjectView() {
         ]
       : []),
   ]
-  const isStepExportPending = exportStepSelectionMutation.isPending
-  const selectedStepExportCount = selectedStepExportTargetList.length
   const canvasStatusLeftOffset = isLeftPanelCollapsed ? 16 : leftPanelWidth + 32
   const canvasRightOffset = 20
   const cadWorkspaceMinWidth = (isLeftPanelCollapsed ? 196 : leftPanelWidth) + 260
@@ -1233,57 +994,39 @@ function ProjectView() {
       return nextIDs
     })
   }
-  const clearTransformAutosaveTimer = (nodeID: string) => {
-    const timerID = transformAutosaveTimersRef.current[nodeID]
-    if (timerID === undefined) {
-      return
-    }
-    window.clearTimeout(timerID)
-    delete transformAutosaveTimersRef.current[nodeID]
-  }
   const deleteSelectedDocumentNode = () => {
-    if (!selectedDocumentNode || !selectedDocumentNodeCanDelete || deleteCADNodeMutation.isPending) {
+    if (!selectedDocumentNode || !selectedDocumentNodeCanDelete || cadDocumentCommands.isDeletingNode(selectedDocumentNode.id)) {
       return
     }
-    setSelectedNodeDeleteError('')
-    deleteCADNodeMutation.mutate({ nodeId: selectedDocumentNode.id })
-  }
-  const scheduleTransformAutosave = (nodeID: string, draft: TransformDraft) => {
-    clearTransformAutosaveTimer(nodeID)
-    transformAutosaveTimersRef.current[nodeID] = window.setTimeout(() => {
-      delete transformAutosaveTimersRef.current[nodeID]
-      const translation = parseTransformDraft(draft)
-      if (!translation) {
-        setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [nodeID]: 'Invalid transform' }))
-        return
-      }
-      const savedTranslation = translationFromCADTransform(cadNodeByID.get(nodeID)?.transform)
-      if (translationsEqual(translation, savedTranslation)) {
-        delete latestTransformDraftsRef.current[nodeID]
-        setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [nodeID]: '' }))
-        return
-      }
-      const requestVersion = (latestTransformSaveRequestByModelIDRef.current[nodeID] ?? 0) + 1
-      latestTransformSaveRequestByModelIDRef.current[nodeID] = requestVersion
-      updateCADNodeTransformMutation.mutate({ nodeId: nodeID, requestVersion, translation })
-    }, transformAutosaveDelayMS)
+    cadDocumentCommands.clearDeleteError()
+    cadDocumentCommands.deleteNode(selectedDocumentNode.id)
   }
   const updateTransformDraftFromTranslation = (modelID: string, translation: CADTranslation, selectedNodeID?: string) => {
     const nodeID = selectedNodeID ?? sourceNodeIDByModelID.get(modelID) ?? `node_${modelID}`
     const nextDraft = transformDraftFromTranslation(translation)
-    latestTransformDraftsRef.current[nodeID] = nextDraft
     setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [nodeID]: nextDraft }))
-    setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [nodeID]: '' }))
-    scheduleTransformAutosave(nodeID, nextDraft)
+    cadDocumentCommands.setTransformValidationError(nodeID, '')
+    cadDocumentCommands.scheduleTransformAutosave(nodeID, translation)
   }
   const updateTransformDraftField = (nodeID: string, axis: keyof CADTranslation, value: string) => {
     const currentDraft =
       transformDraftsByModelID[nodeID] ?? transformDraftFromTranslation(translationFromCADTransform(cadNodeByID.get(nodeID)?.transform))
     const nextDraft = { ...currentDraft, [axis]: value }
-    latestTransformDraftsRef.current[nodeID] = nextDraft
     setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [nodeID]: nextDraft }))
-    setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [nodeID]: '' }))
-    scheduleTransformAutosave(nodeID, nextDraft)
+    const translation = parseTransformDraft(nextDraft)
+    if (!translation) {
+      cadDocumentCommands.cancelTransformAutosave(nodeID)
+      cadDocumentCommands.setTransformValidationError(nodeID, 'Invalid transform')
+      return
+    }
+    const savedTranslation = translationFromCADTransform(cadNodeByID.get(nodeID)?.transform)
+    if (translationsEqual(translation, savedTranslation)) {
+      cadDocumentCommands.cancelTransformAutosave(nodeID)
+      cadDocumentCommands.setTransformValidationError(nodeID, '')
+      return
+    }
+    cadDocumentCommands.setTransformValidationError(nodeID, '')
+    cadDocumentCommands.scheduleTransformAutosave(nodeID, translation)
   }
   function latestBoxFeatureDraftForModel(modelID: string) {
     const latestBoxOperation = [...(projectCADDocument?.operations ?? [])]
@@ -1307,10 +1050,10 @@ function ProjectView() {
     const draft = boxFeatureDraftsByModelID[modelID] ?? latestBoxFeatureDraftForModel(modelID)
     const box = parseBoxFeatureDraft(draft)
     if (!box) {
-      setBoxFeatureErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: 'Invalid box feature' }))
+      cadDocumentCommands.setBoxValidationError(modelID, 'Invalid box feature')
       return
     }
-    addCADModelBoxUnionMutation.mutate({ modelId: modelID, box })
+    cadDocumentCommands.addBoxUnion(modelID, box)
   }
   const selectAllStepExportTargets = () => {
     hasTouchedStepExportSelectionRef.current = true
@@ -1328,16 +1071,46 @@ function ProjectView() {
       return nextIDs
     })
   }
-  const exportSelectedStepModels = (mode: StepExportMode) => {
+  const exportSelectedStepModels = async (mode: StepExportMode) => {
     if (selectedStepExportTargetList.length === 0) {
-      setStepExportBatchError('Select at least one STEP model')
-      return
+      throw new Error('No STEP models selected')
     }
-    setStepExportBatchError('')
-    exportStepSelectionMutation.mutate({
-      mode,
-      targets: selectedStepExportTargetList,
-      downloadFilename: stepAssemblyDownloadFilename,
+    const fetchSourceText = async (modelId: string) => {
+      const source = (await fetchProjectModelSource(projectId, modelId)).data
+      return source.text()
+    }
+    if (mode === 'merged') {
+      await exportMergedStepTargets({
+        targets: selectedStepExportTargetList,
+        downloadFilename: stepAssemblyDownloadFilename,
+        fetchSourceText,
+        runStepAssemblyExport: runStepAssemblyExportInWorker,
+        publishDownload: publishStepExportDownload,
+      })
+    } else {
+      for (const target of selectedStepExportTargetList) {
+        await exportStepTarget({
+          target,
+          fetchSourceText,
+          runStepRoundTrip: runStepRoundTripInWorker,
+          publishDownload: publishStepExportDownload,
+        })
+      }
+    }
+    setStepExportErrorByModelID((currentErrors) => {
+      const nextErrors = { ...currentErrors }
+      selectedStepExportTargetList.forEach((target) => {
+        nextErrors[target.modelId] = ''
+      })
+      return nextErrors
+    })
+    setStepExportStatusByModelID((currentStatuses) => {
+      const nextStatuses = { ...currentStatuses }
+      selectedStepExportTargetList.forEach((target) => {
+        nextStatuses[target.modelId] =
+          mode === 'merged' ? `Included in ${stepAssemblyDownloadFilename}` : `Downloaded ${target.downloadFilename}`
+      })
+      return nextStatuses
     })
   }
   const handleModelFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1469,8 +1242,8 @@ function ProjectView() {
               render={
                 <Button
                   aria-label="Undo"
-                  disabled={isCADDocumentMutationPending || !projectCADDocument?.history.can_undo}
-                  onClick={() => cadHistoryMutation.mutate('undo')}
+                  disabled={cadDocumentCommands.isPending || !projectCADDocument?.history.can_undo}
+                  onClick={() => cadDocumentCommands.changeHistory('undo')}
                   size="icon-sm"
                   type="button"
                   variant="ghost"
@@ -1484,8 +1257,8 @@ function ProjectView() {
               render={
                 <Button
                   aria-label="Redo"
-                  disabled={isCADDocumentMutationPending || !projectCADDocument?.history.can_redo}
-                  onClick={() => cadHistoryMutation.mutate('redo')}
+                  disabled={cadDocumentCommands.isPending || !projectCADDocument?.history.can_redo}
+                  onClick={() => cadDocumentCommands.changeHistory('redo')}
                   size="icon-sm"
                   type="button"
                   variant="ghost"
@@ -1520,7 +1293,9 @@ function ProjectView() {
                     Saved with this project and available on every signed-in device.
                   </PopoverDescription>
                 </PopoverHeader>
-                {cadHistoryError ? <p className="mx-2 border-t border-[#e2e8f0] py-3 text-xs leading-5 text-[#8a2f24]">{cadHistoryError}</p> : null}
+                {cadDocumentCommands.historyError ? (
+                  <p className="mx-2 border-t border-[#e2e8f0] py-3 text-xs leading-5 text-[#8a2f24]">{cadDocumentCommands.historyError}</p>
+                ) : null}
                 <div className="max-h-72 overflow-y-auto border-t border-[#e2e8f0] py-1">
                   {projectCADHistoryQuery.isPending ? <p className="px-2 py-4 text-xs text-[#64748b]">Loading history…</p> : null}
                   {projectCADHistoryQuery.isError ? <p className="px-2 py-4 text-xs text-[#8a2f24]">Could not load operation history.</p> : null}
@@ -1557,103 +1332,16 @@ function ProjectView() {
               </PopoverContent>
             </Popover>
           </div>
-          <Popover onOpenChange={setIsStepExportOpen} open={isStepExportOpen}>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <PopoverTrigger
-                    render={
-                      <Button
-                        aria-label="Export STEP"
-                        className="border-transparent text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]"
-                        disabled={stepExportTargets.length === 0 || !projectCADDocument}
-                        size="icon-lg"
-                        type="button"
-                        variant="ghost"
-                      />
-                    }
-                  >
-                    <Download className="size-4" />
-                  </PopoverTrigger>
-                }
-              />
-              <TooltipContent sideOffset={8}>Export STEP</TooltipContent>
-            </Tooltip>
-            <PopoverContent
-              align="end"
-              aria-label="Export STEP options"
-              className="relative w-[min(420px,calc(100vw-24px))] gap-0 rounded-md border-[#e2e8f0] bg-white/96 p-2 text-left shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur"
-              sideOffset={10}
-            >
-              <PopoverArrow className="border-[#e2e8f0] bg-white/96" />
-              <PopoverHeader className="px-2 py-2">
-                <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">Export STEP</PopoverTitle>
-                <PopoverDescription className="text-xs leading-5 text-[#64748b]">
-                  Select current document models, then choose a download action.
-                </PopoverDescription>
-              </PopoverHeader>
-              <div className="mt-1 border-t border-[#e2e8f0] px-2 pt-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-mono text-[11px] uppercase text-[#64748b]">
-                    {selectedStepExportCount}/{stepExportTargets.length} selected
-                  </span>
-                  <button
-                    className="text-xs font-semibold text-[#475569] transition hover:text-[#0f172a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]"
-                    disabled={isStepExportPending || stepExportTargets.length === 0}
-                    onClick={selectAllStepExportTargets}
-                    type="button"
-                  >
-                    Select all
-                  </button>
-                </div>
-                <div className="mt-2 max-h-56 overflow-y-auto pr-1">
-                  {stepExportTargets.map((target) => {
-                    const isSelected = selectedStepExportTargetIDs.has(target.modelId)
-
-                    return (
-                      <label
-                        className="flex w-full cursor-pointer items-center gap-2 rounded px-2 py-2 text-left text-sm text-[#1f2937] transition hover:bg-[#f1f5f9]"
-                        key={target.modelId}
-                        title={target.downloadFilename}
-                      >
-                        <input
-                          checked={isSelected}
-                          className="size-4 accent-[#0f172a]"
-                          disabled={isStepExportPending}
-                          onChange={() => toggleStepExportTarget(target.modelId)}
-                          type="checkbox"
-                        />
-                        <FileText className="size-4 shrink-0 text-[#64748b]" />
-                        <span className="min-w-0 flex-1 truncate">{target.displayName}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-                {stepExportBatchError && <p className="mt-2 text-xs leading-5 text-[#8a2f24]">{stepExportBatchError}</p>}
-                <div className="my-1 h-px bg-[#e2e8f0]" />
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    className="flex h-[30px] min-w-0 items-center justify-center gap-1.5 rounded bg-[#0f172a] px-2.5 text-xs font-semibold text-white transition hover:bg-[#1f2937] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isStepExportPending || selectedStepExportCount === 0}
-                    onClick={() => exportSelectedStepModels('merged')}
-                    type="button"
-                  >
-                    <Download className="size-3.5 shrink-0" />
-                    <span className="truncate">{exportStepSelectionMutation.isPending ? 'Exporting' : 'Merged STEP'}</span>
-                  </button>
-                  <button
-                    className="flex h-[30px] min-w-0 items-center justify-center gap-1.5 rounded border border-[#cbd5e1] bg-white px-2.5 text-xs font-semibold text-[#0f172a] transition hover:bg-[#f8fafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isStepExportPending || selectedStepExportCount === 0}
-                    onClick={() => exportSelectedStepModels('separate')}
-                    type="button"
-                  >
-                    <Download className="size-3.5 shrink-0 text-[#475569]" />
-                    <span className="truncate">{exportStepSelectionMutation.isPending ? 'Exporting' : 'Separate files'}</span>
-                  </button>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <ProjectStepExportPopover
+            disabled={stepExportTargets.length === 0 || !projectCADDocument}
+            onExport={exportSelectedStepModels}
+            onOpenChange={setIsStepExportOpen}
+            onSelectAll={selectAllStepExportTargets}
+            onToggleTarget={toggleStepExportTarget}
+            open={isStepExportOpen}
+            selectedTargetIds={selectedStepExportTargetIDs}
+            targets={stepExportTargets}
+          />
           <TopbarTooltip
             label="Import model"
             render={
@@ -1704,13 +1392,13 @@ function ProjectView() {
               onClearSelection={() => {
                 setSelectedModelID('')
                 setSelectedDocumentNodeID('')
-                setSelectedNodeDeleteError('')
+                cadDocumentCommands.clearDeleteError()
               }}
               onModelTranslationChange={updateTransformDraftFromTranslation}
               onSelectModel={(modelID, nodeID) => {
                 setSelectedModelID(modelID)
                 setSelectedDocumentNodeID(nodeID ?? sourceNodeIDByModelID.get(modelID) ?? `node_${modelID}`)
-                setSelectedNodeDeleteError('')
+                cadDocumentCommands.clearDeleteError()
               }}
               onSnapshotCapture={handlePreviewSnapshotCapture}
               previewAssets={previewAssets}
@@ -1980,7 +1668,7 @@ function ProjectView() {
                                 onClick={() => {
                                   setSelectedModelID(model.id)
                                   setSelectedDocumentNodeID(group.sourceNodeId)
-                                  setSelectedNodeDeleteError('')
+                                  cadDocumentCommands.clearDeleteError()
                                 }}
                                 role="option"
                                 title={modelDisplayName}
@@ -2037,7 +1725,7 @@ function ProjectView() {
                                       onClick={() => {
                                         setSelectedModelID(child.sourceModelId || model.id)
                                         setSelectedDocumentNodeID(child.id)
-                                        setSelectedNodeDeleteError('')
+                                        cadDocumentCommands.clearDeleteError()
                                       }}
                                       role="option"
                                       title={child.name}
@@ -2076,7 +1764,7 @@ function ProjectView() {
                         onClick={() => {
                           setSelectedModelID('')
                           setSelectedDocumentNodeID('')
-                          setSelectedNodeDeleteError('')
+                          cadDocumentCommands.clearDeleteError()
                         }}
                         type="button"
                       >
@@ -2144,8 +1832,8 @@ function ProjectView() {
                       {selectedModelStepExportError && (
                         <p className="text-[11px] leading-4 text-[#8a2f24]">{selectedModelStepExportError}</p>
                       )}
-                      {selectedNodeDeleteError && (
-                        <p className="text-[11px] leading-4 text-[#8a2f24]">{selectedNodeDeleteError}</p>
+                      {cadDocumentCommands.deleteError && (
+                        <p className="text-[11px] leading-4 text-[#8a2f24]">{cadDocumentCommands.deleteError}</p>
                       )}
                       {selectedModelStepExportStatus && (
                         <p className="text-[11px] leading-4 text-[#3f6212]">{selectedModelStepExportStatus}</p>
