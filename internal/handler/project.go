@@ -325,6 +325,24 @@ func (ctrl *Ctrl) UpdateProjectCADModelTransform(c *fox.Context, req *updateProj
 	return projectCADDocumentResponse{Document: document}, nil
 }
 
+// UpdateProjectCADNodeTransform records a document-node transform in the editable LiteCAD document.
+func (ctrl *Ctrl) UpdateProjectCADNodeTransform(c *fox.Context, req *updateProjectCADModelTransformRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.UpdateProjectCADNodeTransform(c.Request.Context(), service.UpdateProjectCADNodeTransformInput{
+		OwnerUserID: user.ID,
+		ProjectID:   c.Param("projectID"),
+		NodeID:      c.Param("nodeID"),
+		Transform:   req.Transform,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
 // AddProjectCADModelBoxUnion records one kernel-backed box union feature.
 func (ctrl *Ctrl) AddProjectCADModelBoxUnion(c *fox.Context, req *addProjectCADModelBoxUnionRequest) (projectCADDocumentResponse, error) {
 	user, err := ctrl.currentUser(c)

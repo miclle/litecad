@@ -44,6 +44,7 @@ func (ctrl *Ctrl) RegisterRoutes(r *fox.Engine) {
 	api.POST("/projects/:projectID/agent/messages", ctrl.SendProjectAgentMessage)
 	api.GET("/projects/:projectID/geometry", ctrl.GetProjectGeometryDocument)
 	api.GET("/projects/:projectID/cad-document", ctrl.GetProjectCADDocument)
+	api.PATCH("/projects/:projectID/cad-document/nodes/:nodeID/transform", ctrl.UpdateProjectCADNodeTransform)
 	api.PATCH("/projects/:projectID/cad-document/models/:modelID/transform", ctrl.UpdateProjectCADModelTransform)
 	api.POST("/projects/:projectID/cad-document/models/:modelID/box-union", ctrl.AddProjectCADModelBoxUnion)
 	api.GET("/projects/:projectID/models", ctrl.ListProjectModels)

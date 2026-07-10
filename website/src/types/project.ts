@@ -61,10 +61,16 @@ export interface StepMetadata {
   version: string
   schema: string
   product_names: string[] | null
+  components?: StepComponent[] | null
   length_unit: string
   entity_count: number
   representation_count: number
   triangle_count: number
+}
+
+export interface StepComponent {
+  name: string
+  kind: string
 }
 
 export interface ProjectModelsResponse {
@@ -104,7 +110,7 @@ export interface ProjectGeometryTreeNode {
 export interface ProjectGeometryVersion {
   id: string
   project_id: string
-  source_model_id: string
+  source_model_id?: string
   preview_artifact_id: string
   version_number: number
   summary: string
@@ -136,6 +142,7 @@ export interface CADBoxFeature {
 export interface CADDocumentNode {
   id: string
   model_id: string
+  source_model_id?: string
   parent_node_id: string
   name: string
   source_format: string
@@ -146,6 +153,7 @@ export interface CADOperation {
   id: string
   type: 'transform' | 'box-union'
   model_id: string
+  node_id?: string
   transform?: CADTransform
   box?: CADBoxFeature
   created_at: string

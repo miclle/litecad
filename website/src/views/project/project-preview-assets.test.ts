@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   buildProjectPreviewAssets,
+  buildProjectModelTree,
   cadKernelGeometryOperationSignature,
   cadKernelGeometryOperationsForModel,
   cadKernelOperationsForModel,
@@ -28,6 +29,7 @@ const baseModel = {
     entity_count: 1,
     representation_count: 1,
     triangle_count: 0,
+    components: [],
   },
   created_at: '2026-07-05T00:00:00Z',
   updated_at: '2026-07-05T00:00:00Z',
@@ -226,6 +228,72 @@ describe('project preview assets', () => {
     expect(projectPreviewAssetSignature(assets)).toBe('mdl_step:kernel-mesh:3:3:3')
   })
 
+  test('attaches STEP component document nodes as kernel mesh pick targets', () => {
+    const model = {
+      ...baseModel,
+      id: 'mdl_step',
+      original_filename: 'assembly.step',
+    } satisfies ProjectModel
+    const assets = buildProjectPreviewAssets(
+      [model],
+      [],
+      {},
+      {
+        mdl_step: {
+          mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
+          meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
+        },
+      },
+      {
+        project_id: 'prj_01test',
+        id: 'doc_01test',
+        schema_version: 1,
+        revision: 1,
+        unit: 'millimetre',
+        nodes: [
+          {
+            id: 'node_mdl_step',
+            model_id: 'mdl_step',
+            source_model_id: 'mdl_step',
+            parent_node_id: '',
+            name: 'assembly',
+            source_format: 'step',
+            transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+          },
+          {
+            id: 'node_mdl_step_component_1',
+            model_id: '',
+            source_model_id: 'mdl_step',
+            parent_node_id: 'node_mdl_step',
+            name: 'Left pulley',
+            source_format: 'step-component',
+            transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+          },
+          {
+            id: 'node_mdl_step_component_2',
+            model_id: '',
+            source_model_id: 'mdl_step',
+            parent_node_id: 'node_mdl_step',
+            name: 'Right pulley',
+            source_format: 'step-component',
+            transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+          },
+        ],
+        operations: [],
+        created_at: '2026-07-07T00:00:00Z',
+        updated_at: '2026-07-07T00:00:00Z',
+      },
+    )
+
+    expect(assets[0]).toMatchObject({
+      previewFormat: 'kernel-mesh',
+      pickTargets: [
+        { modelId: 'mdl_step', nodeId: 'node_mdl_step_component_1', name: 'Left pulley' },
+        { modelId: 'mdl_step', nodeId: 'node_mdl_step_component_2', name: 'Right pulley' },
+      ],
+    })
+  })
+
   test('maps CAD document operations into model-scoped kernel replay operations', () => {
     const transform = {
       matrix: [1, 0, 0, 14, 0, 1, 0, -2, 0, 0, 1, 6, 0, 0, 0, 1],
@@ -290,6 +358,56 @@ describe('project preview assets', () => {
     ])
   })
 
+  test('keeps component-node transforms out of model-scoped STEP export replay operations', () => {
+    const modelTransform = {
+      matrix: [1, 0, 0, 14, 0, 1, 0, -2, 0, 0, 1, 6, 0, 0, 0, 1],
+    }
+    const componentTransform = {
+      matrix: [1, 0, 0, 99, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    }
+
+    expect(
+      cadKernelOperationsForModel(
+        {
+          project_id: 'prj_01test',
+          id: 'doc_01test',
+          schema_version: 1,
+          revision: 3,
+          unit: 'millimetre',
+          nodes: [],
+          operations: [
+            {
+              id: 'op_model_transform',
+              type: 'transform',
+              model_id: 'mdl_step',
+              node_id: 'node_mdl_step',
+              transform: modelTransform,
+              created_at: '2026-07-07T00:00:01Z',
+            },
+            {
+              id: 'op_component_transform',
+              type: 'transform',
+              model_id: 'mdl_step',
+              node_id: 'node_mdl_step_component_1',
+              transform: componentTransform,
+              created_at: '2026-07-07T00:00:02Z',
+            },
+          ],
+          created_at: '2026-07-07T00:00:00Z',
+          updated_at: '2026-07-07T00:00:01Z',
+        },
+        'mdl_step',
+      ),
+    ).toEqual([
+      {
+        id: 'op_model_transform',
+        type: 'transform',
+        modelId: 'mdl_step',
+        matrix: modelTransform.matrix,
+      },
+    ])
+  })
+
   test('keeps transform operations out of geometry preview replay signatures', () => {
     const document = {
       project_id: 'prj_01test',
@@ -344,6 +462,70 @@ describe('project preview assets', () => {
     })
   })
 
+  test('builds source groups with STEP component children for the project tree', () => {
+    const chassis = {
+      ...baseModel,
+      id: 'mdl_chassis',
+      original_filename: 'chassis.step',
+      metadata: {
+        ...baseModel.metadata,
+        product_names: ['Chassis Assembly'],
+        components: [
+          { name: 'Frame', kind: 'product' },
+          { name: 'Battery Tray', kind: 'product' },
+        ],
+      },
+    } satisfies ProjectModel
+    const steering = {
+      ...baseModel,
+      id: 'mdl_steering',
+      original_filename: 'steering.step',
+      metadata: {
+        ...baseModel.metadata,
+        product_names: ['Steering Assembly'],
+        components: [
+          { name: 'Left Knuckle', kind: 'product' },
+          { name: 'Right Knuckle', kind: 'product' },
+        ],
+      },
+    } satisfies ProjectModel
+
+    expect(buildProjectModelTree([chassis, steering])).toEqual([
+      {
+        model: chassis,
+        displayName: 'chassis',
+        sourceNodeId: 'node_mdl_chassis',
+        children: [
+          { id: 'node_mdl_chassis_component_1', name: 'Frame', sourceModelId: 'mdl_chassis' },
+          { id: 'node_mdl_chassis_component_2', name: 'Battery Tray', sourceModelId: 'mdl_chassis' },
+        ],
+      },
+      {
+        model: steering,
+        displayName: 'steering',
+        sourceNodeId: 'node_mdl_steering',
+        children: [
+          { id: 'node_mdl_steering_component_1', name: 'Left Knuckle', sourceModelId: 'mdl_steering' },
+          { id: 'node_mdl_steering_component_2', name: 'Right Knuckle', sourceModelId: 'mdl_steering' },
+        ],
+      },
+    ])
+  })
+
+  test('uses imported model names for tree source groups instead of STEP filenames', () => {
+    const unnamed = {
+      ...baseModel,
+      id: 'mdl_filename',
+      original_filename: '同步轮.step',
+      metadata: { ...baseModel.metadata, product_names: [] },
+    } satisfies ProjectModel
+
+    expect(buildProjectModelTree([unnamed])[0]).toMatchObject({
+      sourceNodeId: 'node_mdl_filename',
+      displayName: '同步轮',
+    })
+  })
+
   test('creates a stable preview signature from asset content instead of array identity', () => {
     const firstAssets = [
       {
@@ -380,5 +562,40 @@ describe('project preview assets', () => {
         },
       ]),
     ).toBe('mdl_step:kernel-mesh:3:3:3')
+  })
+
+  test('includes kernel mesh pick targets in preview signatures', () => {
+    const mesh = {
+      positions: [0, 0, 0],
+      normals: [0, 0, 1],
+      indices: [0, 0, 0],
+    }
+
+    const withoutTargets = projectPreviewAssetSignature([
+      {
+        modelId: 'mdl_step',
+        name: 'assembly',
+        previewFormat: 'kernel-mesh',
+        mesh,
+        meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
+      },
+    ])
+    const withTargets = projectPreviewAssetSignature([
+      {
+        modelId: 'mdl_step',
+        name: 'assembly',
+        previewFormat: 'kernel-mesh',
+        mesh,
+        meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
+        pickTargets: [
+          { modelId: 'mdl_step', nodeId: 'node_mdl_step_component_1', name: 'Left pulley' },
+          { modelId: 'mdl_step', nodeId: 'node_mdl_step_component_2', name: 'Right pulley' },
+        ],
+      },
+    ])
+
+    expect(withTargets).not.toBe(withoutTargets)
+    expect(withTargets).toContain('node_mdl_step_component_1')
+    expect(withTargets).toContain('node_mdl_step_component_2')
   })
 })

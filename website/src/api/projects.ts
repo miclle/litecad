@@ -36,6 +36,10 @@ export function updateProjectCADModelTransform(projectId: string, modelId: strin
   return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/models/${modelId}/transform`, { transform })
 }
 
+export function updateProjectCADNodeTransform(projectId: string, nodeId: string, transform: CADTransform) {
+  return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/nodes/${nodeId}/transform`, { transform })
+}
+
 export function addProjectCADModelBoxUnion(projectId: string, modelId: string, box: CADBoxFeature) {
   return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/models/${modelId}/box-union`, { box })
 }

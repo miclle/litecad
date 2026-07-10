@@ -12,14 +12,21 @@ import (
 
 // StepMetadata is the lightweight, non-geometric summary extracted from CAD source files.
 type StepMetadata struct {
-	AssetType           string   `json:"asset_type"`
-	Version             string   `json:"version"`
-	Schema              string   `json:"schema"`
-	ProductNames        []string `json:"product_names"`
-	LengthUnit          string   `json:"length_unit"`
-	EntityCount         int      `json:"entity_count"`
-	RepresentationCount int      `json:"representation_count"`
-	TriangleCount       int      `json:"triangle_count"`
+	AssetType           string          `json:"asset_type"`
+	Version             string          `json:"version"`
+	Schema              string          `json:"schema"`
+	ProductNames        []string        `json:"product_names"`
+	Components          []StepComponent `json:"components"`
+	LengthUnit          string          `json:"length_unit"`
+	EntityCount         int             `json:"entity_count"`
+	RepresentationCount int             `json:"representation_count"`
+	TriangleCount       int             `json:"triangle_count"`
+}
+
+// StepComponent is a lightweight STEP product/representation entry for document-tree display.
+type StepComponent struct {
+	Name string `json:"name"`
+	Kind string `json:"kind"`
 }
 
 var (
@@ -30,7 +37,7 @@ var (
 	stepSchemaPattern         = regexp.MustCompile(`(?is)FILE_SCHEMA\s*\(\s*\(\s*'([^']+)'`)
 	stepProductPattern        = regexp.MustCompile(`(?is)\bPRODUCT\s*\(\s*'((?:''|[^'])*)'`)
 	stepEntityPattern         = regexp.MustCompile(`(?m)#\d+\s*=`)
-	stepRepresentationPattern = regexp.MustCompile(`(?is)\bSHAPE_REPRESENTATION\s*\(`)
+	stepRepresentationPattern = regexp.MustCompile(`(?is)\bSHAPE_REPRESENTATION\s*\(\s*'((?:''|[^'])*)'`)
 )
 
 // ExtractStepMetadata reads STEP header and entity summary data without parsing geometry.
@@ -49,6 +56,7 @@ func ExtractStepMetadata(data []byte) (StepMetadata, error) {
 		EntityCount:         len(stepEntityPattern.FindAllStringIndex(source, -1)),
 		RepresentationCount: len(stepRepresentationPattern.FindAllStringIndex(source, -1)),
 	}
+	metadata.Components = extractStepComponents(source, metadata.ProductNames)
 	if metadata.Schema == "" {
 		metadata.Schema = "ISO-10303-21"
 	}
@@ -163,6 +171,40 @@ func extractStepProductNames(source string) []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+func extractStepComponents(source string, productNames []string) []StepComponent {
+	components := make([]StepComponent, 0, len(productNames))
+	seen := map[string]bool{}
+	for _, name := range productNames {
+		if appendStepComponent(&components, seen, name, "product") {
+			continue
+		}
+	}
+	if len(components) > 1 {
+		return components
+	}
+
+	for _, match := range stepRepresentationPattern.FindAllStringSubmatch(source, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		appendStepComponent(&components, seen, match[1], "shape-representation")
+	}
+	return components
+}
+
+func appendStepComponent(components *[]StepComponent, seen map[string]bool, rawName, kind string) bool {
+	name := strings.TrimSpace(strings.ReplaceAll(rawName, "''", "'"))
+	if name == "" || seen[name] {
+		return false
+	}
+	seen[name] = true
+	*components = append(*components, StepComponent{
+		Name: name,
+		Kind: kind,
+	})
+	return true
 }
 
 func extractStepLengthUnit(upperSource string) string {

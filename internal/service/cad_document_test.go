@@ -79,6 +79,119 @@ func TestGetProjectCADDocumentReturnsEmptyArraysForEmptyProject(t *testing.T) {
 	}
 }
 
+func TestGetProjectCADDocumentGroupsStepComponentsUnderSourceModel(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	user, project := createTestProjectForModel(t, svc, ctx)
+	model, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Filename:    "robot.step",
+		ContentType: "application/step",
+		Data: []byte(`ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));
+ENDSEC;
+DATA;
+#1 = PRODUCT('Robot Assembly','Robot Assembly','',(#10));
+#2 = PRODUCT('Left Bracket','Left Bracket','',(#10));
+#3 = PRODUCT('Right Bracket','Right Bracket','',(#10));
+#4 = ( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) );
+ENDSEC;
+END-ISO-10303-21;`),
+	})
+	if err != nil {
+		t.Fatalf("UploadProjectModel returned error: %v", err)
+	}
+
+	document, err := svc.GetProjectCADDocument(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectCADDocument returned error: %v", err)
+	}
+	if len(document.Nodes) != 4 {
+		t.Fatalf("document nodes = %+v, want source group plus three components", document.Nodes)
+	}
+	parent := document.Nodes[0]
+	if parent.ID != "node_"+model.ID || parent.ModelID != model.ID || parent.ParentNodeID != "" || parent.Name != "robot.step" {
+		t.Fatalf("parent node = %+v, want uploaded STEP source group", parent)
+	}
+	for index, want := range []string{"Robot Assembly", "Left Bracket", "Right Bracket"} {
+		node := document.Nodes[index+1]
+		if node.ModelID != "" || node.ParentNodeID != parent.ID || node.Name != want || node.SourceFormat != "step-component" {
+			t.Fatalf("component node %d = %+v, want child component %q", index, node, want)
+		}
+	}
+}
+
+func TestUpdateProjectCADNodeTransformPersistsChildNodeOperation(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	user, project := createTestProjectForModel(t, svc, ctx)
+	model, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Filename:    "robot.step",
+		ContentType: "application/step",
+		Data: []byte(`ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));
+ENDSEC;
+DATA;
+#1 = PRODUCT('Robot Assembly','Robot Assembly','',(#10));
+#2 = PRODUCT('Left Bracket','Left Bracket','',(#10));
+#3 = ( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) );
+ENDSEC;
+END-ISO-10303-21;`),
+	})
+	if err != nil {
+		t.Fatalf("UploadProjectModel returned error: %v", err)
+	}
+	document, err := svc.GetProjectCADDocument(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectCADDocument returned error: %v", err)
+	}
+	childNodeID := "node_" + model.ID + "_component_2"
+	transform := CADTransform{
+		Matrix: [16]float64{
+			1, 0, 0, 5,
+			0, 1, 0, 6,
+			0, 0, 1, 7,
+			0, 0, 0, 1,
+		},
+	}
+
+	updated, err := svc.UpdateProjectCADNodeTransform(ctx, UpdateProjectCADNodeTransformInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		NodeID:      childNodeID,
+		Transform:   transform,
+	})
+	if err != nil {
+		t.Fatalf("UpdateProjectCADNodeTransform returned error: %v", err)
+	}
+	if updated.Revision != document.Revision+1 {
+		t.Fatalf("updated revision = %d, want %d", updated.Revision, document.Revision+1)
+	}
+	var childNode, parentNode CADDocumentNode
+	for _, node := range updated.Nodes {
+		if node.ID == childNodeID {
+			childNode = node
+		}
+		if node.ID == "node_"+model.ID {
+			parentNode = node
+		}
+	}
+	if childNode.Transform.Matrix != transform.Matrix {
+		t.Fatalf("child node transform = %+v, want %+v", childNode.Transform.Matrix, transform.Matrix)
+	}
+	if parentNode.Transform.Matrix != identityCADTransform().Matrix {
+		t.Fatalf("parent node transform = %+v, want identity", parentNode.Transform.Matrix)
+	}
+	if len(updated.Operations) != 1 || updated.Operations[0].NodeID != childNodeID || updated.Operations[0].ModelID != model.ID {
+		t.Fatalf("operations = %+v, want node-scoped transform operation", updated.Operations)
+	}
+}
+
 func TestUpdateProjectCADModelTransformPersistsOperationAndScopesByOwner(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

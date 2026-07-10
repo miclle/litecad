@@ -11,7 +11,7 @@ LiteCAD currently supports:
 - Account registration, login, current-user lookup, and logout with an `HttpOnly` session cookie.
 - User-owned projects with names, descriptions, project-list cards, and static thumbnail snapshots generated from the workbench.
 - Uploads for `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files.
-- Lightweight CAD source metadata, including STEP schema/product/unit/entity summaries and STL triangle counts where available.
+- Lightweight CAD source metadata, including STEP schema/product/component/unit/entity summaries and STL triangle counts where available.
 - A project workbench with a Three.js viewer, source list, document inspector, ViewCube/orientation controls, model visibility toggles, and multi-model preview composition.
 - Browser-kernel STEP/STP preview through an OCCT/OpenCascade.js Web Worker, without requiring FreeCAD or another desktop CAD application at runtime.
 - Persisted per-model transform edits and a constrained STEP box-union operation in a LiteCAD document.
@@ -81,7 +81,7 @@ After signing in, open `/projects`, create a project, and enter its workbench at
 
 ### CAD Imports
 
-Upload STEP/STP, self-contained GLTF/GLB, or STL files from the workbench. LiteCAD stores the original source bytes, extracts lightweight metadata, and shows parsed sources in the project tree.
+Upload STEP/STP, self-contained GLTF/GLB, or STL files from the workbench. LiteCAD stores the original source bytes, extracts lightweight metadata, and shows parsed sources in the project tree. STEP product/component names are displayed as children under the uploaded source file when the STEP text exposes them.
 
 For STEP/STP files, the browser fetches the original source and sends it to the CAD kernel worker for tessellation. Transform and box-union operations from the LiteCAD document are replayed before preview and export. For GLB/GLTF/STL files, the workbench uses backend-published preview artifacts.
 
@@ -90,7 +90,8 @@ For STEP/STP files, the browser fetches the original source and sends it to the 
 The workbench is the main product surface. It combines:
 
 - A CAD-style viewer with grid, axes, ViewCube, model selection, and combined-bounds framing.
-- A source/model tree with visibility controls and parse status.
+- A source/model tree with visibility controls, parse status, and imported STEP product/component nodes grouped under the imported model.
+- Independent document selection and position editing for imported STEP component nodes.
 - A document inspector for selected-model placement and STEP box-union controls.
 - STEP export controls for selected files or a merged compound download.
 - A CAD Agent panel for project-aware design discussion when AI configuration is present.

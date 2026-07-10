@@ -10,6 +10,7 @@ import {
   fetchProjectModelSource,
   addProjectCADModelBoxUnion,
   sendProjectAgentMessage,
+  updateProjectCADNodeTransform,
   updateProjectCADModelTransform,
   uploadProjectThumbnailSnapshot,
   uploadProjectModel,
@@ -85,6 +86,18 @@ describe('project API', () => {
     updateProjectCADModelTransform('prj_01test', 'mdl_01test', transform)
 
     expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/cad-document/models/mdl_01test/transform', {
+      transform,
+    })
+  })
+
+  test('updates a project CAD document node transform', () => {
+    const transform = {
+      matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1] as const,
+    }
+
+    updateProjectCADNodeTransform('prj_01test', 'node_01test', transform)
+
+    expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/cad-document/nodes/node_01test/transform', {
       transform,
     })
   })

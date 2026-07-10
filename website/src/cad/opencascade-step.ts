@@ -19,6 +19,7 @@ export type CadKernelStepAssemblyExportInput = {
 
 export type CadKernelStepPreviewResult = {
   mesh: CadKernelMesh
+  componentMeshes?: CadKernelMesh[]
 }
 
 export type CadKernelStepRoundTripResult = {
@@ -96,7 +97,10 @@ export async function runStepPreviewWithKernel(
 
   try {
     const shape = applyCADOperationsToShape(openCascade, importStepShape(openCascade, input), input.operations)
-    return { mesh: tessellateShape(openCascade, shape) }
+    return {
+      mesh: tessellateShape(openCascade, shape),
+      componentMeshes: tessellateShapeComponents(openCascade, shape),
+    }
   } finally {
     cleanupVirtualFile(openCascade, inputStepPath)
   }
@@ -311,6 +315,25 @@ function tessellateShape(openCascade: OpenCascadeModule, shape: any): CadKernelM
   }
 
   return { positions, normals, indices }
+}
+
+function tessellateShapeComponents(openCascade: OpenCascadeModule, shape: any): CadKernelMesh[] {
+  const explorer = new openCascade.TopExp_Explorer_1()
+  const meshes: CadKernelMesh[] = []
+
+  for (
+    explorer.Init(shape, openCascade.TopAbs_ShapeEnum.TopAbs_SOLID, openCascade.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    explorer.More();
+    explorer.Next()
+  ) {
+    try {
+      meshes.push(tessellateShape(openCascade, explorer.Current()))
+    } catch {
+      // Some STEP solids may not expose browser-tessellatable faces; keep the aggregate mesh usable.
+    }
+  }
+
+  return meshes.length > 1 ? meshes : []
 }
 
 export function exportShapeToStep(openCascade: OpenCascadeModule, shape: any): string {

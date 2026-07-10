@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,12 +48,13 @@ type ProjectCADDocument struct {
 
 // CADDocumentNode maps one source model into the editable document graph.
 type CADDocumentNode struct {
-	ID           string       `json:"id"`
-	ModelID      string       `json:"model_id"`
-	ParentNodeID string       `json:"parent_node_id"`
-	Name         string       `json:"name"`
-	SourceFormat string       `json:"source_format"`
-	Transform    CADTransform `json:"transform"`
+	ID            string       `json:"id"`
+	ModelID       string       `json:"model_id"`
+	SourceModelID string       `json:"source_model_id"`
+	ParentNodeID  string       `json:"parent_node_id"`
+	Name          string       `json:"name"`
+	SourceFormat  string       `json:"source_format"`
+	Transform     CADTransform `json:"transform"`
 }
 
 // CADOperation records a LiteCAD edit operation in replay order.
@@ -60,6 +62,7 @@ type CADOperation struct {
 	ID        string         `json:"id"`
 	Type      string         `json:"type"`
 	ModelID   string         `json:"model_id"`
+	NodeID    string         `json:"node_id,omitempty"`
 	Transform *CADTransform  `json:"transform,omitempty"`
 	Box       *CADBoxFeature `json:"box,omitempty"`
 	CreatedAt string         `json:"created_at"`
@@ -70,6 +73,14 @@ type UpdateProjectCADModelTransformInput struct {
 	OwnerUserID string
 	ProjectID   string
 	ModelID     string
+	Transform   CADTransform
+}
+
+// UpdateProjectCADNodeTransformInput updates one document node transform.
+type UpdateProjectCADNodeTransformInput struct {
+	OwnerUserID string
+	ProjectID   string
+	NodeID      string
 	Transform   CADTransform
 }
 
@@ -134,62 +145,30 @@ func (s *Service) UpdateProjectCADModelTransform(ctx context.Context, input Upda
 		return ProjectCADDocument{}, fmt.Errorf("load model for CAD transform: %w", err)
 	}
 
-	var publicDocument ProjectCADDocument
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		document, state, err := s.getOrCreateProjectCADDocumentEntity(ctx, tx, project)
-		if err != nil {
-			return err
-		}
+	return s.updateProjectCADNodeTransform(ctx, project, "node_"+model.ID, input.Transform)
+}
 
-		nodeIndex := -1
-		for index := range state.Nodes {
-			if state.Nodes[index].ModelID == model.ID {
-				nodeIndex = index
-				break
-			}
-		}
-		if nodeIndex < 0 {
-			state.Nodes = append(state.Nodes, cadDocumentNodeFromModel(publicProjectModel(model)))
-			nodeIndex = len(state.Nodes) - 1
-		}
-		state.Nodes[nodeIndex].Transform = input.Transform
-
-		operationID, err := id.NewPrefixed("op")
-		if err != nil {
-			return err
-		}
-		now := time.Now().UTC()
-		transform := input.Transform
-		state.Operations = append(state.Operations, CADOperation{
-			ID:        operationID,
-			Type:      "transform",
-			ModelID:   model.ID,
-			Transform: &transform,
-			CreatedAt: now.Format(timeFormatRFC3339),
-		})
-
-		document.Revision++
-		document.SchemaVersion = cadDocumentSchemaVersion
-		documentJSON, err := json.Marshal(state)
-		if err != nil {
-			return fmt.Errorf("serialize CAD document: %w", err)
-		}
-		if err := tx.Model(&document).Updates(map[string]any{
-			"schema_version": document.SchemaVersion,
-			"revision":       document.Revision,
-			"document_json":  documentJSON,
-		}).Error; err != nil {
-			return fmt.Errorf("update CAD document: %w", err)
-		}
-		document.DocumentJSON = documentJSON
-		document.UpdatedAt = now
-		publicDocument = publicProjectCADDocument(document, state)
-		return nil
-	})
-	if err != nil {
-		return ProjectCADDocument{}, err
+// UpdateProjectCADNodeTransform persists a transform operation for a document node.
+func (s *Service) UpdateProjectCADNodeTransform(ctx context.Context, input UpdateProjectCADNodeTransformInput) (ProjectCADDocument, error) {
+	ownerUserID := strings.TrimSpace(input.OwnerUserID)
+	projectID := strings.TrimSpace(input.ProjectID)
+	nodeID := strings.TrimSpace(input.NodeID)
+	if ownerUserID == "" || projectID == "" || nodeID == "" {
+		return ProjectCADDocument{}, ErrProjectNotFound
 	}
-	return publicDocument, nil
+	if !isValidCADTransform(input.Transform) {
+		return ProjectCADDocument{}, ErrInvalidCADDocumentInput
+	}
+
+	var project entity.Project
+	if err := s.db.WithContext(ctx).First(&project, "id = ? AND owner_user_id = ?", projectID, ownerUserID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ProjectCADDocument{}, ErrProjectNotFound
+		}
+		return ProjectCADDocument{}, fmt.Errorf("load project for CAD node transform: %w", err)
+	}
+
+	return s.updateProjectCADNodeTransform(ctx, project, nodeID, input.Transform)
 }
 
 // AddProjectCADModelBoxUnion persists one box union feature for browser-kernel replay.
@@ -241,6 +220,80 @@ func (s *Service) AddProjectCADModelBoxUnion(ctx context.Context, input AddProje
 			Type:      "box-union",
 			ModelID:   model.ID,
 			Box:       &box,
+			CreatedAt: now.Format(timeFormatRFC3339),
+		})
+
+		document.Revision++
+		document.SchemaVersion = cadDocumentSchemaVersion
+		documentJSON, err := json.Marshal(state)
+		if err != nil {
+			return fmt.Errorf("serialize CAD document: %w", err)
+		}
+		if err := tx.Model(&document).Updates(map[string]any{
+			"schema_version": document.SchemaVersion,
+			"revision":       document.Revision,
+			"document_json":  documentJSON,
+		}).Error; err != nil {
+			return fmt.Errorf("update CAD document: %w", err)
+		}
+		document.DocumentJSON = documentJSON
+		document.UpdatedAt = now
+		publicDocument = publicProjectCADDocument(document, state)
+		return nil
+	})
+	if err != nil {
+		return ProjectCADDocument{}, err
+	}
+	return publicDocument, nil
+}
+
+func (s *Service) updateProjectCADNodeTransform(ctx context.Context, project entity.Project, nodeID string, transform CADTransform) (ProjectCADDocument, error) {
+	var publicDocument ProjectCADDocument
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		document, state, err := s.getOrCreateProjectCADDocumentEntity(ctx, tx, project)
+		if err != nil {
+			return err
+		}
+
+		nodeIndex := -1
+		for index := range state.Nodes {
+			if state.Nodes[index].ID == nodeID {
+				nodeIndex = index
+				break
+			}
+		}
+		if nodeIndex < 0 {
+			return ErrProjectNotFound
+		}
+		state.Nodes[nodeIndex].Transform = transform
+
+		operationID, err := id.NewPrefixed("op")
+		if err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		sourceModelID := state.Nodes[nodeIndex].SourceModelID
+		if sourceModelID == "" {
+			sourceModelID = state.Nodes[nodeIndex].ModelID
+		}
+		if sourceModelID == "" && state.Nodes[nodeIndex].ParentNodeID != "" {
+			for _, parentNode := range state.Nodes {
+				if parentNode.ID == state.Nodes[nodeIndex].ParentNodeID {
+					sourceModelID = parentNode.SourceModelID
+					if sourceModelID == "" {
+						sourceModelID = parentNode.ModelID
+					}
+					state.Nodes[nodeIndex].SourceModelID = sourceModelID
+					break
+				}
+			}
+		}
+		state.Operations = append(state.Operations, CADOperation{
+			ID:        operationID,
+			Type:      "transform",
+			ModelID:   sourceModelID,
+			NodeID:    state.Nodes[nodeIndex].ID,
+			Transform: &transform,
 			CreatedAt: now.Format(timeFormatRFC3339),
 		})
 
@@ -356,24 +409,87 @@ func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, project
 	if state.Unit == "" {
 		state.Unit = "millimetre"
 	}
+	nodeByID := make(map[string]struct{}, len(state.Nodes))
 	nodeByModelID := make(map[string]struct{}, len(state.Nodes))
 	for _, node := range state.Nodes {
-		nodeByModelID[node.ModelID] = struct{}{}
+		nodeByID[node.ID] = struct{}{}
+		if node.ModelID != "" {
+			nodeByModelID[node.ModelID] = struct{}{}
+		}
 	}
 
 	changed := false
+	for index := range state.Nodes {
+		if state.Nodes[index].SourceModelID != "" || state.Nodes[index].ParentNodeID == "" {
+			continue
+		}
+		for _, parentNode := range state.Nodes {
+			if parentNode.ID == state.Nodes[index].ParentNodeID {
+				state.Nodes[index].SourceModelID = parentNode.SourceModelID
+				if state.Nodes[index].SourceModelID == "" {
+					state.Nodes[index].SourceModelID = parentNode.ModelID
+				}
+				changed = state.Nodes[index].SourceModelID != "" || changed
+				break
+			}
+		}
+	}
 	for _, model := range models {
+		if shouldBackfillModelMetadata(model) {
+			applyModelMetadata(&model)
+			if err := tx.WithContext(ctx).Model(&model).Updates(map[string]any{
+				"parse_status":  model.ParseStatus,
+				"parse_error":   model.ParseError,
+				"metadata_json": model.MetadataJSON,
+			}).Error; err != nil {
+				return cadDocumentState{}, false, fmt.Errorf("update CAD document model metadata: %w", err)
+			}
+		}
 		if _, ok := nodeByModelID[model.ID]; ok {
+			publicModel := publicProjectModel(model)
+			state, changed = syncCADDocumentComponentNodes(state, nodeByID, publicModel, changed)
 			continue
 		}
 		publicModel := publicProjectModel(model)
 		if publicModel.Metadata.LengthUnit != "" && state.Unit == "millimetre" {
 			state.Unit = publicModel.Metadata.LengthUnit
 		}
-		state.Nodes = append(state.Nodes, cadDocumentNodeFromModel(publicModel))
+		sourceNode := cadDocumentNodeFromModel(publicModel)
+		state.Nodes = append(state.Nodes, sourceNode)
+		nodeByID[sourceNode.ID] = struct{}{}
+		nodeByModelID[model.ID] = struct{}{}
 		changed = true
+		state, changed = syncCADDocumentComponentNodes(state, nodeByID, publicModel, changed)
 	}
 	return state, changed, nil
+}
+
+func syncCADDocumentComponentNodes(state cadDocumentState, nodeByID map[string]struct{}, model ProjectModel, changed bool) (cadDocumentState, bool) {
+	if model.Format != "step" || len(model.Metadata.Components) <= 1 {
+		return state, changed
+	}
+	parentNodeID := "node_" + model.ID
+	for index, component := range model.Metadata.Components {
+		name := strings.TrimSpace(component.Name)
+		if name == "" {
+			continue
+		}
+		nodeID := parentNodeID + "_component_" + strconv.Itoa(index+1)
+		if _, ok := nodeByID[nodeID]; ok {
+			continue
+		}
+		state.Nodes = append(state.Nodes, CADDocumentNode{
+			ID:            nodeID,
+			SourceModelID: model.ID,
+			ParentNodeID:  parentNodeID,
+			Name:          name,
+			SourceFormat:  "step-component",
+			Transform:     identityCADTransform(),
+		})
+		nodeByID[nodeID] = struct{}{}
+		changed = true
+	}
+	return state, changed
 }
 
 func decodeCADDocumentState(data []byte) (cadDocumentState, error) {
@@ -391,17 +507,21 @@ func decodeCADDocumentState(data []byte) (cadDocumentState, error) {
 		if state.Nodes[index].Transform.Matrix == ([16]float64{}) {
 			state.Nodes[index].Transform = identityCADTransform()
 		}
+		if state.Nodes[index].SourceModelID == "" {
+			state.Nodes[index].SourceModelID = state.Nodes[index].ModelID
+		}
 	}
 	return state, nil
 }
 
 func cadDocumentNodeFromModel(model ProjectModel) CADDocumentNode {
 	return CADDocumentNode{
-		ID:           "node_" + model.ID,
-		ModelID:      model.ID,
-		Name:         model.OriginalFilename,
-		SourceFormat: model.Format,
-		Transform:    identityCADTransform(),
+		ID:            "node_" + model.ID,
+		ModelID:       model.ID,
+		SourceModelID: model.ID,
+		Name:          model.OriginalFilename,
+		SourceFormat:  model.Format,
+		Transform:     identityCADTransform(),
 	}
 }
 

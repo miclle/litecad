@@ -83,6 +83,7 @@ export type CadKernelStepPreviewResponse = {
   type: 'step-preview-result'
   result: {
     mesh: CadKernelMesh
+    componentMeshes?: CadKernelMesh[]
     meshSummary: CadKernelMeshSummary
   }
 }

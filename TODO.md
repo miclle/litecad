@@ -4,7 +4,7 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 
 ## Product Capability
 
-- Extend the persisted CAD document model beyond the current root model nodes, transform matrices, transform operations, constrained box-union operations, schema version, revision, and unit. Current projects still do not store durable kernel shape state, rich feature/version semantics, or a complete design-history graph.
+- Extend the persisted CAD document model beyond the current uploaded-source nodes, independently selectable lightweight STEP component child nodes, transform matrices, transform operations, constrained box-union operations, schema version, revision, and unit. Current projects still do not store durable kernel shape state, rich feature/version semantics, true geometric STEP decomposition, or a complete design-history graph.
 - Continue the CAD import and geometry pipeline beyond completed STEP/STP/self-contained GLTF/GLB/STL source upload, lightweight metadata extraction, browser-kernel STEP preview tessellation, GLB/self-contained GLTF preview publishing, STL-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API:
   - Treat OBJ/GLB preview meshes as derived display artifacts, not editable CAD source of truth.
   - Define editable B-rep geometry records and CAD feature/version semantics beyond uploaded sources, persisted transform/box-union operations, preview artifacts, and generated read-only version snapshots.

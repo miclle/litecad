@@ -493,6 +493,7 @@ func TestProjectCADDocumentRoutesPersistModelTransform(t *testing.T) {
 			Operations []struct {
 				Type    string `json:"type"`
 				ModelID string `json:"model_id"`
+				NodeID  string `json:"node_id"`
 			} `json:"operations"`
 		} `json:"document"`
 	}
@@ -504,6 +505,47 @@ func TestProjectCADDocumentRoutesPersistModelTransform(t *testing.T) {
 	}
 	if len(patchResponse.Document.Nodes) != 1 || patchResponse.Document.Nodes[0].Transform.Matrix != transformMatrix {
 		t.Fatalf("patch document nodes = %+v, want updated transform", patchResponse.Document.Nodes)
+	}
+
+	nodeTransformMatrix := [16]float64{
+		1, 0, 0, -3,
+		0, 1, 0, 4,
+		0, 0, 1, 9,
+		0, 0, 0, 1,
+	}
+	nodePatch := patchJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/nodes/node_"+uploadResponse.Model.ID+"/transform", map[string]any{
+		"transform": map[string]any{
+			"matrix": nodeTransformMatrix,
+		},
+	}, sessionCookie)
+	if nodePatch.Code != http.StatusOK {
+		t.Fatalf("node patch status = %d, body = %s", nodePatch.Code, nodePatch.Body.String())
+	}
+	var nodePatchResponse struct {
+		Document struct {
+			Revision int `json:"revision"`
+			Nodes    []struct {
+				Transform struct {
+					Matrix [16]float64 `json:"matrix"`
+				} `json:"transform"`
+			} `json:"nodes"`
+			Operations []struct {
+				Type   string `json:"type"`
+				NodeID string `json:"node_id"`
+			} `json:"operations"`
+		} `json:"document"`
+	}
+	if err := json.Unmarshal(nodePatch.Body.Bytes(), &nodePatchResponse); err != nil {
+		t.Fatalf("decode node patch response: %v", err)
+	}
+	if nodePatchResponse.Document.Revision != 3 || len(nodePatchResponse.Document.Operations) != 2 {
+		t.Fatalf("node patch document = %+v, want revision 3 with two operations", nodePatchResponse.Document)
+	}
+	if nodePatchResponse.Document.Operations[1].NodeID != "node_"+uploadResponse.Model.ID {
+		t.Fatalf("node patch operations = %+v, want node-scoped operation", nodePatchResponse.Document.Operations)
+	}
+	if len(nodePatchResponse.Document.Nodes) != 1 || nodePatchResponse.Document.Nodes[0].Transform.Matrix != nodeTransformMatrix {
+		t.Fatalf("node patch document nodes = %+v, want updated node transform", nodePatchResponse.Document.Nodes)
 	}
 
 	reloaded := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document", sessionCookie)
@@ -523,7 +565,7 @@ func TestProjectCADDocumentRoutesPersistModelTransform(t *testing.T) {
 	if err := json.Unmarshal(reloaded.Body.Bytes(), &reloadedResponse); err != nil {
 		t.Fatalf("decode reloaded document response: %v", err)
 	}
-	if reloadedResponse.Document.Revision != 2 || len(reloadedResponse.Document.Nodes) != 1 || reloadedResponse.Document.Nodes[0].Transform.Matrix != transformMatrix {
+	if reloadedResponse.Document.Revision != 3 || len(reloadedResponse.Document.Nodes) != 1 || reloadedResponse.Document.Nodes[0].Transform.Matrix != nodeTransformMatrix {
 		t.Fatalf("reloaded document = %+v, want persisted transform", reloadedResponse.Document)
 	}
 }

@@ -430,7 +430,9 @@ func publicProjectModel(model entity.ProjectModel) ProjectModel {
 }
 
 func shouldBackfillModelMetadata(model entity.ProjectModel) bool {
-	return model.ParseStatus == "" || (model.ParseStatus == "pending" && len(model.MetadataJSON) == 0)
+	return model.ParseStatus == "" ||
+		(model.ParseStatus == "pending" && len(model.MetadataJSON) == 0) ||
+		(model.Format == "step" && model.ParseStatus == "parsed" && !strings.Contains(string(model.MetadataJSON), `"components"`))
 }
 
 func applyModelMetadata(model *entity.ProjectModel) {

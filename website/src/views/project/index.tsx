@@ -42,7 +42,7 @@ import {
   fetchProjectModelSource,
   fetchProjectModels,
   sendProjectAgentMessage,
-  updateProjectCADModelTransform,
+  updateProjectCADNodeTransform,
   uploadProjectThumbnailSnapshot,
   uploadProjectModel,
 } from 'src/api/projects'
@@ -85,6 +85,7 @@ import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
 import { exportMergedStepTargets, exportStepTarget } from './project-step-export-action'
 import {
   buildProjectPreviewAssets,
+  buildProjectModelTree,
   cadKernelGeometryOperationSignature,
   cadKernelGeometryOperationsForModel,
   getModelDisplayName,
@@ -315,6 +316,7 @@ function ProjectView() {
   const [previewUrlsByModelID, setPreviewUrlsByModelID] = useState<Record<string, string>>({})
   const [hiddenModelIDs, setHiddenModelIDs] = useState<Set<string>>(() => new Set())
   const [selectedModelID, setSelectedModelID] = useState('')
+  const [selectedDocumentNodeID, setSelectedDocumentNodeID] = useState('')
   const [activeCADTool, setActiveCADTool] = useState<CADTool>('inspect')
   const [transformDraftsByModelID, setTransformDraftsByModelID] = useState<Record<string, TransformDraft>>({})
   const [transformErrorByModelID, setTransformErrorByModelID] = useState<Record<string, string>>({})
@@ -385,38 +387,38 @@ function ProjectView() {
       ])
     },
   })
-  const updateCADModelTransformMutation = useMutation({
+  const updateCADNodeTransformMutation = useMutation({
     mutationFn: async ({
-      modelId,
+      nodeId,
       translation,
     }: {
-      modelId: string
+      nodeId: string
       requestVersion: number
       translation: CADTranslation
     }) => {
-      const currentNode = projectCADDocument?.nodes.find((node) => node.model_id === modelId)
+      const currentNode = projectCADDocument?.nodes.find((node) => node.id === nodeId)
       const transform = cadTransformWithTranslation(currentNode?.transform, translation)
-      return (await updateProjectCADModelTransform(projectId, modelId, transform)).data.document
+      return (await updateProjectCADNodeTransform(projectId, nodeId, transform)).data.document
     },
     onSuccess: async (document, variables) => {
-      if ((latestTransformSaveRequestByModelIDRef.current[variables.modelId] ?? 0) > variables.requestVersion) {
+      if ((latestTransformSaveRequestByModelIDRef.current[variables.nodeId] ?? 0) > variables.requestVersion) {
         return
       }
-      const latestDraft = latestTransformDraftsRef.current[variables.modelId]
+      const latestDraft = latestTransformDraftsRef.current[variables.nodeId]
       if (latestDraft) {
         const latestTranslation = parseTransformDraft(latestDraft)
         if (latestTranslation && !translationsEqual(latestTranslation, variables.translation)) {
           return
         }
       }
-      setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: '' }))
+      setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.nodeId]: '' }))
       queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
     },
     onError: (_error, variables) => {
-      if ((latestTransformSaveRequestByModelIDRef.current[variables.modelId] ?? 0) > variables.requestVersion) {
+      if ((latestTransformSaveRequestByModelIDRef.current[variables.nodeId] ?? 0) > variables.requestVersion) {
         return
       }
-      setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: 'Invalid transform' }))
+      setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.nodeId]: 'Invalid transform' }))
     },
   })
   const addCADModelBoxUnionMutation = useMutation({
@@ -539,27 +541,37 @@ function ProjectView() {
     [selectedStepExportTargetIDs, stepExportTargets],
   )
   const stepAssemblyDownloadFilename = stepAssemblyExportFilename(project?.name ?? 'assembly', projectCADDocument?.revision ?? 0)
-  const cadNodeByModelID = useMemo(
-    () => new Map((projectCADDocument?.nodes ?? []).map((node) => [node.model_id, node])),
+  const cadNodeByID = useMemo(() => new Map((projectCADDocument?.nodes ?? []).map((node) => [node.id, node])), [projectCADDocument])
+  const sourceNodeIDByModelID = useMemo(
+    () => new Map((projectCADDocument?.nodes ?? []).flatMap((node) => (node.model_id ? [[node.model_id, node.id] as const] : []))),
     [projectCADDocument],
   )
+  const projectModelTree = useMemo(() => buildProjectModelTree(projectModels, projectCADDocument), [projectModels, projectCADDocument])
   const modelTranslationsByID = useMemo(() => {
     const translations: Record<string, CADTranslation> = {}
     for (const node of projectCADDocument?.nodes ?? []) {
-      translations[node.model_id] = translationFromCADTransform(node.transform)
+      const translation = translationFromCADTransform(node.transform)
+      translations[node.id] = translation
+      if (node.model_id) {
+        translations[node.model_id] = translation
+      }
     }
     return translations
   }, [projectCADDocument])
   const draftModelTranslationsByID = useMemo(() => {
     const translations: Record<string, CADTranslation> = {}
-    for (const [modelID, draft] of Object.entries(transformDraftsByModelID)) {
+    for (const [nodeID, draft] of Object.entries(transformDraftsByModelID)) {
       const translation = parseTransformDraft(draft)
       if (translation) {
-        translations[modelID] = translation
+        translations[nodeID] = translation
+        const modelID = cadNodeByID.get(nodeID)?.model_id
+        if (modelID) {
+          translations[modelID] = translation
+        }
       }
     }
     return translations
-  }, [transformDraftsByModelID])
+  }, [cadNodeByID, transformDraftsByModelID])
   const previewModels = useMemo(() => parsedPreviewModels(projectModels), [projectModels])
   const browserKernelPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'step'), [previewModels])
   const backendPreviewModels = useMemo(() => previewModels.filter((model) => model.format !== 'step'), [previewModels])
@@ -687,8 +699,25 @@ function ProjectView() {
   useEffect(() => {
     if (selectedModelID && !selectedModel) {
       setSelectedModelID('')
+      setSelectedDocumentNodeID('')
     }
   }, [selectedModel, selectedModelID])
+
+  useEffect(() => {
+    if (!projectCADDocument) {
+      return
+    }
+    if (selectedDocumentNodeID && !cadNodeByID.has(selectedDocumentNodeID)) {
+      setSelectedDocumentNodeID('')
+      return
+    }
+    if (selectedModelID && !selectedDocumentNodeID) {
+      const sourceNodeID = sourceNodeIDByModelID.get(selectedModelID)
+      if (sourceNodeID) {
+        setSelectedDocumentNodeID(sourceNodeID)
+      }
+    }
+  }, [cadNodeByID, projectCADDocument, selectedDocumentNodeID, selectedModelID, sourceNodeIDByModelID])
 
   useEffect(() => {
     if (activeCADTool === 'fuse-box' && selectedModel?.format !== 'step') {
@@ -704,14 +733,14 @@ function ProjectView() {
       const nextDrafts = { ...currentDrafts }
       for (const node of projectCADDocument.nodes ?? []) {
         const savedDraft = transformDraftFromTranslation(translationFromCADTransform(node.transform))
-        const latestDraft = latestTransformDraftsRef.current[node.model_id]
+        const latestDraft = latestTransformDraftsRef.current[node.id]
         if (latestDraft && !transformDraftsEqual(latestDraft, savedDraft)) {
-          nextDrafts[node.model_id] = latestDraft
+          nextDrafts[node.id] = latestDraft
           continue
         }
-        clearTransformAutosaveTimer(node.model_id)
-        delete latestTransformDraftsRef.current[node.model_id]
-        nextDrafts[node.model_id] = savedDraft
+        clearTransformAutosaveTimer(node.id)
+        delete latestTransformDraftsRef.current[node.id]
+        nextDrafts[node.id] = savedDraft
       }
       return nextDrafts
     })
@@ -888,26 +917,35 @@ function ProjectView() {
   }).format(new Date(project.updated_at))
   const LeftPanelIcon = isLeftPanelCollapsed ? PanelLeftOpen : PanelLeftClose
   const projectDescription = project.description || 'No description yet. Import a CAD source file to begin the project record.'
-  const selectedModelDisplayName = selectedModel ? getModelDisplayName(selectedModel) : ''
-  const selectedModelNode = selectedModel ? cadNodeByModelID.get(selectedModel.id) : undefined
-  const selectedModelTransformDraft = selectedModel
-    ? transformDraftsByModelID[selectedModel.id] ?? transformDraftFromTranslation(translationFromCADTransform(selectedModelNode?.transform))
+  const selectedDocumentNode = selectedDocumentNodeID ? cadNodeByID.get(selectedDocumentNodeID) : undefined
+  const selectedSourceModelID = selectedDocumentNode?.source_model_id || selectedDocumentNode?.model_id || selectedModelID
+  const selectedSourceModel = selectedSourceModelID ? projectModels.find((model) => model.id === selectedSourceModelID) : undefined
+  const selectedModelDisplayName =
+    selectedDocumentNode?.source_format === 'step-component'
+      ? selectedDocumentNode.name
+      : selectedSourceModel
+        ? getModelDisplayName(selectedSourceModel)
+        : ''
+  const selectedModelTransformDraft = selectedDocumentNode
+    ? transformDraftsByModelID[selectedDocumentNode.id] ?? transformDraftFromTranslation(translationFromCADTransform(selectedDocumentNode.transform))
     : undefined
-  const selectedModelTransformError = selectedModel ? transformErrorByModelID[selectedModel.id] : ''
-  const selectedModelSupportsFuseBox = selectedModel?.format === 'step'
-  const selectedModelBoxFeatureDraft = selectedModel ? boxFeatureDraftsByModelID[selectedModel.id] ?? latestBoxFeatureDraftForModel(selectedModel.id) : undefined
-  const selectedModelBoxFeatureError = selectedModel ? boxFeatureErrorByModelID[selectedModel.id] : ''
+  const selectedModelTransformError = selectedDocumentNode ? transformErrorByModelID[selectedDocumentNode.id] : ''
+  const selectedModelSupportsFuseBox = selectedSourceModel?.format === 'step'
+  const selectedModelBoxFeatureDraft = selectedSourceModel
+    ? boxFeatureDraftsByModelID[selectedSourceModel.id] ?? latestBoxFeatureDraftForModel(selectedSourceModel.id)
+    : undefined
+  const selectedModelBoxFeatureError = selectedSourceModel ? boxFeatureErrorByModelID[selectedSourceModel.id] : ''
   const isSelectedModelBoxFeatureUpdating =
-    Boolean(selectedModel) && addCADModelBoxUnionMutation.isPending && addCADModelBoxUnionMutation.variables?.modelId === selectedModel?.id
-  const selectedModelStepExportError = selectedModel ? stepExportErrorByModelID[selectedModel.id] : ''
-  const selectedModelStepExportStatus = selectedModel ? stepExportStatusByModelID[selectedModel.id] : ''
-  const selectedModelDetails = selectedModel
+    Boolean(selectedSourceModel) && addCADModelBoxUnionMutation.isPending && addCADModelBoxUnionMutation.variables?.modelId === selectedSourceModel?.id
+  const selectedModelStepExportError = selectedSourceModel ? stepExportErrorByModelID[selectedSourceModel.id] : ''
+  const selectedModelStepExportStatus = selectedSourceModel ? stepExportStatusByModelID[selectedSourceModel.id] : ''
+  const selectedModelDetails = selectedSourceModel
     ? [
-        { label: 'Format', value: selectedModel.format.toUpperCase() },
-        { label: 'Status', value: selectedModel.parse_status },
-        { label: 'Unit', value: selectedModel.metadata.length_unit || documentUnitLabel },
-        { label: 'Entities', value: selectedModel.metadata.entity_count },
-        { label: 'Triangles', value: selectedModel.metadata.triangle_count },
+        { label: 'Format', value: selectedDocumentNode?.source_format === 'step-component' ? 'STEP-COMPONENT' : selectedSourceModel.format.toUpperCase() },
+        { label: 'Status', value: selectedSourceModel.parse_status },
+        { label: 'Unit', value: selectedSourceModel.metadata.length_unit || documentUnitLabel },
+        { label: 'Entities', value: selectedSourceModel.metadata.entity_count },
+        { label: 'Triangles', value: selectedSourceModel.metadata.triangle_count },
       ]
     : []
   const documentDetails = [
@@ -1012,49 +1050,50 @@ function ProjectView() {
       return nextIDs
     })
   }
-  const clearTransformAutosaveTimer = (modelID: string) => {
-    const timerID = transformAutosaveTimersRef.current[modelID]
+  const clearTransformAutosaveTimer = (nodeID: string) => {
+    const timerID = transformAutosaveTimersRef.current[nodeID]
     if (timerID === undefined) {
       return
     }
     window.clearTimeout(timerID)
-    delete transformAutosaveTimersRef.current[modelID]
+    delete transformAutosaveTimersRef.current[nodeID]
   }
-  const scheduleTransformAutosave = (modelID: string, draft: TransformDraft) => {
-    clearTransformAutosaveTimer(modelID)
-    transformAutosaveTimersRef.current[modelID] = window.setTimeout(() => {
-      delete transformAutosaveTimersRef.current[modelID]
+  const scheduleTransformAutosave = (nodeID: string, draft: TransformDraft) => {
+    clearTransformAutosaveTimer(nodeID)
+    transformAutosaveTimersRef.current[nodeID] = window.setTimeout(() => {
+      delete transformAutosaveTimersRef.current[nodeID]
       const translation = parseTransformDraft(draft)
       if (!translation) {
-        setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: 'Invalid transform' }))
+        setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [nodeID]: 'Invalid transform' }))
         return
       }
-      const savedTranslation = modelTranslationsByID[modelID] ?? translationFromCADTransform(cadNodeByModelID.get(modelID)?.transform)
+      const savedTranslation = translationFromCADTransform(cadNodeByID.get(nodeID)?.transform)
       if (translationsEqual(translation, savedTranslation)) {
-        delete latestTransformDraftsRef.current[modelID]
-        setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: '' }))
+        delete latestTransformDraftsRef.current[nodeID]
+        setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [nodeID]: '' }))
         return
       }
-      const requestVersion = (latestTransformSaveRequestByModelIDRef.current[modelID] ?? 0) + 1
-      latestTransformSaveRequestByModelIDRef.current[modelID] = requestVersion
-      updateCADModelTransformMutation.mutate({ modelId: modelID, requestVersion, translation })
+      const requestVersion = (latestTransformSaveRequestByModelIDRef.current[nodeID] ?? 0) + 1
+      latestTransformSaveRequestByModelIDRef.current[nodeID] = requestVersion
+      updateCADNodeTransformMutation.mutate({ nodeId: nodeID, requestVersion, translation })
     }, transformAutosaveDelayMS)
   }
-  const updateTransformDraftFromTranslation = (modelID: string, translation: CADTranslation) => {
+  const updateTransformDraftFromTranslation = (modelID: string, translation: CADTranslation, selectedNodeID?: string) => {
+    const nodeID = selectedNodeID ?? sourceNodeIDByModelID.get(modelID) ?? `node_${modelID}`
     const nextDraft = transformDraftFromTranslation(translation)
-    latestTransformDraftsRef.current[modelID] = nextDraft
-    setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [modelID]: nextDraft }))
-    setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: '' }))
-    scheduleTransformAutosave(modelID, nextDraft)
+    latestTransformDraftsRef.current[nodeID] = nextDraft
+    setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [nodeID]: nextDraft }))
+    setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [nodeID]: '' }))
+    scheduleTransformAutosave(nodeID, nextDraft)
   }
-  const updateTransformDraftField = (modelID: string, axis: keyof CADTranslation, value: string) => {
+  const updateTransformDraftField = (nodeID: string, axis: keyof CADTranslation, value: string) => {
     const currentDraft =
-      transformDraftsByModelID[modelID] ?? transformDraftFromTranslation(modelTranslationsByID[modelID] ?? translationFromCADTransform())
+      transformDraftsByModelID[nodeID] ?? transformDraftFromTranslation(translationFromCADTransform(cadNodeByID.get(nodeID)?.transform))
     const nextDraft = { ...currentDraft, [axis]: value }
-    latestTransformDraftsRef.current[modelID] = nextDraft
-    setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [modelID]: nextDraft }))
-    setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [modelID]: '' }))
-    scheduleTransformAutosave(modelID, nextDraft)
+    latestTransformDraftsRef.current[nodeID] = nextDraft
+    setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [nodeID]: nextDraft }))
+    setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [nodeID]: '' }))
+    scheduleTransformAutosave(nodeID, nextDraft)
   }
   function latestBoxFeatureDraftForModel(modelID: string) {
     const latestBoxOperation = [...(projectCADDocument?.operations ?? [])]
@@ -1378,12 +1417,19 @@ function ProjectView() {
               draftModelTranslations={draftModelTranslationsByID}
               key={project.id}
               modelTranslations={modelTranslationsByID}
-              onClearSelection={() => setSelectedModelID('')}
+              onClearSelection={() => {
+                setSelectedModelID('')
+                setSelectedDocumentNodeID('')
+              }}
               onModelTranslationChange={updateTransformDraftFromTranslation}
-              onSelectModel={setSelectedModelID}
+              onSelectModel={(modelID, nodeID) => {
+                setSelectedModelID(modelID)
+                setSelectedDocumentNodeID(nodeID ?? sourceNodeIDByModelID.get(modelID) ?? `node_${modelID}`)
+              }}
               onSnapshotCapture={handlePreviewSnapshotCapture}
               previewAssets={previewAssets}
               selectedModelId={selectedModelID}
+              selectedNodeId={selectedDocumentNodeID}
               visibleModelIds={visibleModelIds}
             />
             {shouldShowCanvasStatus && (
@@ -1427,7 +1473,7 @@ function ProjectView() {
                 <Box data-icon="inline-start" />
                 <span className="truncate">Fuse box</span>
               </TooltipTrigger>
-              {!selectedModel ? (
+              {!selectedDocumentNode ? (
                 <TooltipContent sideOffset={8}>Select a model first</TooltipContent>
               ) : !selectedModelSupportsFuseBox ? (
                 <TooltipContent sideOffset={8}>STEP models only</TooltipContent>
@@ -1435,7 +1481,7 @@ function ProjectView() {
             </Tooltip>
           </div>
 
-          {activeCADTool === 'fuse-box' && selectedModelSupportsFuseBox && selectedModelBoxFeatureDraft && selectedModel && (
+          {activeCADTool === 'fuse-box' && selectedModelSupportsFuseBox && selectedModelBoxFeatureDraft && selectedSourceModel && (
             <aside
               aria-label="Fuse box tool"
               className="absolute right-4 top-40 z-20 w-[min(320px,calc(100vw-32px))] rounded-md border border-[#dbe3ec] bg-white/94 p-3 shadow-[0_14px_36px_rgba(15,23,42,0.12)] backdrop-blur"
@@ -1483,7 +1529,7 @@ function ProjectView() {
                         ariaLabel={`${label} for ${selectedModelDisplayName}`}
                         key={field}
                         label={label.replace('Origin ', '')}
-                        onChange={(value) => updateBoxFeatureDraft(selectedModel.id, field, value)}
+                        onChange={(value) => updateBoxFeatureDraft(selectedSourceModel.id, field, value)}
                         unitLabel={documentUnitLabel}
                         value={selectedModelBoxFeatureDraft[field]}
                       />
@@ -1505,7 +1551,7 @@ function ProjectView() {
                         ariaLabel={`${label} for ${selectedModelDisplayName}`}
                         key={field}
                         label={label.replace('Size ', '')}
-                        onChange={(value) => updateBoxFeatureDraft(selectedModel.id, field, value)}
+                        onChange={(value) => updateBoxFeatureDraft(selectedSourceModel.id, field, value)}
                         unitLabel={documentUnitLabel}
                         value={selectedModelBoxFeatureDraft[field]}
                       />
@@ -1519,7 +1565,7 @@ function ProjectView() {
                   <Button
                     className="justify-center"
                     disabled={isSelectedModelBoxFeatureUpdating || !projectCADDocument}
-                    onClick={() => addBoxFeatureDraft(selectedModel.id)}
+                    onClick={() => addBoxFeatureDraft(selectedSourceModel.id)}
                     size="sm"
                     type="button"
                   >
@@ -1622,61 +1668,105 @@ function ProjectView() {
                         Import a CAD model to populate the project tree.
                       </div>
                     )}
-                    {projectModels.map((model) => {
-                      const modelDisplayName = getModelDisplayName(model)
+                    {projectModelTree.map((group) => {
+                      const model = group.model
+                      const modelDisplayName = group.displayName
                       const isModelHidden = hiddenModelIDs.has(model.id)
-                      const isSelectedModel = selectedModelID === model.id
+                      const isSelectedSourceNode = selectedDocumentNodeID === group.sourceNodeId
                       const hasPreviewAsset = previewAssetModelIDs.has(model.id)
                       const VisibilityIcon = isModelHidden ? EyeOff : Eye
 
                       return (
-                        <div
-                          className={`group/model-row min-w-0 rounded-md px-2 py-1.5 text-sm transition ${
-                            isSelectedModel
-                              ? 'bg-[#eff6ff] text-[#0f172a] ring-1 ring-[#bfdbfe]'
-                              : isModelHidden
-                              ? 'text-[#94a3b8] hover:bg-[#f1f5f9]'
-                              : 'text-[#1f2937] hover:bg-[#f1f5f9]'
-                          }`}
-                          key={model.id}
-                        >
-                          <div className="flex min-w-0 items-center gap-2">
-                            <button
-                              aria-selected={isSelectedModel}
-                              className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]"
-                              onClick={() => setSelectedModelID(model.id)}
-                              role="option"
-                              title={modelDisplayName}
-                              type="button"
-                            >
-                              <Box
-                                className={`size-4 shrink-0 ${
-                                  isSelectedModel ? 'text-[#1d4ed8]' : isModelHidden ? 'text-[#94a3b8]' : 'text-[#475569]'
-                                }`}
-                              />
-                              <p className="min-w-0 flex-1 truncate">{modelDisplayName}</p>
-                            </button>
-                            {hasPreviewAsset && (
+                        <div className="grid gap-1" key={model.id}>
+                          <div
+                            className={`group/model-row min-w-0 rounded-md px-2 py-1.5 text-sm transition ${
+                              isSelectedSourceNode
+                                ? 'bg-[#eff6ff] text-[#0f172a] ring-1 ring-[#bfdbfe]'
+                                : isModelHidden
+                                ? 'text-[#94a3b8] hover:bg-[#f1f5f9]'
+                                : 'text-[#1f2937] hover:bg-[#f1f5f9]'
+                            }`}
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
                               <button
-                                aria-label={isModelHidden ? `Show ${modelDisplayName}` : `Hide ${modelDisplayName}`}
-                                aria-pressed={!isModelHidden}
-                                className={`grid size-6 shrink-0 place-items-center rounded text-[#64748b] opacity-0 transition hover:bg-[#e2e8f0] hover:text-[#0f172a] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] group-hover/model-row:opacity-100 ${
-                                  isModelHidden ? 'opacity-100 text-[#94a3b8]' : ''
-                                }`}
-                                onClick={() => toggleModelVisibility(model.id)}
-                                title={isModelHidden ? 'Show model' : 'Hide model'}
+                                aria-selected={isSelectedSourceNode}
+                                className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]"
+                                onClick={() => {
+                                  setSelectedModelID(model.id)
+                                  setSelectedDocumentNodeID(group.sourceNodeId)
+                                }}
+                                role="option"
+                                title={modelDisplayName}
                                 type="button"
                               >
-                                <VisibilityIcon className="size-3.5" />
+                                <FileText
+                                  className={`size-4 shrink-0 ${
+                                    isSelectedSourceNode ? 'text-[#1d4ed8]' : isModelHidden ? 'text-[#94a3b8]' : 'text-[#475569]'
+                                  }`}
+                                />
+                                <span className="min-w-0 flex-1 truncate">{modelDisplayName}</span>
+                                {group.children.length > 0 && (
+                                  <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">{group.children.length} models</span>
+                                )}
                               </button>
-                            )}
-                            <div
-                              aria-label={model.parse_status === 'parsed' ? 'Model preview is ready' : 'Model is being processed'}
-                              className={`size-1.5 shrink-0 rounded-full ${
-                                model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'
-                              }`}
-                            />
+                              {hasPreviewAsset && (
+                                <button
+                                  aria-label={isModelHidden ? `Show ${modelDisplayName}` : `Hide ${modelDisplayName}`}
+                                  aria-pressed={!isModelHidden}
+                                  className={`grid size-6 shrink-0 place-items-center rounded text-[#64748b] opacity-0 transition hover:bg-[#e2e8f0] hover:text-[#0f172a] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] group-hover/model-row:opacity-100 ${
+                                    isModelHidden ? 'opacity-100 text-[#94a3b8]' : ''
+                                  }`}
+                                  onClick={() => toggleModelVisibility(model.id)}
+                                  title={isModelHidden ? 'Show model' : 'Hide model'}
+                                  type="button"
+                                >
+                                  <VisibilityIcon className="size-3.5" />
+                                </button>
+                              )}
+                              <div
+                                aria-label={model.parse_status === 'parsed' ? 'Model preview is ready' : 'Model is being processed'}
+                                className={`size-1.5 shrink-0 rounded-full ${
+                                  model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'
+                                }`}
+                              />
+                            </div>
                           </div>
+                          {group.children.length > 0 && (
+                            <div className="grid gap-1 pl-5">
+                              {group.children.map((child) => (
+                                (() => {
+                                  const isSelectedChild = selectedDocumentNodeID === child.id
+                                  return (
+                                    <button
+                                      aria-selected={isSelectedChild}
+                                      className={`flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] ${
+                                        isSelectedChild
+                                          ? 'bg-[#eff6ff] text-[#0f172a] ring-1 ring-[#bfdbfe]'
+                                          : isModelHidden
+                                          ? 'text-[#94a3b8] hover:bg-[#f1f5f9]'
+                                          : 'text-[#334155] hover:bg-[#f1f5f9]'
+                                      }`}
+                                      key={child.id}
+                                      onClick={() => {
+                                        setSelectedModelID(child.sourceModelId || model.id)
+                                        setSelectedDocumentNodeID(child.id)
+                                      }}
+                                      role="option"
+                                      title={child.name}
+                                      type="button"
+                                    >
+                                      <Box
+                                        className={`size-3.5 shrink-0 ${
+                                          isSelectedChild ? 'text-[#1d4ed8]' : isModelHidden ? 'text-[#94a3b8]' : 'text-[#64748b]'
+                                        }`}
+                                      />
+                                      <span className="min-w-0 flex-1 truncate">{child.name}</span>
+                                    </button>
+                                  )
+                                })()
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -1692,17 +1782,20 @@ function ProjectView() {
                 <section className="mt-auto pt-5">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-mono text-[11px] uppercase text-[#64748b]">Document</p>
-                    {selectedModel && (
+                    {selectedDocumentNode && (
                       <button
                         className="rounded px-1.5 py-0.5 text-[11px] font-medium text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]"
-                        onClick={() => setSelectedModelID('')}
+                        onClick={() => {
+                          setSelectedModelID('')
+                          setSelectedDocumentNodeID('')
+                        }}
                         type="button"
                       >
                         Clear
                       </button>
                     )}
                   </div>
-                  {selectedModel && selectedModelTransformDraft ? (
+                  {selectedDocumentNode && selectedModelTransformDraft ? (
                     <div className="mt-2 grid gap-2 text-xs">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -1737,7 +1830,7 @@ function ProjectView() {
                               ariaLabel={`${axis.toUpperCase()} position for ${selectedModelDisplayName}`}
                               key={axis}
                               label={axis}
-                              onChange={(value) => updateTransformDraftField(selectedModel.id, axis, value)}
+                              onChange={(value) => updateTransformDraftField(selectedDocumentNode.id, axis, value)}
                               value={selectedModelTransformDraft[axis]}
                             />
                           ))}

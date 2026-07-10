@@ -12,6 +12,7 @@ import {
   cadTranslationDeltaToPreviewTranslation,
   previewTranslationDeltaToCADTranslation,
 } from './model-preview-transforms'
+import { findLiteCADSelectionFromObject } from './model-preview-selection'
 import {
   createViewOrientationChangeEvent,
   orientationFromEvent,
@@ -42,10 +43,11 @@ type ModelPreviewProps = {
   draftModelTranslations?: Record<string, CADTranslation>
   modelTranslations?: Record<string, CADTranslation>
   onClearSelection?: () => void
-  onModelTranslationChange?: (modelID: string, translation: CADTranslation) => void
+  onModelTranslationChange?: (modelID: string, translation: CADTranslation, nodeID?: string) => void
   onSnapshotCapture?: (snapshot: ModelPreviewSnapshotCapture) => void
-  onSelectModel?: (modelID: string) => void
+  onSelectModel?: (modelID: string, nodeID?: string) => void
   previewAssets?: ProjectPreviewAsset[]
+  selectedNodeId?: string
   selectedModelId?: string
   variant?: 'workspace' | 'thumbnail'
   visibleModelIds?: readonly string[]
@@ -187,6 +189,7 @@ export function ModelPreview({
   onSnapshotCapture,
   onSelectModel,
   previewAssets = [],
+  selectedNodeId,
   selectedModelId,
   variant = 'workspace',
   visibleModelIds,
@@ -200,11 +203,13 @@ export function ModelPreview({
   const onSnapshotCaptureRef = useRef<ModelPreviewProps['onSnapshotCapture']>(onSnapshotCapture)
   const onSelectModelRef = useRef<ModelPreviewProps['onSelectModel']>(onSelectModel)
   const selectedModelIdRef = useRef<string | undefined>(selectedModelId)
+  const selectedNodeIdRef = useRef<string | undefined>(selectedNodeId)
   const visibleModelIdsRef = useRef<readonly string[]>(visibleModelIds)
-  const previewObjectBasePositionsByModelIDRef = useRef(new Map<string, THREE.Vector3>())
-  const previewObjectBaseUsesCADOrientationByModelIDRef = useRef(new Map<string, boolean>())
-  const previewObjectBaseTranslationsByModelIDRef = useRef(new Map<string, CADTranslation>())
+  const previewObjectBasePositionsByObjectIDRef = useRef(new Map<string, THREE.Vector3>())
+  const previewObjectBaseUsesCADOrientationByObjectIDRef = useRef(new Map<string, boolean>())
+  const previewObjectBaseTranslationsByObjectIDRef = useRef(new Map<string, CADTranslation>())
   const previewObjectsByModelIDRef = useRef(new Map<string, THREE.Object3D>())
+  const previewObjectsByNodeIDRef = useRef(new Map<string, THREE.Object3D>())
   const syncSelectedPreviewObjectRef = useRef<() => void>(() => undefined)
   const syncPreviewObjectTransformsRef = useRef<() => void>(() => undefined)
   const syncPreviewObjectVisibilityRef = useRef<() => void>(() => undefined)
@@ -240,8 +245,9 @@ export function ModelPreview({
     onSnapshotCaptureRef.current = onSnapshotCapture
     onSelectModelRef.current = onSelectModel
     selectedModelIdRef.current = selectedModelId
+    selectedNodeIdRef.current = selectedNodeId
     syncSelectedPreviewObjectRef.current()
-  }, [onClearSelection, onModelTranslationChange, onSnapshotCapture, onSelectModel, selectedModelId])
+  }, [onClearSelection, onModelTranslationChange, onSnapshotCapture, onSelectModel, selectedModelId, selectedNodeId])
 
   useEffect(() => {
     visibleModelIdsRef.current = visibleModelIds
@@ -265,9 +271,10 @@ export function ModelPreview({
     }
     hideZoomHUD()
     previewObjectsByModelIDRef.current = new Map()
-    previewObjectBasePositionsByModelIDRef.current = new Map()
-    previewObjectBaseUsesCADOrientationByModelIDRef.current = new Map()
-    previewObjectBaseTranslationsByModelIDRef.current = new Map()
+    previewObjectsByNodeIDRef.current = new Map()
+    previewObjectBasePositionsByObjectIDRef.current = new Map()
+    previewObjectBaseUsesCADOrientationByObjectIDRef.current = new Map()
+    previewObjectBaseTranslationsByObjectIDRef.current = new Map()
     syncSelectedPreviewObjectRef.current = () => undefined
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true })
@@ -445,27 +452,40 @@ export function ModelPreview({
       renderScene()
       scheduleSnapshotCapture()
     }
+    const syncPreviewObjectTransform = (objectID: string, object: THREE.Object3D) => {
+      const basePosition = previewObjectBasePositionsByObjectIDRef.current.get(objectID)
+      if (!basePosition) {
+        return
+      }
+      const baseTranslation = previewObjectBaseTranslationsByObjectIDRef.current.get(objectID) ?? zeroTranslation
+      const activeTranslation = draftModelTranslationsRef.current?.[objectID] ?? modelTranslationsRef.current?.[objectID]
+      if (!activeTranslation) {
+        object.position.copy(basePosition)
+        return
+      }
+      const previewTranslation = cadTranslationDeltaToPreviewTranslation(
+        {
+          x: activeTranslation.x - baseTranslation.x,
+          y: activeTranslation.y - baseTranslation.y,
+          z: activeTranslation.z - baseTranslation.z,
+        },
+        previewObjectBaseUsesCADOrientationByObjectIDRef.current.get(objectID) ?? false,
+      )
+      object.position.copy(basePosition).add(new THREE.Vector3(previewTranslation.x, previewTranslation.y, previewTranslation.z))
+    }
     syncPreviewObjectTransformsRef.current = () => {
       previewObjectsByModelIDRef.current.forEach((object, modelID) => {
-        const basePosition = previewObjectBasePositionsByModelIDRef.current.get(modelID)
-        if (!basePosition) {
+        syncPreviewObjectTransform(modelID, object)
+      })
+      previewObjectsByNodeIDRef.current.forEach((object, nodeID) => {
+        if (previewObjectsByModelIDRef.current.get(object.userData.litecadModelId) === object && nodeID === `node_${object.userData.litecadModelId}`) {
+          syncPreviewObjectTransform(nodeID, object)
           return
         }
-        const baseTranslation = previewObjectBaseTranslationsByModelIDRef.current.get(modelID) ?? zeroTranslation
-        const activeTranslation = draftModelTranslationsRef.current?.[modelID] ?? modelTranslationsRef.current?.[modelID]
-        if (!activeTranslation) {
-          object.position.copy(basePosition)
+        if (previewObjectsByModelIDRef.current.get(object.userData.litecadModelId) === object) {
           return
         }
-        const previewTranslation = cadTranslationDeltaToPreviewTranslation(
-          {
-            x: activeTranslation.x - baseTranslation.x,
-            y: activeTranslation.y - baseTranslation.y,
-            z: activeTranslation.z - baseTranslation.z,
-          },
-          previewObjectBaseUsesCADOrientationByModelIDRef.current.get(modelID) ?? false,
-        )
-        object.position.copy(basePosition).add(new THREE.Vector3(previewTranslation.x, previewTranslation.y, previewTranslation.z))
+        syncPreviewObjectTransform(nodeID, object)
       })
       syncSelectedPreviewObjectRef.current()
       renderScene()
@@ -479,22 +499,25 @@ export function ModelPreview({
       selectionBox.setFromObject(object)
       selectionBox.visible = true
     }
-    const selectedPreviewObjectTranslation = (modelID: string, object: THREE.Object3D) => {
-      const basePosition = previewObjectBasePositionsByModelIDRef.current.get(modelID)
+    const selectedPreviewObjectTranslation = (objectID: string, object: THREE.Object3D) => {
+      const basePosition = previewObjectBasePositionsByObjectIDRef.current.get(objectID)
       if (!basePosition) {
         return undefined
       }
-      const baseTranslation = previewObjectBaseTranslationsByModelIDRef.current.get(modelID) ?? zeroTranslation
+      const baseTranslation = previewObjectBaseTranslationsByObjectIDRef.current.get(objectID) ?? zeroTranslation
       const previewTranslation = object.position.clone().sub(basePosition)
       return previewTranslationDeltaToCADTranslation(
         { x: previewTranslation.x, y: previewTranslation.y, z: previewTranslation.z },
         baseTranslation,
-        previewObjectBaseUsesCADOrientationByModelIDRef.current.get(modelID) ?? false,
+        previewObjectBaseUsesCADOrientationByObjectIDRef.current.get(objectID) ?? false,
       )
     }
     syncSelectedPreviewObjectRef.current = () => {
       const selectedModelID = selectedModelIdRef.current
-      const selectedObject = selectedModelID ? previewObjectsByModelIDRef.current.get(selectedModelID) : undefined
+      const selectedNodeID = selectedNodeIdRef.current
+      const selectedObject =
+        (selectedNodeID ? previewObjectsByNodeIDRef.current.get(selectedNodeID) : undefined) ??
+        (selectedModelID ? previewObjectsByModelIDRef.current.get(selectedModelID) : undefined)
       if (!selectedObject || !selectedObject.visible) {
         transformControls.detach()
         updateSelectionBox()
@@ -518,14 +541,17 @@ export function ModelPreview({
     }
     const handleTransformObjectChange = () => {
       const selectedModelID = selectedModelIdRef.current
-      const selectedObject = selectedModelID ? previewObjectsByModelIDRef.current.get(selectedModelID) : undefined
+      const selectedNodeID = selectedNodeIdRef.current
+      const selectedObject =
+        (selectedNodeID ? previewObjectsByNodeIDRef.current.get(selectedNodeID) : undefined) ??
+        (selectedModelID ? previewObjectsByModelIDRef.current.get(selectedModelID) : undefined)
       if (!selectedModelID || !selectedObject) {
         return
       }
       updateSelectionBox(selectedObject)
-      const translation = selectedPreviewObjectTranslation(selectedModelID, selectedObject)
+      const translation = selectedPreviewObjectTranslation(selectedNodeID ?? selectedModelID, selectedObject)
       if (translation) {
-        onModelTranslationChangeRef.current?.(selectedModelID, translation)
+        onModelTranslationChangeRef.current?.(selectedModelID, translation, selectedNodeID)
       }
       renderScene()
     }
@@ -667,8 +693,22 @@ export function ModelPreview({
         disposeObject3DResources(object)
         return
       }
+      const sourceNodeID = `node_${asset.modelId}`
+      const baseUsesCADOrientation = asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh'
+      const baseTranslation = asset.transform ? translationFromCADTransform(asset.transform) : zeroTranslation
+      const registerPreviewObjectTransform = (
+        objectID: string,
+        previewObject: THREE.Object3D,
+        usesCADOrientation: boolean,
+        translation: CADTranslation,
+      ) => {
+        previewObjectBasePositionsByObjectIDRef.current.set(objectID, previewObject.position.clone())
+        previewObjectBaseUsesCADOrientationByObjectIDRef.current.set(objectID, usesCADOrientation)
+        previewObjectBaseTranslationsByObjectIDRef.current.set(objectID, translation)
+      }
       object.name = asset.name
       object.userData.litecadModelId = asset.modelId
+      object.userData.litecadNodeId = sourceNodeID
       if (asset.transform?.matrix.length === 16) {
         const matrix = new THREE.Matrix4()
         matrix.set(
@@ -694,15 +734,8 @@ export function ModelPreview({
       if (asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh') {
         orientCADPreviewObject(object)
       }
-      previewObjectBasePositionsByModelIDRef.current.set(asset.modelId, object.position.clone())
-      previewObjectBaseUsesCADOrientationByModelIDRef.current.set(
-        asset.modelId,
-        asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh',
-      )
-      previewObjectBaseTranslationsByModelIDRef.current.set(
-        asset.modelId,
-        asset.transform ? translationFromCADTransform(asset.transform) : zeroTranslation,
-      )
+      registerPreviewObjectTransform(asset.modelId, object, baseUsesCADOrientation, baseTranslation)
+      registerPreviewObjectTransform(sourceNodeID, object, baseUsesCADOrientation, baseTranslation)
       syncPreviewObjectTransformsRef.current()
       object.visible = isPreviewObjectVisible(asset.modelId)
       object.traverse((child) => {
@@ -728,6 +761,14 @@ export function ModelPreview({
         }
       })
       previewObjectsByModelIDRef.current.set(asset.modelId, object)
+      previewObjectsByNodeIDRef.current.set(sourceNodeID, object)
+      object.traverse((child) => {
+        const nodeID = typeof child.userData.litecadNodeId === 'string' ? child.userData.litecadNodeId : undefined
+        if (nodeID && child !== object) {
+          previewObjectsByNodeIDRef.current.set(nodeID, child)
+          registerPreviewObjectTransform(nodeID, child, false, zeroTranslation)
+        }
+      })
       previewGroup.add(object)
       syncPreviewObjectTransformsRef.current()
       syncSelectedPreviewObjectRef.current()
@@ -740,17 +781,7 @@ export function ModelPreview({
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
     let pointerDown: { x: number; y: number; pointerID: number } | undefined
-    const findModelIDFromObject = (object: THREE.Object3D) => {
-      let currentObject: THREE.Object3D | null = object
-      while (currentObject) {
-        if (typeof currentObject.userData.litecadModelId === 'string') {
-          return currentObject.userData.litecadModelId as string
-        }
-        currentObject = currentObject.parent
-      }
-      return undefined
-    }
-    const modelIDFromPointerEvent = (event: PointerEvent) => {
+    const selectionFromPointerEvent = (event: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect()
       if (rect.width === 0 || rect.height === 0) {
         return undefined
@@ -760,7 +791,7 @@ export function ModelPreview({
       raycaster.setFromCamera(pointer, camera)
       const visibleObjects = [...previewObjectsByModelIDRef.current.values()].filter((object) => object.visible)
       const intersection = raycaster.intersectObjects(visibleObjects, true)[0]
-      return intersection ? findModelIDFromObject(intersection.object) : undefined
+      return intersection ? findLiteCADSelectionFromObject(intersection.object) : undefined
     }
     const isTransformControlPointerEvent = (event: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect()
@@ -776,10 +807,10 @@ export function ModelPreview({
       if (event.button !== 0) {
         return
       }
-      const modelID = modelIDFromPointerEvent(event)
+      const selection = selectionFromPointerEvent(event)
       const isTransformControlPointer = isTransformControlPointerEvent(event)
       pointerDown = { x: event.clientX, y: event.clientY, pointerID: event.pointerId }
-      if (!modelID && !isTransformControlPointer) {
+      if (!selection && !isTransformControlPointer) {
         onClearSelectionRef.current?.()
       }
     }
@@ -794,9 +825,9 @@ export function ModelPreview({
       if (isTransformDragging || Math.hypot(deltaX, deltaY) > 5) {
         return
       }
-      const modelID = modelIDFromPointerEvent(event)
-      if (modelID) {
-        onSelectModelRef.current?.(modelID)
+      const selection = selectionFromPointerEvent(event)
+      if (selection) {
+        onSelectModelRef.current?.(selection.modelID, selection.nodeID)
         return
       }
       if (isTransformControlPointerEvent(event)) {
@@ -952,7 +983,7 @@ export function ModelPreview({
       if (asset.previewFormat === 'obj') {
         new OBJLoader().load(asset.previewUrl, (object) => addPreviewObject(asset, assetIndex, object))
       } else if (asset.previewFormat === 'kernel-mesh') {
-        addPreviewObject(asset, assetIndex, createKernelMeshPreviewObject(asset.mesh))
+        addPreviewObject(asset, assetIndex, createKernelMeshPreviewObject(asset.mesh, asset.pickTargets, asset.componentMeshes, asset.modelId))
       } else if (asset.previewFormat === 'glb' || asset.previewFormat === 'gltf') {
         new GLTFLoader().load(asset.previewUrl, (gltf) => addPreviewObject(asset, assetIndex, gltf.scene))
       }
@@ -987,9 +1018,10 @@ export function ModelPreview({
       syncPreviewObjectTransformsRef.current = () => undefined
       syncSelectedPreviewObjectRef.current = () => undefined
       previewObjectsByModelIDRef.current = new Map()
-      previewObjectBasePositionsByModelIDRef.current = new Map()
-      previewObjectBaseUsesCADOrientationByModelIDRef.current = new Map()
-      previewObjectBaseTranslationsByModelIDRef.current = new Map()
+      previewObjectsByNodeIDRef.current = new Map()
+      previewObjectBasePositionsByObjectIDRef.current = new Map()
+      previewObjectBaseUsesCADOrientationByObjectIDRef.current = new Map()
+      previewObjectBaseTranslationsByObjectIDRef.current = new Map()
       scene.remove(previewGroup)
       disposeObject3DResources(scene)
       renderer.dispose()

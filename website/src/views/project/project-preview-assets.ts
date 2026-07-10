@@ -14,8 +14,10 @@ export type ProjectPreviewKernelMeshAsset = {
   name: string
   previewFormat: 'kernel-mesh'
   mesh: CadKernelMesh
+  componentMeshes?: CadKernelMesh[]
   meshSummary: CadKernelMeshSummary
   geometrySignature?: string
+  pickTargets?: { modelId: string; nodeId: string; name: string }[]
   transform?: undefined
 }
 
@@ -27,8 +29,46 @@ export type ProjectPreviewSummaryInput = {
   latestPreviewFormat?: string
 }
 
+export type ProjectModelTreeGroup = {
+  model: ProjectModel
+  sourceNodeId: string
+  displayName: string
+  children: { id: string; name: string; sourceModelId: string }[]
+}
+
 export function parsedPreviewModels(models: ProjectModel[]) {
   return models.filter((model) => model.parse_status === 'parsed')
+}
+
+export function buildProjectModelTree(models: ProjectModel[], cadDocument?: ProjectCADDocument): ProjectModelTreeGroup[] {
+  const sourceModelIDByNodeID = buildSourceModelIDByNodeID(cadDocument)
+  const componentNodesByParentID = new Map<string, { id: string; name: string; sourceModelId: string }[]>()
+  for (const node of cadDocument?.nodes ?? []) {
+    if (node.source_format !== 'step-component' || !node.parent_node_id || !node.name.trim()) {
+      continue
+    }
+    const nodes = componentNodesByParentID.get(node.parent_node_id) ?? []
+    nodes.push({ id: node.id, name: node.name.trim(), sourceModelId: node.source_model_id || sourceModelIDByNodeID.get(node.parent_node_id) || node.model_id })
+    componentNodesByParentID.set(node.parent_node_id, nodes)
+  }
+
+  return models.map((model) => {
+    const parentNodeID = `node_${model.id}`
+    const documentChildren = componentNodesByParentID.get(parentNodeID) ?? []
+    const metadataChildren =
+      documentChildren.length > 0
+        ? documentChildren
+        : (model.metadata.components ?? [])
+            .map((component, index) => ({ id: `node_${model.id}_component_${index + 1}`, name: component.name.trim(), sourceModelId: model.id }))
+            .filter((component) => component.name !== '')
+
+    return {
+      model,
+      sourceNodeId: parentNodeID,
+      displayName: metadataChildren.length > 1 ? getSourceDisplayName(model) : getModelDisplayName(model),
+      children: metadataChildren.length > 1 ? metadataChildren : [],
+    }
+  })
 }
 
 export function buildProjectPreviewAssets(
@@ -40,18 +80,38 @@ export function buildProjectPreviewAssets(
 ) {
   const artifactByModelID = new Map(previewArtifacts.map((artifact) => [artifact.model_id, artifact]))
   const transformByModelID = new Map((cadDocument?.nodes ?? []).map((node) => [node.model_id, node.transform]))
+  const sourceModelIDByNodeID = buildSourceModelIDByNodeID(cadDocument)
+  const componentNodesBySourceModelID = new Map<string, { modelId: string; nodeId: string; name: string }[]>()
+  for (const node of cadDocument?.nodes ?? []) {
+    if (node.source_format !== 'step-component' || !node.name.trim()) {
+      continue
+    }
+    const sourceModelID = node.source_model_id || sourceModelIDByNodeID.get(node.parent_node_id) || ''
+    if (!sourceModelID) {
+      continue
+    }
+    const nodes = componentNodesBySourceModelID.get(sourceModelID) ?? []
+    nodes.push({ modelId: sourceModelID, nodeId: node.id, name: node.name.trim() })
+    componentNodesBySourceModelID.set(sourceModelID, nodes)
+  }
 
   return models.flatMap((model): ProjectPreviewAsset[] => {
     const kernelMesh = model.format === 'step' ? kernelMeshesByModelID[model.id] : undefined
     const transform = transformByModelID.get(model.id)
     if (kernelMesh) {
       const geometrySignature = cadKernelGeometryOperationSignature(cadDocument, model.id)
+      const pickTargets =
+        componentNodesBySourceModelID.get(model.id) ??
+        (model.metadata.components ?? [])
+          .map((component, index) => ({ modelId: model.id, nodeId: `node_${model.id}_component_${index + 1}`, name: component.name.trim() }))
+          .filter((component) => component.name !== '')
       return [
         {
           modelId: model.id,
           name: getModelDisplayName(model),
           previewFormat: 'kernel-mesh',
           ...(geometrySignature ? { geometrySignature } : {}),
+          ...(pickTargets.length > 1 ? { pickTargets } : {}),
           ...kernelMesh,
         },
       ]
@@ -74,12 +134,22 @@ export function buildProjectPreviewAssets(
   })
 }
 
+function buildSourceModelIDByNodeID(cadDocument: ProjectCADDocument | undefined) {
+  return new Map((cadDocument?.nodes ?? []).map((node) => [node.id, node.source_model_id || node.model_id] as const))
+}
+
 export function projectPreviewAssetSignature(assets: readonly ProjectPreviewAsset[]) {
   return assets
     .map((asset) => {
       if (asset.previewFormat === 'kernel-mesh') {
         const geometrySignature = asset.geometrySignature ? `:${asset.geometrySignature}` : ''
-        return `${asset.modelId}:${asset.previewFormat}:${asset.mesh.positions.length}:${asset.mesh.normals.length}:${asset.mesh.indices.length}${geometrySignature}`
+        const componentMeshSignature = asset.componentMeshes?.length
+          ? `:${asset.componentMeshes.map((mesh) => `${mesh.positions.length}/${mesh.normals.length}/${mesh.indices.length}`).join(',')}`
+          : ''
+        const pickTargetSignature = asset.pickTargets
+          ? `:${asset.pickTargets.map((target) => `${target.modelId}/${target.nodeId}/${target.name}`).join(',')}`
+          : ''
+        return `${asset.modelId}:${asset.previewFormat}:${asset.mesh.positions.length}:${asset.mesh.normals.length}:${asset.mesh.indices.length}${geometrySignature}${componentMeshSignature}${pickTargetSignature}`
       }
       return `${asset.modelId}:${asset.previewFormat}:${asset.previewUrl}`
     })
@@ -102,8 +172,20 @@ export function cadKernelGeometryOperationSignature(cadDocument: ProjectCADDocum
 }
 
 export function cadKernelOperationsForModel(cadDocument: ProjectCADDocument | undefined, modelId: string): CadKernelOperation[] {
+  const sourceNodeIDs = new Set((cadDocument?.nodes ?? []).filter((node) => node.model_id === modelId).map((node) => node.id))
   return (cadDocument?.operations ?? [])
-    .filter((operation) => operation.model_id === modelId)
+    .filter((operation) => {
+      if (operation.model_id !== modelId) {
+        return false
+      }
+      if (operation.type !== 'transform') {
+        return true
+      }
+      if (!operation.node_id) {
+        return true
+      }
+      return sourceNodeIDs.size > 0 ? sourceNodeIDs.has(operation.node_id) : operation.node_id === `node_${modelId}`
+    })
     .flatMap((operation): CadKernelOperation[] => {
       if (operation.type === 'transform' && operation.transform) {
         return [
@@ -134,6 +216,10 @@ export function getModelDisplayName(model: ProjectModel) {
   if (parsedName) {
     return parsedName
   }
+  return getSourceDisplayName(model)
+}
+
+export function getSourceDisplayName(model: ProjectModel) {
   return model.original_filename.replace(/\.[^.]+$/, '')
 }
 
