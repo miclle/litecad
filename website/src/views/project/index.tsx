@@ -86,6 +86,7 @@ import {
 import { shouldAcceptCADNodeTransformDocument } from './cad-document-cache'
 import { cadTransformWithTranslation, translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
+import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
 import { exportMergedStepTargets, exportStepTarget } from './project-step-export-action'
 import {
   buildProjectPreviewAssets,
@@ -576,6 +577,8 @@ function ProjectView() {
   )
   const stepAssemblyDownloadFilename = stepAssemblyExportFilename(project?.name ?? 'assembly', projectCADDocument?.revision ?? 0)
   const cadNodeByID = useMemo(() => new Map((projectCADDocument?.nodes ?? []).map((node) => [node.id, node])), [projectCADDocument])
+  const keyboardDeleteNode = selectedDocumentNodeID ? cadNodeByID.get(selectedDocumentNodeID) : undefined
+  const canDeleteNodeFromKeyboard = keyboardDeleteNode?.source_format === 'step-component'
   const sourceNodeIDByModelID = useMemo(
     () => new Map((projectCADDocument?.nodes ?? []).flatMap((node) => (node.model_id ? [[node.model_id, node.id] as const] : []))),
     [projectCADDocument],
@@ -760,6 +763,24 @@ function ProjectView() {
       setActiveCADTool('inspect')
     }
   }, [activeCADTool, selectedModel?.format])
+
+  useEffect(() => {
+    if (!keyboardDeleteNode || !canDeleteNodeFromKeyboard || deleteCADNodeMutation.isPending) {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!shouldDeleteSelectedCADNodeFromKey(event)) {
+        return
+      }
+      event.preventDefault()
+      setSelectedNodeDeleteError('')
+      deleteCADNodeMutation.mutate({ nodeId: keyboardDeleteNode.id })
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [canDeleteNodeFromKeyboard, deleteCADNodeMutation, keyboardDeleteNode])
 
   useEffect(() => {
     if (!projectCADDocument) {
