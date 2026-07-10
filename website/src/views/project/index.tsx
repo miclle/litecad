@@ -7,8 +7,6 @@ import {
   useState,
   type CSSProperties,
   type ChangeEvent,
-  type FormEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -22,14 +20,10 @@ import {
   EyeOff,
   FileText,
   HardDrive,
-  History,
   Info,
   PanelLeftClose,
   PanelLeftOpen,
-  Send,
-  Redo2,
   Trash2,
-  Undo2,
   Upload,
   X,
 } from 'lucide-react'
@@ -74,18 +68,18 @@ import {
   orientationFromEvent,
   viewOrientationChangeEventName,
 } from './view-events'
-import { AgentMarkdown } from './agent-markdown'
-import { shouldSubmitAgentInputFromKey } from './agent-input'
 import {
   boxFeatureDraftFromCADBoxFeature,
   defaultBoxFeatureDraft,
   parseBoxFeatureDraft,
   type BoxFeatureDraft,
 } from './cad-document-box-features'
-import { cadHistoryActionForKey, cadHistoryStatusLabel } from './cad-document-history'
+import { cadHistoryActionForKey } from './cad-document-history'
 import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
+import { ProjectAssistantPanel, type AiChatMessage } from './project-assistant-panel'
+import { ProjectHistoryPopover } from './project-history-popover'
 import { ProjectStepExportPopover } from './project-step-export-popover'
 import { exportMergedStepTargets, exportStepTarget } from './project-step-export-action'
 import {
@@ -123,12 +117,6 @@ const defaultAiChatPanelWidth = 420
 const aiChatPanelMinWidth = 340
 const aiChatPanelMaxWidthRatio = 0.5
 const aiChatPanelTransitionMs = 220
-type AiChatMessage = {
-  id: string
-  role: 'assistant' | 'user'
-  body: string
-}
-
 type TransformDraft = Record<keyof CADTranslation, string>
 type CADTool = 'inspect' | 'fuse-box'
 
@@ -1121,8 +1109,7 @@ function ProjectView() {
     uploadModelMutation.mutate(file)
     event.target.value = ''
   }
-  const handleAiChatSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const submitAiChat = () => {
     const messageBody = aiChatDraft.trim()
     if (!messageBody || projectAgentMutation.isPending) {
       return
@@ -1134,17 +1121,6 @@ function ProjectView() {
     setAiChatMessages(nextMessages)
     projectAgentMutation.mutate(messageBody)
     setAiChatDraft('')
-  }
-  const handleAiChatInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    if (!shouldSubmitAgentInputFromKey({
-      key: event.key,
-      shiftKey: event.shiftKey,
-      isComposing: event.nativeEvent.isComposing,
-    })) {
-      return
-    }
-    event.preventDefault()
-    event.currentTarget.form?.requestSubmit()
   }
 
   return (
@@ -1236,102 +1212,21 @@ function ProjectView() {
         </div>
 
         <div className="hidden items-center justify-end gap-1.5 lg:flex">
-          <div className="flex items-center rounded-md border border-[#e2e8f0] bg-white/70 p-0.5">
-            <TopbarTooltip
-              label="Undo"
-              render={
-                <Button
-                  aria-label="Undo"
-                  disabled={cadDocumentCommands.isPending || !projectCADDocument?.history.can_undo}
-                  onClick={() => cadDocumentCommands.changeHistory('undo')}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                />
-              }
-            >
-              <Undo2 />
-            </TopbarTooltip>
-            <TopbarTooltip
-              label="Redo"
-              render={
-                <Button
-                  aria-label="Redo"
-                  disabled={cadDocumentCommands.isPending || !projectCADDocument?.history.can_redo}
-                  onClick={() => cadDocumentCommands.changeHistory('redo')}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                />
-              }
-            >
-              <Redo2 />
-            </TopbarTooltip>
-            <Popover onOpenChange={setIsHistoryOpen} open={isHistoryOpen}>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <PopoverTrigger
-                      render={<Button aria-label="Operation history" size="icon-sm" type="button" variant="ghost" />}
-                    >
-                      <History />
-                    </PopoverTrigger>
-                  }
-                />
-                <TooltipContent sideOffset={8}>Operation history</TooltipContent>
-              </Tooltip>
-              <PopoverContent
-                align="end"
-                aria-label="Operation history"
-                className="relative w-[min(380px,calc(100vw-24px))] gap-0 rounded-md border-[#e2e8f0] bg-white/96 p-2 text-left shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur"
-                sideOffset={10}
-              >
-                <PopoverArrow className="border-[#e2e8f0] bg-white/96" />
-                <PopoverHeader className="px-2 py-2">
-                  <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">Operation history</PopoverTitle>
-                  <PopoverDescription className="text-xs leading-5 text-[#64748b]">
-                    Saved with this project and available on every signed-in device.
-                  </PopoverDescription>
-                </PopoverHeader>
-                {cadDocumentCommands.historyError ? (
-                  <p className="mx-2 border-t border-[#e2e8f0] py-3 text-xs leading-5 text-[#8a2f24]">{cadDocumentCommands.historyError}</p>
-                ) : null}
-                <div className="max-h-72 overflow-y-auto border-t border-[#e2e8f0] py-1">
-                  {projectCADHistoryQuery.isPending ? <p className="px-2 py-4 text-xs text-[#64748b]">Loading history…</p> : null}
-                  {projectCADHistoryQuery.isError ? <p className="px-2 py-4 text-xs text-[#8a2f24]">Could not load operation history.</p> : null}
-                  {!projectCADHistoryQuery.isPending && !projectCADHistoryQuery.isError && projectCADHistory.length === 0 ? (
-                    <p className="px-2 py-4 text-xs leading-5 text-[#64748b]">Edits will appear here after you move, add, or delete model content.</p>
-                  ) : null}
-                  {projectCADHistory.map((entry) => (
-                    <div className="flex items-start gap-3 rounded px-2 py-2.5 hover:bg-[#f8fafc]" key={entry.id}>
-                      <span className="mt-0.5 min-w-8 font-mono text-[10px] text-[#94a3b8]">#{entry.sequence}</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-semibold text-[#1f2937]" title={entry.summary}>
-                          {entry.summary}
-                        </p>
-                        <div className="mt-1 flex items-center justify-between gap-3 font-mono text-[10px] uppercase text-[#64748b]">
-                          <span>{cadHistoryStatusLabel(entry.status)}</span>
-                          <time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {projectCADHistoryQuery.hasNextPage ? (
-                    <Button
-                      className="mx-2 my-2 w-[calc(100%-16px)]"
-                      disabled={projectCADHistoryQuery.isFetchingNextPage}
-                      onClick={() => projectCADHistoryQuery.fetchNextPage()}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      {projectCADHistoryQuery.isFetchingNextPage ? 'Loading…' : 'Load older operations'}
-                    </Button>
-                  ) : null}
-                </div>
-              </PopoverContent>
-            </Popover>
-          </div>
+          <ProjectHistoryPopover
+            canRedo={Boolean(projectCADDocument?.history.can_redo)}
+            canUndo={Boolean(projectCADDocument?.history.can_undo)}
+            entries={projectCADHistory}
+            error={cadDocumentCommands.historyError}
+            hasNextPage={Boolean(projectCADHistoryQuery.hasNextPage)}
+            isFetchingNextPage={projectCADHistoryQuery.isFetchingNextPage}
+            isLoading={projectCADHistoryQuery.isPending}
+            isMutationPending={cadDocumentCommands.isPending}
+            loadError={projectCADHistoryQuery.isError}
+            onFetchNextPage={() => projectCADHistoryQuery.fetchNextPage()}
+            onHistoryAction={cadDocumentCommands.changeHistory}
+            onOpenChange={setIsHistoryOpen}
+            open={isHistoryOpen}
+          />
           <ProjectStepExportPopover
             disabled={stepExportTargets.length === 0 || !projectCADDocument}
             onExport={exportSelectedStepModels}
@@ -1865,96 +1760,19 @@ function ProjectView() {
       </div>
 
       <div className="h-screen min-w-0 overflow-hidden">
-        <aside
-          aria-hidden={!isAiChatOpen}
-          aria-label="Assistant panel"
-          className={`relative flex h-full w-full min-h-0 flex-col overflow-hidden border-l bg-[#ffffff]/96 shadow-[0_10px_28px_rgba(15,23,42,0.06)] backdrop-blur will-change-transform transition-[border-color,box-shadow,opacity,transform] duration-[220ms] ease-out motion-reduce:transition-none ${
-            isAiChatOpen
-              ? 'pointer-events-auto translate-x-0 border-[#d6dbe3] opacity-100'
-              : 'pointer-events-none translate-x-full border-transparent opacity-0 shadow-none'
-          }`}
-          inert={!isAiChatOpen}
-        >
-            <div
-              aria-label="Resize Assistant panel"
-              aria-orientation="vertical"
-              aria-valuemax={aiChatPanelMaxWidth}
-              aria-valuemin={aiChatPanelMinWidth}
-              aria-valuenow={aiChatPanelWidth}
-              className="group absolute left-0 top-0 z-40 h-full w-2 cursor-col-resize"
-              onPointerDown={startAiChatPanelResize}
-              role="separator"
-              title="Resize Assistant panel"
-            >
-              <span className="absolute bottom-3 left-0 top-3 w-px rounded-full bg-transparent transition group-hover:bg-[#94a3b8]" />
-            </div>
-            <div className="flex h-14 shrink-0 items-center justify-between border-b border-[#e2e8f0] px-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
-                  <BotMessageSquare className="size-4 text-[#2563eb]" />
-                  Assistant
-                </div>
-                <p className="mt-0.5 truncate text-[11px] leading-4 text-[#64748b]">
-                  {projectModels.length} project sources attached
-                </p>
-              </div>
-              <button
-                aria-label="Close Assistant"
-                className="grid size-8 shrink-0 place-items-center rounded-md text-[#64748b] transition hover:bg-[#e2e8f0] hover:text-[#0f172a]"
-                onClick={closeAiChat}
-                title="Close Assistant"
-                type="button"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-4">
-              {aiChatMessages.map((message) => (
-                <div
-                  className={`max-w-[96%] rounded-md px-3 py-2 text-sm leading-6 ${
-                    message.role === 'user'
-                      ? 'ml-auto bg-[#0f172a] text-white'
-                      : 'mr-auto border border-[#e2e8f0] bg-white/80 text-[#1f2937]'
-                  }`}
-                  key={message.id}
-                >
-                  {message.role === 'assistant' ? <AgentMarkdown>{message.body}</AgentMarkdown> : message.body}
-                </div>
-              ))}
-            </div>
-
-            <form
-              className="m-4 rounded-xl border border-[#d6dbe3] bg-white/95 p-2 shadow-[0_6px_22px_rgba(15,23,42,0.08)] transition focus-within:border-[#94a3b8] focus-within:shadow-[0_8px_30px_rgba(15,23,42,0.12)]"
-              onSubmit={handleAiChatSubmit}
-            >
-              <label className="sr-only" htmlFor="project-ai-chat-input">
-                Message Assistant
-              </label>
-              <textarea
-                className="min-h-20 w-full resize-none rounded-lg bg-transparent px-2 py-2 text-sm leading-6 text-[#0f172a] outline-none placeholder:text-[#94a3b8]"
-                id="project-ai-chat-input"
-                onChange={(event) => setAiChatDraft(event.target.value)}
-                onKeyDown={handleAiChatInputKeyDown}
-                placeholder="Describe what to inspect or change"
-                readOnly={projectAgentMutation.isPending}
-                value={aiChatDraft}
-              />
-              <div className="flex items-center justify-between gap-2 px-1 pb-1">
-                <div className="h-6 rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-2 font-mono text-[10px] uppercase leading-6 text-[#64748b]">
-                  {projectAgentMutation.isPending ? 'Thinking' : 'Project context'}
-                </div>
-                <button
-                  aria-label="Send Assistant message"
-                  className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#0f172a] text-white shadow-[0_2px_8px_rgba(15,23,42,0.18)] transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:bg-[#d7dde5] disabled:shadow-none"
-                  disabled={aiChatDraft.trim() === '' || projectAgentMutation.isPending}
-                  type="submit"
-                >
-                  <Send className="size-3.5" />
-                </button>
-              </div>
-            </form>
-        </aside>
+        <ProjectAssistantPanel
+          draft={aiChatDraft}
+          isPending={projectAgentMutation.isPending}
+          maxWidth={aiChatPanelMaxWidth}
+          messages={aiChatMessages}
+          onClose={closeAiChat}
+          onDraftChange={setAiChatDraft}
+          onResizePointerDown={startAiChatPanelResize}
+          onSubmit={submitAiChat}
+          open={isAiChatOpen}
+          sourceCount={projectModels.length}
+          width={aiChatPanelWidth}
+        />
       </div>
     </div>
   )

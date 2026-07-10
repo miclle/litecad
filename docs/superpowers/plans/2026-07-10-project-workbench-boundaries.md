@@ -78,7 +78,7 @@ task test
 
 Update `TODO.md` and the browser-kernel roadmap to describe the new command ownership and remaining component work.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit: `refactor(project): isolate cad document commands`
 
@@ -114,7 +114,7 @@ Run: `npm --prefix website test -- project-history-popover project-assistant-pan
 
 Expected: FAIL because the controlled components do not exist.
 
-- [ ] **Step 2: Extract History and Assistant**
+- [x] **Step 2: Extract History and Assistant**
 
 Move markup without changing copy, motion timing, accessibility labels, or shadcn primitive usage. `ProjectView` retains only the state required to compose the surfaces.
 
