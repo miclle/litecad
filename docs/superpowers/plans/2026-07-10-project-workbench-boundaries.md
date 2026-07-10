@@ -234,7 +234,7 @@ task test
 
 Document browser installation and the smoke command in README and AGENTS. Remove the completed Playwright TODO while leaving broader real-model E2E coverage as future work.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Commit: `test(project): add workbench browser smoke`
 
@@ -243,7 +243,6 @@ Commit: `test(project): add workbench browser smoke`
 ### Task 5: Project handler and Go test boundaries
 
 **Files:**
-- Create: `internal/handler/project_types.go`
 - Create: `internal/handler/project_models.go`
 - Create: `internal/handler/project_cad.go`
 - Create: `internal/handler/project_agent.go`
@@ -261,25 +260,25 @@ Commit: `test(project): add workbench browser smoke`
 
 **Interfaces:**
 - Preserve all existing `Ctrl` method names and routes.
-- Preserve request/response DTO JSON shapes and `mapProjectError` behavior.
+- Preserve request/response DTO JSON shapes and `projectError` behavior; keep each DTO next to its owning handler domain.
 - Keep shared handler test setup in `project_test.go`; split tests by project, models, CAD/history, and Agent domains.
 - Split CAD document service tests by document synchronization, node mutation, and box feature behavior without changing package or fixtures.
 
-- [ ] **Step 1: Capture the current handler test inventory**
+- [x] **Step 1: Capture the current handler test inventory**
 
 Run: `go test -tags development ./internal/handler ./internal/service -count=1`
 
 Expected: PASS before the mechanical split.
 
-- [ ] **Step 2: Split production handlers by domain**
+- [x] **Step 2: Split production handlers by domain**
 
 Move declarations without changing function bodies, route registration, errors, or imports beyond what compilation requires.
 
-- [ ] **Step 3: Split the large handler and service test files**
+- [x] **Step 3: Split the large handler and service test files**
 
 Move complete tests and helpers; do not rename tests or weaken assertions.
 
-- [ ] **Step 4: Verify and update docs**
+- [x] **Step 4: Verify and update docs**
 
 Run:
 
@@ -291,7 +290,7 @@ task test
 
 Update `TODO.md` and `.agents/rules/litecad-architecture.md` with the concrete handler file boundaries.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit: `refactor(projects): split handler domains`
 
