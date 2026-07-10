@@ -16,14 +16,11 @@ import {
   Box,
   BotMessageSquare,
   CheckCircle2,
-  Eye,
-  EyeOff,
   FileText,
   HardDrive,
   Info,
   PanelLeftClose,
   PanelLeftOpen,
-  Trash2,
   Upload,
   X,
 } from 'lucide-react'
@@ -80,6 +77,8 @@ import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
 import { ProjectAssistantPanel, type AiChatMessage } from './project-assistant-panel'
 import { ProjectHistoryPopover } from './project-history-popover'
+import { ProjectInspector, type ProjectInspectorSelection, type TransformDraft } from './project-inspector'
+import { ProjectModelTree } from './project-model-tree'
 import { ProjectStepExportPopover } from './project-step-export-popover'
 import { exportMergedStepTargets, exportStepTarget } from './project-step-export-action'
 import {
@@ -117,7 +116,6 @@ const defaultAiChatPanelWidth = 420
 const aiChatPanelMinWidth = 340
 const aiChatPanelMaxWidthRatio = 0.5
 const aiChatPanelTransitionMs = 220
-type TransformDraft = Record<keyof CADTranslation, string>
 type CADTool = 'inspect' | 'fuse-box'
 
 function TopbarTooltip({
@@ -214,46 +212,6 @@ function translationsEqual(left: CADTranslation | undefined, right: CADTranslati
 
 function transformDraftsEqual(left: TransformDraft | undefined, right: TransformDraft | undefined) {
   return !!left && !!right && left.x === right.x && left.y === right.y && left.z === right.z
-}
-
-function formatCADReadout(value: string) {
-  const numberValue = Number(value)
-  if (!Number.isFinite(numberValue)) {
-    return value
-  }
-  const roundedValue = Math.abs(numberValue) < 0.0005 ? 0 : numberValue
-  return new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: 3,
-    useGrouping: false,
-  }).format(roundedValue)
-}
-
-function CompactPositionField({
-  ariaLabel,
-  label,
-  onChange,
-  value,
-}: {
-  ariaLabel: string
-  label: string
-  onChange: (value: string) => void
-  value: string
-}) {
-  return (
-    <Field className="min-w-0 gap-1" orientation="vertical">
-      <FieldLabel className="font-mono text-[10px] font-semibold uppercase leading-3 text-[#64748b]">{label}</FieldLabel>
-      <Input
-        aria-label={ariaLabel}
-        className="h-7 rounded border-[#dbe3ec] bg-white px-1 text-right font-mono text-[10px] text-[#0f172a] focus-visible:border-[#64748b] focus-visible:ring-[#cbd5e1]"
-        inputMode="decimal"
-        onChange={(event) => onChange(event.target.value)}
-        step="0.1"
-        title={value}
-        type="number"
-        value={formatCADReadout(value)}
-      />
-    </Field>
-  )
 }
 
 function NumericCADField({
@@ -897,6 +855,21 @@ function ProjectView() {
         ]
       : []),
   ]
+  const inspectorSelection: ProjectInspectorSelection | undefined =
+    selectedDocumentNode && selectedModelTransformDraft
+      ? {
+          canDelete: selectedDocumentNodeCanDelete,
+          deleteError: cadDocumentCommands.deleteError,
+          details: selectedModelDetails,
+          isDeleting: isSelectedDocumentNodeDeleting,
+          name: selectedModelDisplayName,
+          nodeId: selectedDocumentNode.id,
+          stepExportError: selectedModelStepExportError,
+          stepExportStatus: selectedModelStepExportStatus,
+          transformDraft: selectedModelTransformDraft,
+          transformError: selectedModelTransformError,
+        }
+      : undefined
   const canvasStatusLeftOffset = isLeftPanelCollapsed ? 16 : leftPanelWidth + 32
   const canvasRightOffset = 20
   const cadWorkspaceMinWidth = (isLeftPanelCollapsed ? 196 : leftPanelWidth) + 260
@@ -1521,236 +1494,35 @@ function ProjectView() {
                   </p>
                 </section>
 
-                <section className="mt-8">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-mono text-[11px] uppercase text-[#64748b]">Model</p>
-                  </div>
+                <ProjectModelTree
+                  groups={projectModelTree}
+                  hiddenModelIds={hiddenModelIDs}
+                  isLoading={projectModelsQuery.isLoading}
+                  isUploading={uploadModelMutation.isPending}
+                  onSelect={(modelId, nodeId) => {
+                    setSelectedModelID(modelId)
+                    setSelectedDocumentNodeID(nodeId)
+                    cadDocumentCommands.clearDeleteError()
+                  }}
+                  onToggleVisibility={toggleModelVisibility}
+                  previewAssetModelIds={previewAssetModelIDs}
+                  selectedNodeId={selectedDocumentNodeID}
+                  uploadError={uploadError}
+                />
 
-                  <div aria-label="Project models" className="mt-3 grid gap-2" role="listbox">
-                    {projectModelsQuery.isLoading && (
-                      <div className="px-2 py-2 font-mono text-[11px] uppercase text-[#64748b]">
-                        Loading model tree
-                      </div>
-                    )}
-                    {!projectModelsQuery.isLoading && projectModels.length === 0 && (
-                      <div className="px-2 py-3 text-sm leading-6 text-[#64748b]">
-                        Import a CAD model to populate the project tree.
-                      </div>
-                    )}
-                    {projectModelTree.map((group) => {
-                      const model = group.model
-                      const modelDisplayName = group.displayName
-                      const isModelHidden = hiddenModelIDs.has(model.id)
-                      const isSelectedSourceNode = selectedDocumentNodeID === group.sourceNodeId
-                      const hasPreviewAsset = previewAssetModelIDs.has(model.id)
-                      const VisibilityIcon = isModelHidden ? EyeOff : Eye
-
-                      return (
-                        <div className="grid gap-1" key={model.id}>
-                          <div
-                            className={`group/model-row min-w-0 rounded-md px-2 py-1.5 text-sm transition ${
-                              isSelectedSourceNode
-                                ? 'bg-[#eff6ff] text-[#0f172a] ring-1 ring-[#bfdbfe]'
-                                : isModelHidden
-                                ? 'text-[#94a3b8] hover:bg-[#f1f5f9]'
-                                : 'text-[#1f2937] hover:bg-[#f1f5f9]'
-                            }`}
-                          >
-                            <div className="flex min-w-0 items-center gap-2">
-                              <button
-                                aria-selected={isSelectedSourceNode}
-                                className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]"
-                                onClick={() => {
-                                  setSelectedModelID(model.id)
-                                  setSelectedDocumentNodeID(group.sourceNodeId)
-                                  cadDocumentCommands.clearDeleteError()
-                                }}
-                                role="option"
-                                title={modelDisplayName}
-                                type="button"
-                              >
-                                <FileText
-                                  className={`size-4 shrink-0 ${
-                                    isSelectedSourceNode ? 'text-[#1d4ed8]' : isModelHidden ? 'text-[#94a3b8]' : 'text-[#475569]'
-                                  }`}
-                                />
-                                <span className="min-w-0 flex-1 truncate">{modelDisplayName}</span>
-                                {group.children.length > 0 && (
-                                  <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">{group.children.length} models</span>
-                                )}
-                              </button>
-                              {hasPreviewAsset && (
-                                <button
-                                  aria-label={isModelHidden ? `Show ${modelDisplayName}` : `Hide ${modelDisplayName}`}
-                                  aria-pressed={!isModelHidden}
-                                  className={`grid size-6 shrink-0 place-items-center rounded text-[#64748b] opacity-0 transition hover:bg-[#e2e8f0] hover:text-[#0f172a] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] group-hover/model-row:opacity-100 ${
-                                    isModelHidden ? 'opacity-100 text-[#94a3b8]' : ''
-                                  }`}
-                                  onClick={() => toggleModelVisibility(model.id)}
-                                  title={isModelHidden ? 'Show model' : 'Hide model'}
-                                  type="button"
-                                >
-                                  <VisibilityIcon className="size-3.5" />
-                                </button>
-                              )}
-                              <div
-                                aria-label={model.parse_status === 'parsed' ? 'Model preview is ready' : 'Model is being processed'}
-                                className={`size-1.5 shrink-0 rounded-full ${
-                                  model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'
-                                }`}
-                              />
-                            </div>
-                          </div>
-                          {group.children.length > 0 && (
-                            <div className="grid gap-1 pl-5">
-                              {group.children.map((child) => (
-                                (() => {
-                                  const isSelectedChild = selectedDocumentNodeID === child.id
-                                  return (
-                                    <button
-                                      aria-selected={isSelectedChild}
-                                      className={`flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8] ${
-                                        isSelectedChild
-                                          ? 'bg-[#eff6ff] text-[#0f172a] ring-1 ring-[#bfdbfe]'
-                                          : isModelHidden
-                                          ? 'text-[#94a3b8] hover:bg-[#f1f5f9]'
-                                          : 'text-[#334155] hover:bg-[#f1f5f9]'
-                                      }`}
-                                      key={child.id}
-                                      onClick={() => {
-                                        setSelectedModelID(child.sourceModelId || model.id)
-                                        setSelectedDocumentNodeID(child.id)
-                                        cadDocumentCommands.clearDeleteError()
-                                      }}
-                                      role="option"
-                                      title={child.name}
-                                      type="button"
-                                    >
-                                      <Box
-                                        className={`size-3.5 shrink-0 ${
-                                          isSelectedChild ? 'text-[#1d4ed8]' : isModelHidden ? 'text-[#94a3b8]' : 'text-[#64748b]'
-                                        }`}
-                                      />
-                                      <span className="min-w-0 flex-1 truncate">{child.name}</span>
-                                    </button>
-                                  )
-                                })()
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                    {uploadModelMutation.isPending && (
-                      <div className="rounded-md border border-[#e2e8f0] bg-[#f1f5f9] px-3 py-3 font-mono text-[11px] uppercase text-[#475569]">
-                        Importing model
-                      </div>
-                    )}
-                    {uploadError && <p className="text-sm leading-6 text-[#8a2f24]">{uploadError}</p>}
-                  </div>
-                </section>
-
-                <section className="mt-auto pt-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-mono text-[11px] uppercase text-[#64748b]">Document</p>
-                    {selectedDocumentNode && (
-                      <button
-                        className="rounded px-1.5 py-0.5 text-[11px] font-medium text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]"
-                        onClick={() => {
-                          setSelectedModelID('')
-                          setSelectedDocumentNodeID('')
-                          cadDocumentCommands.clearDeleteError()
-                        }}
-                        type="button"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                  {selectedDocumentNode && selectedModelTransformDraft ? (
-                    <div className="mt-2 grid gap-2 text-xs">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Box className="size-4 shrink-0 text-[#1d4ed8]" />
-                          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#0f172a]" title={selectedModelDisplayName}>
-                            {selectedModelDisplayName}
-                          </p>
-                          {selectedDocumentNodeCanDelete && (
-                            <button
-                              aria-label={`Delete ${selectedModelDisplayName}`}
-                              className="grid size-7 shrink-0 place-items-center rounded-md text-[#9f3a2d] transition hover:bg-[#fee2e2] hover:text-[#7f1d1d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fca5a5] disabled:cursor-not-allowed disabled:opacity-50"
-                              disabled={isSelectedDocumentNodeDeleting}
-                              onClick={deleteSelectedDocumentNode}
-                              title="Delete model"
-                              type="button"
-                            >
-                              <Trash2 className="size-3.5" />
-                            </button>
-                          )}
-                        </div>
-                        <dl className="mt-2 grid gap-1.5 text-xs">
-                          {selectedModelDetails.map((detail) => (
-                            <div
-                              className="flex items-center justify-between gap-3 border-b border-[#e2e8f0] py-1.5 last:border-b-0"
-                              key={detail.label}
-                            >
-                              <dt className="text-[#64748b]">{detail.label}</dt>
-                              <dd className="truncate text-[#1f2937]">{detail.value}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </div>
-
-                      <div className="border-t border-[#e2e8f0] pt-2.5">
-                        <div className="flex min-w-0 items-start justify-between gap-2">
-                          <div className="flex min-w-0 flex-col gap-0.5">
-                            <p className="text-xs font-medium text-[#334155]">Position</p>
-                          </div>
-                          <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">{documentUnitLabel}</span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-1 pb-2 pt-1.5">
-                          {(['x', 'y', 'z'] as const).map((axis) => (
-                            <CompactPositionField
-                              ariaLabel={`${axis.toUpperCase()} position for ${selectedModelDisplayName}`}
-                              key={axis}
-                              label={axis}
-                              onChange={(value) => updateTransformDraftField(selectedDocumentNode.id, axis, value)}
-                              value={selectedModelTransformDraft[axis]}
-                            />
-                          ))}
-                        </div>
-                        {selectedModelTransformError && (
-                          <p className="mt-2 text-[11px] leading-4 text-[#8a2f24]">{selectedModelTransformError}</p>
-                        )}
-                      </div>
-
-                      {selectedModelStepExportError && (
-                        <p className="text-[11px] leading-4 text-[#8a2f24]">{selectedModelStepExportError}</p>
-                      )}
-                      {cadDocumentCommands.deleteError && (
-                        <p className="text-[11px] leading-4 text-[#8a2f24]">{cadDocumentCommands.deleteError}</p>
-                      )}
-                      {selectedModelStepExportStatus && (
-                        <p className="text-[11px] leading-4 text-[#3f6212]">{selectedModelStepExportStatus}</p>
-                      )}
-                    </div>
-                  ) : (
-                    <dl className="mt-2 grid gap-1.5 text-xs">
-                      {documentDetails.map((detail) => (
-                        <div
-                          className="flex items-center justify-between gap-3 border-b border-[#e2e8f0] py-1.5 last:border-b-0"
-                          key={detail.label}
-                        >
-                          <dt className="text-[#64748b]">{detail.label}</dt>
-                          <dd className="truncate text-[#1f2937]">{detail.value}</dd>
-                        </div>
-                      ))}
-                      {projectModels.length > 0 && (
-                        <div className="pt-2 text-[11px] leading-4 text-[#64748b]">Select a model to inspect placement and features.</div>
-                      )}
-                    </dl>
-                  )}
-                </section>
+                <ProjectInspector
+                  documentDetails={documentDetails}
+                  modelCount={projectModels.length}
+                  onClear={() => {
+                    setSelectedModelID('')
+                    setSelectedDocumentNodeID('')
+                    cadDocumentCommands.clearDeleteError()
+                  }}
+                  onDelete={deleteSelectedDocumentNode}
+                  onTransformChange={updateTransformDraftField}
+                  selected={inspectorSelection}
+                  unitLabel={documentUnitLabel}
+                />
               </div>
             </>
           )}

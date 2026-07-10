@@ -21,7 +21,7 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 
 ## Frontend
 
-- Continue shrinking the project workbench hotspots after moving serialized CAD command coordination, revision conflicts, transform autosave, STEP export feedback, History controls, and the Assistant panel out of `website/src/views/project/index.tsx`. Next extract the model tree and inspector surfaces, then split scene/resource/selection lifecycles in `website/src/views/project/model-preview.tsx` while keeping renderer lifecycle, view events, and resource disposal aligned with the project rules.
+- Continue shrinking the project workbench hotspots after moving serialized CAD command coordination, revision conflicts, transform autosave, STEP export feedback, History controls, Assistant, model tree, and Inspector out of `website/src/views/project/index.tsx`. Next split scene/resource/selection lifecycles in `website/src/views/project/model-preview.tsx` while keeping renderer lifecycle, view events, and resource disposal aligned with the project rules.
 - Add route protection UX for `/projects` and `/projects/:projectId` so signed-out users get a deliberate sign-in flow instead of only relying on the Axios 401 redirect.
 - Add focused tests for project creation UI behavior and project detail loading/error states.
 - Introduce Playwright-based browser verification for the existing CAD workbench flows. Start with an optional task for installing Chromium and local screenshot/interaction smoke checks; only fold Playwright browser installation into `task install` or CI once real Playwright tests are part of the supported test suite.

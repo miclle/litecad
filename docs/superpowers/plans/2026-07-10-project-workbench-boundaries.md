@@ -106,7 +106,7 @@ Commit: `refactor(project): isolate cad document commands`
 - `ProjectModelTree` receives model groups, selection, visibility, loading state, and selection/visibility callbacks.
 - `ProjectInspector` receives the selected node/model presentation model and edit/delete callbacks.
 
-- [ ] **Step 1: Write failing component interaction tests**
+- [x] **Step 1: Write failing component interaction tests**
 
 Verify History action disabling, Assistant submit/close behavior, tree source/child selection, visibility toggles, inspector transform edits, and delete action forwarding.
 
@@ -118,11 +118,11 @@ Expected: FAIL because the controlled components do not exist.
 
 Move markup without changing copy, motion timing, accessibility labels, or shadcn primitive usage. `ProjectView` retains only the state required to compose the surfaces.
 
-- [ ] **Step 3: Extract Project Tree and Inspector**
+- [x] **Step 3: Extract Project Tree and Inspector**
 
 Move the left-panel model tree and document inspector. Pass presentation data and stable callbacks; do not duplicate source/node ID derivation inside components.
 
-- [ ] **Step 4: Verify and update docs**
+- [x] **Step 4: Verify and update docs**
 
 Run:
 
