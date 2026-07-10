@@ -4,6 +4,7 @@ import client from './client'
 import {
   deleteProjectCADNode,
   fetchProjectCADDocument,
+  fetchProjectCADHistory,
   fetchProjectAgentMessages,
   fetchProjectGeometryDocument,
   fetchProjectModelPreview,
@@ -11,6 +12,8 @@ import {
   fetchProjectModelSource,
   addProjectCADModelBoxUnion,
   sendProjectAgentMessage,
+  redoProjectCADDocument,
+  undoProjectCADDocument,
   updateProjectCADNodeTransform,
   updateProjectCADModelTransform,
   uploadProjectThumbnailSnapshot,
@@ -85,10 +88,11 @@ describe('project API', () => {
       matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1] as const,
     }
 
-    updateProjectCADModelTransform('prj_01test', 'mdl_01test', transform)
+    updateProjectCADModelTransform('prj_01test', 'mdl_01test', transform, 7)
 
     expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/cad-document/models/mdl_01test/transform', {
       transform,
+      expected_revision: 7,
     })
   })
 
@@ -97,17 +101,20 @@ describe('project API', () => {
       matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1] as const,
     }
 
-    updateProjectCADNodeTransform('prj_01test', 'node_01test', transform)
+    updateProjectCADNodeTransform('prj_01test', 'node_01test', transform, 8)
 
     expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/cad-document/nodes/node_01test/transform', {
       transform,
+      expected_revision: 8,
     })
   })
 
   test('deletes a project CAD document node', () => {
-    deleteProjectCADNode('prj_01test', 'node_01test_component_2')
+    deleteProjectCADNode('prj_01test', 'node_01test_component_2', 9)
 
-    expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/cad-document/nodes/node_01test_component_2')
+    expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/cad-document/nodes/node_01test_component_2', {
+      data: { expected_revision: 9 },
+    })
   })
 
   test('adds a project CAD model box-union feature', () => {
@@ -116,11 +123,22 @@ describe('project API', () => {
       size: [8, 6, 3] as const,
     }
 
-    addProjectCADModelBoxUnion('prj_01test', 'mdl_01test', box)
+    addProjectCADModelBoxUnion('prj_01test', 'mdl_01test', box, 10)
 
     expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/models/mdl_01test/box-union', {
       box,
+      expected_revision: 10,
     })
+  })
+
+  test('fetches and changes persisted CAD history', () => {
+    fetchProjectCADHistory('prj_01test', 42)
+    undoProjectCADDocument('prj_01test', 11)
+    redoProjectCADDocument('prj_01test', 12)
+
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/cad-document/history', { params: { before_sequence: 42 } })
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/history/undo', { expected_revision: 11 })
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/history/redo', { expected_revision: 12 })
   })
 
   test('sends project agent messages', () => {

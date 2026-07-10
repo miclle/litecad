@@ -1,4 +1,4 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   useEffect,
   useCallback,
@@ -23,11 +23,14 @@ import {
   EyeOff,
   FileText,
   HardDrive,
+  History,
   Info,
   PanelLeftClose,
   PanelLeftOpen,
   Send,
+  Redo2,
   Trash2,
+  Undo2,
   Upload,
   X,
 } from 'lucide-react'
@@ -40,11 +43,14 @@ import {
   fetchProjectAgentMessages,
   fetchProject,
   fetchProjectCADDocument,
+  fetchProjectCADHistory,
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
   fetchProjectModels,
   sendProjectAgentMessage,
+  redoProjectCADDocument,
+  undoProjectCADDocument,
   updateProjectCADNodeTransform,
   uploadProjectThumbnailSnapshot,
   uploadProjectModel,
@@ -84,6 +90,7 @@ import {
   type BoxFeatureDraft,
 } from './cad-document-box-features'
 import { shouldAcceptCADNodeTransformDocument } from './cad-document-cache'
+import { cadHistoryActionForKey, cadHistoryStatusLabel } from './cad-document-history'
 import { cadTransformWithTranslation, translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
@@ -310,6 +317,7 @@ function ProjectView() {
   const [isAiChatPanelResizing, setIsAiChatPanelResizing] = useState(false)
   const [isProjectInfoOpen, setIsProjectInfoOpen] = useState(false)
   const [isStepExportOpen, setIsStepExportOpen] = useState(false)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [aiChatDraft, setAiChatDraft] = useState('')
   const [aiChatMessages, setAiChatMessages] = useState<AiChatMessage[]>(initialAiChatMessages)
   const [leftPanelWidth, setLeftPanelWidth] = useState(defaultLeftPanelWidth)
@@ -331,6 +339,7 @@ function ProjectView() {
   const [stepExportErrorByModelID, setStepExportErrorByModelID] = useState<Record<string, string>>({})
   const [stepExportStatusByModelID, setStepExportStatusByModelID] = useState<Record<string, string>>({})
   const [stepExportBatchError, setStepExportBatchError] = useState('')
+  const [cadHistoryError, setCADHistoryError] = useState('')
   const [selectedStepExportTargetIDs, setSelectedStepExportTargetIDs] = useState<Set<string>>(() => new Set())
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
   const hasTouchedStepExportSelectionRef = useRef(false)
@@ -338,6 +347,33 @@ function ProjectView() {
   const latestTransformSaveRequestByModelIDRef = useRef<Record<string, number>>({})
   const transformAutosaveTimersRef = useRef<Record<string, number>>({})
   const lastRequestedThumbnailSignatureRef = useRef('')
+  const cadDocumentCommandQueueRef = useRef<Promise<unknown>>(Promise.resolve())
+
+  function enqueueCADDocumentCommand<T>(command: () => Promise<T>) {
+    const queuedCommand = cadDocumentCommandQueueRef.current.then(command, command)
+    cadDocumentCommandQueueRef.current = queuedCommand.then(
+      () => undefined,
+      () => undefined,
+    )
+    return queuedCommand
+  }
+
+  function currentCADDocument() {
+    return queryClient.getQueryData<ProjectCADDocument>(['projects', projectId, 'cad-document'])
+  }
+
+  async function refreshCADDocumentAfterConflict(error: unknown) {
+    if ((error as { response?: { status?: number } }).response?.status !== 409) {
+      return false
+    }
+    setCADHistoryError('Document changed in another session. Latest version loaded.')
+    setIsHistoryOpen(true)
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] }),
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] }),
+    ])
+    return true
+  }
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: async () => (await fetchProject(projectId)).data.project,
@@ -402,9 +438,17 @@ function ProjectView() {
       requestVersion: number
       translation: CADTranslation
     }) => {
-      const currentNode = projectCADDocument?.nodes.find((node) => node.id === nodeId)
-      const transform = cadTransformWithTranslation(currentNode?.transform, translation)
-      return (await updateProjectCADNodeTransform(projectId, nodeId, transform)).data.document
+      return enqueueCADDocumentCommand(async () => {
+        const currentDocument = currentCADDocument()
+        if (!currentDocument) {
+          throw new Error('CAD document is not loaded')
+        }
+        const currentNode = currentDocument.nodes.find((node) => node.id === nodeId)
+        const transform = cadTransformWithTranslation(currentNode?.transform, translation)
+        const document = (await updateProjectCADNodeTransform(projectId, nodeId, transform, currentDocument.revision)).data.document
+        queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
+        return document
+      })
     },
     onSuccess: async (document, variables) => {
       if ((latestTransformSaveRequestByModelIDRef.current[variables.nodeId] ?? 0) > variables.requestVersion) {
@@ -423,16 +467,29 @@ function ProjectView() {
       }
       setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.nodeId]: '' }))
       queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
+      setCADHistoryError('')
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
     },
-    onError: (_error, variables) => {
+    onError: async (error, variables) => {
       if ((latestTransformSaveRequestByModelIDRef.current[variables.nodeId] ?? 0) > variables.requestVersion) {
         return
       }
-      setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.nodeId]: 'Invalid transform' }))
+      if (!(await refreshCADDocumentAfterConflict(error))) {
+        setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.nodeId]: 'Invalid transform' }))
+      }
     },
   })
   const deleteCADNodeMutation = useMutation({
-    mutationFn: async ({ nodeId }: { nodeId: string }) => (await deleteProjectCADNode(projectId, nodeId)).data.document,
+    mutationFn: async ({ nodeId }: { nodeId: string }) =>
+      enqueueCADDocumentCommand(async () => {
+        const currentDocument = currentCADDocument()
+        if (!currentDocument) {
+          throw new Error('CAD document is not loaded')
+        }
+        const document = (await deleteProjectCADNode(projectId, nodeId, currentDocument.revision)).data.document
+        queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
+        return document
+      }),
     onSuccess: async (document, variables) => {
       clearTransformAutosaveTimer(variables.nodeId)
       delete latestTransformDraftsRef.current[variables.nodeId]
@@ -451,9 +508,13 @@ function ProjectView() {
       setSelectedModelID('')
       setSelectedDocumentNodeID('')
       queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
+      setCADHistoryError('')
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
     },
-    onError: () => {
-      setSelectedNodeDeleteError('Could not delete this model')
+    onError: async (error) => {
+      if (!(await refreshCADDocumentAfterConflict(error))) {
+        setSelectedNodeDeleteError('Could not delete this model')
+      }
     },
   })
   const addCADModelBoxUnionMutation = useMutation({
@@ -461,16 +522,52 @@ function ProjectView() {
       if (!box) {
         throw new Error('Invalid box feature')
       }
-      return (await addProjectCADModelBoxUnion(projectId, modelId, box)).data.document
+      return enqueueCADDocumentCommand(async () => {
+        const currentDocument = currentCADDocument()
+        if (!currentDocument) {
+          throw new Error('CAD document is not loaded')
+        }
+        const document = (await addProjectCADModelBoxUnion(projectId, modelId, box, currentDocument.revision)).data.document
+        queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
+        return document
+      })
     },
     onSuccess: async (document, variables) => {
       setBoxFeatureErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: '' }))
       queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
+      setCADHistoryError('')
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
     },
-    onError: (_error, variables) => {
-      setBoxFeatureErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: 'Invalid box feature' }))
+    onError: async (error, variables) => {
+      if (!(await refreshCADDocumentAfterConflict(error))) {
+        setBoxFeatureErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.modelId]: 'Invalid box feature' }))
+      }
     },
   })
+  const cadHistoryMutation = useMutation({
+    mutationFn: async (action: 'undo' | 'redo') =>
+      enqueueCADDocumentCommand(async () => {
+        const currentDocument = currentCADDocument()
+        if (!currentDocument) {
+          throw new Error('CAD document is not loaded')
+        }
+        const request = action === 'undo' ? undoProjectCADDocument : redoProjectCADDocument
+        const document = (await request(projectId, currentDocument.revision)).data.document
+        queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
+        return document
+      }),
+    onSuccess: async () => {
+      setCADHistoryError('')
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
+    },
+    onError: async (error) => {
+      if (!(await refreshCADDocumentAfterConflict(error))) {
+        setCADHistoryError('Could not change document history')
+      }
+    },
+  })
+  const isCADDocumentMutationPending =
+    updateCADNodeTransformMutation.isPending || deleteCADNodeMutation.isPending || addCADModelBoxUnionMutation.isPending || cadHistoryMutation.isPending
   const thumbnailSnapshotMutation = useMutation({
     mutationFn: async ({
       snapshot,
@@ -566,6 +663,14 @@ function ProjectView() {
     enabled: projectId !== '' && projectModelsQuery.isSuccess,
   })
   const projectCADDocument = projectCADDocumentQuery.data
+  const projectCADHistoryQuery = useInfiniteQuery({
+    queryKey: ['projects', projectId, 'cad-document', 'history'],
+    queryFn: async ({ pageParam }) => (await fetchProjectCADHistory(projectId, pageParam)).data,
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_before_sequence,
+    enabled: projectId !== '' && Boolean(projectCADDocument) && isHistoryOpen,
+  })
+  const projectCADHistory = projectCADHistoryQuery.data?.pages.flatMap((page) => page.entries) ?? []
   const documentUnitLabel = cadUnitLabel(projectCADDocument?.unit)
   const stepExportTargets = useMemo(
     () => buildStepExportTargets(projectModels, projectCADDocument),
@@ -765,7 +870,25 @@ function ProjectView() {
   }, [activeCADTool, selectedModel?.format])
 
   useEffect(() => {
-    if (!keyboardDeleteNode || !canDeleteNodeFromKeyboard || deleteCADNodeMutation.isPending) {
+    const handleHistoryKeyDown = (event: KeyboardEvent) => {
+      const action = cadHistoryActionForKey(event)
+      if (!action || isCADDocumentMutationPending) {
+        return
+      }
+      const canRun = action === 'undo' ? projectCADDocument?.history.can_undo : projectCADDocument?.history.can_redo
+      if (!canRun) {
+        return
+      }
+      event.preventDefault()
+      cadHistoryMutation.mutate(action)
+    }
+
+    window.addEventListener('keydown', handleHistoryKeyDown)
+    return () => window.removeEventListener('keydown', handleHistoryKeyDown)
+  }, [cadHistoryMutation, isCADDocumentMutationPending, projectCADDocument?.history.can_redo, projectCADDocument?.history.can_undo])
+
+  useEffect(() => {
+    if (!keyboardDeleteNode || !canDeleteNodeFromKeyboard || isCADDocumentMutationPending) {
       return
     }
 
@@ -780,7 +903,7 @@ function ProjectView() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [canDeleteNodeFromKeyboard, deleteCADNodeMutation, keyboardDeleteNode])
+  }, [canDeleteNodeFromKeyboard, deleteCADNodeMutation, isCADDocumentMutationPending, keyboardDeleteNode])
 
   useEffect(() => {
     if (!projectCADDocument) {
@@ -1340,6 +1463,100 @@ function ProjectView() {
         </div>
 
         <div className="hidden items-center justify-end gap-1.5 lg:flex">
+          <div className="flex items-center rounded-md border border-[#e2e8f0] bg-white/70 p-0.5">
+            <TopbarTooltip
+              label="Undo"
+              render={
+                <Button
+                  aria-label="Undo"
+                  disabled={isCADDocumentMutationPending || !projectCADDocument?.history.can_undo}
+                  onClick={() => cadHistoryMutation.mutate('undo')}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                />
+              }
+            >
+              <Undo2 />
+            </TopbarTooltip>
+            <TopbarTooltip
+              label="Redo"
+              render={
+                <Button
+                  aria-label="Redo"
+                  disabled={isCADDocumentMutationPending || !projectCADDocument?.history.can_redo}
+                  onClick={() => cadHistoryMutation.mutate('redo')}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                />
+              }
+            >
+              <Redo2 />
+            </TopbarTooltip>
+            <Popover onOpenChange={setIsHistoryOpen} open={isHistoryOpen}>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <PopoverTrigger
+                      render={<Button aria-label="Operation history" size="icon-sm" type="button" variant="ghost" />}
+                    >
+                      <History />
+                    </PopoverTrigger>
+                  }
+                />
+                <TooltipContent sideOffset={8}>Operation history</TooltipContent>
+              </Tooltip>
+              <PopoverContent
+                align="end"
+                aria-label="Operation history"
+                className="relative w-[min(380px,calc(100vw-24px))] gap-0 rounded-md border-[#e2e8f0] bg-white/96 p-2 text-left shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur"
+                sideOffset={10}
+              >
+                <PopoverArrow className="border-[#e2e8f0] bg-white/96" />
+                <PopoverHeader className="px-2 py-2">
+                  <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">Operation history</PopoverTitle>
+                  <PopoverDescription className="text-xs leading-5 text-[#64748b]">
+                    Saved with this project and available on every signed-in device.
+                  </PopoverDescription>
+                </PopoverHeader>
+                {cadHistoryError ? <p className="mx-2 border-t border-[#e2e8f0] py-3 text-xs leading-5 text-[#8a2f24]">{cadHistoryError}</p> : null}
+                <div className="max-h-72 overflow-y-auto border-t border-[#e2e8f0] py-1">
+                  {projectCADHistoryQuery.isPending ? <p className="px-2 py-4 text-xs text-[#64748b]">Loading history…</p> : null}
+                  {projectCADHistoryQuery.isError ? <p className="px-2 py-4 text-xs text-[#8a2f24]">Could not load operation history.</p> : null}
+                  {!projectCADHistoryQuery.isPending && !projectCADHistoryQuery.isError && projectCADHistory.length === 0 ? (
+                    <p className="px-2 py-4 text-xs leading-5 text-[#64748b]">Edits will appear here after you move, add, or delete model content.</p>
+                  ) : null}
+                  {projectCADHistory.map((entry) => (
+                    <div className="flex items-start gap-3 rounded px-2 py-2.5 hover:bg-[#f8fafc]" key={entry.id}>
+                      <span className="mt-0.5 min-w-8 font-mono text-[10px] text-[#94a3b8]">#{entry.sequence}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-[#1f2937]" title={entry.summary}>
+                          {entry.summary}
+                        </p>
+                        <div className="mt-1 flex items-center justify-between gap-3 font-mono text-[10px] uppercase text-[#64748b]">
+                          <span>{cadHistoryStatusLabel(entry.status)}</span>
+                          <time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {projectCADHistoryQuery.hasNextPage ? (
+                    <Button
+                      className="mx-2 my-2 w-[calc(100%-16px)]"
+                      disabled={projectCADHistoryQuery.isFetchingNextPage}
+                      onClick={() => projectCADHistoryQuery.fetchNextPage()}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      {projectCADHistoryQuery.isFetchingNextPage ? 'Loading…' : 'Load older operations'}
+                    </Button>
+                  ) : null}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
           <Popover onOpenChange={setIsStepExportOpen} open={isStepExportOpen}>
             <Tooltip>
               <TooltipTrigger

@@ -6,6 +6,7 @@ import type {
   ProjectAgentMessageResponse,
   ProjectAgentMessagesResponse,
   ProjectCADDocumentResponse,
+  ProjectCADHistoryResponse,
   ProjectGeometryDocumentResponse,
   ProjectThumbnailSnapshotResponse,
   ProjectModelPreviewArtifactResponse,
@@ -32,20 +33,49 @@ export function fetchProjectCADDocument(projectId: string) {
   return client.get<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document`)
 }
 
-export function updateProjectCADModelTransform(projectId: string, modelId: string, transform: CADTransform) {
-  return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/models/${modelId}/transform`, { transform })
+export function updateProjectCADModelTransform(projectId: string, modelId: string, transform: CADTransform, expectedRevision: number) {
+  return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/models/${modelId}/transform`, {
+    transform,
+    expected_revision: expectedRevision,
+  })
 }
 
-export function updateProjectCADNodeTransform(projectId: string, nodeId: string, transform: CADTransform) {
-  return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/nodes/${nodeId}/transform`, { transform })
+export function updateProjectCADNodeTransform(projectId: string, nodeId: string, transform: CADTransform, expectedRevision: number) {
+  return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/nodes/${nodeId}/transform`, {
+    transform,
+    expected_revision: expectedRevision,
+  })
 }
 
-export function deleteProjectCADNode(projectId: string, nodeId: string) {
-  return client.delete<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/nodes/${nodeId}`)
+export function deleteProjectCADNode(projectId: string, nodeId: string, expectedRevision: number) {
+  return client.delete<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/nodes/${nodeId}`, {
+    data: { expected_revision: expectedRevision },
+  })
 }
 
-export function addProjectCADModelBoxUnion(projectId: string, modelId: string, box: CADBoxFeature) {
-  return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/models/${modelId}/box-union`, { box })
+export function addProjectCADModelBoxUnion(projectId: string, modelId: string, box: CADBoxFeature, expectedRevision: number) {
+  return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/models/${modelId}/box-union`, {
+    box,
+    expected_revision: expectedRevision,
+  })
+}
+
+export function fetchProjectCADHistory(projectId: string, beforeSequence?: number) {
+  return client.get<ProjectCADHistoryResponse>(`/projects/${projectId}/cad-document/history`, {
+    params: beforeSequence ? { before_sequence: beforeSequence } : {},
+  })
+}
+
+export function undoProjectCADDocument(projectId: string, expectedRevision: number) {
+  return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/history/undo`, {
+    expected_revision: expectedRevision,
+  })
+}
+
+export function redoProjectCADDocument(projectId: string, expectedRevision: number) {
+  return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/history/redo`, {
+    expected_revision: expectedRevision,
+  })
 }
 
 export function sendProjectAgentMessage(projectId: string, payload: SendProjectAgentMessagePayload) {

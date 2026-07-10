@@ -161,10 +161,11 @@ END-ISO-10303-21;`),
 	}
 
 	updated, err := svc.UpdateProjectCADNodeTransform(ctx, UpdateProjectCADNodeTransformInput{
-		OwnerUserID: user.ID,
-		ProjectID:   project.ID,
-		NodeID:      childNodeID,
-		Transform:   transform,
+		OwnerUserID:      user.ID,
+		ProjectID:        project.ID,
+		NodeID:           childNodeID,
+		Transform:        transform,
+		ExpectedRevision: document.Revision,
 	})
 	if err != nil {
 		t.Fatalf("UpdateProjectCADNodeTransform returned error: %v", err)
@@ -223,9 +224,10 @@ END-ISO-10303-21;`),
 	childNodeID := "node_" + model.ID + "_component_2"
 
 	updated, err := svc.DeleteProjectCADNode(ctx, DeleteProjectCADNodeInput{
-		OwnerUserID: user.ID,
-		ProjectID:   project.ID,
-		NodeID:      childNodeID,
+		OwnerUserID:      user.ID,
+		ProjectID:        project.ID,
+		NodeID:           childNodeID,
+		ExpectedRevision: document.Revision,
 	})
 	if err != nil {
 		t.Fatalf("DeleteProjectCADNode returned error: %v", err)
@@ -276,10 +278,11 @@ func TestUpdateProjectCADModelTransformPersistsOperationAndScopesByOwner(t *test
 		},
 	}
 	document, err := svc.UpdateProjectCADModelTransform(ctx, UpdateProjectCADModelTransformInput{
-		OwnerUserID: owner.ID,
-		ProjectID:   project.ID,
-		ModelID:     model.ID,
-		Transform:   transform,
+		OwnerUserID:      owner.ID,
+		ProjectID:        project.ID,
+		ModelID:          model.ID,
+		Transform:        transform,
+		ExpectedRevision: 1,
 	})
 	if err != nil {
 		t.Fatalf("UpdateProjectCADModelTransform returned error: %v", err)
@@ -306,10 +309,11 @@ func TestUpdateProjectCADModelTransformPersistsOperationAndScopesByOwner(t *test
 	}
 
 	_, err = svc.UpdateProjectCADModelTransform(ctx, UpdateProjectCADModelTransformInput{
-		OwnerUserID: other.ID,
-		ProjectID:   project.ID,
-		ModelID:     model.ID,
-		Transform:   identityCADTransform(),
+		OwnerUserID:      other.ID,
+		ProjectID:        project.ID,
+		ModelID:          model.ID,
+		Transform:        identityCADTransform(),
+		ExpectedRevision: document.Revision,
 	})
 	if !errors.Is(err, ErrProjectNotFound) {
 		t.Fatalf("cross-owner UpdateProjectCADModelTransform error = %v, want ErrProjectNotFound", err)
@@ -334,6 +338,7 @@ func TestUpdateProjectCADModelTransformRejectsInvalidMatrix(t *testing.T) {
 				0, 0, 0, 0,
 			},
 		},
+		ExpectedRevision: 1,
 	})
 	if !errors.Is(err, ErrInvalidCADDocumentInput) {
 		t.Fatalf("UpdateProjectCADModelTransform error = %v, want ErrInvalidCADDocumentInput", err)
@@ -351,10 +356,11 @@ func TestAddProjectCADModelBoxUnionPersistsFeatureOperation(t *testing.T) {
 		Size:   [3]float64{8, 6, 3},
 	}
 	document, err := svc.AddProjectCADModelBoxUnion(ctx, AddProjectCADModelBoxUnionInput{
-		OwnerUserID: owner.ID,
-		ProjectID:   project.ID,
-		ModelID:     model.ID,
-		Box:         box,
+		OwnerUserID:      owner.ID,
+		ProjectID:        project.ID,
+		ModelID:          model.ID,
+		Box:              box,
+		ExpectedRevision: 1,
 	})
 	if err != nil {
 		t.Fatalf("AddProjectCADModelBoxUnion returned error: %v", err)
@@ -403,6 +409,7 @@ func TestAddProjectCADModelBoxUnionRejectsInvalidFeature(t *testing.T) {
 			Origin: [3]float64{0, 0, 0},
 			Size:   [3]float64{10, 0, 10},
 		},
+		ExpectedRevision: 1,
 	})
 	if !errors.Is(err, ErrInvalidCADDocumentInput) {
 		t.Fatalf("AddProjectCADModelBoxUnion error = %v, want ErrInvalidCADDocumentInput", err)

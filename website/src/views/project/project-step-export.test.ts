@@ -37,6 +37,7 @@ const cadDocument = {
   id: 'doc_01test',
   schema_version: 1,
   revision: 7,
+  history: { head_id: 'hist_07test', can_undo: true, can_redo: false },
   unit: 'millimetre',
   nodes: [],
   operations: [
@@ -88,16 +89,16 @@ describe('project STEP export helpers', () => {
         downloadFilename: 'bracket-litecad-r7.step',
         operations: [
           {
-            id: 'op_transform',
-            type: 'transform',
-            modelId: 'mdl_step',
-            matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1],
-          },
-          {
             id: 'op_box',
             type: 'box-union',
             modelId: 'mdl_step',
             box: { origin: [10, 0, 0], size: [5, 5, 5] },
+          },
+          {
+            id: 'op_transform',
+            type: 'transform',
+            modelId: 'mdl_step',
+            matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1],
           },
         ],
       },

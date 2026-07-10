@@ -198,42 +198,37 @@ export function cadKernelGeometryOperationSignature(cadDocument: ProjectCADDocum
 
 export function cadKernelOperationsForModel(cadDocument: ProjectCADDocument | undefined, modelId: string): CadKernelOperation[] {
   const sourceNodeIDs = new Set((cadDocument?.nodes ?? []).filter((node) => node.model_id === modelId).map((node) => node.id))
-  return (cadDocument?.operations ?? [])
-    .filter((operation) => {
-      if (operation.model_id !== modelId) {
-        return false
+  const geometryOperations: CadKernelOperation[] = []
+  let latestTransform: CadKernelOperation | undefined
+
+  for (const operation of cadDocument?.operations ?? []) {
+    if (operation.model_id !== modelId) {
+      continue
+    }
+    if (operation.type === 'transform' && operation.transform) {
+      const isSourceTransform =
+        !operation.node_id || (sourceNodeIDs.size > 0 ? sourceNodeIDs.has(operation.node_id) : operation.node_id === `node_${modelId}`)
+      if (isSourceTransform) {
+        latestTransform = {
+          id: operation.id,
+          type: operation.type,
+          modelId: operation.model_id,
+          matrix: operation.transform.matrix,
+        }
       }
-      if (operation.type !== 'transform') {
-        return true
-      }
-      if (!operation.node_id) {
-        return true
-      }
-      return sourceNodeIDs.size > 0 ? sourceNodeIDs.has(operation.node_id) : operation.node_id === `node_${modelId}`
-    })
-    .flatMap((operation): CadKernelOperation[] => {
-      if (operation.type === 'transform' && operation.transform) {
-        return [
-          {
-            id: operation.id,
-            type: operation.type,
-            modelId: operation.model_id,
-            matrix: operation.transform.matrix,
-          },
-        ]
-      }
-      if (operation.type === 'box-union' && operation.box) {
-        return [
-          {
-            id: operation.id,
-            type: operation.type,
-            modelId: operation.model_id,
-            box: operation.box,
-          },
-        ]
-      }
-      return []
-    })
+      continue
+    }
+    if (operation.type === 'box-union' && operation.box) {
+      geometryOperations.push({
+        id: operation.id,
+        type: operation.type,
+        modelId: operation.model_id,
+        box: operation.box,
+      })
+    }
+  }
+
+  return latestTransform ? [...geometryOperations, latestTransform] : geometryOperations
 }
 
 export function getModelDisplayName(model: ProjectModel) {

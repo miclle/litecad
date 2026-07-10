@@ -161,6 +161,7 @@ describe('project preview assets', () => {
         id: 'doc_01test',
         schema_version: 1,
         revision: 2,
+        history: { head_id: 'hist_02test', can_undo: true, can_redo: false },
         unit: 'millimetre',
         nodes: [
           {
@@ -206,6 +207,7 @@ describe('project preview assets', () => {
         id: 'doc_01test',
         schema_version: 1,
         revision: 4,
+        history: { head_id: 'hist_04test', can_undo: true, can_redo: false },
         unit: 'millimetre',
         nodes: [
           {
@@ -249,6 +251,7 @@ describe('project preview assets', () => {
         id: 'doc_01test',
         schema_version: 1,
         revision: 1,
+        history: { head_id: '', can_undo: false, can_redo: false },
         unit: 'millimetre',
         nodes: [
           {
@@ -320,6 +323,7 @@ describe('project preview assets', () => {
         id: 'doc_01test',
         schema_version: 1,
         revision: 2,
+        history: { head_id: 'hist_02test', can_undo: true, can_redo: false },
         unit: 'millimetre',
         nodes: [
           {
@@ -381,6 +385,7 @@ describe('project preview assets', () => {
           id: 'doc_01test',
           schema_version: 1,
           revision: 3,
+          history: { head_id: 'hist_03test', can_undo: true, can_redo: false },
           unit: 'millimetre',
           nodes: [],
           operations: [
@@ -416,12 +421,6 @@ describe('project preview assets', () => {
       ),
     ).toEqual([
       {
-        id: 'op_01test',
-        type: 'transform',
-        modelId: 'mdl_step',
-        matrix: transform.matrix,
-      },
-      {
         id: 'op_box',
         type: 'box-union',
         modelId: 'mdl_step',
@@ -429,6 +428,70 @@ describe('project preview assets', () => {
           origin: [2, -1, 4],
           size: [8, 6, 3],
         },
+      },
+      {
+        id: 'op_01test',
+        type: 'transform',
+        modelId: 'mdl_step',
+        matrix: transform.matrix,
+      },
+    ])
+  })
+
+  test('replays geometry features before only the latest absolute model transform', () => {
+    const firstTransform = { matrix: [1, 0, 0, 2, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }
+    const latestTransform = { matrix: [1, 0, 0, 9, 0, 1, 0, -3, 0, 0, 1, 4, 0, 0, 0, 1] }
+
+    expect(
+      cadKernelOperationsForModel(
+        {
+          project_id: 'prj_01test',
+          id: 'doc_01test',
+          schema_version: 1,
+          revision: 4,
+          history: { head_id: 'hist_04test', can_undo: true, can_redo: false },
+          unit: 'millimetre',
+          nodes: [],
+          operations: [
+            {
+              id: 'op_transform_first',
+              type: 'transform',
+              model_id: 'mdl_step',
+              transform: firstTransform,
+              created_at: '2026-07-07T00:00:01Z',
+            },
+            {
+              id: 'op_box',
+              type: 'box-union',
+              model_id: 'mdl_step',
+              box: { origin: [0, 0, 0], size: [2, 2, 2] },
+              created_at: '2026-07-07T00:00:02Z',
+            },
+            {
+              id: 'op_transform_latest',
+              type: 'transform',
+              model_id: 'mdl_step',
+              transform: latestTransform,
+              created_at: '2026-07-07T00:00:03Z',
+            },
+          ],
+          created_at: '2026-07-07T00:00:00Z',
+          updated_at: '2026-07-07T00:00:03Z',
+        },
+        'mdl_step',
+      ),
+    ).toEqual([
+      {
+        id: 'op_box',
+        type: 'box-union',
+        modelId: 'mdl_step',
+        box: { origin: [0, 0, 0], size: [2, 2, 2] },
+      },
+      {
+        id: 'op_transform_latest',
+        type: 'transform',
+        modelId: 'mdl_step',
+        matrix: latestTransform.matrix,
       },
     ])
   })
@@ -448,6 +511,7 @@ describe('project preview assets', () => {
           id: 'doc_01test',
           schema_version: 1,
           revision: 3,
+          history: { head_id: 'hist_03test', can_undo: true, can_redo: false },
           unit: 'millimetre',
           nodes: [],
           operations: [
@@ -489,6 +553,7 @@ describe('project preview assets', () => {
       id: 'doc_01test',
       schema_version: 1,
       revision: 3,
+      history: { head_id: 'hist_03test', can_undo: true, can_redo: false },
       unit: 'millimetre',
       nodes: [],
       operations: [

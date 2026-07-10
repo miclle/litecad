@@ -13,6 +13,7 @@ import (
 	"github.com/miclle/litecad/internal/entity"
 	"github.com/miclle/litecad/pkg/id"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const cadDocumentSchemaVersion = 1
@@ -20,6 +21,8 @@ const cadDocumentSchemaVersion = 1
 var (
 	// ErrInvalidCADDocumentInput indicates missing or malformed editable CAD document input.
 	ErrInvalidCADDocumentInput = errors.New("invalid CAD document input")
+	// ErrCADDocumentConflict indicates that a mutation used a stale document revision.
+	ErrCADDocumentConflict = errors.New("CAD document revision conflict")
 )
 
 // CADTransform is a stable affine transform matrix applied to a document node.
@@ -42,8 +45,16 @@ type ProjectCADDocument struct {
 	Unit          string            `json:"unit"`
 	Nodes         []CADDocumentNode `json:"nodes"`
 	Operations    []CADOperation    `json:"operations"`
+	History       CADHistoryState   `json:"history"`
 	CreatedAt     string            `json:"created_at"`
 	UpdatedAt     string            `json:"updated_at"`
+}
+
+// CADHistoryState describes the current server-side Undo/Redo position.
+type CADHistoryState struct {
+	HeadID  string `json:"head_id"`
+	CanUndo bool   `json:"can_undo"`
+	CanRedo bool   `json:"can_redo"`
 }
 
 // CADDocumentNode maps one source model into the editable document graph.
@@ -70,33 +81,37 @@ type CADOperation struct {
 
 // UpdateProjectCADModelTransformInput updates one model node transform in the editable document.
 type UpdateProjectCADModelTransformInput struct {
-	OwnerUserID string
-	ProjectID   string
-	ModelID     string
-	Transform   CADTransform
+	OwnerUserID      string
+	ProjectID        string
+	ModelID          string
+	Transform        CADTransform
+	ExpectedRevision int
 }
 
 // UpdateProjectCADNodeTransformInput updates one document node transform.
 type UpdateProjectCADNodeTransformInput struct {
-	OwnerUserID string
-	ProjectID   string
-	NodeID      string
-	Transform   CADTransform
+	OwnerUserID      string
+	ProjectID        string
+	NodeID           string
+	Transform        CADTransform
+	ExpectedRevision int
 }
 
 // DeleteProjectCADNodeInput deletes one editable document node.
 type DeleteProjectCADNodeInput struct {
-	OwnerUserID string
-	ProjectID   string
-	NodeID      string
+	OwnerUserID      string
+	ProjectID        string
+	NodeID           string
+	ExpectedRevision int
 }
 
 // AddProjectCADModelBoxUnionInput appends one kernel-backed box union feature.
 type AddProjectCADModelBoxUnionInput struct {
-	OwnerUserID string
-	ProjectID   string
-	ModelID     string
-	Box         CADBoxFeature
+	OwnerUserID      string
+	ProjectID        string
+	ModelID          string
+	Box              CADBoxFeature
+	ExpectedRevision int
 }
 
 type cadDocumentState struct {
@@ -132,6 +147,9 @@ func (s *Service) UpdateProjectCADModelTransform(ctx context.Context, input Upda
 	if ownerUserID == "" || projectID == "" || modelID == "" {
 		return ProjectCADDocument{}, ErrProjectNotFound
 	}
+	if input.ExpectedRevision <= 0 {
+		return ProjectCADDocument{}, ErrInvalidCADDocumentInput
+	}
 	if !isValidCADTransform(input.Transform) {
 		return ProjectCADDocument{}, ErrInvalidCADDocumentInput
 	}
@@ -152,7 +170,7 @@ func (s *Service) UpdateProjectCADModelTransform(ctx context.Context, input Upda
 		return ProjectCADDocument{}, fmt.Errorf("load model for CAD transform: %w", err)
 	}
 
-	return s.updateProjectCADNodeTransform(ctx, project, "node_"+model.ID, input.Transform)
+	return s.updateProjectCADNodeTransform(ctx, project, "node_"+model.ID, input.Transform, input.ExpectedRevision)
 }
 
 // UpdateProjectCADNodeTransform persists a transform operation for a document node.
@@ -162,6 +180,9 @@ func (s *Service) UpdateProjectCADNodeTransform(ctx context.Context, input Updat
 	nodeID := strings.TrimSpace(input.NodeID)
 	if ownerUserID == "" || projectID == "" || nodeID == "" {
 		return ProjectCADDocument{}, ErrProjectNotFound
+	}
+	if input.ExpectedRevision <= 0 {
+		return ProjectCADDocument{}, ErrInvalidCADDocumentInput
 	}
 	if !isValidCADTransform(input.Transform) {
 		return ProjectCADDocument{}, ErrInvalidCADDocumentInput
@@ -175,7 +196,7 @@ func (s *Service) UpdateProjectCADNodeTransform(ctx context.Context, input Updat
 		return ProjectCADDocument{}, fmt.Errorf("load project for CAD node transform: %w", err)
 	}
 
-	return s.updateProjectCADNodeTransform(ctx, project, nodeID, input.Transform)
+	return s.updateProjectCADNodeTransform(ctx, project, nodeID, input.Transform, input.ExpectedRevision)
 }
 
 // DeleteProjectCADNode removes a component node from the editable document.
@@ -186,6 +207,9 @@ func (s *Service) DeleteProjectCADNode(ctx context.Context, input DeleteProjectC
 	if ownerUserID == "" || projectID == "" || nodeID == "" {
 		return ProjectCADDocument{}, ErrProjectNotFound
 	}
+	if input.ExpectedRevision <= 0 {
+		return ProjectCADDocument{}, ErrInvalidCADDocumentInput
+	}
 
 	var project entity.Project
 	if err := s.db.WithContext(ctx).First(&project, "id = ? AND owner_user_id = ?", projectID, ownerUserID).Error; err != nil {
@@ -195,7 +219,7 @@ func (s *Service) DeleteProjectCADNode(ctx context.Context, input DeleteProjectC
 		return ProjectCADDocument{}, fmt.Errorf("load project for CAD node delete: %w", err)
 	}
 
-	return s.deleteProjectCADNode(ctx, project, nodeID)
+	return s.deleteProjectCADNode(ctx, project, nodeID, input.ExpectedRevision)
 }
 
 // AddProjectCADModelBoxUnion persists one box union feature for browser-kernel replay.
@@ -205,6 +229,9 @@ func (s *Service) AddProjectCADModelBoxUnion(ctx context.Context, input AddProje
 	modelID := strings.TrimSpace(input.ModelID)
 	if ownerUserID == "" || projectID == "" || modelID == "" {
 		return ProjectCADDocument{}, ErrProjectNotFound
+	}
+	if input.ExpectedRevision <= 0 {
+		return ProjectCADDocument{}, ErrInvalidCADDocumentInput
 	}
 	if !isValidCADBoxFeature(input.Box) {
 		return ProjectCADDocument{}, ErrInvalidCADDocumentInput
@@ -235,6 +262,9 @@ func (s *Service) AddProjectCADModelBoxUnion(ctx context.Context, input AddProje
 		if err != nil {
 			return err
 		}
+		if input.ExpectedRevision > 0 && document.Revision != input.ExpectedRevision {
+			return ErrCADDocumentConflict
+		}
 
 		operationID, err := id.NewPrefixed("op")
 		if err != nil {
@@ -242,31 +272,27 @@ func (s *Service) AddProjectCADModelBoxUnion(ctx context.Context, input AddProje
 		}
 		now := time.Now().UTC()
 		box := input.Box
-		state.Operations = append(state.Operations, CADOperation{
+		operationIndex := len(state.Operations)
+		operation := CADOperation{
 			ID:        operationID,
 			Type:      "box-union",
 			ModelID:   model.ID,
 			Box:       &box,
 			CreatedAt: now.Format(timeFormatRFC3339),
-		})
-
-		document.Revision++
-		document.SchemaVersion = cadDocumentSchemaVersion
-		documentJSON, err := json.Marshal(state)
-		if err != nil {
-			return fmt.Errorf("serialize CAD document: %w", err)
 		}
-		if err := tx.Model(&document).Updates(map[string]any{
-			"schema_version": document.SchemaVersion,
-			"revision":       document.Revision,
-			"document_json":  documentJSON,
-		}).Error; err != nil {
-			return fmt.Errorf("update CAD document: %w", err)
+		state.Operations = append(state.Operations, operation)
+		if _, err := appendProjectCADHistoryEntry(ctx, tx, &document, "box-union", model.ID, "Add box to "+model.OriginalFilename, cadBoxUnionHistoryCommand{
+			Operation:      operation,
+			OperationIndex: operationIndex,
+		}); err != nil {
+			return err
 		}
-		document.DocumentJSON = documentJSON
+		if err := persistProjectCADDocumentEntity(ctx, tx, &document, state); err != nil {
+			return err
+		}
 		document.UpdatedAt = now
 		publicDocument = publicProjectCADDocument(document, state)
-		return nil
+		return populateProjectCADHistoryState(ctx, tx, document, &publicDocument)
 	})
 	if err != nil {
 		return ProjectCADDocument{}, err
@@ -274,12 +300,15 @@ func (s *Service) AddProjectCADModelBoxUnion(ctx context.Context, input AddProje
 	return publicDocument, nil
 }
 
-func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Project, nodeID string) (ProjectCADDocument, error) {
+func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Project, nodeID string, expectedRevision int) (ProjectCADDocument, error) {
 	var publicDocument ProjectCADDocument
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		document, state, err := s.getOrCreateProjectCADDocumentEntity(ctx, tx, project)
 		if err != nil {
 			return err
+		}
+		if expectedRevision > 0 && document.Revision != expectedRevision {
+			return ErrCADDocumentConflict
 		}
 
 		nodeIndex := -1
@@ -308,31 +337,29 @@ func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Proje
 		if sourceModelID == "" {
 			sourceModelID = deletedNode.ModelID
 		}
-		state.Operations = append(state.Operations, CADOperation{
+		operationIndex := len(state.Operations)
+		operation := CADOperation{
 			ID:        operationID,
 			Type:      "delete-node",
 			ModelID:   sourceModelID,
 			NodeID:    deletedNode.ID,
 			CreatedAt: now.Format(timeFormatRFC3339),
-		})
-
-		document.Revision++
-		document.SchemaVersion = cadDocumentSchemaVersion
-		documentJSON, err := json.Marshal(state)
-		if err != nil {
-			return fmt.Errorf("serialize CAD document: %w", err)
 		}
-		if err := tx.Model(&document).Updates(map[string]any{
-			"schema_version": document.SchemaVersion,
-			"revision":       document.Revision,
-			"document_json":  documentJSON,
-		}).Error; err != nil {
-			return fmt.Errorf("update CAD document: %w", err)
+		state.Operations = append(state.Operations, operation)
+		if _, err := appendProjectCADHistoryEntry(ctx, tx, &document, "delete-node", deletedNode.ID, "Delete "+deletedNode.Name, cadDeleteNodeHistoryCommand{
+			Node:           deletedNode,
+			NodeIndex:      nodeIndex,
+			Operation:      operation,
+			OperationIndex: operationIndex,
+		}); err != nil {
+			return err
 		}
-		document.DocumentJSON = documentJSON
+		if err := persistProjectCADDocumentEntity(ctx, tx, &document, state); err != nil {
+			return err
+		}
 		document.UpdatedAt = now
 		publicDocument = publicProjectCADDocument(document, state)
-		return nil
+		return populateProjectCADHistoryState(ctx, tx, document, &publicDocument)
 	})
 	if err != nil {
 		return ProjectCADDocument{}, err
@@ -340,12 +367,15 @@ func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Proje
 	return publicDocument, nil
 }
 
-func (s *Service) updateProjectCADNodeTransform(ctx context.Context, project entity.Project, nodeID string, transform CADTransform) (ProjectCADDocument, error) {
+func (s *Service) updateProjectCADNodeTransform(ctx context.Context, project entity.Project, nodeID string, transform CADTransform, expectedRevision int) (ProjectCADDocument, error) {
 	var publicDocument ProjectCADDocument
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		document, state, err := s.getOrCreateProjectCADDocumentEntity(ctx, tx, project)
 		if err != nil {
 			return err
+		}
+		if expectedRevision > 0 && document.Revision != expectedRevision {
+			return ErrCADDocumentConflict
 		}
 
 		nodeIndex := -1
@@ -358,6 +388,7 @@ func (s *Service) updateProjectCADNodeTransform(ctx context.Context, project ent
 		if nodeIndex < 0 {
 			return ErrProjectNotFound
 		}
+		beforeTransform := state.Nodes[nodeIndex].Transform
 		state.Nodes[nodeIndex].Transform = transform
 
 		operationID, err := id.NewPrefixed("op")
@@ -381,32 +412,31 @@ func (s *Service) updateProjectCADNodeTransform(ctx context.Context, project ent
 				}
 			}
 		}
-		state.Operations = append(state.Operations, CADOperation{
+		operationIndex := len(state.Operations)
+		operation := CADOperation{
 			ID:        operationID,
 			Type:      "transform",
 			ModelID:   sourceModelID,
 			NodeID:    state.Nodes[nodeIndex].ID,
 			Transform: &transform,
 			CreatedAt: now.Format(timeFormatRFC3339),
-		})
-
-		document.Revision++
-		document.SchemaVersion = cadDocumentSchemaVersion
-		documentJSON, err := json.Marshal(state)
-		if err != nil {
-			return fmt.Errorf("serialize CAD document: %w", err)
 		}
-		if err := tx.Model(&document).Updates(map[string]any{
-			"schema_version": document.SchemaVersion,
-			"revision":       document.Revision,
-			"document_json":  documentJSON,
-		}).Error; err != nil {
-			return fmt.Errorf("update CAD document: %w", err)
+		state.Operations = append(state.Operations, operation)
+		if _, err := appendProjectCADHistoryEntry(ctx, tx, &document, "transform", state.Nodes[nodeIndex].ID, "Move "+state.Nodes[nodeIndex].Name, cadTransformHistoryCommand{
+			NodeID:         state.Nodes[nodeIndex].ID,
+			Before:         beforeTransform,
+			After:          transform,
+			Operation:      operation,
+			OperationIndex: operationIndex,
+		}); err != nil {
+			return err
 		}
-		document.DocumentJSON = documentJSON
+		if err := persistProjectCADDocumentEntity(ctx, tx, &document, state); err != nil {
+			return err
+		}
 		document.UpdatedAt = now
 		publicDocument = publicProjectCADDocument(document, state)
-		return nil
+		return populateProjectCADHistoryState(ctx, tx, document, &publicDocument)
 	})
 	if err != nil {
 		return ProjectCADDocument{}, err
@@ -422,7 +452,7 @@ func (s *Service) getOrCreateProjectCADDocumentForProject(ctx context.Context, p
 			return err
 		}
 		publicDocument = publicProjectCADDocument(document, state)
-		return nil
+		return populateProjectCADHistoryState(ctx, tx, document, &publicDocument)
 	})
 	if err != nil {
 		return ProjectCADDocument{}, err
@@ -432,7 +462,7 @@ func (s *Service) getOrCreateProjectCADDocumentForProject(ctx context.Context, p
 
 func (s *Service) getOrCreateProjectCADDocumentEntity(ctx context.Context, tx *gorm.DB, project entity.Project) (entity.ProjectCADDocument, cadDocumentState, error) {
 	var document entity.ProjectCADDocument
-	err := tx.WithContext(ctx).First(&document, "project_id = ?", project.ID).Error
+	err := tx.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).First(&document, "project_id = ?", project.ID).Error
 	if err == nil {
 		state, err := decodeCADDocumentState(document.DocumentJSON)
 		if err != nil {
@@ -655,8 +685,12 @@ func publicProjectCADDocument(document entity.ProjectCADDocument, state cadDocum
 		Unit:          state.Unit,
 		Nodes:         nodes,
 		Operations:    operations,
-		CreatedAt:     document.CreatedAt.Format(timeFormatRFC3339),
-		UpdatedAt:     document.UpdatedAt.Format(timeFormatRFC3339),
+		History: CADHistoryState{
+			HeadID:  document.HistoryHeadID,
+			CanUndo: document.HistoryHeadID != "",
+		},
+		CreatedAt: document.CreatedAt.Format(timeFormatRFC3339),
+		UpdatedAt: document.UpdatedAt.Format(timeFormatRFC3339),
 	}
 }
 

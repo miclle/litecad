@@ -79,7 +79,7 @@ func newTestRouterWithAI(t *testing.T, aiClient service.AIClient) *fox.Engine {
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.User{}, &entity.UserSession{}, &entity.Project{}, &entity.ProjectModel{}, &entity.ProjectModelPreviewArtifact{}, &entity.ProjectThumbnailSnapshot{}, &entity.ProjectGeometryVersion{}, &entity.ProjectCADDocument{}, &entity.ProjectAgentMessage{}); err != nil {
+	if err := db.AutoMigrate(&entity.User{}, &entity.UserSession{}, &entity.Project{}, &entity.ProjectModel{}, &entity.ProjectModelPreviewArtifact{}, &entity.ProjectThumbnailSnapshot{}, &entity.ProjectGeometryVersion{}, &entity.ProjectCADDocument{}, &entity.ProjectCADHistoryEntry{}, &entity.ProjectAgentMessage{}); err != nil {
 		t.Fatalf("migrate test db: %v", err)
 	}
 
@@ -132,10 +132,14 @@ func patchJSONWithCookie(t *testing.T, router http.Handler, target string, paylo
 	return rec
 }
 
-func deleteWithCookie(t *testing.T, router http.Handler, target string, cookie *http.Cookie) *httptest.ResponseRecorder {
+func deleteJSONWithCookie(t *testing.T, router http.Handler, target string, payload any, cookie *http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
-
-	req := httptest.NewRequest(http.MethodDelete, target, nil)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodDelete, target, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	if cookie != nil {
 		req.AddCookie(cookie)
 	}

@@ -8,6 +8,7 @@ const documentWithNodes = (nodeIds: string[]): ProjectCADDocument => ({
   project_id: 'prj_01test',
   schema_version: 1,
   revision: 1,
+  history: { head_id: '', can_undo: false, can_redo: false },
   unit: 'millimetre',
   nodes: nodeIds.map((nodeId) => ({
     id: nodeId,

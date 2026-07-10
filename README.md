@@ -15,6 +15,7 @@ LiteCAD currently supports:
 - A project workbench with a Three.js viewer, source list, document inspector, ViewCube/orientation controls, model visibility toggles, and multi-model preview composition.
 - Browser-kernel STEP/STP preview through an OCCT/OpenCascade.js Web Worker, without requiring FreeCAD or another desktop CAD application at runtime.
 - Persisted per-model transform edits, STEP component node deletion, and a constrained STEP box-union operation in a LiteCAD document.
+- Database-backed operation History with owner-scoped Undo/Redo for transforms, box unions, and component deletion, including persisted redo state across reloads and devices.
 - Direct per-model STEP downloads and selected multi-model STEP compound downloads from the current document state.
 - Backend-published preview artifacts for validated GLB, self-contained GLTF, and STL-to-OBJ previews.
 - A project-scoped CAD Agent chat panel when an OpenAI-compatible provider is configured.
@@ -23,7 +24,7 @@ The home page and workbench use project-owned CAD data rather than hard-coded de
 
 ## Product Boundaries
 
-LiteCAD is not a full parametric CAD system yet. Current edits are limited to persisted placement, STEP component node deletion, and a constrained STEP box-union operation. The browser kernel can replay those operations for preview and STEP export, but projects do not yet store durable kernel shape state, general feature history, editable B-rep geometry, durable assemblies, measurement data, sectioning, or backend export artifact history.
+LiteCAD is not a full parametric CAD system yet. Current edits are limited to persisted placement, STEP component node deletion, and a constrained STEP box-union operation. LiteCAD records those edits as reversible project history, but this is not preserved source-application history or a general parametric B-rep feature graph. Projects do not yet store durable kernel shape state, editable B-rep geometry, durable assemblies, measurement data, sectioning, or backend export artifact history.
 
 The CAD Agent is advisory today. It can use project and source metadata as context for chat, but it cannot mutate CAD documents, call geometry tools, run measurements, or generate durable CAD features.
 
@@ -93,6 +94,7 @@ The workbench is the main product surface. It combines:
 - A source/model tree with visibility controls, parse status, and imported STEP product/component nodes grouped under the imported model.
 - Independent document selection, position editing, and deletion for imported STEP component nodes.
 - A document inspector for selected-model placement and STEP box-union controls.
+- Compact Undo/Redo controls and a persisted operation History panel. A new edit after Undo keeps the old record as an alternate path while clearing it from the active Redo path.
 - STEP export controls for selected files or a merged compound download.
 - A CAD Agent panel for project-aware design discussion when AI configuration is present.
 

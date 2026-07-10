@@ -159,6 +159,28 @@ export interface CADOperation {
   created_at: string
 }
 
+export interface CADHistoryState {
+  head_id: string
+  can_undo: boolean
+  can_redo: boolean
+}
+
+export interface CADHistoryEntry {
+  id: string
+  sequence: number
+  parent_entry_id?: string
+  status: 'applied' | 'undone' | 'discarded'
+  command_type: 'transform' | 'box-union' | 'delete-node'
+  target_id: string
+  summary: string
+  created_at: string
+}
+
+export interface ProjectCADHistoryResponse {
+  entries: CADHistoryEntry[]
+  next_before_sequence?: number
+}
+
 export interface ProjectCADDocument {
   id: string
   project_id: string
@@ -167,6 +189,7 @@ export interface ProjectCADDocument {
   unit: string
   nodes: CADDocumentNode[]
   operations: CADOperation[]
+  history: CADHistoryState
   created_at: string
   updated_at: string
 }

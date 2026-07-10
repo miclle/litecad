@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -52,11 +53,22 @@ type projectCADDocumentResponse struct {
 }
 
 type updateProjectCADModelTransformRequest struct {
-	Transform service.CADTransform `json:"transform" binding:"required"`
+	Transform        service.CADTransform `json:"transform" binding:"required"`
+	ExpectedRevision int                  `json:"expected_revision" binding:"required,min=1"`
 }
 
 type addProjectCADModelBoxUnionRequest struct {
-	Box service.CADBoxFeature `json:"box" binding:"required"`
+	Box              service.CADBoxFeature `json:"box" binding:"required"`
+	ExpectedRevision int                   `json:"expected_revision" binding:"required,min=1"`
+}
+
+type modifyProjectCADHistoryRequest struct {
+	ExpectedRevision int `json:"expected_revision" binding:"required,min=1"`
+}
+
+type projectCADHistoryResponse struct {
+	Entries            []service.CADHistoryEntrySummary `json:"entries"`
+	NextBeforeSequence int64                            `json:"next_before_sequence,omitempty"`
 }
 
 type projectAgentMessageRequest struct {
@@ -314,10 +326,11 @@ func (ctrl *Ctrl) UpdateProjectCADModelTransform(c *fox.Context, req *updateProj
 		return projectCADDocumentResponse{}, err
 	}
 	document, err := ctrl.service.UpdateProjectCADModelTransform(c.Request.Context(), service.UpdateProjectCADModelTransformInput{
-		OwnerUserID: user.ID,
-		ProjectID:   c.Param("projectID"),
-		ModelID:     c.Param("modelID"),
-		Transform:   req.Transform,
+		OwnerUserID:      user.ID,
+		ProjectID:        c.Param("projectID"),
+		ModelID:          c.Param("modelID"),
+		Transform:        req.Transform,
+		ExpectedRevision: req.ExpectedRevision,
 	})
 	if err != nil {
 		return projectCADDocumentResponse{}, projectError(err)
@@ -332,10 +345,11 @@ func (ctrl *Ctrl) UpdateProjectCADNodeTransform(c *fox.Context, req *updateProje
 		return projectCADDocumentResponse{}, err
 	}
 	document, err := ctrl.service.UpdateProjectCADNodeTransform(c.Request.Context(), service.UpdateProjectCADNodeTransformInput{
-		OwnerUserID: user.ID,
-		ProjectID:   c.Param("projectID"),
-		NodeID:      c.Param("nodeID"),
-		Transform:   req.Transform,
+		OwnerUserID:      user.ID,
+		ProjectID:        c.Param("projectID"),
+		NodeID:           c.Param("nodeID"),
+		Transform:        req.Transform,
+		ExpectedRevision: req.ExpectedRevision,
 	})
 	if err != nil {
 		return projectCADDocumentResponse{}, projectError(err)
@@ -344,15 +358,16 @@ func (ctrl *Ctrl) UpdateProjectCADNodeTransform(c *fox.Context, req *updateProje
 }
 
 // DeleteProjectCADNode removes a component node from the editable LiteCAD document.
-func (ctrl *Ctrl) DeleteProjectCADNode(c *fox.Context) (projectCADDocumentResponse, error) {
+func (ctrl *Ctrl) DeleteProjectCADNode(c *fox.Context, req *modifyProjectCADHistoryRequest) (projectCADDocumentResponse, error) {
 	user, err := ctrl.currentUser(c)
 	if err != nil {
 		return projectCADDocumentResponse{}, err
 	}
 	document, err := ctrl.service.DeleteProjectCADNode(c.Request.Context(), service.DeleteProjectCADNodeInput{
-		OwnerUserID: user.ID,
-		ProjectID:   c.Param("projectID"),
-		NodeID:      c.Param("nodeID"),
+		OwnerUserID:      user.ID,
+		ProjectID:        c.Param("projectID"),
+		NodeID:           c.Param("nodeID"),
+		ExpectedRevision: req.ExpectedRevision,
 	})
 	if err != nil {
 		return projectCADDocumentResponse{}, projectError(err)
@@ -367,10 +382,56 @@ func (ctrl *Ctrl) AddProjectCADModelBoxUnion(c *fox.Context, req *addProjectCADM
 		return projectCADDocumentResponse{}, err
 	}
 	document, err := ctrl.service.AddProjectCADModelBoxUnion(c.Request.Context(), service.AddProjectCADModelBoxUnionInput{
-		OwnerUserID: user.ID,
-		ProjectID:   c.Param("projectID"),
-		ModelID:     c.Param("modelID"),
-		Box:         req.Box,
+		OwnerUserID:      user.ID,
+		ProjectID:        c.Param("projectID"),
+		ModelID:          c.Param("modelID"),
+		Box:              req.Box,
+		ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// ListProjectCADHistory returns persisted edit summaries in newest-first order.
+func (ctrl *Ctrl) ListProjectCADHistory(c *fox.Context) (projectCADHistoryResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADHistoryResponse{}, err
+	}
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	beforeSequence, _ := strconv.ParseInt(c.Query("before_sequence"), 10, 64)
+	page, err := ctrl.service.ListProjectCADHistory(c.Request.Context(), user.ID, c.Param("projectID"), limit, beforeSequence)
+	if err != nil {
+		return projectCADHistoryResponse{}, projectError(err)
+	}
+	return projectCADHistoryResponse{Entries: page.Entries, NextBeforeSequence: page.NextBeforeSequence}, nil
+}
+
+// UndoProjectCADDocument applies the inverse of the current persisted edit.
+func (ctrl *Ctrl) UndoProjectCADDocument(c *fox.Context, req *modifyProjectCADHistoryRequest) (projectCADDocumentResponse, error) {
+	return ctrl.modifyProjectCADHistory(c, req, ctrl.service.UndoProjectCADDocument)
+}
+
+// RedoProjectCADDocument reapplies the next persisted edit.
+func (ctrl *Ctrl) RedoProjectCADDocument(c *fox.Context, req *modifyProjectCADHistoryRequest) (projectCADDocumentResponse, error) {
+	return ctrl.modifyProjectCADHistory(c, req, ctrl.service.RedoProjectCADDocument)
+}
+
+func (ctrl *Ctrl) modifyProjectCADHistory(
+	c *fox.Context,
+	req *modifyProjectCADHistoryRequest,
+	modify func(context.Context, service.ModifyProjectCADHistoryInput) (service.ProjectCADDocument, error),
+) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := modify(c.Request.Context(), service.ModifyProjectCADHistoryInput{
+		OwnerUserID:      user.ID,
+		ProjectID:        c.Param("projectID"),
+		ExpectedRevision: req.ExpectedRevision,
 	})
 	if err != nil {
 		return projectCADDocumentResponse{}, projectError(err)
@@ -443,6 +504,8 @@ func projectError(err error) error {
 		return httperr.NewBadRequest("unsupported model format")
 	case errors.Is(err, service.ErrInvalidCADDocumentInput):
 		return httperr.NewBadRequest("invalid CAD document input")
+	case errors.Is(err, service.ErrCADDocumentConflict):
+		return httperr.NewConflict("CAD document changed in another session")
 	case errors.Is(err, service.ErrModelPreviewUnavailable):
 		return httperr.NewBadRequest("model preview unavailable")
 	case errors.Is(err, service.ErrInvalidAIChatInput):

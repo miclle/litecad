@@ -474,6 +474,7 @@ func TestProjectCADDocumentRoutesPersistModelTransform(t *testing.T) {
 		0, 0, 0, 1,
 	}
 	patch := patchJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/models/"+uploadResponse.Model.ID+"/transform", map[string]any{
+		"expected_revision": 1,
 		"transform": map[string]any{
 			"matrix": transformMatrix,
 		},
@@ -514,6 +515,7 @@ func TestProjectCADDocumentRoutesPersistModelTransform(t *testing.T) {
 		0, 0, 0, 1,
 	}
 	nodePatch := patchJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/nodes/node_"+uploadResponse.Model.ID+"/transform", map[string]any{
+		"expected_revision": 2,
 		"transform": map[string]any{
 			"matrix": nodeTransformMatrix,
 		},
@@ -630,7 +632,9 @@ END-ISO-10303-21;`),
 	}
 
 	nodeID := "node_" + uploadResponse.Model.ID + "_component_2"
-	deleted := deleteWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/nodes/"+nodeID, sessionCookie)
+	deleted := deleteJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/nodes/"+nodeID, map[string]any{
+		"expected_revision": 1,
+	}, sessionCookie)
 	if deleted.Code != http.StatusOK {
 		t.Fatalf("delete status = %d, body = %s", deleted.Code, deleted.Body.String())
 	}
@@ -706,6 +710,7 @@ func TestProjectCADDocumentRoutesPersistBoxUnionFeature(t *testing.T) {
 	}
 
 	patch := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/models/"+uploadResponse.Model.ID+"/box-union", map[string]any{
+		"expected_revision": 1,
 		"box": map[string]any{
 			"origin": [3]float64{2, -1, 4},
 			"size":   [3]float64{8, 6, 3},
@@ -739,6 +744,112 @@ func TestProjectCADDocumentRoutesPersistBoxUnionFeature(t *testing.T) {
 	}
 	if operation.Box.Origin != [3]float64{2, -1, 4} || operation.Box.Size != [3]float64{8, 6, 3} {
 		t.Fatalf("operation box = %+v", operation.Box)
+	}
+}
+
+func TestProjectCADHistoryRoutesPersistUndoRedoAndRejectStaleEdits(t *testing.T) {
+	router := newTestRouter(t)
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name": "History Owner", "email": "cad-history@example.com", "password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+	create := postJSONWithCookie(t, router, "/api/v1/projects", map[string]string{"name": "History case"}, sessionCookie)
+	var createResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	upload := postMultipartFileWithCookie(
+		t,
+		router,
+		"/api/v1/projects/"+createResponse.Project.ID+"/models",
+		"model",
+		"history.step",
+		[]byte("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"),
+		sessionCookie,
+	)
+	var uploadResponse struct {
+		Model struct {
+			ID string `json:"id"`
+		} `json:"model"`
+	}
+	if err := json.Unmarshal(upload.Body.Bytes(), &uploadResponse); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+
+	transformMatrix := [16]float64{1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 6, 0, 0, 0, 1}
+	edit := patchJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/models/"+uploadResponse.Model.ID+"/transform", map[string]any{
+		"expected_revision": 1,
+		"transform":         map[string]any{"matrix": transformMatrix},
+	}, sessionCookie)
+	if edit.Code != http.StatusOK {
+		t.Fatalf("edit status = %d, body = %s", edit.Code, edit.Body.String())
+	}
+
+	stale := patchJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/models/"+uploadResponse.Model.ID+"/transform", map[string]any{
+		"expected_revision": 1,
+		"transform":         map[string]any{"matrix": [16]float64{1, 0, 0, 99, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}},
+	}, sessionCookie)
+	if stale.Code != http.StatusConflict {
+		t.Fatalf("stale edit status = %d, body = %s", stale.Code, stale.Body.String())
+	}
+
+	undo := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/history/undo", map[string]any{
+		"expected_revision": 2,
+	}, sessionCookie)
+	if undo.Code != http.StatusOK {
+		t.Fatalf("undo status = %d, body = %s", undo.Code, undo.Body.String())
+	}
+	var undoResponse struct {
+		Document struct {
+			Revision int `json:"revision"`
+			History  struct {
+				CanUndo bool `json:"can_undo"`
+				CanRedo bool `json:"can_redo"`
+			} `json:"history"`
+			Nodes []struct {
+				Transform struct {
+					Matrix [16]float64 `json:"matrix"`
+				} `json:"transform"`
+			} `json:"nodes"`
+		} `json:"document"`
+	}
+	if err := json.Unmarshal(undo.Body.Bytes(), &undoResponse); err != nil {
+		t.Fatalf("decode undo response: %v", err)
+	}
+	if undoResponse.Document.Revision != 3 || undoResponse.Document.History.CanUndo || !undoResponse.Document.History.CanRedo || undoResponse.Document.Nodes[0].Transform.Matrix[3] != 0 {
+		t.Fatalf("undo document = %+v", undoResponse.Document)
+	}
+
+	history := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/history", sessionCookie)
+	if history.Code != http.StatusOK {
+		t.Fatalf("history status = %d, body = %s", history.Code, history.Body.String())
+	}
+	var historyResponse struct {
+		Entries []struct {
+			Sequence    int64  `json:"sequence"`
+			Status      string `json:"status"`
+			CommandType string `json:"command_type"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(history.Body.Bytes(), &historyResponse); err != nil {
+		t.Fatalf("decode history response: %v", err)
+	}
+	if len(historyResponse.Entries) != 1 || historyResponse.Entries[0].Status != "undone" || historyResponse.Entries[0].CommandType != "transform" {
+		t.Fatalf("history entries = %+v", historyResponse.Entries)
+	}
+
+	redo := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/history/redo", map[string]any{
+		"expected_revision": 3,
+	}, sessionCookie)
+	if redo.Code != http.StatusOK {
+		t.Fatalf("redo status = %d, body = %s", redo.Code, redo.Body.String())
 	}
 }
 

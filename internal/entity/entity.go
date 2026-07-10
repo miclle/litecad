@@ -112,15 +112,35 @@ type ProjectGeometryVersion struct {
 
 // ProjectCADDocument stores LiteCAD-owned editable document state for a project.
 type ProjectCADDocument struct {
-	ID            string         `gorm:"size:32;primaryKey" json:"id"`
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
-	DeletedAt     gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
-	ProjectID     string         `gorm:"size:32;uniqueIndex;not null" json:"project_id"`
-	SchemaVersion int            `gorm:"not null;default:1" json:"schema_version"`
-	Revision      int            `gorm:"not null;default:1" json:"revision"`
-	DocumentJSON  []byte         `gorm:"column:document_json;not null" json:"-"`
-	Project       Project        `gorm:"foreignKey:ProjectID" json:"project"`
+	ID              string         `gorm:"size:32;primaryKey" json:"id"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	ProjectID       string         `gorm:"size:32;uniqueIndex;not null" json:"project_id"`
+	SchemaVersion   int            `gorm:"not null;default:1" json:"schema_version"`
+	Revision        int            `gorm:"not null;default:1" json:"revision"`
+	HistorySequence int64          `gorm:"not null;default:0" json:"history_sequence"`
+	HistoryHeadID   string         `gorm:"size:32;index" json:"history_head_id"`
+	DocumentJSON    []byte         `gorm:"column:document_json;not null" json:"-"`
+	Project         Project        `gorm:"foreignKey:ProjectID" json:"project"`
+}
+
+// ProjectCADHistoryEntry stores one reversible user edit in a project CAD document.
+type ProjectCADHistoryEntry struct {
+	ID            string             `gorm:"size:32;primaryKey" json:"id"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedAt     time.Time          `json:"updated_at"`
+	ProjectID     string             `gorm:"size:32;index;not null" json:"project_id"`
+	DocumentID    string             `gorm:"size:32;uniqueIndex:idx_cad_history_document_sequence;index:idx_cad_history_document_status;not null" json:"document_id"`
+	Sequence      int64              `gorm:"uniqueIndex:idx_cad_history_document_sequence;not null" json:"sequence"`
+	ParentEntryID string             `gorm:"size:32;index" json:"parent_entry_id"`
+	Status        string             `gorm:"size:16;index:idx_cad_history_document_status;not null" json:"status"`
+	CommandType   string             `gorm:"size:32;index;not null" json:"command_type"`
+	TargetID      string             `gorm:"size:64;index" json:"target_id"`
+	Summary       string             `gorm:"type:text;not null" json:"summary"`
+	CommandJSON   []byte             `gorm:"column:command_json;not null" json:"-"`
+	Project       Project            `gorm:"foreignKey:ProjectID" json:"project"`
+	Document      ProjectCADDocument `gorm:"foreignKey:DocumentID" json:"document"`
 }
 
 // ProjectAgentMessage stores one CAD Agent conversation message for a project.
