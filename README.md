@@ -39,6 +39,7 @@ Requirements:
 - PostgreSQL or MySQL
 - [Task](https://taskfile.dev/)
 - `reflex`, `staticcheck`, and `golangci-lint` for local development checks
+- Playwright Chromium for the optional browser smoke suite
 
 Install or refresh local Go tools:
 
@@ -52,6 +53,12 @@ Install dependencies:
 git clone https://github.com/miclle/litecad.git
 cd litecad
 task install
+```
+
+Install the browser used by the workbench smoke suite once:
+
+```bash
+npx --prefix website playwright install chromium
 ```
 
 Create local config:
@@ -133,6 +140,7 @@ task run            # Run the server in production mode with local config
 task lint           # Auto-fix Go module/style issues and run frontend lint
 task check          # CI-aligned local checks
 task test           # Go tests with race/coverage + frontend Vitest
+task test-browser   # Deterministic Playwright workbench smoke
 task clean          # Remove build artifacts
 task update-tools   # Install/update reflex, staticcheck, golangci-lint
 ```
@@ -152,6 +160,14 @@ Run tests when behavior, API contracts, database models, shared frontend behavio
 ```bash
 task test
 ```
+
+Run the browser-level workbench smoke after changing project routing, panels, or user-visible CAD interactions:
+
+```bash
+task test-browser
+```
+
+The smoke suite starts an isolated Vite server, intercepts owner-scoped API responses with deterministic fixtures, opens the real project route, exercises History and Assistant, and fails on unexpected browser console or page errors. It does not require a local database.
 
 CI also runs Go tests, frontend lint/type/test/build, actionlint, dependency review on pull requests, and golangci-lint.
 

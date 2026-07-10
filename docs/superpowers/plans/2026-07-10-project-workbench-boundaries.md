@@ -187,7 +187,7 @@ task test
 
 Update `TODO.md` and `.agents/rules/threejs-viewer.md` with the new lifecycle ownership.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit: `refactor(cad): split preview lifecycles`
 
@@ -200,7 +200,7 @@ Commit: `refactor(cad): split preview lifecycles`
 - Create: `website/e2e/project-workbench.spec.ts`
 - Modify: `website/package.json`
 - Modify: `website/package-lock.json`
-- Modify: `Taskfile.yml`
+- Modify: `Taskfile.yaml`
 - Modify: `README.md`
 - Modify: `TODO.md`
 - Modify: `AGENTS.md`
@@ -210,7 +210,7 @@ Commit: `refactor(cad): split preview lifecycles`
 - Produces: `task test-browser`.
 - Uses Playwright route interception for deterministic owner-scoped project, empty model, CAD document, history, and Agent responses while exercising the real built React route.
 
-- [ ] **Step 1: Add Playwright and write the failing smoke test**
+- [x] **Step 1: Add Playwright and write the failing smoke test**
 
 The test navigates directly to `/projects/project_smoke`, waits for the workbench, opens History and Assistant, checks durable feedback surfaces, closes Assistant, and asserts there are no unexpected page errors or console errors.
 
@@ -218,11 +218,11 @@ Run: `npm --prefix website run test:e2e`
 
 Expected: FAIL because the runner/configuration is absent before implementation, then fail until all route fixtures are complete.
 
-- [ ] **Step 2: Add deterministic fixtures and supported commands**
+- [x] **Step 2: Add deterministic fixtures and supported commands**
 
 Configure Chromium, the Vite dev server, trace/screenshot retention on failure, and one worker for deterministic local execution. Add the task runner entry without adding browser download to `task install`.
 
-- [ ] **Step 3: Verify and update docs**
+- [x] **Step 3: Verify and update docs**
 
 Run:
 

@@ -20,6 +20,8 @@ go.work.sum
 
 # Build output
 bin/
+website/playwright-report/
+website/test-results/
 
 # Task runner cache
 .task/

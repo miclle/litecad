@@ -119,6 +119,11 @@ tasks:
       - go test -trimpath -race -tags development -coverprofile=coverage.out $(./scripts/go-packages.sh)
       - cd {{.WEBSITE_DIR}} && npx vitest run --passWithNoTests
 
+  test-browser:
+    desc: Run the deterministic Playwright workbench smoke suite
+    cmds:
+      - cd {{.WEBSITE_DIR}} && npm run test:e2e
+
   # ---------- Internal ----------
 
   kill-vite:
