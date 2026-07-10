@@ -67,10 +67,11 @@ describe('useCADDocumentCommands', () => {
     const conflict = Object.assign(new Error('conflict'), { response: { status: 409 } })
     vi.mocked(updateProjectCADNodeTransform).mockRejectedValue(conflict)
     const onConflict = vi.fn()
+    const onTransformSynchronized = vi.fn()
     const { queryClient, wrapper } = createHarness()
     const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue()
     const { result } = renderHook(
-      () => useCADDocumentCommands({ projectId, autosaveDelayMS: 0, onConflict }),
+      () => useCADDocumentCommands({ projectId, autosaveDelayMS: 0, onConflict, onTransformSynchronized }),
       { wrapper },
     )
 
@@ -83,6 +84,25 @@ describe('useCADDocumentCommands', () => {
     expect(queryClient.getQueryData<ProjectCADDocument>(['projects', projectId, 'cad-document'])?.revision).toBe(7)
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', projectId, 'cad-document'] })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
+    expect(onTransformSynchronized).toHaveBeenCalledWith(nodeId)
+  })
+
+  it('notifies the route when the latest transform draft is committed', async () => {
+    vi.mocked(updateProjectCADNodeTransform).mockResolvedValue(
+      { data: { document: projectDocument(8) } } as Awaited<ReturnType<typeof updateProjectCADNodeTransform>>,
+    )
+    const onTransformSynchronized = vi.fn()
+    const { wrapper } = createHarness()
+    const { result } = renderHook(
+      () => useCADDocumentCommands({ projectId, autosaveDelayMS: 0, onTransformSynchronized }),
+      { wrapper },
+    )
+
+    act(() => {
+      result.current.scheduleTransformAutosave(nodeId, { x: 12, y: 2, z: -4 })
+    })
+
+    await waitFor(() => expect(onTransformSynchronized).toHaveBeenCalledWith(nodeId))
   })
 
   it('reports history work as pending so delete and shortcut surfaces share one action gate', async () => {

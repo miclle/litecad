@@ -20,6 +20,7 @@ type UseCADDocumentCommandsOptions = {
   autosaveDelayMS?: number
   onConflict?: (message: string) => void
   onNodeDeleted?: (nodeId: string) => void
+  onTransformSynchronized?: (nodeId: string) => void
 }
 
 type TransformMutationVariables = {
@@ -37,6 +38,7 @@ export function useCADDocumentCommands({
   autosaveDelayMS = defaultTransformAutosaveDelayMS,
   onConflict,
   onNodeDeleted,
+  onTransformSynchronized,
 }: UseCADDocumentCommandsOptions) {
   const queryClient = useQueryClient()
   const commandQueueRef = useRef<Promise<unknown>>(Promise.resolve())
@@ -106,6 +108,7 @@ export function useCADDocumentCommands({
         return
       }
       delete latestTranslationByNodeIdRef.current[variables.nodeId]
+      onTransformSynchronized?.(variables.nodeId)
       setTransformErrorsByNodeId((errors) => ({ ...errors, [variables.nodeId]: '' }))
       queryClient.setQueryData(documentQueryKey, document)
       setHistoryError('')
@@ -115,7 +118,10 @@ export function useCADDocumentCommands({
       if ((latestTransformRequestByNodeIdRef.current[variables.nodeId] ?? 0) > variables.requestVersion) {
         return
       }
-      if (!(await refreshAfterConflict(error))) {
+      if (await refreshAfterConflict(error)) {
+        delete latestTranslationByNodeIdRef.current[variables.nodeId]
+        onTransformSynchronized?.(variables.nodeId)
+      } else {
         setTransformErrorsByNodeId((errors) => ({ ...errors, [variables.nodeId]: 'Invalid transform' }))
       }
     },

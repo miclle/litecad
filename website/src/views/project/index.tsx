@@ -210,10 +210,6 @@ function translationsEqual(left: CADTranslation | undefined, right: CADTranslati
   return !!left && !!right && left.x === right.x && left.y === right.y && left.z === right.z
 }
 
-function transformDraftsEqual(left: TransformDraft | undefined, right: TransformDraft | undefined) {
-  return !!left && !!right && left.x === right.x && left.y === right.y && left.z === right.z
-}
-
 function NumericCADField({
   ariaLabel,
   label,
@@ -258,7 +254,7 @@ function ProjectView() {
   const [isStepExportOpen, setIsStepExportOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [aiChatDraft, setAiChatDraft] = useState('')
-  const [aiChatMessages, setAiChatMessages] = useState<AiChatMessage[]>(initialAiChatMessages)
+  const [localAiChatMessages, setLocalAiChatMessages] = useState<AiChatMessage[]>([])
   const [leftPanelWidth, setLeftPanelWidth] = useState(defaultLeftPanelWidth)
   const [aiChatPanelWidth, setAiChatPanelWidth] = useState(defaultAiChatPanelWidth)
   const [aiChatPanelMaxWidth, setAiChatPanelMaxWidth] = useState(getAiChatPanelMaxWidth)
@@ -287,18 +283,25 @@ function ProjectView() {
     })
     setSelectedModelID('')
     setSelectedDocumentNodeID('')
+    setActiveCADTool('inspect')
+  }, [])
+  const handleTransformSynchronized = useCallback((nodeId: string) => {
+    setTransformDraftsByModelID((currentDrafts) => {
+      const nextDrafts = { ...currentDrafts }
+      delete nextDrafts[nodeId]
+      return nextDrafts
+    })
   }, [])
   const cadDocumentCommands = useCADDocumentCommands({
     projectId,
     onConflict: handleCADDocumentConflict,
     onNodeDeleted: handleCADDocumentNodeDeleted,
+    onTransformSynchronized: handleTransformSynchronized,
   })
   const {
-    cancelTransformAutosave,
     changeHistory,
     clearDeleteError,
     deleteNode,
-    hasPendingTransform,
     isPending: isCADDocumentCommandPending,
   } = cadDocumentCommands
   const projectQuery = useQuery({
@@ -335,7 +338,7 @@ function ProjectView() {
       return response.data.message
     },
     onSuccess: async (message) => {
-      setAiChatMessages((currentMessages) => [
+      setLocalAiChatMessages((currentMessages) => [
         ...currentMessages,
         {
           id: message.id || `assistant-${Date.now()}`,
@@ -344,9 +347,10 @@ function ProjectView() {
         },
       ])
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'agent', 'messages'] })
+      setLocalAiChatMessages([])
     },
     onError: (error) => {
-      setAiChatMessages((currentMessages) => [
+      setLocalAiChatMessages((currentMessages) => [
         ...currentMessages,
         {
           id: `assistant-error-${Date.now()}`,
@@ -377,6 +381,17 @@ function ProjectView() {
   })
   const project = projectQuery.data
   const projectModels = useMemo(() => projectModelsQuery.data ?? [], [projectModelsQuery.data])
+  const persistedAiChatMessages = useMemo<AiChatMessage[]>(
+    () =>
+      projectAgentMessagesQuery.data && projectAgentMessagesQuery.data.length > 0
+        ? projectAgentMessagesQuery.data.map((message) => ({ id: message.id, role: message.role, body: message.body }))
+        : initialAiChatMessages,
+    [projectAgentMessagesQuery.data],
+  )
+  const aiChatMessages = useMemo(
+    () => [...persistedAiChatMessages, ...localAiChatMessages],
+    [localAiChatMessages, persistedAiChatMessages],
+  )
   const selectedModel = useMemo(
     () => projectModels.find((model) => model.id === selectedModelID),
     [projectModels, selectedModelID],
@@ -406,12 +421,16 @@ function ProjectView() {
   )
   const stepAssemblyDownloadFilename = stepAssemblyExportFilename(project?.name ?? 'assembly', projectCADDocument?.revision ?? 0)
   const cadNodeByID = useMemo(() => new Map((projectCADDocument?.nodes ?? []).map((node) => [node.id, node])), [projectCADDocument])
-  const keyboardDeleteNode = selectedDocumentNodeID ? cadNodeByID.get(selectedDocumentNodeID) : undefined
-  const canDeleteNodeFromKeyboard = keyboardDeleteNode?.source_format === 'step-component'
   const sourceNodeIDByModelID = useMemo(
     () => new Map((projectCADDocument?.nodes ?? []).flatMap((node) => (node.model_id ? [[node.model_id, node.id] as const] : []))),
     [projectCADDocument],
   )
+  const effectiveSelectedModelID = selectedModel?.id ?? ''
+  const effectiveSelectedDocumentNodeID = cadNodeByID.has(selectedDocumentNodeID)
+    ? selectedDocumentNodeID
+    : sourceNodeIDByModelID.get(effectiveSelectedModelID) ?? ''
+  const keyboardDeleteNode = effectiveSelectedDocumentNodeID ? cadNodeByID.get(effectiveSelectedDocumentNodeID) : undefined
+  const canDeleteNodeFromKeyboard = keyboardDeleteNode?.source_format === 'step-component'
   const projectModelTree = useMemo(() => buildProjectModelTree(projectModels, projectCADDocument), [projectModels, projectCADDocument])
   const modelTranslationsByID = useMemo(() => {
     const translations: Record<string, CADTranslation> = {}
@@ -548,52 +567,6 @@ function ProjectView() {
     .join('|')
 
   useEffect(() => {
-    if (!projectAgentMessagesQuery.data) {
-      return
-    }
-    setAiChatMessages(
-      projectAgentMessagesQuery.data.length > 0
-        ? projectAgentMessagesQuery.data.map((message) => ({
-            id: message.id,
-            role: message.role,
-            body: message.body,
-          }))
-        : initialAiChatMessages,
-    )
-  }, [projectAgentMessagesQuery.data])
-
-  useEffect(() => {
-    if (selectedModelID && !selectedModel) {
-      setSelectedModelID('')
-      setSelectedDocumentNodeID('')
-      clearDeleteError()
-    }
-  }, [clearDeleteError, selectedModel, selectedModelID])
-
-  useEffect(() => {
-    if (!projectCADDocument) {
-      return
-    }
-    if (selectedDocumentNodeID && !cadNodeByID.has(selectedDocumentNodeID)) {
-      setSelectedDocumentNodeID('')
-      clearDeleteError()
-      return
-    }
-    if (selectedModelID && !selectedDocumentNodeID) {
-      const sourceNodeID = sourceNodeIDByModelID.get(selectedModelID)
-      if (sourceNodeID) {
-        setSelectedDocumentNodeID(sourceNodeID)
-      }
-    }
-  }, [cadNodeByID, clearDeleteError, projectCADDocument, selectedDocumentNodeID, selectedModelID, sourceNodeIDByModelID])
-
-  useEffect(() => {
-    if (activeCADTool === 'fuse-box' && selectedModel?.format !== 'step') {
-      setActiveCADTool('inspect')
-    }
-  }, [activeCADTool, selectedModel?.format])
-
-  useEffect(() => {
     const handleHistoryKeyDown = (event: KeyboardEvent) => {
       const action = cadHistoryActionForKey(event)
       if (!action || isCADDocumentCommandPending) {
@@ -628,26 +601,6 @@ function ProjectView() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [canDeleteNodeFromKeyboard, clearDeleteError, deleteNode, isCADDocumentCommandPending, keyboardDeleteNode])
-
-  useEffect(() => {
-    if (!projectCADDocument) {
-      return
-    }
-    setTransformDraftsByModelID((currentDrafts) => {
-      const nextDrafts = { ...currentDrafts }
-      for (const node of projectCADDocument.nodes ?? []) {
-        const savedDraft = transformDraftFromTranslation(translationFromCADTransform(node.transform))
-        const currentDraft = currentDrafts[node.id]
-        if (currentDraft && hasPendingTransform(node.id) && !transformDraftsEqual(currentDraft, savedDraft)) {
-          nextDrafts[node.id] = currentDraft
-          continue
-        }
-        cancelTransformAutosave(node.id)
-        nextDrafts[node.id] = savedDraft
-      }
-      return nextDrafts
-    })
-  }, [cancelTransformAutosave, hasPendingTransform, projectCADDocument])
 
   useEffect(() => {
     setSelectedStepExportTargetIDs((currentIDs) => {
@@ -808,8 +761,8 @@ function ProjectView() {
   }).format(new Date(project.updated_at))
   const LeftPanelIcon = isLeftPanelCollapsed ? PanelLeftOpen : PanelLeftClose
   const projectDescription = project.description || 'No description yet. Import a CAD source file to begin the project record.'
-  const selectedDocumentNode = selectedDocumentNodeID ? cadNodeByID.get(selectedDocumentNodeID) : undefined
-  const selectedSourceModelID = selectedDocumentNode?.source_model_id || selectedDocumentNode?.model_id || selectedModelID
+  const selectedDocumentNode = effectiveSelectedDocumentNodeID ? cadNodeByID.get(effectiveSelectedDocumentNodeID) : undefined
+  const selectedSourceModelID = selectedDocumentNode?.source_model_id || selectedDocumentNode?.model_id || effectiveSelectedModelID
   const selectedSourceModel = selectedSourceModelID ? projectModels.find((model) => model.id === selectedSourceModelID) : undefined
   const selectedModelDisplayName =
     selectedDocumentNode?.source_format === 'step-component'
@@ -1087,11 +1040,10 @@ function ProjectView() {
     if (!messageBody || projectAgentMutation.isPending) {
       return
     }
-    const nextMessages = [
-      ...aiChatMessages,
+    setLocalAiChatMessages((currentMessages) => [
+      ...currentMessages,
       { id: `user-${Date.now()}`, role: 'user' as const, body: messageBody },
-    ]
-    setAiChatMessages(nextMessages)
+    ])
     projectAgentMutation.mutate(messageBody)
     setAiChatDraft('')
   }
@@ -1260,18 +1212,20 @@ function ProjectView() {
               onClearSelection={() => {
                 setSelectedModelID('')
                 setSelectedDocumentNodeID('')
+                setActiveCADTool('inspect')
                 cadDocumentCommands.clearDeleteError()
               }}
               onModelTranslationChange={updateTransformDraftFromTranslation}
               onSelectModel={(modelID, nodeID) => {
                 setSelectedModelID(modelID)
                 setSelectedDocumentNodeID(nodeID ?? sourceNodeIDByModelID.get(modelID) ?? `node_${modelID}`)
+                setActiveCADTool('inspect')
                 cadDocumentCommands.clearDeleteError()
               }}
               onSnapshotCapture={handlePreviewSnapshotCapture}
               previewAssets={previewAssets}
-              selectedModelId={selectedModelID}
-              selectedNodeId={selectedDocumentNodeID}
+              selectedModelId={effectiveSelectedModelID}
+              selectedNodeId={effectiveSelectedDocumentNodeID}
               visibleModelIds={visibleModelIds}
             />
             {shouldShowCanvasStatus && (
@@ -1299,10 +1253,10 @@ function ProjectView() {
               <TooltipTrigger
                 render={
                   <Button
-                    aria-pressed={activeCADTool === 'fuse-box'}
+                    aria-pressed={activeCADTool === 'fuse-box' && selectedModelSupportsFuseBox}
                     className={cn(
                       'min-w-[96px] justify-center',
-                      activeCADTool === 'fuse-box' && 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8] hover:bg-[#dbeafe]',
+                      activeCADTool === 'fuse-box' && selectedModelSupportsFuseBox && 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8] hover:bg-[#dbeafe]',
                     )}
                     disabled={!selectedModelSupportsFuseBox}
                     onClick={() => setActiveCADTool((currentTool) => (currentTool === 'fuse-box' ? 'inspect' : 'fuse-box'))}
@@ -1502,11 +1456,12 @@ function ProjectView() {
                   onSelect={(modelId, nodeId) => {
                     setSelectedModelID(modelId)
                     setSelectedDocumentNodeID(nodeId)
+                    setActiveCADTool('inspect')
                     cadDocumentCommands.clearDeleteError()
                   }}
                   onToggleVisibility={toggleModelVisibility}
                   previewAssetModelIds={previewAssetModelIDs}
-                  selectedNodeId={selectedDocumentNodeID}
+                  selectedNodeId={effectiveSelectedDocumentNodeID}
                   uploadError={uploadError}
                 />
 
@@ -1516,6 +1471,7 @@ function ProjectView() {
                   onClear={() => {
                     setSelectedModelID('')
                     setSelectedDocumentNodeID('')
+                    setActiveCADTool('inspect')
                     cadDocumentCommands.clearDeleteError()
                   }}
                   onDelete={deleteSelectedDocumentNode}
