@@ -294,6 +294,81 @@ describe('project preview assets', () => {
     })
   })
 
+  test('filters kernel component meshes to remaining STEP component document nodes', () => {
+    const model = {
+      ...baseModel,
+      id: 'mdl_step',
+      original_filename: 'assembly.step',
+    } satisfies ProjectModel
+    const assets = buildProjectPreviewAssets(
+      [model],
+      [],
+      {},
+      {
+        mdl_step: {
+          mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
+          componentMeshes: [
+            { positions: [1, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
+            { positions: [2, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
+            { positions: [3, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
+          ],
+          meshSummary: { vertexCount: 3, triangleCount: 3, hasNormals: true },
+        },
+      },
+      {
+        project_id: 'prj_01test',
+        id: 'doc_01test',
+        schema_version: 1,
+        revision: 2,
+        unit: 'millimetre',
+        nodes: [
+          {
+            id: 'node_mdl_step',
+            model_id: 'mdl_step',
+            source_model_id: 'mdl_step',
+            parent_node_id: '',
+            name: 'assembly',
+            source_format: 'step',
+            transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+          },
+          {
+            id: 'node_mdl_step_component_1',
+            model_id: '',
+            source_model_id: 'mdl_step',
+            parent_node_id: 'node_mdl_step',
+            name: 'Left pulley',
+            source_format: 'step-component',
+            transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+          },
+          {
+            id: 'node_mdl_step_component_3',
+            model_id: '',
+            source_model_id: 'mdl_step',
+            parent_node_id: 'node_mdl_step',
+            name: 'Right pulley',
+            source_format: 'step-component',
+            transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+          },
+        ],
+        operations: [{ id: 'op_delete', type: 'delete-node', model_id: 'mdl_step', node_id: 'node_mdl_step_component_2', created_at: '2026-07-07T00:00:01Z' }],
+        created_at: '2026-07-07T00:00:00Z',
+        updated_at: '2026-07-07T00:00:01Z',
+      },
+    )
+
+    expect(assets[0]).toMatchObject({
+      previewFormat: 'kernel-mesh',
+      pickTargets: [
+        { modelId: 'mdl_step', nodeId: 'node_mdl_step_component_1', name: 'Left pulley' },
+        { modelId: 'mdl_step', nodeId: 'node_mdl_step_component_3', name: 'Right pulley' },
+      ],
+      componentMeshes: [
+        { positions: [1, 0, 0] },
+        { positions: [3, 0, 0] },
+      ],
+    })
+  })
+
   test('maps CAD document operations into model-scoped kernel replay operations', () => {
     const transform = {
       matrix: [1, 0, 0, 14, 0, 1, 0, -2, 0, 0, 1, 6, 0, 0, 0, 1],

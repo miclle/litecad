@@ -151,7 +151,7 @@ export interface CADDocumentNode {
 
 export interface CADOperation {
   id: string
-  type: 'transform' | 'box-union'
+  type: 'transform' | 'box-union' | 'delete-node'
   model_id: string
   node_id?: string
   transform?: CADTransform

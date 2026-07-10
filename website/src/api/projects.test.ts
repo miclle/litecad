@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 import client from './client'
 import {
+  deleteProjectCADNode,
   fetchProjectCADDocument,
   fetchProjectAgentMessages,
   fetchProjectGeometryDocument,
@@ -19,6 +20,7 @@ import {
 vi.mock('./client', () => ({
   default: {
     get: vi.fn(),
+    delete: vi.fn(),
     patch: vi.fn(),
     post: vi.fn(),
   },
@@ -100,6 +102,12 @@ describe('project API', () => {
     expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/cad-document/nodes/node_01test/transform', {
       transform,
     })
+  })
+
+  test('deletes a project CAD document node', () => {
+    deleteProjectCADNode('prj_01test', 'node_01test_component_2')
+
+    expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/cad-document/nodes/node_01test_component_2')
   })
 
   test('adds a project CAD model box-union feature', () => {

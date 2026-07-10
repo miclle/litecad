@@ -40,6 +40,10 @@ export function updateProjectCADNodeTransform(projectId: string, nodeId: string,
   return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/nodes/${nodeId}/transform`, { transform })
 }
 
+export function deleteProjectCADNode(projectId: string, nodeId: string) {
+  return client.delete<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/nodes/${nodeId}`)
+}
+
 export function addProjectCADModelBoxUnion(projectId: string, modelId: string, box: CADBoxFeature) {
   return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/models/${modelId}/box-union`, { box })
 }

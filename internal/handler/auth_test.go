@@ -132,6 +132,18 @@ func patchJSONWithCookie(t *testing.T, router http.Handler, target string, paylo
 	return rec
 }
 
+func deleteWithCookie(t *testing.T, router http.Handler, target string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodDelete, target, nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
 func getWithCookie(t *testing.T, router http.Handler, target string, cookie *http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
 

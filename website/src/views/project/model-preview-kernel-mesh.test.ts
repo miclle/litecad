@@ -98,6 +98,29 @@ describe('createKernelMeshPreviewObject', () => {
     expect(object.children.map((child) => child.name)).toEqual(['Left pulley', 'Right pulley'])
   })
 
+  test('uses a single filtered component mesh instead of the aggregate mesh', () => {
+    const object = createKernelMeshPreviewObject(
+      {
+        positions: [0, 0, 0, 10, 0, 0, 0, 10, 0],
+        normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+        indices: [0, 1, 2],
+      },
+      [{ modelId: 'mdl_step', nodeId: 'node_mdl_step_component_3', name: 'Remaining pulley' }],
+      [
+        {
+          positions: [20, 0, 0, 21, 0, 0, 20, 1, 0],
+          normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+          indices: [0, 1, 2],
+        },
+      ],
+    )
+
+    expect(object.children).toHaveLength(1)
+    expect(object.children[0].name).toBe('Remaining pulley')
+    expect(object.children[0].userData.litecadNodeId).toBe('node_mdl_step_component_3')
+    expect((object.children[0] as THREE.Mesh).geometry.getAttribute('position').array[0]).toBe(20)
+  })
+
   test('uses deterministic component node ids when pick targets are not ready yet', () => {
     const object = createKernelMeshPreviewObject(
       {

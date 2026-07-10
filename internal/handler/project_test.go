@@ -570,6 +570,98 @@ func TestProjectCADDocumentRoutesPersistModelTransform(t *testing.T) {
 	}
 }
 
+func TestProjectCADDocumentRouteDeletesComponentNode(t *testing.T) {
+	router := newTestRouter(t)
+
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name":     "CAD Document Delete",
+		"email":    "cad-document-delete@example.com",
+		"password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+
+	create := postJSONWithCookie(t, router, "/api/v1/projects", map[string]string{
+		"name": "Editable component delete",
+	}, sessionCookie)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", create.Code, create.Body.String())
+	}
+	var createResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	upload := postMultipartFileWithCookie(
+		t,
+		router,
+		"/api/v1/projects/"+createResponse.Project.ID+"/models",
+		"model",
+		"components.step",
+		[]byte(`ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));
+ENDSEC;
+DATA;
+#1 = PRODUCT('Assembly','Assembly','',(#10));
+#2 = PRODUCT('Left Part','Left Part','',(#10));
+#3 = PRODUCT('Middle Part','Middle Part','',(#10));
+#4 = PRODUCT('Right Part','Right Part','',(#10));
+ENDSEC;
+END-ISO-10303-21;`),
+		sessionCookie,
+	)
+	if upload.Code != http.StatusCreated {
+		t.Fatalf("upload status = %d, body = %s", upload.Code, upload.Body.String())
+	}
+	var uploadResponse struct {
+		Model struct {
+			ID string `json:"id"`
+		} `json:"model"`
+	}
+	if err := json.Unmarshal(upload.Body.Bytes(), &uploadResponse); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+
+	nodeID := "node_" + uploadResponse.Model.ID + "_component_2"
+	deleted := deleteWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/nodes/"+nodeID, sessionCookie)
+	if deleted.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, body = %s", deleted.Code, deleted.Body.String())
+	}
+	var deleteResponse struct {
+		Document struct {
+			Revision int `json:"revision"`
+			Nodes    []struct {
+				ID string `json:"id"`
+			} `json:"nodes"`
+			Operations []struct {
+				Type   string `json:"type"`
+				NodeID string `json:"node_id"`
+			} `json:"operations"`
+		} `json:"document"`
+	}
+	if err := json.Unmarshal(deleted.Body.Bytes(), &deleteResponse); err != nil {
+		t.Fatalf("decode delete response: %v", err)
+	}
+	if deleteResponse.Document.Revision != 2 || len(deleteResponse.Document.Operations) != 1 {
+		t.Fatalf("delete document = %+v, want revision 2 with one operation", deleteResponse.Document)
+	}
+	if deleteResponse.Document.Operations[0].Type != "delete-node" || deleteResponse.Document.Operations[0].NodeID != nodeID {
+		t.Fatalf("delete operations = %+v, want delete-node for %s", deleteResponse.Document.Operations, nodeID)
+	}
+	for _, node := range deleteResponse.Document.Nodes {
+		if node.ID == nodeID {
+			t.Fatalf("deleted node %q still present in response: %+v", nodeID, deleteResponse.Document.Nodes)
+		}
+	}
+}
+
 func TestProjectCADDocumentRoutesPersistBoxUnionFeature(t *testing.T) {
 	router := newTestRouter(t)
 

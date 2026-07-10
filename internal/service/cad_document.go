@@ -84,6 +84,13 @@ type UpdateProjectCADNodeTransformInput struct {
 	Transform   CADTransform
 }
 
+// DeleteProjectCADNodeInput deletes one editable document node.
+type DeleteProjectCADNodeInput struct {
+	OwnerUserID string
+	ProjectID   string
+	NodeID      string
+}
+
 // AddProjectCADModelBoxUnionInput appends one kernel-backed box union feature.
 type AddProjectCADModelBoxUnionInput struct {
 	OwnerUserID string
@@ -171,6 +178,26 @@ func (s *Service) UpdateProjectCADNodeTransform(ctx context.Context, input Updat
 	return s.updateProjectCADNodeTransform(ctx, project, nodeID, input.Transform)
 }
 
+// DeleteProjectCADNode removes a component node from the editable document.
+func (s *Service) DeleteProjectCADNode(ctx context.Context, input DeleteProjectCADNodeInput) (ProjectCADDocument, error) {
+	ownerUserID := strings.TrimSpace(input.OwnerUserID)
+	projectID := strings.TrimSpace(input.ProjectID)
+	nodeID := strings.TrimSpace(input.NodeID)
+	if ownerUserID == "" || projectID == "" || nodeID == "" {
+		return ProjectCADDocument{}, ErrProjectNotFound
+	}
+
+	var project entity.Project
+	if err := s.db.WithContext(ctx).First(&project, "id = ? AND owner_user_id = ?", projectID, ownerUserID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ProjectCADDocument{}, ErrProjectNotFound
+		}
+		return ProjectCADDocument{}, fmt.Errorf("load project for CAD node delete: %w", err)
+	}
+
+	return s.deleteProjectCADNode(ctx, project, nodeID)
+}
+
 // AddProjectCADModelBoxUnion persists one box union feature for browser-kernel replay.
 func (s *Service) AddProjectCADModelBoxUnion(ctx context.Context, input AddProjectCADModelBoxUnionInput) (ProjectCADDocument, error) {
 	ownerUserID := strings.TrimSpace(input.OwnerUserID)
@@ -220,6 +247,72 @@ func (s *Service) AddProjectCADModelBoxUnion(ctx context.Context, input AddProje
 			Type:      "box-union",
 			ModelID:   model.ID,
 			Box:       &box,
+			CreatedAt: now.Format(timeFormatRFC3339),
+		})
+
+		document.Revision++
+		document.SchemaVersion = cadDocumentSchemaVersion
+		documentJSON, err := json.Marshal(state)
+		if err != nil {
+			return fmt.Errorf("serialize CAD document: %w", err)
+		}
+		if err := tx.Model(&document).Updates(map[string]any{
+			"schema_version": document.SchemaVersion,
+			"revision":       document.Revision,
+			"document_json":  documentJSON,
+		}).Error; err != nil {
+			return fmt.Errorf("update CAD document: %w", err)
+		}
+		document.DocumentJSON = documentJSON
+		document.UpdatedAt = now
+		publicDocument = publicProjectCADDocument(document, state)
+		return nil
+	})
+	if err != nil {
+		return ProjectCADDocument{}, err
+	}
+	return publicDocument, nil
+}
+
+func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Project, nodeID string) (ProjectCADDocument, error) {
+	var publicDocument ProjectCADDocument
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		document, state, err := s.getOrCreateProjectCADDocumentEntity(ctx, tx, project)
+		if err != nil {
+			return err
+		}
+
+		nodeIndex := -1
+		for index := range state.Nodes {
+			if state.Nodes[index].ID == nodeID {
+				nodeIndex = index
+				break
+			}
+		}
+		if nodeIndex < 0 {
+			return ErrProjectNotFound
+		}
+		if state.Nodes[nodeIndex].SourceFormat != "step-component" {
+			return ErrInvalidCADDocumentInput
+		}
+
+		deletedNode := state.Nodes[nodeIndex]
+		state.Nodes = append(state.Nodes[:nodeIndex], state.Nodes[nodeIndex+1:]...)
+
+		operationID, err := id.NewPrefixed("op")
+		if err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		sourceModelID := deletedNode.SourceModelID
+		if sourceModelID == "" {
+			sourceModelID = deletedNode.ModelID
+		}
+		state.Operations = append(state.Operations, CADOperation{
+			ID:        operationID,
+			Type:      "delete-node",
+			ModelID:   sourceModelID,
+			NodeID:    deletedNode.ID,
 			CreatedAt: now.Format(timeFormatRFC3339),
 		})
 
@@ -411,6 +504,7 @@ func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, project
 	}
 	nodeByID := make(map[string]struct{}, len(state.Nodes))
 	nodeByModelID := make(map[string]struct{}, len(state.Nodes))
+	deletedNodeByID := deletedCADDocumentNodeIDs(state)
 	for _, node := range state.Nodes {
 		nodeByID[node.ID] = struct{}{}
 		if node.ModelID != "" {
@@ -447,7 +541,7 @@ func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, project
 		}
 		if _, ok := nodeByModelID[model.ID]; ok {
 			publicModel := publicProjectModel(model)
-			state, changed = syncCADDocumentComponentNodes(state, nodeByID, publicModel, changed)
+			state, changed = syncCADDocumentComponentNodes(state, nodeByID, deletedNodeByID, publicModel, changed)
 			continue
 		}
 		publicModel := publicProjectModel(model)
@@ -459,12 +553,28 @@ func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, project
 		nodeByID[sourceNode.ID] = struct{}{}
 		nodeByModelID[model.ID] = struct{}{}
 		changed = true
-		state, changed = syncCADDocumentComponentNodes(state, nodeByID, publicModel, changed)
+		state, changed = syncCADDocumentComponentNodes(state, nodeByID, deletedNodeByID, publicModel, changed)
 	}
 	return state, changed, nil
 }
 
-func syncCADDocumentComponentNodes(state cadDocumentState, nodeByID map[string]struct{}, model ProjectModel, changed bool) (cadDocumentState, bool) {
+func deletedCADDocumentNodeIDs(state cadDocumentState) map[string]struct{} {
+	deletedNodeByID := make(map[string]struct{})
+	for _, operation := range state.Operations {
+		if operation.Type == "delete-node" && operation.NodeID != "" {
+			deletedNodeByID[operation.NodeID] = struct{}{}
+		}
+	}
+	return deletedNodeByID
+}
+
+func syncCADDocumentComponentNodes(
+	state cadDocumentState,
+	nodeByID map[string]struct{},
+	deletedNodeByID map[string]struct{},
+	model ProjectModel,
+	changed bool,
+) (cadDocumentState, bool) {
 	if model.Format != "step" || len(model.Metadata.Components) <= 1 {
 		return state, changed
 	}
@@ -476,6 +586,9 @@ func syncCADDocumentComponentNodes(state cadDocumentState, nodeByID map[string]s
 		}
 		nodeID := parentNodeID + "_component_" + strconv.Itoa(index+1)
 		if _, ok := nodeByID[nodeID]; ok {
+			continue
+		}
+		if _, ok := deletedNodeByID[nodeID]; ok {
 			continue
 		}
 		state.Nodes = append(state.Nodes, CADDocumentNode{

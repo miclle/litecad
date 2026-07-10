@@ -36,6 +36,8 @@ export type ProjectModelTreeGroup = {
   children: { id: string; name: string; sourceModelId: string }[]
 }
 
+type ProjectPreviewPickTarget = { modelId: string; nodeId: string; name: string; componentIndex?: number }
+
 export function parsedPreviewModels(models: ProjectModel[]) {
   return models.filter((model) => model.parse_status === 'parsed')
 }
@@ -75,13 +77,13 @@ export function buildProjectPreviewAssets(
   models: ProjectModel[],
   previewArtifacts: ProjectModelPreviewArtifact[],
   previewUrlsByModelID: Record<string, string>,
-  kernelMeshesByModelID: Record<string, { mesh: CadKernelMesh; meshSummary: CadKernelMeshSummary }> = {},
+  kernelMeshesByModelID: Record<string, { mesh: CadKernelMesh; componentMeshes?: CadKernelMesh[]; meshSummary: CadKernelMeshSummary }> = {},
   cadDocument?: ProjectCADDocument,
 ) {
   const artifactByModelID = new Map(previewArtifacts.map((artifact) => [artifact.model_id, artifact]))
   const transformByModelID = new Map((cadDocument?.nodes ?? []).map((node) => [node.model_id, node.transform]))
   const sourceModelIDByNodeID = buildSourceModelIDByNodeID(cadDocument)
-  const componentNodesBySourceModelID = new Map<string, { modelId: string; nodeId: string; name: string }[]>()
+  const componentNodesBySourceModelID = new Map<string, ProjectPreviewPickTarget[]>()
   for (const node of cadDocument?.nodes ?? []) {
     if (node.source_format !== 'step-component' || !node.name.trim()) {
       continue
@@ -91,7 +93,7 @@ export function buildProjectPreviewAssets(
       continue
     }
     const nodes = componentNodesBySourceModelID.get(sourceModelID) ?? []
-    nodes.push({ modelId: sourceModelID, nodeId: node.id, name: node.name.trim() })
+    nodes.push({ modelId: sourceModelID, nodeId: node.id, name: node.name.trim(), componentIndex: componentIndexFromNodeID(node.id) })
     componentNodesBySourceModelID.set(sourceModelID, nodes)
   }
 
@@ -100,19 +102,33 @@ export function buildProjectPreviewAssets(
     const transform = transformByModelID.get(model.id)
     if (kernelMesh) {
       const geometrySignature = cadKernelGeometryOperationSignature(cadDocument, model.id)
-      const pickTargets =
+      const pickTargetsWithIndex =
         componentNodesBySourceModelID.get(model.id) ??
         (model.metadata.components ?? [])
-          .map((component, index) => ({ modelId: model.id, nodeId: `node_${model.id}_component_${index + 1}`, name: component.name.trim() }))
+          .map((component, index) => ({
+            modelId: model.id,
+            nodeId: `node_${model.id}_component_${index + 1}`,
+            name: component.name.trim(),
+            componentIndex: index,
+          }))
           .filter((component) => component.name !== '')
+      const filteredComponentMeshes =
+        kernelMesh.componentMeshes && pickTargetsWithIndex.length > 0
+          ? pickTargetsWithIndex
+              .map((target) => (target.componentIndex === undefined ? undefined : kernelMesh.componentMeshes?.[target.componentIndex]))
+              .filter((mesh): mesh is CadKernelMesh => Boolean(mesh))
+          : undefined
+      const pickTargets = pickTargetsWithIndex.map(({ componentIndex: _componentIndex, ...target }) => target)
       return [
         {
           modelId: model.id,
           name: getModelDisplayName(model),
           previewFormat: 'kernel-mesh',
+          mesh: kernelMesh.mesh,
+          meshSummary: kernelMesh.meshSummary,
           ...(geometrySignature ? { geometrySignature } : {}),
-          ...(pickTargets.length > 1 ? { pickTargets } : {}),
-          ...kernelMesh,
+          ...(pickTargets.length > 1 || filteredComponentMeshes?.length ? { pickTargets } : {}),
+          ...(filteredComponentMeshes?.length ? { componentMeshes: filteredComponentMeshes } : kernelMesh.componentMeshes ? {} : {}),
         },
       ]
     }
@@ -136,6 +152,15 @@ export function buildProjectPreviewAssets(
 
 function buildSourceModelIDByNodeID(cadDocument: ProjectCADDocument | undefined) {
   return new Map((cadDocument?.nodes ?? []).map((node) => [node.id, node.source_model_id || node.model_id] as const))
+}
+
+function componentIndexFromNodeID(nodeID: string) {
+  const match = nodeID.match(/_component_(\d+)$/)
+  if (!match) {
+    return undefined
+  }
+  const componentNumber = Number(match[1])
+  return Number.isInteger(componentNumber) && componentNumber > 0 ? componentNumber - 1 : undefined
 }
 
 export function projectPreviewAssetSignature(assets: readonly ProjectPreviewAsset[]) {

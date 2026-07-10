@@ -14,9 +14,9 @@ export function createKernelMeshPreviewObject(
   componentMeshes: readonly CadKernelMesh[] = [],
   fallbackModelId = '',
 ) {
-  if (pickTargets.length > 1 || (fallbackModelId && componentMeshes.length > 1)) {
-    const pickableMeshes = componentMeshes.length > 1 ? componentMeshes : splitKernelMeshIntoComponents(mesh)
-    if (pickableMeshes.length > 1) {
+  if (pickTargets.length > 1 || componentMeshes.length > 0) {
+    const pickableMeshes = componentMeshes.length > 0 ? componentMeshes : splitKernelMeshIntoComponents(mesh)
+    if (pickableMeshes.length > 0) {
       const object = new THREE.Group()
       object.name = 'Browser kernel preview'
       pickableMeshes.forEach((componentMesh, index) => {

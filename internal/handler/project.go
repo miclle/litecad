@@ -343,6 +343,23 @@ func (ctrl *Ctrl) UpdateProjectCADNodeTransform(c *fox.Context, req *updateProje
 	return projectCADDocumentResponse{Document: document}, nil
 }
 
+// DeleteProjectCADNode removes a component node from the editable LiteCAD document.
+func (ctrl *Ctrl) DeleteProjectCADNode(c *fox.Context) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.DeleteProjectCADNode(c.Request.Context(), service.DeleteProjectCADNodeInput{
+		OwnerUserID: user.ID,
+		ProjectID:   c.Param("projectID"),
+		NodeID:      c.Param("nodeID"),
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
 // AddProjectCADModelBoxUnion records one kernel-backed box union feature.
 func (ctrl *Ctrl) AddProjectCADModelBoxUnion(c *fox.Context, req *addProjectCADModelBoxUnionRequest) (projectCADDocumentResponse, error) {
 	user, err := ctrl.currentUser(c)

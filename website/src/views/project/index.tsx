@@ -27,13 +27,16 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Send,
+  Trash2,
   Upload,
   X,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
+import type { ProjectCADDocument } from 'src/types/project'
 
 import {
   addProjectCADModelBoxUnion,
+  deleteProjectCADNode,
   fetchProjectAgentMessages,
   fetchProject,
   fetchProjectCADDocument,
@@ -80,6 +83,7 @@ import {
   parseBoxFeatureDraft,
   type BoxFeatureDraft,
 } from './cad-document-box-features'
+import { shouldAcceptCADNodeTransformDocument } from './cad-document-cache'
 import { cadTransformWithTranslation, translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
 import { exportMergedStepTargets, exportStepTarget } from './project-step-export-action'
@@ -317,6 +321,7 @@ function ProjectView() {
   const [hiddenModelIDs, setHiddenModelIDs] = useState<Set<string>>(() => new Set())
   const [selectedModelID, setSelectedModelID] = useState('')
   const [selectedDocumentNodeID, setSelectedDocumentNodeID] = useState('')
+  const [selectedNodeDeleteError, setSelectedNodeDeleteError] = useState('')
   const [activeCADTool, setActiveCADTool] = useState<CADTool>('inspect')
   const [transformDraftsByModelID, setTransformDraftsByModelID] = useState<Record<string, TransformDraft>>({})
   const [transformErrorByModelID, setTransformErrorByModelID] = useState<Record<string, string>>({})
@@ -404,6 +409,10 @@ function ProjectView() {
       if ((latestTransformSaveRequestByModelIDRef.current[variables.nodeId] ?? 0) > variables.requestVersion) {
         return
       }
+      const currentDocument = queryClient.getQueryData<ProjectCADDocument>(['projects', projectId, 'cad-document'])
+      if (!shouldAcceptCADNodeTransformDocument(currentDocument, variables.nodeId)) {
+        return
+      }
       const latestDraft = latestTransformDraftsRef.current[variables.nodeId]
       if (latestDraft) {
         const latestTranslation = parseTransformDraft(latestDraft)
@@ -419,6 +428,31 @@ function ProjectView() {
         return
       }
       setTransformErrorByModelID((currentErrors) => ({ ...currentErrors, [variables.nodeId]: 'Invalid transform' }))
+    },
+  })
+  const deleteCADNodeMutation = useMutation({
+    mutationFn: async ({ nodeId }: { nodeId: string }) => (await deleteProjectCADNode(projectId, nodeId)).data.document,
+    onSuccess: async (document, variables) => {
+      clearTransformAutosaveTimer(variables.nodeId)
+      delete latestTransformDraftsRef.current[variables.nodeId]
+      delete latestTransformSaveRequestByModelIDRef.current[variables.nodeId]
+      setTransformDraftsByModelID((currentDrafts) => {
+        const nextDrafts = { ...currentDrafts }
+        delete nextDrafts[variables.nodeId]
+        return nextDrafts
+      })
+      setTransformErrorByModelID((currentErrors) => {
+        const nextErrors = { ...currentErrors }
+        delete nextErrors[variables.nodeId]
+        return nextErrors
+      })
+      setSelectedNodeDeleteError('')
+      setSelectedModelID('')
+      setSelectedDocumentNodeID('')
+      queryClient.setQueryData(['projects', projectId, 'cad-document'], document)
+    },
+    onError: () => {
+      setSelectedNodeDeleteError('Could not delete this model')
     },
   })
   const addCADModelBoxUnionMutation = useMutation({
@@ -700,6 +734,7 @@ function ProjectView() {
     if (selectedModelID && !selectedModel) {
       setSelectedModelID('')
       setSelectedDocumentNodeID('')
+      setSelectedNodeDeleteError('')
     }
   }, [selectedModel, selectedModelID])
 
@@ -709,6 +744,7 @@ function ProjectView() {
     }
     if (selectedDocumentNodeID && !cadNodeByID.has(selectedDocumentNodeID)) {
       setSelectedDocumentNodeID('')
+      setSelectedNodeDeleteError('')
       return
     }
     if (selectedModelID && !selectedDocumentNodeID) {
@@ -930,6 +966,9 @@ function ProjectView() {
     ? transformDraftsByModelID[selectedDocumentNode.id] ?? transformDraftFromTranslation(translationFromCADTransform(selectedDocumentNode.transform))
     : undefined
   const selectedModelTransformError = selectedDocumentNode ? transformErrorByModelID[selectedDocumentNode.id] : ''
+  const selectedDocumentNodeCanDelete = selectedDocumentNode?.source_format === 'step-component'
+  const isSelectedDocumentNodeDeleting =
+    Boolean(selectedDocumentNode) && deleteCADNodeMutation.isPending && deleteCADNodeMutation.variables?.nodeId === selectedDocumentNode?.id
   const selectedModelSupportsFuseBox = selectedSourceModel?.format === 'step'
   const selectedModelBoxFeatureDraft = selectedSourceModel
     ? boxFeatureDraftsByModelID[selectedSourceModel.id] ?? latestBoxFeatureDraftForModel(selectedSourceModel.id)
@@ -1057,6 +1096,13 @@ function ProjectView() {
     }
     window.clearTimeout(timerID)
     delete transformAutosaveTimersRef.current[nodeID]
+  }
+  const deleteSelectedDocumentNode = () => {
+    if (!selectedDocumentNode || !selectedDocumentNodeCanDelete || deleteCADNodeMutation.isPending) {
+      return
+    }
+    setSelectedNodeDeleteError('')
+    deleteCADNodeMutation.mutate({ nodeId: selectedDocumentNode.id })
   }
   const scheduleTransformAutosave = (nodeID: string, draft: TransformDraft) => {
     clearTransformAutosaveTimer(nodeID)
@@ -1420,11 +1466,13 @@ function ProjectView() {
               onClearSelection={() => {
                 setSelectedModelID('')
                 setSelectedDocumentNodeID('')
+                setSelectedNodeDeleteError('')
               }}
               onModelTranslationChange={updateTransformDraftFromTranslation}
               onSelectModel={(modelID, nodeID) => {
                 setSelectedModelID(modelID)
                 setSelectedDocumentNodeID(nodeID ?? sourceNodeIDByModelID.get(modelID) ?? `node_${modelID}`)
+                setSelectedNodeDeleteError('')
               }}
               onSnapshotCapture={handlePreviewSnapshotCapture}
               previewAssets={previewAssets}
@@ -1694,6 +1742,7 @@ function ProjectView() {
                                 onClick={() => {
                                   setSelectedModelID(model.id)
                                   setSelectedDocumentNodeID(group.sourceNodeId)
+                                  setSelectedNodeDeleteError('')
                                 }}
                                 role="option"
                                 title={modelDisplayName}
@@ -1750,6 +1799,7 @@ function ProjectView() {
                                       onClick={() => {
                                         setSelectedModelID(child.sourceModelId || model.id)
                                         setSelectedDocumentNodeID(child.id)
+                                        setSelectedNodeDeleteError('')
                                       }}
                                       role="option"
                                       title={child.name}
@@ -1788,6 +1838,7 @@ function ProjectView() {
                         onClick={() => {
                           setSelectedModelID('')
                           setSelectedDocumentNodeID('')
+                          setSelectedNodeDeleteError('')
                         }}
                         type="button"
                       >
@@ -1803,6 +1854,18 @@ function ProjectView() {
                           <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#0f172a]" title={selectedModelDisplayName}>
                             {selectedModelDisplayName}
                           </p>
+                          {selectedDocumentNodeCanDelete && (
+                            <button
+                              aria-label={`Delete ${selectedModelDisplayName}`}
+                              className="grid size-7 shrink-0 place-items-center rounded-md text-[#9f3a2d] transition hover:bg-[#fee2e2] hover:text-[#7f1d1d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fca5a5] disabled:cursor-not-allowed disabled:opacity-50"
+                              disabled={isSelectedDocumentNodeDeleting}
+                              onClick={deleteSelectedDocumentNode}
+                              title="Delete model"
+                              type="button"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          )}
                         </div>
                         <dl className="mt-2 grid gap-1.5 text-xs">
                           {selectedModelDetails.map((detail) => (
@@ -1842,6 +1905,9 @@ function ProjectView() {
 
                       {selectedModelStepExportError && (
                         <p className="text-[11px] leading-4 text-[#8a2f24]">{selectedModelStepExportError}</p>
+                      )}
+                      {selectedNodeDeleteError && (
+                        <p className="text-[11px] leading-4 text-[#8a2f24]">{selectedNodeDeleteError}</p>
                       )}
                       {selectedModelStepExportStatus && (
                         <p className="text-[11px] leading-4 text-[#3f6212]">{selectedModelStepExportStatus}</p>
