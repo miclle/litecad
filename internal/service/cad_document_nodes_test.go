@@ -138,6 +138,78 @@ END-ISO-10303-21;`),
 	}
 }
 
+func TestDeleteProjectCADNodeRemovesSourceNodeAndChildren(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	user, project := createTestProjectForModel(t, svc, ctx)
+	model, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Filename:    "source-delete.step",
+		ContentType: "application/step",
+		Data: []byte(`ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));
+ENDSEC;
+DATA;
+#1 = PRODUCT('Assembly','Assembly','',(#10));
+#2 = PRODUCT('Left Bracket','Left Bracket','',(#10));
+#3 = PRODUCT('Right Bracket','Right Bracket','',(#10));
+#4 = ( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) );
+ENDSEC;
+END-ISO-10303-21;`),
+	})
+	if err != nil {
+		t.Fatalf("UploadProjectModel returned error: %v", err)
+	}
+	document, err := svc.GetProjectCADDocument(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectCADDocument returned error: %v", err)
+	}
+	sourceNodeID := "node_" + model.ID
+	childNodeID := sourceNodeID + "_component_2"
+
+	updated, err := svc.DeleteProjectCADNode(ctx, DeleteProjectCADNodeInput{
+		OwnerUserID:      user.ID,
+		ProjectID:        project.ID,
+		NodeID:           sourceNodeID,
+		ExpectedRevision: document.Revision,
+	})
+	if err != nil {
+		t.Fatalf("DeleteProjectCADNode returned error: %v", err)
+	}
+	if documentHasNode(updated, sourceNodeID) || documentHasNode(updated, childNodeID) {
+		t.Fatalf("deleted source or child node still present: %+v", updated.Nodes)
+	}
+	if len(updated.Operations) != 1 || updated.Operations[0].Type != "delete-node" || updated.Operations[0].NodeID != sourceNodeID || updated.Operations[0].ModelID != model.ID {
+		t.Fatalf("operations = %+v, want source node delete operation", updated.Operations)
+	}
+
+	undone, err := svc.UndoProjectCADDocument(ctx, ModifyProjectCADHistoryInput{
+		OwnerUserID:      user.ID,
+		ProjectID:        project.ID,
+		ExpectedRevision: updated.Revision,
+	})
+	if err != nil {
+		t.Fatalf("UndoProjectCADDocument returned error: %v", err)
+	}
+	if !documentHasNode(undone, sourceNodeID) || !documentHasNode(undone, childNodeID) || len(undone.Operations) != 0 {
+		t.Fatalf("undone source delete document = %+v", undone)
+	}
+
+	redone, err := svc.RedoProjectCADDocument(ctx, ModifyProjectCADHistoryInput{
+		OwnerUserID:      user.ID,
+		ProjectID:        project.ID,
+		ExpectedRevision: undone.Revision,
+	})
+	if err != nil {
+		t.Fatalf("RedoProjectCADDocument returned error: %v", err)
+	}
+	if documentHasNode(redone, sourceNodeID) || documentHasNode(redone, childNodeID) || len(redone.Operations) != 1 {
+		t.Fatalf("redone source delete document = %+v", redone)
+	}
+}
+
 func TestUpdateProjectCADModelTransformPersistsOperationAndScopesByOwner(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

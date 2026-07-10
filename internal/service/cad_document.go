@@ -321,12 +321,28 @@ func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Proje
 		if nodeIndex < 0 {
 			return ErrProjectNotFound
 		}
-		if state.Nodes[nodeIndex].SourceFormat != "step-component" {
-			return ErrInvalidCADDocumentInput
-		}
 
 		deletedNode := state.Nodes[nodeIndex]
-		state.Nodes = append(state.Nodes[:nodeIndex], state.Nodes[nodeIndex+1:]...)
+		deletedNodes := []cadDeletedDocumentNode{{Node: deletedNode, Index: nodeIndex}}
+		if deletedNode.ParentNodeID == "" {
+			for index := nodeIndex + 1; index < len(state.Nodes); index++ {
+				if state.Nodes[index].ParentNodeID == deletedNode.ID {
+					deletedNodes = append(deletedNodes, cadDeletedDocumentNode{Node: state.Nodes[index], Index: index})
+				}
+			}
+		}
+		deletedNodeIDs := make(map[string]struct{}, len(deletedNodes))
+		for _, node := range deletedNodes {
+			deletedNodeIDs[node.Node.ID] = struct{}{}
+		}
+		nextNodes := state.Nodes[:0]
+		for _, node := range state.Nodes {
+			if _, ok := deletedNodeIDs[node.ID]; ok {
+				continue
+			}
+			nextNodes = append(nextNodes, node)
+		}
+		state.Nodes = nextNodes
 
 		operationID, err := id.NewPrefixed("op")
 		if err != nil {
@@ -349,6 +365,7 @@ func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Proje
 		if _, err := appendProjectCADHistoryEntry(ctx, tx, &document, "delete-node", deletedNode.ID, "Delete "+deletedNode.Name, cadDeleteNodeHistoryCommand{
 			Node:           deletedNode,
 			NodeIndex:      nodeIndex,
+			Nodes:          deletedNodes,
 			Operation:      operation,
 			OperationIndex: operationIndex,
 		}); err != nil {
@@ -559,6 +576,10 @@ func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, project
 		}
 	}
 	for _, model := range models {
+		sourceNodeID := "node_" + model.ID
+		if _, ok := deletedNodeByID[sourceNodeID]; ok {
+			continue
+		}
 		if shouldBackfillModelMetadata(model) {
 			applyModelMetadata(&model)
 			if err := tx.WithContext(ctx).Model(&model).Updates(map[string]any{

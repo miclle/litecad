@@ -1,6 +1,6 @@
 import type { CadKernelOperation } from 'src/cad/kernel-protocol'
 import type { ProjectCADDocument, ProjectModel } from 'src/types/project'
-import { cadKernelOperationsForModel, getModelDisplayName, parsedPreviewModels } from './project-preview-assets'
+import { cadKernelOperationsForModel, getModelDisplayName, parsedPreviewModels, visibleProjectModels } from './project-preview-assets'
 
 export type StepExportTarget = {
   modelId: string
@@ -18,7 +18,7 @@ export type StepExportDownload = {
 export type StepExportMode = 'separate' | 'merged'
 
 export function buildStepExportTargets(models: ProjectModel[], cadDocument: ProjectCADDocument | undefined): StepExportTarget[] {
-  return parsedPreviewModels(models)
+  return parsedPreviewModels(visibleProjectModels(models, cadDocument))
     .filter((model) => model.format === 'step')
     .map((model) => ({
       modelId: model.id,

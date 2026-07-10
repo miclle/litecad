@@ -31,10 +31,16 @@ type cadBoxUnionHistoryCommand struct {
 }
 
 type cadDeleteNodeHistoryCommand struct {
-	Node           CADDocumentNode `json:"node"`
-	NodeIndex      int             `json:"node_index"`
-	Operation      CADOperation    `json:"operation"`
-	OperationIndex int             `json:"operation_index"`
+	Node           CADDocumentNode          `json:"node"`
+	NodeIndex      int                      `json:"node_index"`
+	Nodes          []cadDeletedDocumentNode `json:"nodes,omitempty"`
+	Operation      CADOperation             `json:"operation"`
+	OperationIndex int                      `json:"operation_index"`
+}
+
+type cadDeletedDocumentNode struct {
+	Node  CADDocumentNode `json:"node"`
+	Index int             `json:"index"`
 }
 
 // ModifyProjectCADHistoryInput moves one project document through persisted history.
@@ -306,15 +312,23 @@ func applyCADHistoryCommand(state *cadDocumentState, entry entity.ProjectCADHist
 		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
 			return fmt.Errorf("decode delete node history command: %w", err)
 		}
+		deletedNodes := command.Nodes
+		if len(deletedNodes) == 0 {
+			deletedNodes = []cadDeletedDocumentNode{{Node: command.Node, Index: command.NodeIndex}}
+		}
 		if forward {
-			nodeIndex := cadDocumentNodeIndex(state.Nodes, command.Node.ID)
-			if nodeIndex < 0 {
-				return ErrInvalidCADDocumentInput
+			for _, deletedNode := range deletedNodes {
+				nodeIndex := cadDocumentNodeIndex(state.Nodes, deletedNode.Node.ID)
+				if nodeIndex < 0 {
+					return ErrInvalidCADDocumentInput
+				}
+				state.Nodes = append(state.Nodes[:nodeIndex], state.Nodes[nodeIndex+1:]...)
 			}
-			state.Nodes = append(state.Nodes[:nodeIndex], state.Nodes[nodeIndex+1:]...)
 			state.Operations = insertCADOperation(state.Operations, command.OperationIndex, command.Operation)
 		} else {
-			state.Nodes = insertCADDocumentNode(state.Nodes, command.NodeIndex, command.Node)
+			for _, deletedNode := range deletedNodes {
+				state.Nodes = insertCADDocumentNode(state.Nodes, deletedNode.Index, deletedNode.Node)
+			}
 			state.Operations = removeCADOperation(state.Operations, command.Operation.ID)
 		}
 	default:

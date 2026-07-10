@@ -191,7 +191,7 @@ The second Phase 3 increment proved on 2026-07-08 that model-scoped transform op
 
 The third Phase 3 increment is complete on 2026-07-08: STEP models now support a constrained per-model `box-union` feature operation. LiteCAD persists the operation in the project CAD document, the workbench exposes origin and size controls for STEP models, and the browser CAD worker creates an OCCT box with `BRepPrimAPI_MakeBox`, fuses it into the imported shape with `BRepAlgoAPI_Fuse`, then tessellates or exports the fused shape.
 
-The fourth Phase 3 increment is complete on 2026-07-10: LiteCAD stores each supported user edit as a reversible database history entry and persists the active history head on the CAD document. The workbench exposes Undo, Redo, keyboard shortcuts, and a paginated History panel. Transform, box-union, and STEP component deletion commands survive reloads and switching signed-in browsers; revision conflicts reject stale writes instead of overwriting another session.
+The fourth Phase 3 increment is complete on 2026-07-10: LiteCAD stores each supported user edit as a reversible database history entry and persists the active history head on the CAD document. The workbench exposes Undo, Redo, keyboard shortcuts, and a paginated History panel. Transform, box-union, and model/source or STEP component deletion commands survive reloads and switching signed-in browsers; revision conflicts reject stale writes instead of overwriting another session.
 
 Current Phase 3 status:
 
@@ -305,8 +305,8 @@ As of this roadmap, the current shipped path is:
 - GLB and self-contained GLTF uploads can be published as preview artifacts after backend validation.
 - STL is converted to OBJ preview data in Go.
 - The project workbench renders browser-kernel STEP meshes and backend-provided GLB/GLTF/STL preview artifacts in Three.js.
-- The project workbench stores and reloads a LiteCAD editable document for root model nodes plus transform, component-delete, and constrained box-union operations.
-- Database-backed History stores reversible transform, component-delete, and box-union commands, the active Undo/Redo head, and discarded alternate paths; every mutation uses an expected document revision.
+- The project workbench stores and reloads a LiteCAD editable document for root model nodes plus transform, node-delete, and constrained box-union operations.
+- Database-backed History stores reversible transform, node-delete, and box-union commands, the active Undo/Redo head, and discarded alternate paths; every mutation uses an expected document revision.
 - STEP preview derives mesh data by replaying box-union geometry in the browser CAD worker before tessellation, then applies the latest persisted absolute transform in the Three.js scene.
 - Direct per-model STEP export and selected multi-model compound STEP export replay geometry operations followed by the latest absolute transform in the browser CAD worker and download the worker-produced STEP text.
 - No durable kernel shape serialization, rich parametric B-rep feature model, backend export artifact history, or durable cross-model CAD merge/assembly semantics exist yet.

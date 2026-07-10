@@ -42,6 +42,14 @@ export function parsedPreviewModels(models: ProjectModel[]) {
   return models.filter((model) => model.parse_status === 'parsed')
 }
 
+export function visibleProjectModels(models: ProjectModel[], cadDocument?: ProjectCADDocument) {
+  if (!cadDocument) {
+    return models
+  }
+  const visibleSourceModelIds = new Set(cadDocument.nodes.filter((node) => node.model_id).map((node) => node.model_id))
+  return models.filter((model) => visibleSourceModelIds.has(model.id))
+}
+
 export function buildProjectModelTree(models: ProjectModel[], cadDocument?: ProjectCADDocument): ProjectModelTreeGroup[] {
   const sourceModelIDByNodeID = buildSourceModelIDByNodeID(cadDocument)
   const componentNodesByParentID = new Map<string, { id: string; name: string; sourceModelId: string }[]>()
@@ -54,11 +62,13 @@ export function buildProjectModelTree(models: ProjectModel[], cadDocument?: Proj
     componentNodesByParentID.set(node.parent_node_id, nodes)
   }
 
-  return models.map((model) => {
+  return visibleProjectModels(models, cadDocument).map((model) => {
     const parentNodeID = `node_${model.id}`
     const documentChildren = componentNodesByParentID.get(parentNodeID) ?? []
     const metadataChildren =
-      documentChildren.length > 0
+      cadDocument
+        ? documentChildren
+        : documentChildren.length > 0
         ? documentChildren
         : (model.metadata.components ?? [])
             .map((component, index) => ({ id: `node_${model.id}_component_${index + 1}`, name: component.name.trim(), sourceModelId: model.id }))
@@ -97,21 +107,23 @@ export function buildProjectPreviewAssets(
     componentNodesBySourceModelID.set(sourceModelID, nodes)
   }
 
-  return models.flatMap((model): ProjectPreviewAsset[] => {
+  return visibleProjectModels(models, cadDocument).flatMap((model): ProjectPreviewAsset[] => {
     const kernelMesh = model.format === 'step' ? kernelMeshesByModelID[model.id] : undefined
     const transform = transformByModelID.get(model.id)
     if (kernelMesh) {
       const geometrySignature = cadKernelGeometryOperationSignature(cadDocument, model.id)
       const pickTargetsWithIndex =
-        componentNodesBySourceModelID.get(model.id) ??
-        (model.metadata.components ?? [])
-          .map((component, index) => ({
-            modelId: model.id,
-            nodeId: `node_${model.id}_component_${index + 1}`,
-            name: component.name.trim(),
-            componentIndex: index,
-          }))
-          .filter((component) => component.name !== '')
+        cadDocument
+          ? (componentNodesBySourceModelID.get(model.id) ?? [])
+          : (componentNodesBySourceModelID.get(model.id) ??
+            (model.metadata.components ?? [])
+              .map((component, index) => ({
+                modelId: model.id,
+                nodeId: `node_${model.id}_component_${index + 1}`,
+                name: component.name.trim(),
+                componentIndex: index,
+              }))
+              .filter((component) => component.name !== ''))
       const filteredComponentMeshes =
         kernelMesh.componentMeshes && pickTargetsWithIndex.length > 0
           ? pickTargetsWithIndex

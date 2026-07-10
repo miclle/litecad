@@ -39,7 +39,17 @@ const cadDocument = {
   revision: 7,
   history: { head_id: 'hist_07test', can_undo: true, can_redo: false },
   unit: 'millimetre',
-  nodes: [],
+  nodes: [
+    {
+      id: 'node_mdl_step',
+      model_id: 'mdl_step',
+      source_model_id: 'mdl_step',
+      parent_node_id: '',
+      name: 'bracket.step',
+      source_format: 'step',
+      transform: { matrix: [] },
+    },
+  ],
   operations: [
     {
       id: 'op_transform',
@@ -103,6 +113,44 @@ describe('project STEP export helpers', () => {
         ],
       },
     ])
+  })
+
+  test('omits STEP models deleted from the CAD document', () => {
+    const retainedModel = {
+      ...baseModel,
+      id: 'mdl_retained',
+      original_filename: 'retained.step',
+    } satisfies ProjectModel
+    const deletedModel = {
+      ...baseModel,
+      id: 'mdl_deleted',
+      original_filename: 'deleted.step',
+    } satisfies ProjectModel
+    const document = {
+      ...cadDocument,
+      nodes: [
+        {
+          id: 'node_mdl_retained',
+          model_id: 'mdl_retained',
+          source_model_id: 'mdl_retained',
+          parent_node_id: '',
+          name: 'retained.step',
+          source_format: 'step',
+          transform: { matrix: [] },
+        },
+      ],
+      operations: [
+        {
+          id: 'op_delete',
+          type: 'delete-node',
+          model_id: 'mdl_deleted',
+          node_id: 'node_mdl_deleted',
+          created_at: '2026-07-10T00:00:00Z',
+        },
+      ],
+    } satisfies ProjectCADDocument
+
+    expect(buildStepExportTargets([retainedModel, deletedModel], document).map((target) => target.modelId)).toEqual(['mdl_retained'])
   })
 
   test('sanitizes exported STEP filenames while preserving the source base name', () => {

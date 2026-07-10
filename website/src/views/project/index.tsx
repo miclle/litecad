@@ -74,6 +74,7 @@ import {
 import { cadHistoryActionForKey } from './cad-document-history'
 import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
+import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
 import { ProjectAssistantPanel, type AiChatMessage } from './project-assistant-panel'
 import { ProjectHistoryPopover } from './project-history-popover'
@@ -430,7 +431,7 @@ function ProjectView() {
     ? selectedDocumentNodeID
     : sourceNodeIDByModelID.get(effectiveSelectedModelID) ?? ''
   const keyboardDeleteNode = effectiveSelectedDocumentNodeID ? cadNodeByID.get(effectiveSelectedDocumentNodeID) : undefined
-  const canDeleteNodeFromKeyboard = keyboardDeleteNode?.source_format === 'step-component'
+  const canDeleteNodeFromKeyboard = isCADDocumentNodeDeletable(keyboardDeleteNode)
   const projectModelTree = useMemo(() => buildProjectModelTree(projectModels, projectCADDocument), [projectModels, projectCADDocument])
   const modelTranslationsByID = useMemo(() => {
     const translations: Record<string, CADTranslation> = {}
@@ -774,8 +775,6 @@ function ProjectView() {
     ? transformDraftsByModelID[selectedDocumentNode.id] ?? transformDraftFromTranslation(translationFromCADTransform(selectedDocumentNode.transform))
     : undefined
   const selectedModelTransformError = selectedDocumentNode ? cadDocumentCommands.transformErrorsByNodeId[selectedDocumentNode.id] : ''
-  const selectedDocumentNodeCanDelete = selectedDocumentNode?.source_format === 'step-component'
-  const isSelectedDocumentNodeDeleting = selectedDocumentNode ? cadDocumentCommands.isDeletingNode(selectedDocumentNode.id) : false
   const selectedModelSupportsFuseBox = selectedSourceModel?.format === 'step'
   const selectedModelBoxFeatureDraft = selectedSourceModel
     ? boxFeatureDraftsByModelID[selectedSourceModel.id] ?? latestBoxFeatureDraftForModel(selectedSourceModel.id)
@@ -811,10 +810,8 @@ function ProjectView() {
   const inspectorSelection: ProjectInspectorSelection | undefined =
     selectedDocumentNode && selectedModelTransformDraft
       ? {
-          canDelete: selectedDocumentNodeCanDelete,
           deleteError: cadDocumentCommands.deleteError,
           details: selectedModelDetails,
-          isDeleting: isSelectedDocumentNodeDeleting,
           name: selectedModelDisplayName,
           nodeId: selectedDocumentNode.id,
           stepExportError: selectedModelStepExportError,
@@ -907,13 +904,6 @@ function ProjectView() {
       }
       return nextIDs
     })
-  }
-  const deleteSelectedDocumentNode = () => {
-    if (!selectedDocumentNode || !selectedDocumentNodeCanDelete || cadDocumentCommands.isDeletingNode(selectedDocumentNode.id)) {
-      return
-    }
-    cadDocumentCommands.clearDeleteError()
-    cadDocumentCommands.deleteNode(selectedDocumentNode.id)
   }
   const updateTransformDraftFromTranslation = (modelID: string, translation: CADTranslation, selectedNodeID?: string) => {
     const nodeID = selectedNodeID ?? sourceNodeIDByModelID.get(modelID) ?? `node_${modelID}`
@@ -1392,7 +1382,7 @@ function ProjectView() {
           className={`absolute left-4 top-4 z-30 hidden border border-[#e2e8f0] bg-[#ffffff]/92 shadow-[0_10px_28px_rgba(15,23,42,0.06)] backdrop-blur lg:block ${
             isLeftPanelCollapsed
               ? 'w-[196px] rounded-[14px] px-3 py-1.5'
-              : 'bottom-4 overflow-y-auto rounded-md p-4'
+              : 'bottom-4 overflow-y-auto rounded-md p-3'
           }`}
           style={isLeftPanelCollapsed ? undefined : { width: leftPanelWidth }}
         >
@@ -1429,27 +1419,19 @@ function ProjectView() {
               </div>
 
               <div className="flex min-h-full flex-col">
-                <div className="flex items-center justify-between">
-                  <p className="font-mono text-[11px] uppercase text-[#64748b]">Project</p>
-                  <button
-                    aria-label="Collapse left panel"
-                    className="grid size-8 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
-                    onClick={() => setIsLeftPanelCollapsed(true)}
-                    title="Collapse left panel"
-                    type="button"
-                  >
-                    <LeftPanelIcon className="size-4" />
-                  </button>
-                </div>
-
-                <section className="mt-3">
-                  <p className="text-sm leading-6 text-[#64748b]">
-                    {projectDescription}
-                  </p>
-                </section>
-
                 <ProjectModelTree
                   groups={projectModelTree}
+                  headerAction={
+                    <button
+                      aria-label="Collapse left panel"
+                      className="grid size-8 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
+                      onClick={() => setIsLeftPanelCollapsed(true)}
+                      title="Collapse left panel"
+                      type="button"
+                    >
+                      <LeftPanelIcon className="size-4" />
+                    </button>
+                  }
                   hiddenModelIds={hiddenModelIDs}
                   isLoading={projectModelsQuery.isLoading}
                   isUploading={uploadModelMutation.isPending}
@@ -1468,13 +1450,6 @@ function ProjectView() {
                 <ProjectInspector
                   documentDetails={documentDetails}
                   modelCount={projectModels.length}
-                  onClear={() => {
-                    setSelectedModelID('')
-                    setSelectedDocumentNodeID('')
-                    setActiveCADTool('inspect')
-                    cadDocumentCommands.clearDeleteError()
-                  }}
-                  onDelete={deleteSelectedDocumentNode}
                   onTransformChange={updateTransformDraftField}
                   selected={inspectorSelection}
                   unitLabel={documentUnitLabel}

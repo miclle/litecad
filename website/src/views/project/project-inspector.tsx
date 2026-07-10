@@ -1,6 +1,5 @@
-import { Box, Trash2 } from 'lucide-react'
+import { Box } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import type { CADTranslation } from './cad-document-transforms'
@@ -9,10 +8,8 @@ export type TransformDraft = Record<keyof CADTranslation, string>
 export type InspectorDetail = { label: string; value: string | number }
 
 export type ProjectInspectorSelection = {
-  canDelete: boolean
   deleteError: string
   details: InspectorDetail[]
-  isDeleting: boolean
   name: string
   nodeId: string
   stepExportError: string
@@ -24,8 +21,6 @@ export type ProjectInspectorSelection = {
 type ProjectInspectorProps = {
   documentDetails: InspectorDetail[]
   modelCount: number
-  onClear: () => void
-  onDelete: () => void
   onTransformChange: (nodeId: string, axis: keyof CADTranslation, value: string) => void
   selected?: ProjectInspectorSelection
   unitLabel: string
@@ -73,22 +68,13 @@ function DetailList({ details }: { details: InspectorDetail[] }) {
 export function ProjectInspector({
   documentDetails,
   modelCount,
-  onClear,
-  onDelete,
   onTransformChange,
   selected,
   unitLabel,
 }: ProjectInspectorProps) {
   return (
     <section className="mt-auto pt-5">
-      <div className="flex items-center justify-between gap-3">
-        <p className="font-mono text-[11px] uppercase text-[#64748b]">Document</p>
-        {selected ? (
-          <Button onClick={onClear} size="xs" type="button" variant="ghost">
-            Clear
-          </Button>
-        ) : null}
-      </div>
+      <p className="font-mono text-[11px] uppercase text-[#64748b]">Document</p>
       {selected ? (
         <div className="mt-2 grid gap-2 text-xs">
           <div className="min-w-0">
@@ -97,19 +83,6 @@ export function ProjectInspector({
               <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#0f172a]" title={selected.name}>
                 {selected.name}
               </p>
-              {selected.canDelete ? (
-                <Button
-                  aria-label={`Delete ${selected.name}`}
-                  disabled={selected.isDeleting}
-                  onClick={onDelete}
-                  size="icon-sm"
-                  title="Delete model"
-                  type="button"
-                  variant="destructive"
-                >
-                  <Trash2 />
-                </Button>
-              ) : null}
             </div>
             <DetailList details={selected.details} />
           </div>

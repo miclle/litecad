@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Box, Eye, EyeOff, FileText } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -5,6 +6,7 @@ import type { ProjectModelTreeGroup } from './project-preview-assets'
 
 type ProjectModelTreeProps = {
   groups: ProjectModelTreeGroup[]
+  headerAction?: ReactNode
   hiddenModelIds: ReadonlySet<string>
   isLoading: boolean
   isUploading: boolean
@@ -17,6 +19,7 @@ type ProjectModelTreeProps = {
 
 export function ProjectModelTree({
   groups,
+  headerAction,
   hiddenModelIds,
   isLoading,
   isUploading,
@@ -27,9 +30,10 @@ export function ProjectModelTree({
   uploadError,
 }: ProjectModelTreeProps) {
   return (
-    <section className="mt-8">
+    <section>
       <div className="flex items-center justify-between gap-3">
         <p className="font-mono text-[11px] uppercase text-[#64748b]">Model</p>
+        {headerAction}
       </div>
 
       <div aria-label="Project models" className="mt-3 grid gap-2" role="listbox">

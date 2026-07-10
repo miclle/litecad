@@ -14,8 +14,8 @@ LiteCAD currently supports:
 - Lightweight CAD source metadata, including STEP schema/product/component/unit/entity summaries and STL triangle counts where available.
 - A project workbench with a Three.js viewer, source list, document inspector, ViewCube/orientation controls, model visibility toggles, and multi-model preview composition.
 - Browser-kernel STEP/STP preview through an OCCT/OpenCascade.js Web Worker, without requiring FreeCAD or another desktop CAD application at runtime.
-- Persisted per-model transform edits, STEP component node deletion, and a constrained STEP box-union operation in a LiteCAD document.
-- Database-backed operation History with owner-scoped Undo/Redo for transforms, box unions, and component deletion, including persisted redo state across reloads and devices.
+- Persisted per-model transform edits, model/source node deletion with STEP component child deletion, and a constrained STEP box-union operation in a LiteCAD document.
+- Database-backed operation History with owner-scoped Undo/Redo for transforms, box unions, and node deletion, including persisted redo state across reloads and devices.
 - Direct per-model STEP downloads and selected multi-model STEP compound downloads from the current document state.
 - Backend-published preview artifacts for validated GLB, self-contained GLTF, and STL-to-OBJ previews.
 - A project-scoped CAD Agent chat panel when an OpenAI-compatible provider is configured.
@@ -24,7 +24,7 @@ The home page and workbench use project-owned CAD data rather than hard-coded de
 
 ## Product Boundaries
 
-LiteCAD is not a full parametric CAD system yet. Current edits are limited to persisted placement, STEP component node deletion, and a constrained STEP box-union operation. LiteCAD records those edits as reversible project history, but this is not preserved source-application history or a general parametric B-rep feature graph. Projects do not yet store durable kernel shape state, editable B-rep geometry, durable assemblies, measurement data, sectioning, or backend export artifact history.
+LiteCAD is not a full parametric CAD system yet. Current edits are limited to persisted placement, model/source node deletion with STEP component child deletion, and a constrained STEP box-union operation. LiteCAD records those edits as reversible project history, but this is not preserved source-application history or a general parametric B-rep feature graph. Projects do not yet store durable kernel shape state, editable B-rep geometry, durable assemblies, measurement data, sectioning, or backend export artifact history.
 
 The CAD Agent is advisory today. It can use project and source metadata as context for chat, but it cannot mutate CAD documents, call geometry tools, run measurements, or generate durable CAD features.
 

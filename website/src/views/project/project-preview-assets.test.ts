@@ -98,6 +98,56 @@ describe('project preview assets', () => {
     ])
   })
 
+  test('omits preview assets for source nodes deleted from the CAD document', () => {
+    const pulley = {
+      ...baseModel,
+      id: 'mdl_pulley',
+      original_filename: '同步轮.step',
+      metadata: { ...baseModel.metadata, product_names: ['CyberGearTimingPulley'] },
+    } satisfies ProjectModel
+    const connector = {
+      ...baseModel,
+      id: 'mdl_connector',
+      original_filename: '转向轴承连接器.step',
+      metadata: { ...baseModel.metadata, product_names: ['Bearing connector'] },
+    } satisfies ProjectModel
+    const cadDocument = {
+      id: 'cad_doc',
+      project_id: 'prj_01test',
+      schema_version: 1,
+      revision: 2,
+      unit: 'millimetre',
+      nodes: [
+        {
+          id: 'node_mdl_pulley',
+          model_id: 'mdl_pulley',
+          source_model_id: 'mdl_pulley',
+          parent_node_id: '',
+          name: '同步轮.step',
+          source_format: 'step',
+          transform: { matrix: [] },
+        },
+      ],
+      operations: [{ id: 'op_delete', type: 'delete-node', model_id: 'mdl_connector', node_id: 'node_mdl_connector', created_at: '2026-07-10T00:00:00Z' }],
+      history: { head_id: 'hist_delete', can_undo: true, can_redo: false },
+      created_at: '2026-07-10T00:00:00Z',
+      updated_at: '2026-07-10T00:00:00Z',
+    } satisfies ProjectCADDocument
+
+    expect(
+      buildProjectPreviewAssets(
+        [pulley, connector],
+        [
+          { ...previewArtifact, id: 'prv_pulley', model_id: 'mdl_pulley' },
+          { ...previewArtifact, id: 'prv_connector', model_id: 'mdl_connector' },
+        ],
+        { mdl_pulley: 'blob:pulley', mdl_connector: 'blob:connector' },
+        {},
+        cadDocument,
+      ).map((asset) => asset.modelId),
+    ).toEqual(['mdl_pulley'])
+  })
+
   test('uses browser-kernel mesh data for parsed STEP models before backend preview artifacts', () => {
     const model = {
       ...baseModel,
@@ -650,6 +700,52 @@ describe('project preview assets', () => {
         ],
       },
     ])
+  })
+
+  test('omits source groups deleted from the CAD document', () => {
+    const pulley = {
+      ...baseModel,
+      id: 'mdl_pulley',
+      original_filename: '同步轮.step',
+      metadata: { ...baseModel.metadata, product_names: ['CyberGearTimingPulley'] },
+    } satisfies ProjectModel
+    const connector = {
+      ...baseModel,
+      id: 'mdl_connector',
+      original_filename: '转向轴承连接器.step',
+      metadata: {
+        ...baseModel.metadata,
+        product_names: ['Bearing connector'],
+        components: [
+          { name: 'Boss', kind: 'product' },
+          { name: 'Flange', kind: 'product' },
+        ],
+      },
+    } satisfies ProjectModel
+    const cadDocument = {
+      id: 'cad_doc',
+      project_id: 'prj_01test',
+      schema_version: 1,
+      revision: 2,
+      unit: 'millimetre',
+      nodes: [
+        {
+          id: 'node_mdl_pulley',
+          model_id: 'mdl_pulley',
+          source_model_id: 'mdl_pulley',
+          parent_node_id: '',
+          name: '同步轮.step',
+          source_format: 'step',
+          transform: { matrix: [] },
+        },
+      ],
+      operations: [{ id: 'op_delete', type: 'delete-node', model_id: 'mdl_connector', node_id: 'node_mdl_connector', created_at: '2026-07-10T00:00:00Z' }],
+      history: { head_id: 'hist_delete', can_undo: true, can_redo: false },
+      created_at: '2026-07-10T00:00:00Z',
+      updated_at: '2026-07-10T00:00:00Z',
+    } satisfies ProjectCADDocument
+
+    expect(buildProjectModelTree([pulley, connector], cadDocument).map((group) => group.model.id)).toEqual(['mdl_pulley'])
   })
 
   test('uses imported model names for tree source groups instead of STEP filenames', () => {
