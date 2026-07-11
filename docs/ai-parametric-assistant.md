@@ -14,7 +14,7 @@ Imported STEP, GLB, GLTF, and STL files are source assets. AI-generated paramete
 
 Implementation must not copy CADAM code. Before bundling OpenSCAD WASM or library archives, record the chosen upstream package, license, asset size, and production-serving path. If the license review blocks bundling, implement the LiteCAD feature DSL path first instead of shipping copied or incompatible artifacts.
 
-Current dependency status: no OpenSCAD WASM package or asset is bundled yet. The browser code includes a request protocol, conservative parameter parser, worker client, and worker handler that returns a structured unavailable error until a dependency is selected. License, WASM size, and production asset path remain unset.
+Current dependency status: no OpenSCAD WASM package or asset is bundled yet. The browser code includes a request protocol, conservative parameter parser, worker client, and worker handler that returns a structured unavailable error until a dependency is selected. Initial package review found GPL-licensed OpenSCAD WASM packages (`openscad-wasm` is GPL-2.0; `@bascanada/openscad-compiler` is GPL-3.0-only), so LiteCAD should not bundle them until the distribution/license position is deliberately accepted. License-compatible options, WASM size, and production asset path remain unset.
 
 ## Assistant Sessions
 

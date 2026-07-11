@@ -725,7 +725,7 @@ Implement a conservative parser for top-of-file assignments before the first `mo
 
 - [ ] **Step 4: Add worker loader behind license gate**
 
-Status: deferred until an OpenSCAD WASM dependency is selected and its license, asset size, and production serving path are recorded. This phase adds the worker/client shape and structured unavailable error only.
+Status: deferred. Initial package review found GPL-licensed OpenSCAD WASM candidates (`openscad-wasm` is GPL-2.0; `@bascanada/openscad-compiler` is GPL-3.0-only), so this phase adds the worker/client shape and structured unavailable error only. A later phase must either deliberately accept a compatible distribution model or switch to the LiteCAD-native feature DSL path.
 
 After dependency decision is recorded, add the chosen OpenSCAD WASM dependency or vendored asset path. The worker must:
 
