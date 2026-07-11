@@ -668,7 +668,7 @@ git commit -m "feat(projects): persist parametric artifacts"
 - Produces `parseOpenSCADParameters(code): OpenSCADParameter[]`.
 - Produces worker result with STL/OFF bytes or mesh buffers, compile duration, stderr/stdout, and parameter metadata.
 
-- [ ] **Step 1: Write failing protocol and parser tests**
+- [x] **Step 1: Write failing protocol and parser tests**
 
 Parser cases:
 
@@ -701,7 +701,7 @@ npm --prefix website test -- openscad-protocol openscad-parameters
 
 Expected: FAIL because files do not exist.
 
-- [ ] **Step 2: Add protocol without WASM dependency**
+- [x] **Step 2: Add protocol without WASM dependency**
 
 Define:
 
@@ -719,11 +719,13 @@ export type OpenSCADCompileRequest = {
 
 Add runtime validators like the existing CAD kernel protocol. Keep this testable without loading WASM.
 
-- [ ] **Step 3: Add parameter parser**
+- [x] **Step 3: Add parameter parser**
 
 Implement a conservative parser for top-of-file assignments before the first `module` or `function`. Do not parse executable OpenSCAD generally. Reject multiline values in the first milestone. Treat `*_color` string parameters as color controls.
 
 - [ ] **Step 4: Add worker loader behind license gate**
+
+Status: deferred until an OpenSCAD WASM dependency is selected and its license, asset size, and production serving path are recorded. This phase adds the worker/client shape and structured unavailable error only.
 
 After dependency decision is recorded, add the chosen OpenSCAD WASM dependency or vendored asset path. The worker must:
 
@@ -733,7 +735,7 @@ After dependency decision is recorded, add the chosen OpenSCAD WASM dependency o
 - Return structured compile errors instead of throwing raw provider or WASM internals into UI.
 - Clean up virtual files between runs.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -746,8 +748,15 @@ git diff --check
 Expected:
 
 - Protocol and parser tests pass.
-- Vite build emits worker/WASM assets.
-- `docs/ai-parametric-assistant.md` records dependency name, license, WASM size, and production asset path.
+- Vite build succeeds. It does not emit OpenSCAD WASM assets until Step 4 selects a dependency.
+- `docs/ai-parametric-assistant.md` records that no OpenSCAD dependency is bundled yet and that license, size, and production path remain unset.
+
+Partial verification results:
+
+- `npm --prefix website test -- openscad-protocol openscad-parameters` passed.
+- `npm --prefix website run build` passed.
+- `task check` passed.
+- `task test` passed.
 
 - [ ] **Step 6: Browser smoke**
 
