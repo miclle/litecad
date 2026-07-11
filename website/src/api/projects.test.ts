@@ -17,6 +17,7 @@ import {
   fetchProjectParametricArtifacts,
   addProjectCADModelBoxUnion,
   runProjectAgentParametric,
+  saveProjectParametricArtifactModel,
   sendProjectAgentConversationMessage,
   redoProjectCADDocument,
   undoProjectCADDocument,
@@ -193,6 +194,7 @@ describe('project API', () => {
     fetchProjectParametricArtifact('prj_01test', 'pma_01test')
     createProjectParametricArtifact('prj_01test', payload)
     updateProjectParametricArtifact('prj_01test', 'pma_01test', { ...payload, compile_status: 'success' })
+    saveProjectParametricArtifactModel('prj_01test', 'pma_01test')
 
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts')
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts/pma_01test')
@@ -201,5 +203,6 @@ describe('project API', () => {
       ...payload,
       compile_status: 'success',
     })
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts/pma_01test/save-model', {})
   })
 })

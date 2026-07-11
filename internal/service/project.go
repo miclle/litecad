@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/miclle/litecad/internal/entity"
@@ -404,6 +405,8 @@ func projectModelFormat(filename string) (string, error) {
 		return "gltf", nil
 	case ".stl":
 		return "stl", nil
+	case ".scad":
+		return "scad", nil
 	default:
 		return "", ErrUnsupportedModelFormat
 	}
@@ -449,6 +452,8 @@ func applyModelMetadata(model *entity.ProjectModel) {
 		metadata, err = ExtractGLTFMetadata(model.SourceData)
 	case "stl":
 		metadata, err = ExtractSTLMetadata(model.SourceData)
+	case "scad":
+		metadata = ExtractSCADMetadata(model.OriginalFilename, model.SourceData)
 	default:
 		model.ParseStatus = "pending"
 		return
@@ -469,4 +474,56 @@ func applyModelMetadata(model *entity.ProjectModel) {
 	model.ParseStatus = "parsed"
 	model.ParseError = ""
 	model.MetadataJSON = metadataJSON
+}
+
+func ExtractSCADMetadata(filename string, data []byte) StepMetadata {
+	return StepMetadata{
+		AssetType:           "scad",
+		SourceKind:          projectParametricSourceKindOpenSCAD,
+		Version:             "1",
+		Schema:              "openscad",
+		ProductNames:        []string{strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))},
+		LengthUnit:          "unit",
+		EntityCount:         len(data),
+		ParameterCount:      countOpenSCADTopLevelAssignments(string(data)),
+		RepresentationCount: countOpenSCADTopLevelAssignments(string(data)),
+	}
+}
+
+func countOpenSCADTopLevelAssignments(source string) int {
+	count := 0
+	for _, rawLine := range strings.Split(source, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "//") {
+			continue
+		}
+		if strings.HasPrefix(line, "module ") || strings.HasPrefix(line, "function ") {
+			break
+		}
+		if strings.Contains(line, "=") && strings.Contains(line, ";") {
+			count++
+		}
+	}
+	return count
+}
+
+func slugifyProjectModelFilename(title string) string {
+	var builder strings.Builder
+	lastHyphen := false
+	for _, r := range strings.ToLower(title) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			builder.WriteRune(r)
+			lastHyphen = false
+			continue
+		}
+		if !lastHyphen && builder.Len() > 0 {
+			builder.WriteByte('-')
+			lastHyphen = true
+		}
+	}
+	slug := strings.Trim(builder.String(), "-")
+	if slug == "" {
+		slug = "parametric-model"
+	}
+	return slug + "-litecad.scad"
 }

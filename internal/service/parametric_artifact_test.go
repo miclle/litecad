@@ -132,3 +132,101 @@ func TestProjectParametricArtifactRejectsInvalidSource(t *testing.T) {
 		})
 	}
 }
+
+func TestSaveParametricArtifactCreatesProjectModel(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-save@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Save generated source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID:     user.ID,
+		ProjectID:       project.ID,
+		Title:           "Shelf bracket generator",
+		SourceKind:      "openscad",
+		SourceCode:      "width = 50;\ncube([width, 20, 6]);",
+		ParameterValues: map[string]any{"width": float64(50)},
+		CompileStatus:   "success",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+
+	model, err := svc.SaveParametricArtifactAsProjectModel(ctx, SaveParametricArtifactAsProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		ArtifactID:  artifact.ID,
+	})
+	if err != nil {
+		t.Fatalf("SaveParametricArtifactAsProjectModel returned error: %v", err)
+	}
+	if model.Format != "scad" || model.OriginalFilename != "shelf-bracket-generator-litecad.scad" || model.ContentType != "text/plain; charset=utf-8" {
+		t.Fatalf("model = %+v", model)
+	}
+	if model.ParseStatus != "parsed" {
+		t.Fatalf("model parse status = %q", model.ParseStatus)
+	}
+
+	source, err := svc.GetProjectModelSource(ctx, user.ID, project.ID, model.ID)
+	if err != nil {
+		t.Fatalf("GetProjectModelSource returned error: %v", err)
+	}
+	if string(source.Data) != artifact.SourceCode {
+		t.Fatalf("source = %q, want %q", string(source.Data), artifact.SourceCode)
+	}
+}
+
+func TestSaveParametricArtifactRejectsFailedCompile(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-save-failed@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Reject failed generated source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID:   user.ID,
+		ProjectID:     project.ID,
+		Title:         "Failed bracket generator",
+		SourceKind:    "openscad",
+		SourceCode:    "cube([10, 10, 10]);",
+		CompileStatus: "error",
+		CompileError:  "OpenSCAD runtime is not configured",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+
+	_, err = svc.SaveParametricArtifactAsProjectModel(ctx, SaveParametricArtifactAsProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		ArtifactID:  artifact.ID,
+	})
+	if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+		t.Fatalf("SaveParametricArtifactAsProjectModel error = %v, want ErrInvalidProjectParametricArtifactInput", err)
+	}
+}

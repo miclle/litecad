@@ -38,6 +38,7 @@ import {
   fetchProjectModelSource,
   fetchProjectModels,
   runProjectAgentParametric,
+  saveProjectParametricArtifactModel,
   sendProjectAgentConversationMessage,
   uploadProjectThumbnailSnapshot,
   uploadProjectModel,
@@ -433,6 +434,18 @@ function ProjectView() {
           body: projectAgentErrorMessage(error),
         },
       ])
+    },
+  })
+  const saveProjectParametricArtifactMutation = useMutation({
+    mutationFn: async (artifact: ProjectParametricArtifact) => (await saveProjectParametricArtifactModel(projectId, artifact.id)).data.model,
+    onSuccess: async (model) => {
+      setSelectedParametricArtifact(undefined)
+      setSelectedModelID(model.id)
+      setSelectedDocumentNodeID(sourceNodeIDByModelID.get(model.id) ?? `node_${model.id}`)
+      setActiveCADTool('inspect')
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
     },
   })
   const createProjectAgentConversationMutation = useMutation({
@@ -1557,7 +1570,14 @@ function ProjectView() {
                 />
 
                 {selectedParametricArtifact ? (
-                  <ParametricArtifactEditor artifact={selectedParametricArtifact} />
+                  <ParametricArtifactEditor
+                    artifact={selectedParametricArtifact}
+                    onSaveAsModel={
+                      selectedParametricArtifact.compile_status === 'success'
+                        ? () => saveProjectParametricArtifactMutation.mutate(selectedParametricArtifact)
+                        : undefined
+                    }
+                  />
                 ) : (
                   <ProjectInspector
                     documentDetails={documentDetails}

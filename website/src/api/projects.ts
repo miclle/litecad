@@ -129,6 +129,10 @@ export function updateProjectParametricArtifact(projectId: string, artifactId: s
   return client.patch<ProjectParametricArtifactResponse>(`/projects/${projectId}/parametric-artifacts/${artifactId}`, payload)
 }
 
+export function saveProjectParametricArtifactModel(projectId: string, artifactId: string) {
+  return client.post<ProjectModelResponse>(`/projects/${projectId}/parametric-artifacts/${artifactId}/save-model`, {})
+}
+
 export function createProject(payload: CreateProjectPayload) {
   return client.post<ProjectResponse>('/projects', payload)
 }

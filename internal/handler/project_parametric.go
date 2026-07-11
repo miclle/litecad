@@ -99,3 +99,20 @@ func (ctrl *Ctrl) UpdateProjectParametricArtifact(c *fox.Context, req *projectPa
 	}
 	return projectParametricArtifactResponse{Artifact: artifact}, nil
 }
+
+// SaveProjectParametricArtifactModel stores a generated artifact as a durable project model source.
+func (ctrl *Ctrl) SaveProjectParametricArtifactModel(c *fox.Context) (projectModelResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectModelResponse{}, err
+	}
+	model, err := ctrl.service.SaveParametricArtifactAsProjectModel(c.Request.Context(), service.SaveParametricArtifactAsProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   c.Param("projectID"),
+		ArtifactID:  c.Param("artifactID"),
+	})
+	if err != nil {
+		return projectModelResponse{}, projectError(err)
+	}
+	return projectModelResponse{Model: model}, nil
+}

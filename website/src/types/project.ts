@@ -28,7 +28,7 @@ export interface ProjectThumbnailSnapshotResponse {
 
 export interface ProjectModelSummary {
   id: string
-  format: 'step' | 'glb' | 'gltf' | 'stl'
+  format: 'step' | 'glb' | 'gltf' | 'stl' | 'scad'
   parse_status: 'pending' | 'parsed' | 'error'
   metadata: StepMetadata
   updated_at: string
@@ -46,7 +46,7 @@ export interface ProjectModel {
   id: string
   project_id: string
   original_filename: string
-  format: 'step' | 'glb' | 'gltf' | 'stl'
+  format: 'step' | 'glb' | 'gltf' | 'stl' | 'scad'
   content_type: string
   byte_size: number
   parse_status: 'pending' | 'parsed' | 'error'
@@ -58,12 +58,15 @@ export interface ProjectModel {
 
 export interface StepMetadata {
   asset_type: string
+  source_kind?: string
   version: string
   schema: string
   product_names: string[] | null
   components?: StepComponent[] | null
   length_unit: string
   entity_count: number
+  parameter_count?: number
+  compile_summary?: string
   representation_count: number
   triangle_count: number
 }

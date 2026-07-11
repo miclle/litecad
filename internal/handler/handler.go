@@ -49,6 +49,7 @@ func (ctrl *Ctrl) RegisterRoutes(r *fox.Engine) {
 	api.POST("/projects/:projectID/parametric-artifacts", ctrl.CreateProjectParametricArtifact)
 	api.GET("/projects/:projectID/parametric-artifacts/:artifactID", ctrl.GetProjectParametricArtifact)
 	api.PATCH("/projects/:projectID/parametric-artifacts/:artifactID", ctrl.UpdateProjectParametricArtifact)
+	api.POST("/projects/:projectID/parametric-artifacts/:artifactID/save-model", ctrl.SaveProjectParametricArtifactModel)
 	api.GET("/projects/:projectID/geometry", ctrl.GetProjectGeometryDocument)
 	api.GET("/projects/:projectID/cad-document", ctrl.GetProjectCADDocument)
 	api.GET("/projects/:projectID/cad-document/history", ctrl.ListProjectCADHistory)

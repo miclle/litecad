@@ -56,6 +56,13 @@ type UpdateProjectParametricArtifactInput struct {
 	PreviewModelID  string
 }
 
+// SaveParametricArtifactAsProjectModelInput identifies a generated artifact to save as a durable project source.
+type SaveParametricArtifactAsProjectModelInput struct {
+	OwnerUserID string
+	ProjectID   string
+	ArtifactID  string
+}
+
 // ProjectParametricArtifact is a project-owned generated CAD source artifact.
 type ProjectParametricArtifact struct {
 	ID              string         `json:"id"`
@@ -184,6 +191,63 @@ func (s *Service) UpdateProjectParametricArtifact(ctx context.Context, input Upd
 		return ProjectParametricArtifact{}, fmt.Errorf("update project parametric artifact: %w", err)
 	}
 	return publicProjectParametricArtifact(artifact), nil
+}
+
+// SaveParametricArtifactAsProjectModel stores a successfully compiled generated source as a project model.
+func (s *Service) SaveParametricArtifactAsProjectModel(ctx context.Context, input SaveParametricArtifactAsProjectModelInput) (ProjectModel, error) {
+	project, err := s.loadOwnedProject(ctx, input.OwnerUserID, input.ProjectID)
+	if err != nil {
+		return ProjectModel{}, err
+	}
+	artifact, err := s.loadProjectParametricArtifact(ctx, project.ID, input.ArtifactID)
+	if err != nil {
+		return ProjectModel{}, err
+	}
+	if artifact.CompileStatus != projectParametricCompileStatusSuccess {
+		return ProjectModel{}, ErrInvalidProjectParametricArtifactInput
+	}
+	if strings.TrimSpace(artifact.PreviewModelID) != "" {
+		var existing entity.ProjectModel
+		err := s.db.WithContext(ctx).First(&existing, "id = ? AND project_id = ?", artifact.PreviewModelID, project.ID).Error
+		if err == nil {
+			return publicProjectModel(existing), nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return ProjectModel{}, fmt.Errorf("load saved parametric model: %w", err)
+		}
+	}
+
+	var model ProjectModel
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		modelID, err := id.NewPrefixed("mdl")
+		if err != nil {
+			return err
+		}
+		sourceData := []byte(artifact.SourceCode)
+		modelEntity := entity.ProjectModel{
+			ID:               modelID,
+			ProjectID:        project.ID,
+			OriginalFilename: slugifyProjectModelFilename(artifact.Title),
+			Format:           "scad",
+			ContentType:      "text/plain; charset=utf-8",
+			ByteSize:         int64(len(sourceData)),
+			SourceData:       append([]byte(nil), sourceData...),
+		}
+		applyModelMetadata(&modelEntity)
+		if err := tx.Create(&modelEntity).Error; err != nil {
+			return fmt.Errorf("store parametric project model: %w", err)
+		}
+		artifact.PreviewModelID = modelEntity.ID
+		if err := tx.Save(&artifact).Error; err != nil {
+			return fmt.Errorf("link parametric artifact model: %w", err)
+		}
+		model = publicProjectModel(modelEntity)
+		return nil
+	})
+	if err != nil {
+		return ProjectModel{}, err
+	}
+	return model, nil
 }
 
 func (s *Service) loadProjectParametricArtifact(ctx context.Context, projectID, artifactID string) (entity.ProjectParametricArtifact, error) {

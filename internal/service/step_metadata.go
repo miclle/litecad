@@ -13,12 +13,15 @@ import (
 // StepMetadata is the lightweight, non-geometric summary extracted from CAD source files.
 type StepMetadata struct {
 	AssetType           string          `json:"asset_type"`
+	SourceKind          string          `json:"source_kind,omitempty"`
 	Version             string          `json:"version"`
 	Schema              string          `json:"schema"`
 	ProductNames        []string        `json:"product_names"`
 	Components          []StepComponent `json:"components"`
 	LengthUnit          string          `json:"length_unit"`
 	EntityCount         int             `json:"entity_count"`
+	ParameterCount      int             `json:"parameter_count,omitempty"`
+	CompileSummary      string          `json:"compile_summary,omitempty"`
 	RepresentationCount int             `json:"representation_count"`
 	TriangleCount       int             `json:"triangle_count"`
 }

@@ -106,6 +106,32 @@ func TestProjectParametricArtifactRoutes(t *testing.T) {
 	if updateResponse.Artifact.Title != "Updated bracket generator" || updateResponse.Artifact.CompileStatus != "success" {
 		t.Fatalf("update artifact response = %+v", updateResponse.Artifact)
 	}
+
+	saveArtifact := postJSONWithCookie(t, router, "/api/v1/projects/"+projectResponse.Project.ID+"/parametric-artifacts/"+artifactResponse.Artifact.ID+"/save-model", map[string]any{}, sessionCookie)
+	if saveArtifact.Code != http.StatusOK {
+		t.Fatalf("save artifact status = %d, body = %s", saveArtifact.Code, saveArtifact.Body.String())
+	}
+	var saveResponse struct {
+		Model struct {
+			ID               string `json:"id"`
+			OriginalFilename string `json:"original_filename"`
+			Format           string `json:"format"`
+			ContentType      string `json:"content_type"`
+		} `json:"model"`
+	}
+	if err := json.Unmarshal(saveArtifact.Body.Bytes(), &saveResponse); err != nil {
+		t.Fatalf("decode save response: %v", err)
+	}
+	if saveResponse.Model.ID == "" || saveResponse.Model.Format != "scad" || saveResponse.Model.OriginalFilename != "updated-bracket-generator-litecad.scad" {
+		t.Fatalf("save response = %+v", saveResponse.Model)
+	}
+	source := getWithCookie(t, router, "/api/v1/projects/"+projectResponse.Project.ID+"/models/"+saveResponse.Model.ID+"/source", sessionCookie)
+	if source.Code != http.StatusOK {
+		t.Fatalf("source status = %d, body = %s", source.Code, source.Body.String())
+	}
+	if source.Body.String() != "width = 64;\ncube([width, 20, 6]);" {
+		t.Fatalf("source body = %q", source.Body.String())
+	}
 }
 
 func TestProjectParametricArtifactRejectsInvalidInput(t *testing.T) {

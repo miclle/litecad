@@ -26,7 +26,7 @@ The home page and workbench use project-owned CAD data rather than hard-coded de
 
 LiteCAD is not a full parametric CAD system yet. Current edits are limited to persisted placement, model/source node deletion with STEP component child deletion, and a constrained STEP box-union operation. LiteCAD records those edits as reversible project history, but this is not preserved source-application history or a general parametric B-rep feature graph. Projects do not yet store durable kernel shape state, editable B-rep geometry, durable assemblies, measurement data, sectioning, or backend export artifact history.
 
-The CAD Agent can use project and source metadata as context for chat, and the dedicated parametric-run API can create pending OpenSCAD-style artifact drafts from strict model tool output. The workbench can inspect the generated source and parameter controls, but OpenSCAD compilation is still unavailable until a compatible runtime decision is made. It cannot mutate CAD documents, run measurements, or generate durable CAD features yet.
+The CAD Agent can use project and source metadata as context for chat, and the dedicated parametric-run API can create pending OpenSCAD-style artifact drafts from strict model tool output. The workbench can inspect the generated source and parameter controls, and a successfully compiled artifact can be saved as a durable `.scad` source model. OpenSCAD mesh compilation is still unavailable until a compatible runtime decision is made. The Assistant cannot mutate CAD documents, run measurements, or generate durable B-rep CAD features yet.
 
 Future CAD architecture and phase notes live in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md). Active follow-up work lives in [TODO.md](TODO.md).
 

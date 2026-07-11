@@ -59,6 +59,27 @@ describe('project preview assets', () => {
     expect(parsedPreviewModels([parsedModel, erroredModel])).toEqual([parsedModel])
   })
 
+  test('keeps saved SCAD sources in the tree without inventing preview assets', () => {
+    const scadModel = {
+      ...baseModel,
+      id: 'mdl_scad',
+      original_filename: 'generated-bracket-litecad.scad',
+      format: 'scad',
+      content_type: 'text/plain; charset=utf-8',
+      metadata: {
+        ...baseModel.metadata,
+        asset_type: 'scad',
+        source_kind: 'openscad',
+        schema: 'openscad',
+        product_names: ['Generated bracket'],
+        parameter_count: 1,
+      },
+    } satisfies ProjectModel
+
+    expect(buildProjectModelTree([scadModel])).toMatchObject([{ model: scadModel, displayName: 'Generated bracket' }])
+    expect(buildProjectPreviewAssets([scadModel], [], {})).toEqual([])
+  })
+
   test('builds one preview asset for each model with a ready preview URL', () => {
     const pulley = {
       ...baseModel,

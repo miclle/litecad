@@ -1023,7 +1023,7 @@ Expected:
 - The mocked parametric-run API returns an artifact, opens the editor, renders the `width` parameter, and shows `OpenSCAD runtime is not configured`.
 - Save remains disabled while compile is unavailable.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add website/src/views/project website/src/api/projects.ts
@@ -1033,6 +1033,8 @@ git commit -m "feat(projects): preview parametric artifacts"
 ---
 
 ### Task 8: Save generated artifact as project model
+
+**Implementation note:** This phase implements the backend/API persistence path for artifacts whose `compile_status` is already `success`. The normal browser flow cannot produce that status yet because no OpenSCAD runtime is bundled; saved SCAD mesh preview and browser save smoke remain deferred until the runtime gate is resolved.
 
 **Files:**
 - Modify: `internal/service/parametric_artifact.go`
@@ -1052,7 +1054,7 @@ git commit -m "feat(projects): preview parametric artifacts"
 - Produces saved `ProjectModel` with `format = "scad"` or `format = "parametric"` after final naming decision.
 - Produces metadata fields: source_kind, parameter_count, compile_summary.
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Test:
 
@@ -1079,11 +1081,11 @@ go test ./internal/service -run 'TestSaveParametricArtifact'
 
 Expected: FAIL because save route does not exist.
 
-- [ ] **Step 2: Extend model format**
+- [x] **Step 2: Extend model format**
 
 Add `scad` to backend and frontend project model format validation. Ensure existing STEP/GLB/GLTF/STL behavior remains unchanged.
 
-- [ ] **Step 3: Save source bytes**
+- [x] **Step 3: Save source bytes**
 
 Use the existing project model storage path conventions. Store source code as `.scad` bytes with content type `text/plain; charset=utf-8`. Generated filenames should be stable and safe:
 
@@ -1095,7 +1097,9 @@ Use the existing project model storage path conventions. Store source code as `.
 
 For saved `scad` models, route preview through the OpenSCAD worker and existing mesh rendering path. The project list thumbnail snapshot can reuse the workbench-generated static snapshot path after the model renders.
 
-- [ ] **Step 5: Verify**
+Deferred result on 2026-07-11: saved `.scad` models appear as source records and source download works, but mesh preview remains blocked on the OpenSCAD runtime decision recorded in Task 5.
+
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -1112,6 +1116,16 @@ Expected:
 - Saved generated source appears in model list.
 - Source download returns `.scad`.
 - Existing uploads are unaffected.
+
+Verification result on 2026-07-11:
+
+- `go test ./internal/service -run 'TestSaveParametricArtifact|TestUploadProjectModel|TestProjectModel'` passed.
+- `go test ./internal/handler -run 'TestProjectParametric|TestProjectModel'` passed.
+- `npm --prefix website test -- projects project-preview-assets parametric-artifact-editor` passed with 4 files and 41 tests.
+- `npm --prefix website run build` passed. Vite emitted existing large chunk and browser-externalized Node built-in warnings for the OCCT bundle.
+- `task check` passed.
+- `task test` passed with 42 frontend test files and 167 Vitest tests.
+- `task test-browser` passed.
 
 - [ ] **Step 6: Browser verification**
 
@@ -1134,6 +1148,8 @@ Expected:
 - Reload shows the saved model in tree.
 - Preview canvas remains nonblank.
 - No unexpected console or page errors.
+
+Deferred result on 2026-07-11: browser save verification remains blocked because normal generated artifacts cannot reach compile success without the OpenSCAD runtime. The browser smoke continues to verify that pending generated artifacts keep Save disabled while compile is unavailable.
 
 - [ ] **Step 7: Commit**
 
