@@ -14,7 +14,7 @@ import (
 
 const (
 	aiParametricToolBuildModel = "build_parametric_model"
-	aiParametricSystemPrompt   = "You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Prefer source_kind litecad-feature-dsl with a valid JSON document using version, unit, parameters, and features. Use openscad only when the user explicitly asks for OpenSCAD source. Declare editable parameters in the artifact so LiteCAD can preview and save them."
+	aiParametricSystemPrompt   = "You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Prefer source_kind litecad-feature-dsl with a valid JSON document using version, unit, parameters, and features. Use box features for plates and bodies, cylinder features for bosses or posts, and cylinder_cut features for holes. The current LiteCAD feature DSL is Z-axis only: box uses origin and size, cylinder uses origin plus radius or diameter and height, and cylinder_cut uses origin plus radius or diameter and depth. Use openscad only when the user explicitly asks for OpenSCAD source. Declare editable numeric parameters in the artifact so LiteCAD can preview and save them."
 )
 
 // AIParametricArtifactInput is the validated tool input for generated CAD source.
@@ -84,7 +84,7 @@ func ParseAIParametricToolCall(output string) (AIParametricToolCall, error) {
 		len([]byte(call.Input.Code)) > maxProjectParametricArtifactSourceBytes {
 		return AIParametricToolCall{}, ErrInvalidAIChatInput
 	}
-	if call.Input.SourceKind == projectParametricSourceKindLiteCADDSL && !json.Valid([]byte(call.Input.Code)) {
+	if call.Input.SourceKind == projectParametricSourceKindLiteCADDSL && validateLiteCADFeatureDSLSource([]byte(call.Input.Code)) != nil {
 		return AIParametricToolCall{}, ErrInvalidAIChatInput
 	}
 	return call, nil

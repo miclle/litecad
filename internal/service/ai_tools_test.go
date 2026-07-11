@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -42,6 +43,37 @@ func TestAIParametricToolCallParserAcceptsLiteCADFeatureDSL(t *testing.T) {
 	}
 	if call.Input.SourceKind != "litecad-feature-dsl" || call.Input.Code == "" {
 		t.Fatalf("call input = %+v", call.Input)
+	}
+}
+
+func TestAIParametricToolCallParserAcceptsLiteCADFeatureDSLCylinderCuts(t *testing.T) {
+	call, err := ParseAIParametricToolCall(`{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Feature DSL plate with hole",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":1,\"unit\":\"millimetre\",\"parameters\":{\"hole_diameter\":{\"type\":\"number\",\"default\":8,\"min\":2,\"max\":20},\"boss_radius\":{\"type\":\"number\",\"default\":6}},\"features\":[{\"id\":\"plate\",\"type\":\"box\",\"origin\":[0,0,0],\"size\":[80,40,6]},{\"id\":\"boss\",\"type\":\"cylinder\",\"origin\":[20,20,6],\"radius\":\"boss_radius\",\"height\":10},{\"id\":\"hole\",\"type\":\"cylinder_cut\",\"origin\":[40,20,-1],\"diameter\":\"hole_diameter\",\"depth\":8}]}"
+  }
+}`)
+	if err != nil {
+		t.Fatalf("ParseAIParametricToolCall returned error: %v", err)
+	}
+	if call.Input.SourceKind != "litecad-feature-dsl" || call.Input.Code == "" {
+		t.Fatalf("call input = %+v", call.Input)
+	}
+}
+
+func TestAIParametricToolCallParserRejectsMalformedLiteCADFeatureDSL(t *testing.T) {
+	for _, output := range []string{
+		`{"tool":"build_parametric_model","input":{"title":"Unknown feature","version":"v1","source_kind":"litecad-feature-dsl","code":"{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"base\",\"type\":\"sphere\",\"radius\":4}]}"}}`,
+		`{"tool":"build_parametric_model","input":{"title":"Ambiguous cylinder","version":"v1","source_kind":"litecad-feature-dsl","code":"{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"boss\",\"type\":\"cylinder\",\"origin\":[0,0,0],\"radius\":4,\"diameter\":8,\"height\":10}]}"}}`,
+		`{"tool":"build_parametric_model","input":{"title":"Undeclared parameter","version":"v1","source_kind":"litecad-feature-dsl","code":"{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"base\",\"type\":\"box\",\"size\":[\"width\",40,6]}]}"}}`,
+		`{"tool":"build_parametric_model","input":{"title":"Inverted range","version":"v1","source_kind":"litecad-feature-dsl","code":"{\"version\":1,\"unit\":\"millimetre\",\"parameters\":{\"width\":{\"type\":\"number\",\"default\":8,\"min\":10,\"max\":6}},\"features\":[{\"id\":\"base\",\"type\":\"box\",\"size\":[\"width\",40,6]}]}"}}`,
+	} {
+		if _, err := ParseAIParametricToolCall(output); !errors.Is(err, ErrInvalidAIChatInput) {
+			t.Fatalf("ParseAIParametricToolCall(%q) error = %v, want ErrInvalidAIChatInput", output, err)
+		}
 	}
 }
 
@@ -161,6 +193,13 @@ func TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact(t *testing.T) {
 	}
 	if run.Artifact.SourceKind != "litecad-feature-dsl" || run.Artifact.CompileStatus != "pending" {
 		t.Fatalf("artifact = %+v", run.Artifact)
+	}
+
+	joined := joinAIMessageBodies(svc.aiClient.(*recordingAIClient).messages)
+	for _, want := range []string{"litecad-feature-dsl", "box", "cylinder", "cylinder_cut", "holes", "Z-axis"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("provider context should mention %q, got:\n%s", want, joined)
+		}
 	}
 }
 

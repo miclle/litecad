@@ -219,7 +219,8 @@ func TestSaveLiteCADFeatureDSLArtifactCreatesProjectModel(t *testing.T) {
     "depth": { "type": "number", "default": 40, "min": 10, "max": 100 }
   },
   "features": [
-    { "id": "base", "type": "box", "origin": [0, 0, 0], "size": ["width", "depth", 6] }
+    { "id": "base", "type": "box", "origin": [0, 0, 0], "size": ["width", "depth", 6] },
+    { "id": "mount_hole", "type": "cylinder_cut", "origin": [48, 21, -1], "diameter": 8, "depth": 8 }
   ]
 }`
 	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
@@ -249,7 +250,7 @@ func TestSaveLiteCADFeatureDSLArtifactCreatesProjectModel(t *testing.T) {
 	if model.ParseStatus != "parsed" || model.Metadata.AssetType != "lcad" || model.Metadata.SourceKind != "litecad-feature-dsl" || model.Metadata.Schema != "litecad-feature-dsl" {
 		t.Fatalf("model metadata = %+v", model.Metadata)
 	}
-	if model.Metadata.LengthUnit != "millimetre" || model.Metadata.ParameterCount != 2 || model.Metadata.RepresentationCount != 1 {
+	if model.Metadata.LengthUnit != "millimetre" || model.Metadata.ParameterCount != 2 || model.Metadata.RepresentationCount != 2 {
 		t.Fatalf("model metadata counts = %+v", model.Metadata)
 	}
 	if model.Metadata.ParameterValues["width"] != float64(96) || model.Metadata.ParameterValues["depth"] != float64(42) {
@@ -265,6 +266,39 @@ func TestSaveLiteCADFeatureDSLArtifactCreatesProjectModel(t *testing.T) {
 	}
 	if string(source.Data) != artifact.SourceCode {
 		t.Fatalf("source = %q, want %q", string(source.Data), artifact.SourceCode)
+	}
+}
+
+func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedSchema(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-invalid-schema@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Reject invalid generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID:   user.ID,
+		ProjectID:     project.ID,
+		Title:         "Invalid feature DSL bracket",
+		SourceKind:    "litecad-feature-dsl",
+		SourceCode:    `{"version":1,"unit":"millimetre","features":[{"id":"hole","type":"cylinder_cut","origin":[0,0,0],"diameter":8}]}`,
+		CompileStatus: "pending",
+	})
+	if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+		t.Fatalf("CreateProjectParametricArtifact error = %v, want ErrInvalidProjectParametricArtifactInput", err)
 	}
 }
 
@@ -414,13 +448,13 @@ func TestUpdateLiteCADFeatureDSLModelParametersPersistsRevision(t *testing.T) {
   "unit": "millimetre",
   "parameters": {
     "width": { "type": "number", "default": 40 },
-    "centered": { "type": "boolean", "default": true }
+    "height": { "type": "number", "default": 6 }
   },
   "features": [
-    { "id": "base", "type": "box", "origin": [0, 0, 0], "size": ["width", 12, 6] }
+    { "id": "base", "type": "box", "origin": [0, 0, 0], "size": ["width", 12, "height"] }
   ]
 }`,
-		ParameterValues: map[string]any{"width": float64(40), "centered": true},
+		ParameterValues: map[string]any{"width": float64(40), "height": float64(6)},
 		CompileStatus:   "success",
 	})
 	if err != nil {
@@ -440,14 +474,14 @@ func TestUpdateLiteCADFeatureDSLModelParametersPersistsRevision(t *testing.T) {
 		ProjectID:   project.ID,
 		ModelID:     model.ID,
 		ParameterValues: map[string]any{
-			"width":    float64(72),
-			"centered": false,
+			"width":  float64(72),
+			"height": float64(12),
 		},
 	})
 	if err != nil {
 		t.Fatalf("UpdateParametricModelParameters returned error: %v", err)
 	}
-	if updated.Metadata.ParameterValues["width"] != float64(72) || updated.Metadata.ParameterValues["centered"] != false {
+	if updated.Metadata.ParameterValues["width"] != float64(72) || updated.Metadata.ParameterValues["height"] != float64(12) {
 		t.Fatalf("updated parameter metadata = %+v", updated.Metadata.ParameterValues)
 	}
 

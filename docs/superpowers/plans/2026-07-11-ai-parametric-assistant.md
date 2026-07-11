@@ -1901,6 +1901,100 @@ Remaining after this task:
 
 ---
 
+### Task 16: Assistant LiteCAD feature DSL schema guidance and validation
+
+**Why this task exists:** The browser worker now supports a useful minimal feature DSL, but the Assistant route still accepts any syntactically valid JSON for `source_kind = "litecad-feature-dsl"`. That can persist drafts that the worker cannot compile. This task aligns provider guidance and backend validation with the shipped DSL primitive set.
+
+**Files:**
+- Modify: `internal/service/ai_tools.go`
+- Modify: `internal/service/parametric_artifact.go`
+- Test: `internal/service/ai_tools_test.go`
+- Test: `internal/service/parametric_artifact_test.go`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, this plan
+
+**Interfaces:**
+- `ParseAIParametricToolCall(...)` accepts valid LiteCAD DSL documents using `box`, `cylinder`, and `cylinder_cut`.
+- `ParseAIParametricToolCall(...)` rejects invalid LiteCAD DSL documents before persistence.
+- `CreateProjectParametricArtifact(...)` and update/save paths share the same LiteCAD DSL validation.
+- Parametric provider context tells the model to prefer the current LiteCAD DSL primitives and to use `cylinder_cut` for holes.
+
+- [x] **Step 1: Write failing service tests**
+
+Run:
+
+```bash
+go test ./internal/service -run 'TestAIParametric|TestCreateProjectParametricArtifact'
+```
+
+Expected failures:
+
+- Parser accepts malformed LiteCAD DSL JSON because it only checks `json.Valid`.
+- Provider prompt does not mention `cylinder_cut`/holes.
+
+Verification result on 2026-07-11:
+
+- `go test ./internal/service -run 'TestAIParametric|TestCreateProjectParametricArtifact'` failed as expected: malformed LiteCAD DSL JSON was accepted, and provider context did not mention `box`, `cylinder`, `cylinder_cut`, holes, or Z-axis constraints.
+
+- [x] **Step 2: Implement shared LiteCAD DSL validation**
+
+Add a backend validator mirroring the shipped worker schema:
+
+- document object with `version = 1`, non-empty `unit`, non-empty `features`;
+- optional numeric parameters with finite defaults and optional finite min/max;
+- `box` with three-entry numeric-expression `size` and optional `origin`;
+- `cylinder` with `origin`, exactly one of `radius`/`diameter`, and `height`;
+- `cylinder_cut` with `origin`, exactly one of `radius`/`diameter`, and `depth`;
+- numeric expressions are finite numbers or declared parameter names.
+
+- [x] **Step 3: Update provider guidance**
+
+Update `aiParametricSystemPrompt` so provider output:
+
+- prefers `source_kind = "litecad-feature-dsl"`;
+- uses `box` for plates/bodies;
+- uses `cylinder` for bosses/posts;
+- uses `cylinder_cut` for holes;
+- keeps the first milestone Z-axis only.
+
+- [x] **Step 4: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+go test ./internal/service -run 'TestAIParametric|TestCreateProjectParametricArtifact'
+git diff --check
+task check
+task test
+task test-browser
+git add internal/service docs TODO.md AGENTS.md
+git commit -m "feat(agent): validate feature dsl tool output"
+git push
+```
+
+Expected:
+
+- Invalid Assistant DSL tool output is rejected before artifact persistence.
+- Valid DSL with parameterized box/cylinder/cylinder_cut remains accepted.
+- Docs say provider guidance now matches the current minimal DSL primitive set.
+
+Verification result on 2026-07-11:
+
+- `go test ./internal/service -run 'TestAIParametric|TestCreateProjectParametricArtifact|TestSaveLiteCADFeatureDSLArtifact|TestCreateLiteCADFeatureDSLArtifact'` passed.
+- The first full `task test` run caught an older LiteCAD DSL revision fixture that still declared a boolean parameter. The fixture was corrected to the current numeric-parameter DSL contract and rechecked with `go test ./internal/service -run TestUpdateLiteCADFeatureDSLModelParametersPersistsRevision`.
+- `go test ./internal/service -run 'TestAIParametric|TestCreateProjectParametricArtifact|TestSaveLiteCADFeatureDSLArtifact|TestCreateLiteCADFeatureDSLArtifact|TestUpdateLiteCADFeatureDSLModelParametersPersistsRevision'` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+- Code review found no blocking issues; an additional malformed-range test case makes numeric-parameter bounds rejection explicit.
+
+Remaining after this task:
+
+- The Assistant still depends on the configured model returning strict JSON; provider-native tool APIs and cost controls remain future work.
+- The DSL still lacks sketches, extrudes, fillets/chamfers, patterns, arbitrary-axis primitives, and CAD document History integration for generated DSL features.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |
