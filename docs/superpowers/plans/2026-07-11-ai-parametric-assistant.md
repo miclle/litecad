@@ -800,7 +800,7 @@ git commit -m "feat(cad): add openscad worker foundation"
 - Produces assistant message parts that can represent text, tool input, tool output, and artifact references.
 - Keeps OpenAI-compatible chat completions as the first provider path; if native tool-calling is unavailable for a provider, use strict JSON object output and validate it server-side.
 
-- [ ] **Step 1: Write failing tool parser tests**
+- [x] **Step 1: Write failing tool parser tests**
 
 Test valid model output:
 
@@ -836,7 +836,7 @@ Test invalid output:
 - Unsupported source kind -> `ErrInvalidAIChatInput`.
 - Plain text claiming "I created it" without tool call for design request -> provider result rejected for model-generation route.
 
-- [ ] **Step 2: Split advisory and design routes**
+- [x] **Step 2: Split advisory and design routes**
 
 Keep the current advisory route behavior for normal project Q&A. Add a parametric generation route:
 
@@ -859,7 +859,7 @@ Response:
 }
 ```
 
-- [ ] **Step 3: Add system prompt**
+- [x] **Step 3: Add system prompt**
 
 Use a prompt with these hard rules:
 
@@ -867,11 +867,11 @@ Use a prompt with these hard rules:
 You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Use OpenSCAD source for the first milestone. Declare editable parameters at the top of the file with Customizer-style comments.
 ```
 
-- [ ] **Step 4: Persist generated artifact**
+- [x] **Step 4: Persist generated artifact**
 
 When a valid tool call arrives, create a `ProjectParametricArtifact` with `compile_status = "pending"`. Do not create a final `ProjectModel` until the browser compile succeeds and the user saves it.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -888,7 +888,17 @@ Expected:
 - Advisory route continues to return normal text messages.
 - Invalid tool outputs do not create artifacts.
 
-- [ ] **Step 6: Commit**
+Verification result on 2026-07-11:
+
+- `go test ./internal/service -run 'TestAIParametric|TestProjectAgent'` passed.
+- `go test ./internal/handler -run 'TestProjectAgent'` passed.
+- `npm --prefix website test -- projects` passed.
+- `git diff --check` passed.
+- Documentation search for `ai-parametric-assistant`, `AI Parametric Assistant`, `build_parametric_model`, `parametric-run`, and `CADAM` passed.
+- `task check` passed.
+- `task test` passed with 40 frontend test files and 161 Vitest tests.
+
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/service internal/handler website/src/types/project.ts website/src/api/projects.ts

@@ -4,7 +4,7 @@ LiteCAD's AI Assistant target is text-to-parameterized CAD: users can start a pr
 
 ## Current Status
 
-The current CAD Agent is advisory. It supports project-owned Assistant conversations, stores messages per conversation, can include project/source metadata in provider context, and has backend APIs for project-owned OpenSCAD-style parametric artifact drafts. It does not yet have AI tool calls that create those artifacts, execute CAD tools, compile generated source, or save generated models.
+The current CAD Agent supports project-owned Assistant conversations, stores messages per conversation, can include project/source metadata in provider context, and has backend APIs for project-owned OpenSCAD-style parametric artifact drafts. A dedicated parametric-run API asks the configured provider for strict `build_parametric_model` JSON output, validates it server-side, stores the user prompt and Assistant tool message, and creates a pending artifact draft. It does not yet execute CAD tools, compile generated source, expose parameter editing, or save generated models.
 
 ## Source Model Direction
 

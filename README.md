@@ -18,7 +18,7 @@ LiteCAD currently supports:
 - Database-backed operation History with owner-scoped Undo/Redo for transforms, box unions, and node deletion, including persisted redo state across reloads and devices.
 - Direct per-model STEP downloads and selected multi-model STEP compound downloads from the current document state.
 - Backend-published preview artifacts for validated GLB, self-contained GLTF, and STL-to-OBJ previews.
-- A project-scoped CAD Agent chat panel when an OpenAI-compatible provider is configured.
+- A project-scoped CAD Agent chat panel when an OpenAI-compatible provider is configured, including multi-session conversations and a structured parametric-run API that can create pending OpenSCAD-style artifact drafts.
 
 The home page and workbench use project-owned CAD data rather than hard-coded demo geometry.
 
@@ -26,7 +26,7 @@ The home page and workbench use project-owned CAD data rather than hard-coded de
 
 LiteCAD is not a full parametric CAD system yet. Current edits are limited to persisted placement, model/source node deletion with STEP component child deletion, and a constrained STEP box-union operation. LiteCAD records those edits as reversible project history, but this is not preserved source-application history or a general parametric B-rep feature graph. Projects do not yet store durable kernel shape state, editable B-rep geometry, durable assemblies, measurement data, sectioning, or backend export artifact history.
 
-The CAD Agent is advisory today. It can use project and source metadata as context for chat, but it cannot mutate CAD documents, call geometry tools, run measurements, or generate durable CAD features.
+The CAD Agent can use project and source metadata as context for chat, and the dedicated parametric-run API can create pending OpenSCAD-style artifact drafts from strict model tool output. It cannot mutate CAD documents, compile generated source, run measurements, or generate durable CAD features yet.
 
 Future CAD architecture and phase notes live in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md). Active follow-up work lives in [TODO.md](TODO.md).
 
@@ -107,7 +107,7 @@ The workbench is the main product surface. It combines:
 
 ### CAD Agent
 
-The CAD Agent sends project and source metadata context to a configured OpenAI-compatible chat provider and stores the final user/assistant messages for the project. If no provider is configured, sending a message returns a configuration error while the rest of LiteCAD continues to run.
+The CAD Agent sends project and source metadata context to a configured OpenAI-compatible chat provider and stores user/assistant messages inside project-owned conversations. A separate parametric-run endpoint validates strict `build_parametric_model` JSON output and stores a pending generated-source artifact. If no provider is configured, sending a message returns a configuration error while the rest of LiteCAD continues to run.
 
 ## Configuration
 

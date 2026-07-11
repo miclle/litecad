@@ -9,6 +9,15 @@ type projectAgentMessageRequest struct {
 	Messages []service.AIChatMessage `json:"messages" binding:"required"`
 }
 
+type projectAgentParametricRunRequest struct {
+	Message string `json:"message" binding:"required"`
+}
+
+type projectAgentParametricRunResponse struct {
+	Message  service.ProjectAgentStructuredMessage `json:"message"`
+	Artifact service.ProjectParametricArtifact     `json:"artifact"`
+}
+
 type projectAgentConversationRequest struct {
 	Title         string `json:"title"`
 	ActiveModelID string `json:"active_model_id"`
@@ -84,4 +93,22 @@ func (ctrl *Ctrl) SendProjectAgentMessage(c *fox.Context, req *projectAgentMessa
 		return projectAgentMessageResponse{}, projectError(err)
 	}
 	return projectAgentMessageResponse{Message: message}, nil
+}
+
+// RunProjectAgentParametric asks the Assistant to create a project-owned parametric artifact draft.
+func (ctrl *Ctrl) RunProjectAgentParametric(c *fox.Context, req *projectAgentParametricRunRequest) (projectAgentParametricRunResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectAgentParametricRunResponse{}, err
+	}
+	run, err := ctrl.service.RunProjectAgentParametric(c.Request.Context(), service.ProjectAgentParametricRunInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      c.Param("projectID"),
+		ConversationID: c.Param("conversationID"),
+		Message:        req.Message,
+	})
+	if err != nil {
+		return projectAgentParametricRunResponse{}, projectError(err)
+	}
+	return projectAgentParametricRunResponse{Message: run.Message, Artifact: run.Artifact}, nil
 }

@@ -186,3 +186,84 @@ func TestProjectAgentRouteRequiresAIConfiguration(t *testing.T) {
 		t.Fatalf("agent status = %d, want %d, body = %s", agent.Code, http.StatusServiceUnavailable, agent.Body.String())
 	}
 }
+
+func TestProjectAgentParametricRunRouteCreatesArtifact(t *testing.T) {
+	router := newTestRouterWithAI(t, testAIClient{reply: `{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Mounting bracket",
+    "version": "v1",
+    "source_kind": "openscad",
+    "code": "width = 40; // [10:1:100]\ncube([width, 10, 5]);"
+  }
+}`})
+
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name":     "Ada Lovelace",
+		"email":    "agent-parametric-route@example.com",
+		"password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+	create := postJSONWithCookie(t, router, "/api/v1/projects", map[string]string{
+		"name": "Agent parametric project",
+	}, sessionCookie)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", create.Code, create.Body.String())
+	}
+	var createResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	conversation := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations", map[string]string{
+		"title": "Design run",
+	}, sessionCookie)
+	if conversation.Code != http.StatusOK {
+		t.Fatalf("conversation status = %d, body = %s", conversation.Code, conversation.Body.String())
+	}
+	var conversationResponse struct {
+		Conversation struct {
+			ID string `json:"id"`
+		} `json:"conversation"`
+	}
+	if err := json.Unmarshal(conversation.Body.Bytes(), &conversationResponse); err != nil {
+		t.Fatalf("decode conversation response: %v", err)
+	}
+
+	run := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations/"+conversationResponse.Conversation.ID+"/parametric-runs", map[string]string{
+		"message": "Make a parametric mounting bracket",
+	}, sessionCookie)
+	if run.Code != http.StatusOK {
+		t.Fatalf("parametric run status = %d, body = %s", run.Code, run.Body.String())
+	}
+	var runResponse struct {
+		Message struct {
+			Role  string `json:"role"`
+			Parts []struct {
+				Type       string `json:"type"`
+				ArtifactID string `json:"artifact_id"`
+			} `json:"parts"`
+		} `json:"message"`
+		Artifact struct {
+			ID            string `json:"id"`
+			Title         string `json:"title"`
+			SourceKind    string `json:"source_kind"`
+			CompileStatus string `json:"compile_status"`
+		} `json:"artifact"`
+	}
+	if err := json.Unmarshal(run.Body.Bytes(), &runResponse); err != nil {
+		t.Fatalf("decode run response: %v", err)
+	}
+	if runResponse.Message.Role != "assistant" || len(runResponse.Message.Parts) != 2 {
+		t.Fatalf("run message = %+v", runResponse.Message)
+	}
+	if runResponse.Artifact.ID == "" || runResponse.Artifact.Title != "Mounting bracket" || runResponse.Artifact.SourceKind != "openscad" || runResponse.Artifact.CompileStatus != "pending" {
+		t.Fatalf("run artifact = %+v", runResponse.Artifact)
+	}
+}

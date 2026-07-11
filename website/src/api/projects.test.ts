@@ -16,6 +16,7 @@ import {
   fetchProjectParametricArtifact,
   fetchProjectParametricArtifacts,
   addProjectCADModelBoxUnion,
+  runProjectAgentParametric,
   sendProjectAgentConversationMessage,
   redoProjectCADDocument,
   undoProjectCADDocument,
@@ -169,6 +170,14 @@ describe('project API', () => {
     fetchProjectAgentConversationMessages('prj_01test', 'agc_01test')
 
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/agent/conversations/agc_01test/messages')
+  })
+
+  test('runs a project agent parametric tool request', () => {
+    const payload = { message: 'Make a parametric mounting bracket' }
+
+    runProjectAgentParametric('prj_01test', 'agc_01test', payload)
+
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/agent/conversations/agc_01test/parametric-runs', payload)
   })
 
   test('manages project parametric artifacts', () => {

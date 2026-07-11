@@ -227,6 +227,31 @@ export interface SendProjectAgentMessagePayload {
   messages: Pick<ProjectAgentMessage, 'body' | 'role'>[]
 }
 
+export interface AIParametricToolCall {
+  tool: 'build_parametric_model'
+  input: {
+    title: string
+    version: string
+    source_kind: 'openscad'
+    code: string
+  }
+}
+
+export interface ProjectAgentMessagePart {
+  type: 'text' | 'tool_call' | 'artifact'
+  text?: string
+  tool_call?: AIParametricToolCall
+  artifact_id?: string
+}
+
+export interface ProjectAgentStructuredMessage extends ProjectAgentMessage {
+  parts: ProjectAgentMessagePart[]
+}
+
+export interface ProjectAgentParametricRunPayload {
+  message: string
+}
+
 export interface ProjectAgentConversationResponse {
   conversation: ProjectAgentConversation
 }
@@ -237,6 +262,11 @@ export interface ProjectAgentConversationsResponse {
 
 export interface ProjectAgentMessageResponse {
   message: ProjectAgentMessage
+}
+
+export interface ProjectAgentParametricRunResponse {
+  message: ProjectAgentStructuredMessage
+  artifact: ProjectParametricArtifact
 }
 
 export interface ProjectAgentMessagesResponse {

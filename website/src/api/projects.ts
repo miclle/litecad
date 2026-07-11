@@ -8,6 +8,8 @@ import type {
   ProjectAgentConversationsResponse,
   ProjectAgentMessageResponse,
   ProjectAgentMessagesResponse,
+  ProjectAgentParametricRunPayload,
+  ProjectAgentParametricRunResponse,
   ProjectCADDocumentResponse,
   ProjectCADHistoryResponse,
   ProjectGeometryDocumentResponse,
@@ -102,6 +104,13 @@ export function sendProjectAgentConversationMessage(
 
 export function fetchProjectAgentConversationMessages(projectId: string, conversationId: string) {
   return client.get<ProjectAgentMessagesResponse>(`/projects/${projectId}/agent/conversations/${conversationId}/messages`)
+}
+
+export function runProjectAgentParametric(projectId: string, conversationId: string, payload: ProjectAgentParametricRunPayload) {
+  return client.post<ProjectAgentParametricRunResponse>(
+    `/projects/${projectId}/agent/conversations/${conversationId}/parametric-runs`,
+    payload,
+  )
 }
 
 export function fetchProjectParametricArtifacts(projectId: string) {
