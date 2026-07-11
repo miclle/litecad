@@ -20,6 +20,7 @@ import type {
   ProjectParametricArtifactPayload,
   ProjectParametricArtifactResponse,
   ProjectParametricArtifactsResponse,
+  ProjectParametricModelParametersPayload,
   ProjectResponse,
   ProjectsResponse,
   SendProjectAgentMessagePayload,
@@ -131,6 +132,14 @@ export function updateProjectParametricArtifact(projectId: string, artifactId: s
 
 export function saveProjectParametricArtifactModel(projectId: string, artifactId: string) {
   return client.post<ProjectModelResponse>(`/projects/${projectId}/parametric-artifacts/${artifactId}/save-model`, {})
+}
+
+export function updateProjectParametricModelParameters(
+  projectId: string,
+  modelId: string,
+  payload: ProjectParametricModelParametersPayload,
+) {
+  return client.patch<ProjectModelResponse>(`/projects/${projectId}/models/${modelId}/parametric-parameters`, payload)
 }
 
 export function createProject(payload: CreateProjectPayload) {

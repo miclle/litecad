@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/miclle/litecad/internal/entity"
 )
 
 func TestCreateProjectParametricArtifactScopesToOwner(t *testing.T) {
@@ -228,5 +231,80 @@ func TestSaveParametricArtifactRejectsFailedCompile(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
 		t.Fatalf("SaveParametricArtifactAsProjectModel error = %v, want ErrInvalidProjectParametricArtifactInput", err)
+	}
+}
+
+func TestUpdateParametricModelParametersPersistsRevision(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-revision@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Parametric revisions",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID:     user.ID,
+		ProjectID:       project.ID,
+		Title:           "Adjustable spacer",
+		SourceKind:      "openscad",
+		SourceCode:      "width = 40;\nheight = 12;\ncentered = true;\ncube([width, height, 6], center = centered);",
+		ParameterValues: map[string]any{"width": float64(40), "height": float64(12), "centered": true},
+		CompileStatus:   "success",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	model, err := svc.SaveParametricArtifactAsProjectModel(ctx, SaveParametricArtifactAsProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		ArtifactID:  artifact.ID,
+	})
+	if err != nil {
+		t.Fatalf("SaveParametricArtifactAsProjectModel returned error: %v", err)
+	}
+
+	updated, err := svc.UpdateParametricModelParameters(ctx, UpdateParametricModelParametersInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		ModelID:     model.ID,
+		ParameterValues: map[string]any{
+			"width":    float64(72),
+			"centered": false,
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateParametricModelParameters returned error: %v", err)
+	}
+	if updated.Metadata.ParameterValues["width"] != float64(72) || updated.Metadata.ParameterValues["height"] != float64(12) || updated.Metadata.ParameterValues["centered"] != false {
+		t.Fatalf("updated parameter metadata = %+v", updated.Metadata.ParameterValues)
+	}
+
+	var revisions []entity.ProjectParametricRevision
+	if err := svc.db.WithContext(ctx).Where("project_id = ? AND model_id = ?", project.ID, model.ID).Find(&revisions).Error; err != nil {
+		t.Fatalf("load revisions: %v", err)
+	}
+	if len(revisions) != 1 {
+		t.Fatalf("revision count = %d, want 1", len(revisions))
+	}
+	if revisions[0].SourceChecksum == "" {
+		t.Fatal("revision should store source checksum")
+	}
+	var revisionValues map[string]any
+	if err := json.Unmarshal(revisions[0].ParameterValuesJSON, &revisionValues); err != nil {
+		t.Fatalf("decode revision parameter values: %v", err)
+	}
+	if revisionValues["width"] != float64(72) || revisionValues["height"] != float64(12) || revisionValues["centered"] != false {
+		t.Fatalf("revision parameter values = %+v", revisionValues)
 	}
 }

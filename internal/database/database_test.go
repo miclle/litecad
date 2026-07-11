@@ -56,4 +56,7 @@ func TestMigrateCreatesUserTable(t *testing.T) {
 	if !db.Migrator().HasTable(&entity.ProjectParametricArtifact{}) {
 		t.Fatal("Migrate should create project parametric artifacts table")
 	}
+	if !db.Migrator().HasTable(&entity.ProjectParametricRevision{}) {
+		t.Fatal("Migrate should create project parametric revisions table")
+	}
 }

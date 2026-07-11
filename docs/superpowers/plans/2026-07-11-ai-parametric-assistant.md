@@ -1164,7 +1164,7 @@ git commit -m "feat(projects): save generated parametric models"
 
 **Files:**
 - Create: `internal/entity/project_parametric_revision.go`
-- Modify: `internal/database/migrate.go`
+- Modify: `internal/database/database.go`
 - Modify: `internal/service/parametric_artifact.go`
 - Test: `internal/service/parametric_artifact_test.go`
 - Modify: `internal/handler/project_parametric.go`
@@ -1177,7 +1177,7 @@ git commit -m "feat(projects): save generated parametric models"
 - Produces `PATCH /api/v1/projects/:projectID/models/:modelID/parametric-parameters`.
 - Consumes saved model source and parameter parser.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Backend:
 
@@ -1202,7 +1202,7 @@ it('loads a saved parametric model and persists parameter edits', async () => {
 })
 ```
 
-- [ ] **Step 2: Add revision entity**
+- [x] **Step 2: Add revision entity**
 
 Track:
 
@@ -1212,15 +1212,15 @@ type ProjectParametricRevision struct {
     ProjectID           string
     ModelID             string
     ParameterValuesJSON json.RawMessage
-    SourceCode          string
+    SourceChecksum      string
     Summary             string
     CreatedAt           time.Time
 }
 ```
 
-Store the complete source code with each revision only if source edits are supported in this task. If only parameter values are supported, store parameter values plus the model source checksum.
+Implemented with parameter values plus the model source SHA-256 checksum because this milestone only supports parameter value edits, not source-code edits.
 
-- [ ] **Step 3: Implement parameter update route**
+- [x] **Step 3: Implement parameter update route**
 
 Validate:
 
@@ -1229,11 +1229,11 @@ Validate:
 - Parameter keys exist in parsed source.
 - Values match parsed parameter types.
 
-- [ ] **Step 4: Update editor**
+- [x] **Step 4: Update editor**
 
 When a saved parametric model is selected, show the same parameter controls used for drafts. `Save` persists values; `Reset` returns to source defaults or last saved values depending on UI decision.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -1251,12 +1251,36 @@ Expected:
 - Invalid parameter names or types are rejected.
 - Existing CAD document History tests are unaffected because parametric parameter history is separate in this milestone.
 
-- [ ] **Step 6: Commit**
+Actual Task 9 verification before full gate:
+
+```bash
+go test ./internal/service -run 'TestUpdateParametricModelParameters|TestSaveParametricArtifact'
+go test ./internal/handler -run 'TestProjectParametricArtifact'
+npm --prefix website test -- parametric-artifact-editor projects
+npm --prefix website run build
+git diff --check
+```
+
+Result on 2026-07-11: all commands passed. `npm --prefix website run build` still reports the existing large chunk / browser-externalized Node module warnings for the WASM stack, but the build exits successfully.
+
+Full Task 9 gate on 2026-07-11:
+
+```bash
+task check
+task test
+task test-browser
+```
+
+Result: all commands passed. `task test` reported 42 frontend test files and 168 Vitest tests passing; `task test-browser` reported the deterministic project workbench, History, and Assistant smoke passing.
+
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/entity internal/database internal/service internal/handler website/src/views/project
 git commit -m "feat(projects): edit parametric model parameters"
 ```
+
+Committed on 2026-07-11 as `feat(projects): edit parametric model parameters`.
 
 ---
 

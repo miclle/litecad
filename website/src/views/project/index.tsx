@@ -40,6 +40,7 @@ import {
   runProjectAgentParametric,
   saveProjectParametricArtifactModel,
   sendProjectAgentConversationMessage,
+  updateProjectParametricModelParameters,
   uploadProjectThumbnailSnapshot,
   uploadProjectModel,
 } from 'src/api/projects'
@@ -49,6 +50,7 @@ import {
   runStepRoundTripInWorker,
   type CadKernelWorkerPreviewResult,
 } from 'src/cad/kernel-worker-client'
+import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
 import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -448,6 +450,24 @@ function ProjectView() {
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
     },
   })
+  const updateProjectParametricModelParametersMutation = useMutation({
+    mutationFn: async ({
+      modelID,
+      parameterValues,
+    }: {
+      modelID: string
+      parameterValues: Record<string, OpenSCADParameterValue>
+    }) =>
+      (
+        await updateProjectParametricModelParameters(projectId, modelID, {
+          parameter_values: parameterValues,
+        })
+      ).data.model,
+    onSuccess: async (model) => {
+      setSelectedModelID(model.id)
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
+    },
+  })
   const createProjectAgentConversationMutation = useMutation({
     mutationFn: async () => (await createProjectAgentConversation(projectId, { title: 'New chat' })).data.conversation,
     onSuccess: async (conversation) => {
@@ -526,8 +546,36 @@ function ProjectView() {
   const effectiveSelectedDocumentNodeID = cadNodeByID.has(selectedDocumentNodeID)
     ? selectedDocumentNodeID
     : sourceNodeIDByModelID.get(effectiveSelectedModelID) ?? ''
+  const selectedDocumentNode = effectiveSelectedDocumentNodeID ? cadNodeByID.get(effectiveSelectedDocumentNodeID) : undefined
+  const selectedSourceModelID = selectedDocumentNode?.source_model_id || selectedDocumentNode?.model_id || effectiveSelectedModelID
+  const selectedSourceModel = selectedSourceModelID ? projectModels.find((model) => model.id === selectedSourceModelID) : undefined
   const keyboardDeleteNode = effectiveSelectedDocumentNodeID ? cadNodeByID.get(effectiveSelectedDocumentNodeID) : undefined
   const canDeleteNodeFromKeyboard = isCADDocumentNodeDeletable(keyboardDeleteNode)
+  const selectedParametricModelSourceQuery = useQuery({
+    queryKey: ['projects', projectId, 'models', selectedSourceModelID, 'parametric-source'],
+    queryFn: async () => (await fetchProjectModelSource(projectId, selectedSourceModelID)).data.text(),
+    enabled: projectId !== '' && selectedSourceModel?.format === 'scad' && !selectedParametricArtifact,
+  })
+  const selectedSavedParametricArtifact = useMemo<ProjectParametricArtifact | undefined>(() => {
+    if (!selectedSourceModel || selectedSourceModel.format !== 'scad' || !selectedParametricModelSourceQuery.data) {
+      return undefined
+    }
+    return {
+      id: `model-${selectedSourceModel.id}`,
+      project_id: projectId,
+      conversation_id: '',
+      message_id: '',
+      title: getModelDisplayName(selectedSourceModel),
+      source_kind: 'openscad',
+      source_code: selectedParametricModelSourceQuery.data,
+      parameter_values: selectedSourceModel.metadata.parameter_values ?? {},
+      compile_status: 'success',
+      compile_error: '',
+      preview_model_id: selectedSourceModel.id,
+      created_at: selectedSourceModel.created_at,
+      updated_at: selectedSourceModel.updated_at,
+    }
+  }, [projectId, selectedParametricModelSourceQuery.data, selectedSourceModel])
   const projectModelTree = useMemo(() => buildProjectModelTree(projectModels, projectCADDocument), [projectModels, projectCADDocument])
   const modelTranslationsByID = useMemo(() => {
     const translations: Record<string, CADTranslation> = {}
@@ -858,9 +906,6 @@ function ProjectView() {
   }).format(new Date(project.updated_at))
   const LeftPanelIcon = isLeftPanelCollapsed ? PanelLeftOpen : PanelLeftClose
   const projectDescription = project.description || 'No description yet. Import a CAD source file to begin the project record.'
-  const selectedDocumentNode = effectiveSelectedDocumentNodeID ? cadNodeByID.get(effectiveSelectedDocumentNodeID) : undefined
-  const selectedSourceModelID = selectedDocumentNode?.source_model_id || selectedDocumentNode?.model_id || effectiveSelectedModelID
-  const selectedSourceModel = selectedSourceModelID ? projectModels.find((model) => model.id === selectedSourceModelID) : undefined
   const selectedModelDisplayName =
     selectedDocumentNode?.source_format === 'step-component'
       ? selectedDocumentNode.name
@@ -1577,6 +1622,18 @@ function ProjectView() {
                         ? () => saveProjectParametricArtifactMutation.mutate(selectedParametricArtifact)
                         : undefined
                     }
+                  />
+                ) : selectedSavedParametricArtifact ? (
+                  <ParametricArtifactEditor
+                    artifact={selectedSavedParametricArtifact}
+                    initialParameterValues={selectedSavedParametricArtifact.parameter_values}
+                    onSaveParameters={(parameterValues) =>
+                      updateProjectParametricModelParametersMutation.mutate({
+                        modelID: selectedSavedParametricArtifact.preview_model_id,
+                        parameterValues,
+                      })
+                    }
+                    saveLabel={updateProjectParametricModelParametersMutation.isPending ? 'Saving parameters' : 'Save parameters'}
                   />
                 ) : (
                   <ProjectInspector

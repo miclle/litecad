@@ -66,6 +66,7 @@ export interface StepMetadata {
   length_unit: string
   entity_count: number
   parameter_count?: number
+  parameter_values?: Record<string, unknown>
   compile_summary?: string
   representation_count: number
   triangle_count: number
@@ -310,6 +311,10 @@ export interface ProjectParametricArtifactResponse {
 
 export interface ProjectParametricArtifactsResponse {
   artifacts: ProjectParametricArtifact[]
+}
+
+export interface ProjectParametricModelParametersPayload {
+  parameter_values: Record<string, unknown>
 }
 
 export interface CreateProjectPayload {

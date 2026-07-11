@@ -21,6 +21,7 @@ type StepMetadata struct {
 	LengthUnit          string          `json:"length_unit"`
 	EntityCount         int             `json:"entity_count"`
 	ParameterCount      int             `json:"parameter_count,omitempty"`
+	ParameterValues     map[string]any  `json:"parameter_values,omitempty"`
 	CompileSummary      string          `json:"compile_summary,omitempty"`
 	RepresentationCount int             `json:"representation_count"`
 	TriangleCount       int             `json:"triangle_count"`

@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -61,6 +64,14 @@ type SaveParametricArtifactAsProjectModelInput struct {
 	OwnerUserID string
 	ProjectID   string
 	ArtifactID  string
+}
+
+// UpdateParametricModelParametersInput is the data required to persist parameter changes for a saved parametric model.
+type UpdateParametricModelParametersInput struct {
+	OwnerUserID     string
+	ProjectID       string
+	ModelID         string
+	ParameterValues map[string]any
 }
 
 // ProjectParametricArtifact is a project-owned generated CAD source artifact.
@@ -250,6 +261,94 @@ func (s *Service) SaveParametricArtifactAsProjectModel(ctx context.Context, inpu
 	return model, nil
 }
 
+// UpdateParametricModelParameters stores the latest parameter values and records a model revision.
+func (s *Service) UpdateParametricModelParameters(ctx context.Context, input UpdateParametricModelParametersInput) (ProjectModel, error) {
+	project, err := s.loadOwnedProject(ctx, input.OwnerUserID, input.ProjectID)
+	if err != nil {
+		return ProjectModel{}, err
+	}
+	modelID := strings.TrimSpace(input.ModelID)
+	if modelID == "" || len(input.ParameterValues) == 0 {
+		return ProjectModel{}, ErrInvalidProjectParametricArtifactInput
+	}
+
+	var model entity.ProjectModel
+	if err := s.db.WithContext(ctx).First(&model, "id = ? AND project_id = ?", modelID, project.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ProjectModel{}, ErrProjectNotFound
+		}
+		return ProjectModel{}, fmt.Errorf("load parametric project model: %w", err)
+	}
+	if model.Format != "scad" {
+		return ProjectModel{}, ErrInvalidProjectParametricArtifactInput
+	}
+
+	defaultValues := openSCADTopLevelParameterValues(string(model.SourceData))
+	metadata := StepMetadata{}
+	if len(model.MetadataJSON) > 0 {
+		_ = json.Unmarshal(model.MetadataJSON, &metadata)
+	}
+	if metadata.AssetType == "" {
+		metadata = ExtractSCADMetadata(model.OriginalFilename, model.SourceData)
+	}
+	mergedValues := map[string]any{}
+	for name, value := range defaultValues {
+		mergedValues[name] = value
+	}
+	for name, value := range metadata.ParameterValues {
+		mergedValues[name] = value
+	}
+	for name, value := range input.ParameterValues {
+		normalizedValue, err := normalizeOpenSCADParameterValue(name, value, defaultValues)
+		if err != nil {
+			return ProjectModel{}, err
+		}
+		mergedValues[name] = normalizedValue
+	}
+	parameterValuesJSON, err := json.Marshal(mergedValues)
+	if err != nil {
+		return ProjectModel{}, ErrInvalidProjectParametricArtifactInput
+	}
+	metadata.AssetType = "scad"
+	metadata.SourceKind = projectParametricSourceKindOpenSCAD
+	metadata.Version = "1"
+	metadata.Schema = "openscad"
+	metadata.ParameterCount = len(defaultValues)
+	metadata.ParameterValues = mergedValues
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return ProjectModel{}, ErrInvalidProjectParametricArtifactInput
+	}
+	checksumBytes := sha256.Sum256(model.SourceData)
+	revisionID, err := id.NewPrefixed("pmr")
+	if err != nil {
+		return ProjectModel{}, err
+	}
+
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		model.MetadataJSON = metadataJSON
+		if err := tx.Save(&model).Error; err != nil {
+			return fmt.Errorf("update parametric model metadata: %w", err)
+		}
+		revision := entity.ProjectParametricRevision{
+			ID:                  revisionID,
+			ProjectID:           project.ID,
+			ModelID:             model.ID,
+			ParameterValuesJSON: parameterValuesJSON,
+			SourceChecksum:      hex.EncodeToString(checksumBytes[:]),
+			Summary:             "Updated parametric parameters",
+		}
+		if err := tx.Create(&revision).Error; err != nil {
+			return fmt.Errorf("create parametric revision: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return ProjectModel{}, err
+	}
+	return publicProjectModel(model), nil
+}
+
 func (s *Service) loadProjectParametricArtifact(ctx context.Context, projectID, artifactID string) (entity.ProjectParametricArtifact, error) {
 	artifactID = strings.TrimSpace(artifactID)
 	if artifactID == "" {
@@ -362,4 +461,132 @@ func projectParametricArtifactParameters(data []byte) map[string]any {
 		return map[string]any{}
 	}
 	return values
+}
+
+func openSCADTopLevelParameterValues(source string) map[string]any {
+	values := map[string]any{}
+	for _, rawLine := range strings.Split(source, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "//") {
+			continue
+		}
+		if strings.HasPrefix(line, "module ") || strings.HasPrefix(line, "function ") {
+			break
+		}
+		equalIndex := strings.Index(line, "=")
+		semicolonIndex := strings.Index(line, ";")
+		if equalIndex <= 0 || semicolonIndex <= equalIndex {
+			continue
+		}
+		name := strings.TrimSpace(line[:equalIndex])
+		if !isOpenSCADParameterName(name) {
+			continue
+		}
+		rawValue := strings.TrimSpace(line[equalIndex+1 : semicolonIndex])
+		value, ok := parseOpenSCADLiteral(rawValue)
+		if ok {
+			values[name] = value
+		}
+	}
+	return values
+}
+
+func normalizeOpenSCADParameterValue(name string, value any, defaults map[string]any) (any, error) {
+	defaultValue, ok := defaults[name]
+	if !ok {
+		return nil, ErrInvalidProjectParametricArtifactInput
+	}
+	switch defaultValue.(type) {
+	case bool:
+		boolValue, ok := value.(bool)
+		if !ok {
+			return nil, ErrInvalidProjectParametricArtifactInput
+		}
+		return boolValue, nil
+	case string:
+		stringValue, ok := value.(string)
+		if !ok {
+			return nil, ErrInvalidProjectParametricArtifactInput
+		}
+		return stringValue, nil
+	default:
+		numberValue, ok := numericParameterValue(value)
+		if !ok {
+			return nil, ErrInvalidProjectParametricArtifactInput
+		}
+		return numberValue, nil
+	}
+}
+
+func parseOpenSCADLiteral(rawValue string) (any, bool) {
+	switch rawValue {
+	case "true":
+		return true, true
+	case "false":
+		return false, true
+	}
+	if strings.HasPrefix(rawValue, "\"") && strings.HasSuffix(rawValue, "\"") {
+		value, err := strconv.Unquote(rawValue)
+		if err != nil {
+			return nil, false
+		}
+		return value, true
+	}
+	value, err := strconv.ParseFloat(rawValue, 64)
+	if err == nil {
+		return value, true
+	}
+	return nil, false
+}
+
+func numericParameterValue(value any) (float64, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, true
+	case float32:
+		return float64(typed), true
+	case int:
+		return float64(typed), true
+	case int8:
+		return float64(typed), true
+	case int16:
+		return float64(typed), true
+	case int32:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case uint:
+		return float64(typed), true
+	case uint8:
+		return float64(typed), true
+	case uint16:
+		return float64(typed), true
+	case uint32:
+		return float64(typed), true
+	case uint64:
+		return float64(typed), true
+	case json.Number:
+		number, err := typed.Float64()
+		return number, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func isOpenSCADParameterName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for index, r := range name {
+		if index == 0 {
+			if r != '_' && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') {
+				return false
+			}
+			continue
+		}
+		if r != '_' && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+			return false
+		}
+	}
+	return true
 }

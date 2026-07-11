@@ -17,23 +17,50 @@ type ParametricArtifactEditorProps = {
   artifact: ProjectParametricArtifact
   compile?: ParametricArtifactCompile
   debounceMs?: number
+  initialParameterValues?: Record<string, unknown>
   onSaveAsModel?: () => void
+  onSaveParameters?: (parameterValues: Record<string, OpenSCADParameterValue>) => void
+  saveLabel?: string
 }
 
-export function ParametricArtifactEditor({ artifact, compile, debounceMs, onSaveAsModel }: ParametricArtifactEditorProps) {
+export function ParametricArtifactEditor({
+  artifact,
+  compile,
+  debounceMs,
+  initialParameterValues,
+  onSaveAsModel,
+  onSaveParameters,
+  saveLabel = 'Save as model',
+}: ParametricArtifactEditorProps) {
   const parsedParameters = useMemo(() => parseOpenSCADParameters(artifact.source_code), [artifact.source_code])
   const defaultValues = useMemo(() => defaultOpenSCADParameterValues(parsedParameters), [parsedParameters])
-  const [parameterValues, setParameterValues] = useState<Record<string, OpenSCADParameterValue>>(defaultValues)
+  const editorInitialValues = useMemo(
+    () => ({
+      ...defaultValues,
+      ...openSCADParameterValuesFromUnknown(artifact.parameter_values),
+      ...openSCADParameterValuesFromUnknown(initialParameterValues),
+    }),
+    [artifact.parameter_values, defaultValues, initialParameterValues],
+  )
+  const [parameterValues, setParameterValues] = useState<Record<string, OpenSCADParameterValue>>(() => editorInitialValues)
 
   useEffect(() => {
-    setParameterValues(defaultValues)
-  }, [artifact.id, defaultValues])
+    setParameterValues(editorInitialValues)
+  }, [artifact.id, editorInitialValues])
 
   const preview = useParametricArtifactPreview({ artifact, compile, debounceMs, parameterValues })
-  const canSave = preview.status === 'success' && Boolean(onSaveAsModel)
+  const canSave = onSaveParameters ? true : preview.status === 'success' && Boolean(onSaveAsModel)
 
   const updateParameterValue = (name: string, value: OpenSCADParameterValue) => {
     setParameterValues((currentValues) => ({ ...currentValues, [name]: value }))
+  }
+
+  const handleSave = () => {
+    if (onSaveParameters) {
+      onSaveParameters(parameterValues)
+      return
+    }
+    onSaveAsModel?.()
   }
 
   return (
@@ -160,11 +187,21 @@ export function ParametricArtifactEditor({ artifact, compile, debounceMs, onSave
           {artifact.source_code}
         </pre>
 
-        <Button className="justify-center" disabled={!canSave} onClick={onSaveAsModel} size="sm" type="button">
+        <Button className="justify-center" disabled={!canSave} onClick={handleSave} size="sm" type="button">
           {canSave ? <Save data-icon="inline-start" /> : <Box data-icon="inline-start" />}
-          Save as model
+          {saveLabel}
         </Button>
       </FieldSet>
     </section>
   )
+}
+
+function openSCADParameterValuesFromUnknown(values: Record<string, unknown> | undefined) {
+  const parameterValues: Record<string, OpenSCADParameterValue> = {}
+  for (const [name, value] of Object.entries(values ?? {})) {
+    if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
+      parameterValues[name] = value
+    }
+  }
+  return parameterValues
 }

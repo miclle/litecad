@@ -477,6 +477,7 @@ func applyModelMetadata(model *entity.ProjectModel) {
 }
 
 func ExtractSCADMetadata(filename string, data []byte) StepMetadata {
+	parameterValues := openSCADTopLevelParameterValues(string(data))
 	return StepMetadata{
 		AssetType:           "scad",
 		SourceKind:          projectParametricSourceKindOpenSCAD,
@@ -485,26 +486,10 @@ func ExtractSCADMetadata(filename string, data []byte) StepMetadata {
 		ProductNames:        []string{strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))},
 		LengthUnit:          "unit",
 		EntityCount:         len(data),
-		ParameterCount:      countOpenSCADTopLevelAssignments(string(data)),
-		RepresentationCount: countOpenSCADTopLevelAssignments(string(data)),
+		ParameterCount:      len(parameterValues),
+		ParameterValues:     parameterValues,
+		RepresentationCount: len(parameterValues),
 	}
-}
-
-func countOpenSCADTopLevelAssignments(source string) int {
-	count := 0
-	for _, rawLine := range strings.Split(source, "\n") {
-		line := strings.TrimSpace(rawLine)
-		if line == "" || strings.HasPrefix(line, "//") {
-			continue
-		}
-		if strings.HasPrefix(line, "module ") || strings.HasPrefix(line, "function ") {
-			break
-		}
-		if strings.Contains(line, "=") && strings.Contains(line, ";") {
-			count++
-		}
-	}
-	return count
 }
 
 func slugifyProjectModelFilename(title string) string {

@@ -132,6 +132,27 @@ func TestProjectParametricArtifactRoutes(t *testing.T) {
 	if source.Body.String() != "width = 64;\ncube([width, 20, 6]);" {
 		t.Fatalf("source body = %q", source.Body.String())
 	}
+
+	updateModelParameters := patchJSONWithCookie(t, router, "/api/v1/projects/"+projectResponse.Project.ID+"/models/"+saveResponse.Model.ID+"/parametric-parameters", map[string]any{
+		"parameter_values": map[string]any{"width": 72},
+	}, sessionCookie)
+	if updateModelParameters.Code != http.StatusOK {
+		t.Fatalf("update model parameters status = %d, body = %s", updateModelParameters.Code, updateModelParameters.Body.String())
+	}
+	var updateModelResponse struct {
+		Model struct {
+			ID       string `json:"id"`
+			Metadata struct {
+				ParameterValues map[string]any `json:"parameter_values"`
+			} `json:"metadata"`
+		} `json:"model"`
+	}
+	if err := json.Unmarshal(updateModelParameters.Body.Bytes(), &updateModelResponse); err != nil {
+		t.Fatalf("decode update model parameters response: %v", err)
+	}
+	if updateModelResponse.Model.ID != saveResponse.Model.ID || updateModelResponse.Model.Metadata.ParameterValues["width"] != float64(72) {
+		t.Fatalf("update model response = %+v", updateModelResponse.Model)
+	}
 }
 
 func TestProjectParametricArtifactRejectsInvalidInput(t *testing.T) {

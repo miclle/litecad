@@ -24,6 +24,7 @@ import {
   updateProjectCADNodeTransform,
   updateProjectCADModelTransform,
   updateProjectParametricArtifact,
+  updateProjectParametricModelParameters,
   uploadProjectThumbnailSnapshot,
   uploadProjectModel,
 } from './projects'
@@ -195,6 +196,7 @@ describe('project API', () => {
     createProjectParametricArtifact('prj_01test', payload)
     updateProjectParametricArtifact('prj_01test', 'pma_01test', { ...payload, compile_status: 'success' })
     saveProjectParametricArtifactModel('prj_01test', 'pma_01test')
+    updateProjectParametricModelParameters('prj_01test', 'mdl_01test', { parameter_values: { width: 12 } })
 
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts')
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts/pma_01test')
@@ -204,5 +206,8 @@ describe('project API', () => {
       compile_status: 'success',
     })
     expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts/pma_01test/save-model', {})
+    expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/models/mdl_01test/parametric-parameters', {
+      parameter_values: { width: 12 },
+    })
   })
 })

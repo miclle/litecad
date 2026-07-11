@@ -25,6 +25,10 @@ type projectParametricArtifactsResponse struct {
 	Artifacts []service.ProjectParametricArtifact `json:"artifacts"`
 }
 
+type projectParametricModelParametersRequest struct {
+	ParameterValues map[string]any `json:"parameter_values" binding:"required"`
+}
+
 // ListProjectParametricArtifacts returns generated parametric CAD source artifacts for a project.
 func (ctrl *Ctrl) ListProjectParametricArtifacts(c *fox.Context) (projectParametricArtifactsResponse, error) {
 	user, err := ctrl.currentUser(c)
@@ -110,6 +114,24 @@ func (ctrl *Ctrl) SaveProjectParametricArtifactModel(c *fox.Context) (projectMod
 		OwnerUserID: user.ID,
 		ProjectID:   c.Param("projectID"),
 		ArtifactID:  c.Param("artifactID"),
+	})
+	if err != nil {
+		return projectModelResponse{}, projectError(err)
+	}
+	return projectModelResponse{Model: model}, nil
+}
+
+// UpdateProjectParametricModelParameters stores parameter edits on a saved parametric project model.
+func (ctrl *Ctrl) UpdateProjectParametricModelParameters(c *fox.Context, req *projectParametricModelParametersRequest) (projectModelResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectModelResponse{}, err
+	}
+	model, err := ctrl.service.UpdateParametricModelParameters(c.Request.Context(), service.UpdateParametricModelParametersInput{
+		OwnerUserID:     user.ID,
+		ProjectID:       c.Param("projectID"),
+		ModelID:         c.Param("modelID"),
+		ParameterValues: req.ParameterValues,
 	})
 	if err != nil {
 		return projectModelResponse{}, projectError(err)
