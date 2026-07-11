@@ -1,0 +1,108 @@
+import { act, renderHook } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import type { ProjectParametricArtifact } from 'src/types/project'
+import { useParametricArtifactPreview } from './use-parametric-artifact-preview'
+
+const artifact = {
+  id: 'pma_width',
+  project_id: 'prj_one',
+  conversation_id: 'agc_one',
+  message_id: 'agm_one',
+  title: 'Width block',
+  source_kind: 'openscad',
+  source_code: 'width = 20; // [10:1:80]\ncube([width, 10, 5]);',
+  parameter_values: {},
+  compile_status: 'pending',
+  compile_error: '',
+  preview_model_id: '',
+  created_at: '2026-07-11T00:00:00Z',
+  updated_at: '2026-07-11T00:00:00Z',
+} satisfies ProjectParametricArtifact
+
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+describe('useParametricArtifactPreview', () => {
+  it('debounces parameter changes before compiling', async () => {
+    vi.useFakeTimers()
+    const compile = vi.fn().mockResolvedValue({
+      output: 'preview',
+      bytes: new Uint8Array([1, 2, 3]),
+      stdout: '',
+      stderr: '',
+      durationMs: 4,
+    })
+
+    const { rerender, result } = renderHook(
+      ({ parameterValues }) =>
+        useParametricArtifactPreview({
+          artifact,
+          compile,
+          debounceMs: 20,
+          parameterValues,
+        }),
+      { initialProps: { parameterValues: { width: 20 } } },
+    )
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20)
+    })
+    expect(compile).toHaveBeenCalledWith({ code: artifact.source_code, parameterValues: { width: 20 } })
+
+    rerender({ parameterValues: { width: 40 } })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(19)
+    })
+    expect(compile).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(compile).toHaveBeenLastCalledWith({ code: artifact.source_code, parameterValues: { width: 40 } })
+    expect(result.current.status).toBe('success')
+  })
+
+  it('keeps stale compile results from overwriting newer errors', async () => {
+    vi.useFakeTimers()
+    let resolveFirst: ((value: { output: 'preview'; bytes: Uint8Array; stdout: string; stderr: string; durationMs: number }) => void) | undefined
+    const compile = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve
+          }),
+      )
+      .mockRejectedValueOnce(new Error('OpenSCAD runtime unavailable'))
+
+    const { rerender, result } = renderHook(
+      ({ parameterValues }) =>
+        useParametricArtifactPreview({
+          artifact,
+          compile,
+          debounceMs: 20,
+          parameterValues,
+        }),
+      { initialProps: { parameterValues: { width: 20 } } },
+    )
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20)
+    })
+    rerender({ parameterValues: { width: 40 } })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20)
+    })
+    expect(result.current.error).toBe('OpenSCAD runtime unavailable')
+
+    await act(async () => {
+      resolveFirst?.({ output: 'preview', bytes: new Uint8Array([1]), stdout: '', stderr: '', durationMs: 10 })
+    })
+
+    expect(result.current.status).toBe('error')
+    expect(result.current.error).toBe('OpenSCAD runtime unavailable')
+  })
+})

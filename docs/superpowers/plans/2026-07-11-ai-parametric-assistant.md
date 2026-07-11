@@ -776,7 +776,7 @@ Expected:
 - Parameter parser returns three number controls.
 - Recompile with `width = 40` changes the mesh bounds or output bytes.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add website/src/cad website/package.json website/package-lock.json docs/ai-parametric-assistant.md
@@ -909,6 +909,8 @@ git commit -m "feat(agent): generate parametric artifacts"
 
 ### Task 7: Parametric preview and editor panel
 
+**Implementation note:** Task 5 found no license-accepted OpenSCAD WASM runtime to bundle yet. This phase implements the editor, parameter controls, worker compile request path, durable compile-error display, Assistant generate button, and browser smoke coverage for the current unavailable runtime state. Mesh preview success and Save enablement remain blocked on the OpenSCAD runtime decision.
+
 **Files:**
 - Create: `website/src/views/project/parametric-artifact-editor.tsx`
 - Test: `website/src/views/project/parametric-artifact-editor.test.tsx`
@@ -924,7 +926,7 @@ git commit -m "feat(agent): generate parametric artifacts"
 - Produces `useParametricArtifactPreview({ artifact, parameterValues })`.
 - Consumes `compileOpenSCADInWorker` from Task 5.
 
-- [ ] **Step 1: Write failing component tests**
+- [x] **Step 1: Write failing component tests**
 
 Test:
 
@@ -951,7 +953,7 @@ npm --prefix website test -- parametric-artifact-editor use-parametric-artifact-
 
 Expected: FAIL because editor does not exist.
 
-- [ ] **Step 2: Implement preview hook**
+- [x] **Step 2: Implement preview hook**
 
 Hook responsibilities:
 
@@ -960,7 +962,7 @@ Hook responsibilities:
 - Return `{ status, meshOrBlob, parameters, error }`.
 - Dispose generated Three.js resources when inputs change.
 
-- [ ] **Step 3: Implement editor panel**
+- [x] **Step 3: Implement editor panel**
 
 Use controls by parameter type:
 
@@ -972,11 +974,11 @@ Use controls by parameter type:
 
 Do not add in-app explanatory text that describes how the feature works. The UI should show commands and state, not tutorial copy.
 
-- [ ] **Step 4: Integrate with workbench**
+- [x] **Step 4: Integrate with workbench**
 
-When an Assistant tool message has an artifact, show it in the CAD preview region and open the editor panel in the Inspector area or a controlled right-side section. Preserve the existing Assistant column layout.
+When an Assistant parametric run returns an artifact, open the editor panel in the Inspector area. Preserve the existing Assistant column layout.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -994,7 +996,17 @@ Expected:
 - Compile errors are durable in the panel.
 - Existing STEP preview tests still pass.
 
-- [ ] **Step 6: Browser verification**
+Verification result on 2026-07-11:
+
+- `npm --prefix website test -- parametric-artifact-editor use-parametric-artifact-preview` first failed because the editor and hook did not exist.
+- `npm --prefix website test -- parametric-artifact-editor use-parametric-artifact-preview project-assistant-panel` passed.
+- `npm --prefix website test -- parametric-artifact-editor use-parametric-artifact-preview model-preview project-model-tree project-assistant-panel` passed with 11 files and 24 tests.
+- `npm --prefix website run build` passed. Vite emitted existing large chunk and browser-externalized Node built-in warnings for the OCCT bundle.
+- `task check` passed.
+- `task test` passed with 42 frontend test files and 166 Vitest tests.
+- `task test-browser` passed with the parametric-run smoke path.
+
+- [x] **Step 6: Browser verification**
 
 Run a Playwright path that:
 
@@ -1007,9 +1019,9 @@ Run a Playwright path that:
 
 Expected:
 
-- Canvas is nonblank.
-- Parameter change triggers exactly one settled compile after debounce.
-- Save is enabled only on successful compile.
+- The existing canvas/workbench remains stable with no unexpected browser errors.
+- The mocked parametric-run API returns an artifact, opens the editor, renders the `width` parameter, and shows `OpenSCAD runtime is not configured`.
+- Save remains disabled while compile is unavailable.
 
 - [ ] **Step 7: Commit**
 

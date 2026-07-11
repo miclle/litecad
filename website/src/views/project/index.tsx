@@ -37,6 +37,7 @@ import {
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
   fetchProjectModels,
+  runProjectAgentParametric,
   sendProjectAgentConversationMessage,
   uploadProjectThumbnailSnapshot,
   uploadProjectModel,
@@ -76,6 +77,7 @@ import {
 import { cadHistoryActionForKey } from './cad-document-history'
 import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
+import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
 import { ProjectAssistantPanel, type AiChatMessage } from './project-assistant-panel'
@@ -111,6 +113,7 @@ import {
   type ViewOrientation,
   type ViewRotationStep,
 } from './view-orientation'
+import type { ProjectParametricArtifact } from 'src/types/project'
 
 const defaultLeftPanelWidth = 270
 const leftPanelMinWidth = 220
@@ -167,6 +170,18 @@ function projectAgentErrorMessage(error: unknown) {
     return message
   }
   return 'Assistant could not answer right now. Check the AI provider configuration and try again.'
+}
+
+function displayAiChatBody(body: string) {
+  try {
+    const parsed = JSON.parse(body) as { tool?: string; input?: { title?: string } }
+    if (parsed.tool === 'build_parametric_model' && parsed.input?.title) {
+      return `Generated source draft: ${parsed.input.title}`
+    }
+  } catch {
+    return body
+  }
+  return body
 }
 
 function transformDraftFromTranslation(translation: CADTranslation): TransformDraft {
@@ -259,6 +274,7 @@ function ProjectView() {
   const [aiChatDraft, setAiChatDraft] = useState('')
   const [localAiChatMessages, setLocalAiChatMessages] = useState<AiChatMessage[]>([])
   const [selectedAgentConversationID, setSelectedAgentConversationID] = useState('')
+  const [selectedParametricArtifact, setSelectedParametricArtifact] = useState<ProjectParametricArtifact | undefined>(undefined)
   const [leftPanelWidth, setLeftPanelWidth] = useState(defaultLeftPanelWidth)
   const [aiChatPanelWidth, setAiChatPanelWidth] = useState(defaultAiChatPanelWidth)
   const [aiChatPanelMaxWidth, setAiChatPanelMaxWidth] = useState(getAiChatPanelMaxWidth)
@@ -385,6 +401,40 @@ function ProjectView() {
       ])
     },
   })
+  const projectAgentParametricMutation = useMutation({
+    mutationFn: async (messageBody: string) => {
+      const response = await runProjectAgentParametric(projectId, activeAgentConversationID, { message: messageBody })
+      return response.data
+    },
+    onSuccess: async ({ artifact, message }) => {
+      setSelectedParametricArtifact(artifact)
+      setSelectedModelID('')
+      setSelectedDocumentNodeID('')
+      setActiveCADTool('inspect')
+      setLocalAiChatMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: message.id || `assistant-parametric-${Date.now()}`,
+          role: 'assistant',
+          body: `Generated source draft: ${artifact.title}`,
+        },
+      ])
+      await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })
+      await queryClient.invalidateQueries({ queryKey: ['project-agent-messages', projectId, message.conversation_id] })
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
+      setLocalAiChatMessages([])
+    },
+    onError: (error) => {
+      setLocalAiChatMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: `assistant-parametric-error-${Date.now()}`,
+          role: 'assistant',
+          body: projectAgentErrorMessage(error),
+        },
+      ])
+    },
+  })
   const createProjectAgentConversationMutation = useMutation({
     mutationFn: async () => (await createProjectAgentConversation(projectId, { title: 'New chat' })).data.conversation,
     onSuccess: async (conversation) => {
@@ -418,7 +468,7 @@ function ProjectView() {
   const persistedAiChatMessages = useMemo<AiChatMessage[]>(
     () =>
       projectAgentMessagesQuery.data && projectAgentMessagesQuery.data.length > 0
-        ? projectAgentMessagesQuery.data.map((message) => ({ id: message.id, role: message.role, body: message.body }))
+        ? projectAgentMessagesQuery.data.map((message) => ({ id: message.id, role: message.role, body: displayAiChatBody(message.body) }))
         : initialAiChatMessages,
     [projectAgentMessagesQuery.data],
   )
@@ -1070,6 +1120,18 @@ function ProjectView() {
     projectAgentMutation.mutate(messageBody)
     setAiChatDraft('')
   }
+  const generateParametricArtifact = () => {
+    const messageBody = aiChatDraft.trim()
+    if (!messageBody || projectAgentParametricMutation.isPending || activeAgentConversationID === '') {
+      return
+    }
+    setLocalAiChatMessages((currentMessages) => [
+      ...currentMessages,
+      { id: `user-parametric-${Date.now()}`, role: 'user' as const, body: messageBody },
+    ])
+    projectAgentParametricMutation.mutate(messageBody)
+    setAiChatDraft('')
+  }
   const createAiChatConversation = () => {
     if (createProjectAgentConversationMutation.isPending) {
       return
@@ -1246,6 +1308,7 @@ function ProjectView() {
               onClearSelection={() => {
                 setSelectedModelID('')
                 setSelectedDocumentNodeID('')
+                setSelectedParametricArtifact(undefined)
                 setActiveCADTool('inspect')
                 cadDocumentCommands.clearDeleteError()
               }}
@@ -1253,6 +1316,7 @@ function ProjectView() {
               onSelectModel={(modelID, nodeID) => {
                 setSelectedModelID(modelID)
                 setSelectedDocumentNodeID(nodeID ?? sourceNodeIDByModelID.get(modelID) ?? `node_${modelID}`)
+                setSelectedParametricArtifact(undefined)
                 setActiveCADTool('inspect')
                 cadDocumentCommands.clearDeleteError()
               }}
@@ -1482,6 +1546,7 @@ function ProjectView() {
                   onSelect={(modelId, nodeId) => {
                     setSelectedModelID(modelId)
                     setSelectedDocumentNodeID(nodeId)
+                    setSelectedParametricArtifact(undefined)
                     setActiveCADTool('inspect')
                     cadDocumentCommands.clearDeleteError()
                   }}
@@ -1491,13 +1556,17 @@ function ProjectView() {
                   uploadError={uploadError}
                 />
 
-                <ProjectInspector
-                  documentDetails={documentDetails}
-                  modelCount={projectModels.length}
-                  onTransformChange={updateTransformDraftField}
-                  selected={inspectorSelection}
-                  unitLabel={documentUnitLabel}
-                />
+                {selectedParametricArtifact ? (
+                  <ParametricArtifactEditor artifact={selectedParametricArtifact} />
+                ) : (
+                  <ProjectInspector
+                    documentDetails={documentDetails}
+                    modelCount={projectModels.length}
+                    onTransformChange={updateTransformDraftField}
+                    selected={inspectorSelection}
+                    unitLabel={documentUnitLabel}
+                  />
+                )}
               </div>
             </>
           )}
@@ -1511,12 +1580,13 @@ function ProjectView() {
           activeConversationId={activeAgentConversationID}
           conversations={projectAgentConversations}
           draft={aiChatDraft}
-          isPending={projectAgentMutation.isPending || createProjectAgentConversationMutation.isPending}
+          isPending={projectAgentMutation.isPending || projectAgentParametricMutation.isPending || createProjectAgentConversationMutation.isPending}
           maxWidth={aiChatPanelMaxWidth}
           messages={aiChatMessages}
           onClose={closeAiChat}
           onCreateConversation={createAiChatConversation}
           onDraftChange={setAiChatDraft}
+          onGenerateParametric={generateParametricArtifact}
           onResizePointerDown={startAiChatPanelResize}
           onSelectConversation={selectAiChatConversation}
           onSubmit={submitAiChat}

@@ -3,6 +3,21 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 const projectId = 'project_smoke'
 const now = '2026-07-10T00:00:00Z'
 let smokeMessages: unknown[] = []
+const smokeParametricArtifact = {
+  id: 'pma_smoke',
+  project_id: projectId,
+  conversation_id: 'agc_smoke',
+  message_id: 'agm_smoke_parametric',
+  title: 'Smoke bracket',
+  source_kind: 'openscad',
+  source_code: 'width = 20; // [10:1:80]\ncube([width, 10, 5]);',
+  parameter_values: {},
+  compile_status: 'pending',
+  compile_error: '',
+  preview_model_id: '',
+  created_at: now,
+  updated_at: now,
+}
 
 async function fulfillAPI(route: Route) {
   const request = route.request()
@@ -74,6 +89,52 @@ async function fulfillAPI(route: Route) {
     })
     return
   }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/agent/conversations/agc_smoke/parametric-runs`) {
+    const requestBody = request.postDataJSON() as { message?: string }
+    const assistantMessage = {
+      id: 'agm_smoke_parametric',
+      project_id: projectId,
+      conversation_id: 'agc_smoke',
+      role: 'assistant',
+      body: JSON.stringify({
+        tool: 'build_parametric_model',
+        input: {
+          title: smokeParametricArtifact.title,
+          version: 'v1',
+          source_kind: 'openscad',
+          code: smokeParametricArtifact.source_code,
+        },
+      }),
+      parts: [
+        {
+          type: 'artifact',
+          artifact_id: smokeParametricArtifact.id,
+        },
+      ],
+      created_at: now,
+      updated_at: now,
+    }
+    smokeMessages = [
+      ...smokeMessages,
+      {
+        id: 'agm_smoke_parametric_user',
+        project_id: projectId,
+        conversation_id: 'agc_smoke',
+        role: 'user',
+        body: requestBody.message ?? 'Make a smoke bracket',
+        created_at: now,
+        updated_at: now,
+      },
+      assistantMessage,
+    ]
+    await route.fulfill({
+      json: {
+        message: assistantMessage,
+        artifact: smokeParametricArtifact,
+      },
+    })
+    return
+  }
   await route.fulfill({ json: { message: `Unhandled smoke request: ${request.method()} ${pathname}` }, status: 500 })
 }
 
@@ -131,6 +192,12 @@ test('opens the project workbench, History, and Assistant without browser errors
   await page.getByLabel('Message Assistant').fill('Inspect smoke project')
   await page.getByRole('button', { name: 'Send Assistant message' }).click()
   await expect(page.getByText('Smoke reply ready.')).toBeVisible()
+  await page.getByLabel('Message Assistant').fill('Make a smoke bracket')
+  await page.getByRole('button', { name: 'Generate parametric model' }).click()
+  await expect(page.getByRole('heading', { name: 'Smoke bracket' })).toBeVisible()
+  await expect(page.getByLabel('width parameter')).toBeVisible()
+  await expect(page.getByText('OpenSCAD runtime is not configured')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save as model' })).toBeDisabled()
   await page.getByRole('button', { name: 'Close Assistant' }).click()
   await expect(page.locator('[aria-label="Assistant panel"]')).toHaveAttribute('aria-hidden', 'true')
 

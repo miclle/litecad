@@ -1,0 +1,170 @@
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, Box, Save } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { parseOpenSCADParameters } from 'src/cad/openscad-parameters'
+import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
+import type { ProjectParametricArtifact } from 'src/types/project'
+import {
+  defaultOpenSCADParameterValues,
+  useParametricArtifactPreview,
+  type ParametricArtifactCompile,
+} from './use-parametric-artifact-preview'
+
+type ParametricArtifactEditorProps = {
+  artifact: ProjectParametricArtifact
+  compile?: ParametricArtifactCompile
+  debounceMs?: number
+  onSaveAsModel?: () => void
+}
+
+export function ParametricArtifactEditor({ artifact, compile, debounceMs, onSaveAsModel }: ParametricArtifactEditorProps) {
+  const parsedParameters = useMemo(() => parseOpenSCADParameters(artifact.source_code), [artifact.source_code])
+  const defaultValues = useMemo(() => defaultOpenSCADParameterValues(parsedParameters), [parsedParameters])
+  const [parameterValues, setParameterValues] = useState<Record<string, OpenSCADParameterValue>>(defaultValues)
+
+  useEffect(() => {
+    setParameterValues(defaultValues)
+  }, [artifact.id, defaultValues])
+
+  const preview = useParametricArtifactPreview({ artifact, compile, debounceMs, parameterValues })
+  const canSave = preview.status === 'success' && Boolean(onSaveAsModel)
+
+  const updateParameterValue = (name: string, value: OpenSCADParameterValue) => {
+    setParameterValues((currentValues) => ({ ...currentValues, [name]: value }))
+  }
+
+  return (
+    <section aria-label="Parametric artifact" className="mt-4 border-t border-[#e2e8f0] pt-4">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-mono text-[11px] uppercase text-[#64748b]">Generated source</p>
+          <h2 className="mt-1 truncate text-sm font-semibold text-[#0f172a]" title={artifact.title}>
+            {artifact.title}
+          </h2>
+        </div>
+        <span className="shrink-0 rounded border border-[#dbe3ec] bg-[#f8fafc] px-2 py-1 font-mono text-[10px] uppercase text-[#475569]">
+          {preview.status}
+        </span>
+      </div>
+
+      <FieldSet className="mt-3 gap-3">
+        {preview.parameters.length > 0 ? (
+          <FieldGroup className="gap-2">
+            <FieldTitle className="text-xs text-[#334155]">Parameters</FieldTitle>
+            <div className="grid gap-2">
+              {preview.parameters.map((parameter) => {
+                const value = parameterValues[parameter.name] ?? parameter.value
+                if (parameter.type === 'number') {
+                  const range = parameter.range ?? { min: 0, step: 1, max: Math.max(Number(value) || 1, 1) * 2 }
+                  return (
+                    <Field className="gap-1" key={parameter.name}>
+                      <div className="flex items-center justify-between gap-2">
+                        <FieldLabel className="font-mono text-[10px] uppercase text-[#64748b]">{parameter.name}</FieldLabel>
+                        <Input
+                          aria-label={`${parameter.name} value`}
+                          className="h-7 w-20 rounded-md border-[#d6dbe3] px-2 text-right font-mono text-[11px]"
+                          inputMode="decimal"
+                          onChange={(event) => updateParameterValue(parameter.name, Number(event.target.value))}
+                          type="number"
+                          value={Number(value)}
+                        />
+                      </div>
+                      <input
+                        aria-label={`${parameter.name} parameter`}
+                        className="h-5 w-full accent-[#1d4ed8]"
+                        max={range.max}
+                        min={range.min}
+                        onChange={(event) => updateParameterValue(parameter.name, Number(event.target.value))}
+                        step={range.step}
+                        type="range"
+                        value={Number(value)}
+                      />
+                    </Field>
+                  )
+                }
+                if (parameter.type === 'boolean') {
+                  return (
+                    <label className="flex items-center justify-between gap-3 rounded-md border border-[#e2e8f0] bg-white px-2 py-1.5 text-xs" key={parameter.name}>
+                      <span className="font-mono uppercase text-[#64748b]">{parameter.name}</span>
+                      <input
+                        aria-label={`${parameter.name} parameter`}
+                        checked={Boolean(value)}
+                        className="size-4 accent-[#1d4ed8]"
+                        onChange={(event) => updateParameterValue(parameter.name, event.target.checked)}
+                        type="checkbox"
+                      />
+                    </label>
+                  )
+                }
+                if (parameter.type === 'color') {
+                  return (
+                    <Field className="gap-1" key={parameter.name}>
+                      <FieldLabel className="font-mono text-[10px] uppercase text-[#64748b]">{parameter.name}</FieldLabel>
+                      <Input
+                        aria-label={`${parameter.name} parameter`}
+                        className="h-8 rounded-md border-[#d6dbe3] bg-white"
+                        onChange={(event) => updateParameterValue(parameter.name, event.target.value)}
+                        type="color"
+                        value={String(value)}
+                      />
+                    </Field>
+                  )
+                }
+                if (parameter.options && parameter.options.length > 0) {
+                  return (
+                    <Field className="gap-1" key={parameter.name}>
+                      <FieldLabel className="font-mono text-[10px] uppercase text-[#64748b]">{parameter.name}</FieldLabel>
+                      <select
+                        aria-label={`${parameter.name} parameter`}
+                        className="h-8 rounded-md border border-[#d6dbe3] bg-white px-2 text-xs text-[#0f172a] outline-none focus:border-[#94a3b8] focus:ring-2 focus:ring-[#bfdbfe]"
+                        onChange={(event) => updateParameterValue(parameter.name, event.target.value)}
+                        value={String(value)}
+                      >
+                        {parameter.options.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )
+                }
+                return (
+                  <Field className="gap-1" key={parameter.name}>
+                    <FieldLabel className="font-mono text-[10px] uppercase text-[#64748b]">{parameter.name}</FieldLabel>
+                    <Input
+                      aria-label={`${parameter.name} parameter`}
+                      className="h-8 rounded-md border-[#d6dbe3] bg-white px-2 text-xs"
+                      onChange={(event) => updateParameterValue(parameter.name, event.target.value)}
+                      type="text"
+                      value={String(value)}
+                    />
+                  </Field>
+                )
+              })}
+            </div>
+          </FieldGroup>
+        ) : null}
+
+        {preview.error ? (
+          <FieldError className="flex items-start gap-2 text-[11px] leading-4">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            <span>{preview.error}</span>
+          </FieldError>
+        ) : null}
+
+        <pre className="max-h-44 overflow-auto rounded-md border border-[#e2e8f0] bg-[#f8fafc] p-2 font-mono text-[10px] leading-4 text-[#334155]">
+          {artifact.source_code}
+        </pre>
+
+        <Button className="justify-center" disabled={!canSave} onClick={onSaveAsModel} size="sm" type="button">
+          {canSave ? <Save data-icon="inline-start" /> : <Box data-icon="inline-start" />}
+          Save as model
+        </Button>
+      </FieldSet>
+    </section>
+  )
+}

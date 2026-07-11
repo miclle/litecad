@@ -23,6 +23,7 @@ describe('ProjectAssistantPanel', () => {
         onClose={onClose}
         onCreateConversation={vi.fn()}
         onDraftChange={onDraftChange}
+        onGenerateParametric={vi.fn()}
         onResizePointerDown={vi.fn()}
         onSelectConversation={vi.fn()}
         onSubmit={onSubmit}
@@ -60,6 +61,7 @@ describe('ProjectAssistantPanel', () => {
         onClose={vi.fn()}
         onCreateConversation={onCreateConversation}
         onDraftChange={vi.fn()}
+        onGenerateParametric={vi.fn()}
         onResizePointerDown={vi.fn()}
         onSelectConversation={onSelectConversation}
         onSubmit={vi.fn()}
@@ -90,6 +92,7 @@ describe('ProjectAssistantPanel', () => {
         onClose={vi.fn()}
         onCreateConversation={vi.fn()}
         onDraftChange={vi.fn()}
+        onGenerateParametric={vi.fn()}
         onResizePointerDown={vi.fn()}
         onSelectConversation={vi.fn()}
         onSubmit={onSubmit}
@@ -102,6 +105,36 @@ describe('ProjectAssistantPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Send Assistant message' }))
 
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Send Assistant message' }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Generate parametric model' }).disabled).toBe(true)
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('forwards parametric generation from the current draft', async () => {
+    const user = userEvent.setup()
+    const onGenerateParametric = vi.fn()
+    render(
+      <ProjectAssistantPanel
+        activeConversationId="agc_one"
+        conversations={[{ id: 'agc_one', title: 'Design pass', updated_at: '2026-07-11T00:00:00Z' }]}
+        draft="Make a mounting bracket"
+        isPending={false}
+        maxWidth={680}
+        messages={[]}
+        onClose={vi.fn()}
+        onCreateConversation={vi.fn()}
+        onDraftChange={vi.fn()}
+        onGenerateParametric={onGenerateParametric}
+        onResizePointerDown={vi.fn()}
+        onSelectConversation={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        sourceCount={0}
+        width={420}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Generate parametric model' }))
+
+    expect(onGenerateParametric).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,4 +1,4 @@
-import { BotMessageSquare, Plus, Send, X } from 'lucide-react'
+import { BotMessageSquare, Box, Plus, Send, X } from 'lucide-react'
 import type { FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,7 @@ type ProjectAssistantPanelProps = {
   onClose: () => void
   onCreateConversation: () => void
   onDraftChange: (draft: string) => void
+  onGenerateParametric: () => void
   onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
   onSelectConversation: (conversationId: string) => void
   onSubmit: () => void
@@ -47,6 +48,7 @@ export function ProjectAssistantPanel({
   onClose,
   onCreateConversation,
   onDraftChange,
+  onGenerateParametric,
   onResizePointerDown,
   onSelectConversation,
   onSubmit,
@@ -56,6 +58,7 @@ export function ProjectAssistantPanel({
 }: ProjectAssistantPanelProps) {
   const hasActiveConversation = activeConversationId !== ''
   const canSubmit = draft.trim() !== '' && !isPending && hasActiveConversation
+  const canGenerate = canSubmit
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (canSubmit) {
@@ -172,9 +175,22 @@ export function ProjectAssistantPanel({
           <div className="h-6 rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-2 font-mono text-[10px] uppercase leading-6 text-[#64748b]">
             {isPending ? 'Thinking' : hasActiveConversation ? 'Project context' : 'New chat required'}
           </div>
-          <Button aria-label="Send Assistant message" disabled={!canSubmit} size="icon-sm" type="submit">
-            <Send />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              aria-label="Generate parametric model"
+              disabled={!canGenerate}
+              onClick={onGenerateParametric}
+              size="icon-sm"
+              title="Generate parametric model"
+              type="button"
+              variant="outline"
+            >
+              <Box />
+            </Button>
+            <Button aria-label="Send Assistant message" disabled={!canSubmit} size="icon-sm" type="submit">
+              <Send />
+            </Button>
+          </div>
         </div>
       </form>
     </aside>
