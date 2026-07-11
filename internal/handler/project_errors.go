@@ -36,6 +36,8 @@ func projectError(err error) error {
 		return httperr.NewBadRequest("model preview unavailable")
 	case errors.Is(err, service.ErrInvalidAIChatInput):
 		return httperr.NewBadRequest("invalid agent message")
+	case errors.Is(err, service.ErrInvalidProjectParametricArtifactInput):
+		return httperr.NewBadRequest("invalid parametric artifact")
 	case errors.Is(err, service.ErrAIUnavailable):
 		return httperr.NewServiceUnavailable("AI provider is not configured")
 	case errors.Is(err, service.ErrProjectNotFound):

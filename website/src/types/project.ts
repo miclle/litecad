@@ -243,6 +243,42 @@ export interface ProjectAgentMessagesResponse {
   messages: ProjectAgentMessage[]
 }
 
+export interface ProjectParametricArtifact {
+  id: string
+  project_id: string
+  conversation_id: string
+  message_id: string
+  title: string
+  source_kind: 'openscad'
+  source_code: string
+  parameter_values: Record<string, unknown>
+  compile_status: 'pending' | 'success' | 'error'
+  compile_error: string
+  preview_model_id: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectParametricArtifactPayload {
+  conversation_id?: string
+  message_id?: string
+  title: string
+  source_kind: 'openscad'
+  source_code: string
+  parameter_values?: Record<string, unknown>
+  compile_status?: 'pending' | 'success' | 'error'
+  compile_error?: string
+  preview_model_id?: string
+}
+
+export interface ProjectParametricArtifactResponse {
+  artifact: ProjectParametricArtifact
+}
+
+export interface ProjectParametricArtifactsResponse {
+  artifacts: ProjectParametricArtifact[]
+}
+
 export interface CreateProjectPayload {
   name: string
   description: string

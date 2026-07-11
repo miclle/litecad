@@ -66,6 +66,7 @@ func Migrate(ctx context.Context, db *gorm.DB) error {
 		&entity.ProjectCADHistoryEntry{},
 		&entity.ProjectAgentConversation{},
 		&entity.ProjectAgentMessage{},
+		&entity.ProjectParametricArtifact{},
 	); err != nil {
 		return fmt.Errorf("auto migrate: %w", err)
 	}

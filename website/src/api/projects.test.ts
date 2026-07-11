@@ -6,18 +6,22 @@ import {
   fetchProjectCADDocument,
   fetchProjectCADHistory,
   createProjectAgentConversation,
+  createProjectParametricArtifact,
   fetchProjectAgentConversationMessages,
   fetchProjectAgentConversations,
   fetchProjectGeometryDocument,
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
+  fetchProjectParametricArtifact,
+  fetchProjectParametricArtifacts,
   addProjectCADModelBoxUnion,
   sendProjectAgentConversationMessage,
   redoProjectCADDocument,
   undoProjectCADDocument,
   updateProjectCADNodeTransform,
   updateProjectCADModelTransform,
+  updateProjectParametricArtifact,
   uploadProjectThumbnailSnapshot,
   uploadProjectModel,
 } from './projects'
@@ -165,5 +169,28 @@ describe('project API', () => {
     fetchProjectAgentConversationMessages('prj_01test', 'agc_01test')
 
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/agent/conversations/agc_01test/messages')
+  })
+
+  test('manages project parametric artifacts', () => {
+    const payload = {
+      title: 'Bracket generator',
+      source_kind: 'openscad' as const,
+      source_code: 'cube([10, 10, 10]);',
+      parameter_values: { width: 10 },
+      compile_status: 'pending' as const,
+    }
+
+    fetchProjectParametricArtifacts('prj_01test')
+    fetchProjectParametricArtifact('prj_01test', 'pma_01test')
+    createProjectParametricArtifact('prj_01test', payload)
+    updateProjectParametricArtifact('prj_01test', 'pma_01test', { ...payload, compile_status: 'success' })
+
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts')
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts/pma_01test')
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts', payload)
+    expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts/pma_01test', {
+      ...payload,
+      compile_status: 'success',
+    })
   })
 })

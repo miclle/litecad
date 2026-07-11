@@ -15,6 +15,9 @@ import type {
   ProjectModelPreviewArtifactResponse,
   ProjectModelResponse,
   ProjectModelsResponse,
+  ProjectParametricArtifactPayload,
+  ProjectParametricArtifactResponse,
+  ProjectParametricArtifactsResponse,
   ProjectResponse,
   ProjectsResponse,
   SendProjectAgentMessagePayload,
@@ -99,6 +102,22 @@ export function sendProjectAgentConversationMessage(
 
 export function fetchProjectAgentConversationMessages(projectId: string, conversationId: string) {
   return client.get<ProjectAgentMessagesResponse>(`/projects/${projectId}/agent/conversations/${conversationId}/messages`)
+}
+
+export function fetchProjectParametricArtifacts(projectId: string) {
+  return client.get<ProjectParametricArtifactsResponse>(`/projects/${projectId}/parametric-artifacts`)
+}
+
+export function fetchProjectParametricArtifact(projectId: string, artifactId: string) {
+  return client.get<ProjectParametricArtifactResponse>(`/projects/${projectId}/parametric-artifacts/${artifactId}`)
+}
+
+export function createProjectParametricArtifact(projectId: string, payload: ProjectParametricArtifactPayload) {
+  return client.post<ProjectParametricArtifactResponse>(`/projects/${projectId}/parametric-artifacts`, payload)
+}
+
+export function updateProjectParametricArtifact(projectId: string, artifactId: string, payload: ProjectParametricArtifactPayload) {
+  return client.patch<ProjectParametricArtifactResponse>(`/projects/${projectId}/parametric-artifacts/${artifactId}`, payload)
 }
 
 export function createProject(payload: CreateProjectPayload) {

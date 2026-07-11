@@ -169,3 +169,22 @@ type ProjectAgentMessage struct {
 	Project        Project                  `gorm:"foreignKey:ProjectID" json:"project"`
 	Conversation   ProjectAgentConversation `gorm:"foreignKey:ConversationID" json:"conversation"`
 }
+
+// ProjectParametricArtifact stores editable generated CAD source owned by a project.
+type ProjectParametricArtifact struct {
+	ID                  string         `gorm:"size:32;primaryKey" json:"id"`
+	CreatedAt           time.Time      `gorm:"index" json:"created_at"`
+	UpdatedAt           time.Time      `json:"updated_at"`
+	DeletedAt           gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	ProjectID           string         `gorm:"size:32;index;not null" json:"project_id"`
+	ConversationID      string         `gorm:"size:32;index" json:"conversation_id"`
+	MessageID           string         `gorm:"size:32;index" json:"message_id"`
+	Title               string         `gorm:"size:160;not null" json:"title"`
+	SourceKind          string         `gorm:"size:32;index;not null" json:"source_kind"`
+	SourceCode          string         `gorm:"type:text;not null" json:"source_code"`
+	ParameterValuesJSON []byte         `gorm:"column:parameter_values_json;type:json" json:"-"`
+	CompileStatus       string         `gorm:"size:32;index;not null" json:"compile_status"`
+	CompileError        string         `gorm:"type:text;not null" json:"compile_error"`
+	PreviewModelID      string         `gorm:"size:32;index" json:"preview_model_id"`
+	Project             Project        `gorm:"foreignKey:ProjectID" json:"project"`
+}

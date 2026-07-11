@@ -518,8 +518,8 @@ git commit -m "feat(projects): add assistant conversations UI"
 ### Task 4: Parametric artifact schema and storage
 
 **Files:**
-- Create: `internal/entity/project_parametric_artifact.go`
-- Modify: `internal/database/migrate.go`
+- Modify: `internal/entity/entity.go`
+- Modify: `internal/database/database.go`
 - Create: `internal/service/parametric_artifact.go`
 - Test: `internal/service/parametric_artifact_test.go`
 - Create: `internal/handler/project_parametric.go`
@@ -537,7 +537,7 @@ git commit -m "feat(projects): add assistant conversations UI"
   - `PATCH /api/v1/projects/:projectID/parametric-artifacts/:artifactID`
 - Produces draft artifact fields: title, source_kind, source_code, parameter_values, compile_status, compile_error.
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Test:
 
@@ -561,7 +561,7 @@ go test ./internal/service -run 'TestProjectParametricArtifact'
 
 Expected: FAIL because artifact service does not exist.
 
-- [ ] **Step 2: Add entity and validation**
+- [x] **Step 2: Add entity and validation**
 
 Entity:
 
@@ -591,7 +591,7 @@ Validation:
 - `CompileStatus` one of `pending`, `success`, `error`.
 - `ParameterValuesJSON` must decode to an object when present.
 
-- [ ] **Step 3: Add handlers and frontend API**
+- [x] **Step 3: Add handlers and frontend API**
 
 DTO:
 
@@ -613,7 +613,7 @@ export interface ProjectParametricArtifact {
 }
 ```
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -631,7 +631,16 @@ Expected:
 - Invalid source is rejected.
 - Frontend types compile through `task check`.
 
-- [ ] **Step 5: Commit**
+Verification results:
+
+- `go test ./internal/service -run 'TestProjectParametricArtifact'` passed.
+- `go test ./internal/handler -run 'TestProjectParametricArtifact'` passed.
+- `go test ./internal/database -run 'TestMigrateCreatesUserTable'` passed.
+- `npm --prefix website test -- projects` passed.
+- `task check` passed.
+- `task test` passed.
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/entity internal/database internal/service internal/handler website/src/types/project.ts website/src/api/projects.ts
