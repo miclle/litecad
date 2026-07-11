@@ -258,6 +258,7 @@ function ProjectView() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [aiChatDraft, setAiChatDraft] = useState('')
   const [localAiChatMessages, setLocalAiChatMessages] = useState<AiChatMessage[]>([])
+  const [selectedAgentConversationID, setSelectedAgentConversationID] = useState('')
   const [leftPanelWidth, setLeftPanelWidth] = useState(defaultLeftPanelWidth)
   const [aiChatPanelWidth, setAiChatPanelWidth] = useState(defaultAiChatPanelWidth)
   const [aiChatPanelMaxWidth, setAiChatPanelMaxWidth] = useState(getAiChatPanelMaxWidth)
@@ -318,16 +319,30 @@ function ProjectView() {
     enabled: projectId !== '' && projectQuery.isSuccess,
   })
   const projectAgentConversationsQuery = useQuery({
-    queryKey: ['projects', projectId, 'agent', 'conversations'],
+    queryKey: ['project-agent-conversations', projectId],
     queryFn: async () => (await fetchProjectAgentConversations(projectId)).data.conversations,
-    enabled: projectId !== '' && projectQuery.isSuccess,
+    enabled: projectId !== '' && projectQuery.isSuccess && isAiChatOpen,
   })
-  const activeAgentConversationID = projectAgentConversationsQuery.data?.[0]?.id ?? ''
+  const projectAgentConversations = useMemo(() => projectAgentConversationsQuery.data ?? [], [projectAgentConversationsQuery.data])
+  const activeAgentConversationID = selectedAgentConversationID || projectAgentConversations[0]?.id || ''
   const projectAgentMessagesQuery = useQuery({
-    queryKey: ['projects', projectId, 'agent', 'conversations', activeAgentConversationID, 'messages'],
+    queryKey: ['project-agent-messages', projectId, activeAgentConversationID],
     queryFn: async () => (await fetchProjectAgentConversationMessages(projectId, activeAgentConversationID)).data.messages,
-    enabled: projectId !== '' && activeAgentConversationID !== '',
+    enabled: projectId !== '' && isAiChatOpen && activeAgentConversationID !== '',
   })
+  useEffect(() => {
+    if (!projectAgentConversationsQuery.data) {
+      return
+    }
+    if (projectAgentConversations.length === 0) {
+      setSelectedAgentConversationID('')
+      return
+    }
+    if (selectedAgentConversationID !== '' && projectAgentConversations.some((conversation) => conversation.id === selectedAgentConversationID)) {
+      return
+    }
+    setSelectedAgentConversationID(projectAgentConversations[0].id)
+  }, [projectAgentConversations, projectAgentConversationsQuery.data, selectedAgentConversationID])
   const uploadModelMutation = useMutation({
     mutationFn: (file: File) => uploadProjectModel(projectId, file),
     onSuccess: async () => {
@@ -341,12 +356,7 @@ function ProjectView() {
   })
   const projectAgentMutation = useMutation({
     mutationFn: async (messageBody: string) => {
-      let conversationID = activeAgentConversationID
-      if (!conversationID) {
-        const conversationResponse = await createProjectAgentConversation(projectId, { title: 'Project chat' })
-        conversationID = conversationResponse.data.conversation.id
-      }
-      const response = await sendProjectAgentConversationMessage(projectId, conversationID, {
+      const response = await sendProjectAgentConversationMessage(projectId, activeAgentConversationID, {
         messages: [{ role: 'user', body: messageBody }],
       })
       return response.data.message
@@ -360,8 +370,8 @@ function ProjectView() {
           body: message.body,
         },
       ])
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'agent', 'conversations'] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'agent', 'conversations', message.conversation_id, 'messages'] })
+      await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })
+      await queryClient.invalidateQueries({ queryKey: ['project-agent-messages', projectId, message.conversation_id] })
       setLocalAiChatMessages([])
     },
     onError: (error) => {
@@ -373,6 +383,15 @@ function ProjectView() {
           body: projectAgentErrorMessage(error),
         },
       ])
+    },
+  })
+  const createProjectAgentConversationMutation = useMutation({
+    mutationFn: async () => (await createProjectAgentConversation(projectId, { title: 'New chat' })).data.conversation,
+    onSuccess: async (conversation) => {
+      setSelectedAgentConversationID(conversation.id)
+      setAiChatDraft('')
+      setLocalAiChatMessages([])
+      await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })
     },
   })
   const thumbnailSnapshotMutation = useMutation({
@@ -1041,7 +1060,7 @@ function ProjectView() {
   }
   const submitAiChat = () => {
     const messageBody = aiChatDraft.trim()
-    if (!messageBody || projectAgentMutation.isPending) {
+    if (!messageBody || projectAgentMutation.isPending || activeAgentConversationID === '') {
       return
     }
     setLocalAiChatMessages((currentMessages) => [
@@ -1050,6 +1069,17 @@ function ProjectView() {
     ])
     projectAgentMutation.mutate(messageBody)
     setAiChatDraft('')
+  }
+  const createAiChatConversation = () => {
+    if (createProjectAgentConversationMutation.isPending) {
+      return
+    }
+    createProjectAgentConversationMutation.mutate()
+  }
+  const selectAiChatConversation = (conversationID: string) => {
+    setSelectedAgentConversationID(conversationID)
+    setAiChatDraft('')
+    setLocalAiChatMessages([])
   }
 
   return (
@@ -1478,13 +1508,17 @@ function ProjectView() {
 
       <div className="h-screen min-w-0 overflow-hidden">
         <ProjectAssistantPanel
+          activeConversationId={activeAgentConversationID}
+          conversations={projectAgentConversations}
           draft={aiChatDraft}
-          isPending={projectAgentMutation.isPending}
+          isPending={projectAgentMutation.isPending || createProjectAgentConversationMutation.isPending}
           maxWidth={aiChatPanelMaxWidth}
           messages={aiChatMessages}
           onClose={closeAiChat}
+          onCreateConversation={createAiChatConversation}
           onDraftChange={setAiChatDraft}
           onResizePointerDown={startAiChatPanelResize}
+          onSelectConversation={selectAiChatConversation}
           onSubmit={submitAiChat}
           open={isAiChatOpen}
           sourceCount={projectModels.length}

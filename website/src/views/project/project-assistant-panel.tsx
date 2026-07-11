@@ -1,4 +1,4 @@
-import { BotMessageSquare, Send, X } from 'lucide-react'
+import { BotMessageSquare, Plus, Send, X } from 'lucide-react'
 import type { FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -11,14 +11,24 @@ export type AiChatMessage = {
   body: string
 }
 
+export type AssistantConversationSummary = {
+  id: string
+  title: string
+  updated_at: string
+}
+
 type ProjectAssistantPanelProps = {
+  activeConversationId?: string
+  conversations: AssistantConversationSummary[]
   draft: string
   isPending: boolean
   maxWidth: number
   messages: AiChatMessage[]
   onClose: () => void
+  onCreateConversation: () => void
   onDraftChange: (draft: string) => void
   onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
+  onSelectConversation: (conversationId: string) => void
   onSubmit: () => void
   open: boolean
   sourceCount: number
@@ -28,30 +38,40 @@ type ProjectAssistantPanelProps = {
 const assistantPanelMinWidth = 340
 
 export function ProjectAssistantPanel({
+  activeConversationId = '',
+  conversations,
   draft,
   isPending,
   maxWidth,
   messages,
   onClose,
+  onCreateConversation,
   onDraftChange,
   onResizePointerDown,
+  onSelectConversation,
   onSubmit,
   open,
   sourceCount,
   width,
 }: ProjectAssistantPanelProps) {
+  const hasActiveConversation = activeConversationId !== ''
+  const canSubmit = draft.trim() !== '' && !isPending && hasActiveConversation
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (draft.trim() && !isPending) {
+    if (canSubmit) {
       onSubmit()
     }
   }
   const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!shouldSubmitAgentInputFromKey(event.nativeEvent) || !draft.trim() || isPending) {
+    if (!shouldSubmitAgentInputFromKey(event.nativeEvent) || !canSubmit) {
       return
     }
     event.preventDefault()
     onSubmit()
+  }
+  const handleCreateConversation = () => {
+    onDraftChange('')
+    onCreateConversation()
   }
 
   return (
@@ -91,6 +111,32 @@ export function ProjectAssistantPanel({
         </Button>
       </div>
 
+      <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-[#e2e8f0] px-3 py-2">
+        <label className="sr-only" htmlFor="project-ai-conversation">
+          Assistant conversation
+        </label>
+        <select
+          className="h-8 min-w-0 rounded-md border border-[#d6dbe3] bg-white px-2 text-xs font-medium text-[#0f172a] outline-none transition focus:border-[#94a3b8] focus:ring-2 focus:ring-[#bfdbfe]"
+          disabled={conversations.length === 0 || isPending}
+          id="project-ai-conversation"
+          onChange={(event) => onSelectConversation(event.target.value)}
+          value={activeConversationId}
+        >
+          {conversations.length === 0 ? (
+            <option value="">No chats yet</option>
+          ) : (
+            conversations.map((conversation) => (
+              <option key={conversation.id} value={conversation.id}>
+                {conversation.title}
+              </option>
+            ))
+          )}
+        </select>
+        <Button aria-label="New chat" onClick={handleCreateConversation} size="icon-sm" title="New chat" type="button" variant="outline">
+          <Plus />
+        </Button>
+      </div>
+
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-4">
         {messages.map((message) => (
           <div
@@ -124,9 +170,9 @@ export function ProjectAssistantPanel({
         />
         <div className="flex items-center justify-between gap-2 px-1 pb-1">
           <div className="h-6 rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-2 font-mono text-[10px] uppercase leading-6 text-[#64748b]">
-            {isPending ? 'Thinking' : 'Project context'}
+            {isPending ? 'Thinking' : hasActiveConversation ? 'Project context' : 'New chat required'}
           </div>
-          <Button aria-label="Send Assistant message" disabled={!draft.trim() || isPending} size="icon-sm" type="submit">
+          <Button aria-label="Send Assistant message" disabled={!canSubmit} size="icon-sm" type="submit">
             <Send />
           </Button>
         </div>

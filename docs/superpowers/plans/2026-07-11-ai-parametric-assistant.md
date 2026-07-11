@@ -381,12 +381,14 @@ Verification results:
 - `task test` passed.
 - `task test-browser` passed after updating the deterministic workbench fixture to the new conversation endpoint.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/entity internal/database internal/service internal/handler website/src/types/project.ts website/src/api/projects.ts
-git commit -m "feat(agent): add project assistant conversations"
+git commit -m "feat(ai): add assistant conversations"
 ```
+
+Committed and pushed as `39b01ed`.
 
 ---
 
@@ -404,7 +406,7 @@ git commit -m "feat(agent): add project assistant conversations"
 - Consumes Task 2 API functions.
 - Preserves the accepted main-level two-column Assistant layout.
 
-- [ ] **Step 1: Write failing UI tests**
+- [x] **Step 1: Write failing UI tests**
 
 Add tests:
 
@@ -430,7 +432,7 @@ npm --prefix website test -- project-assistant-panel
 
 Expected: FAIL because the component has no conversation controls.
 
-- [ ] **Step 2: Add controlled props**
+- [x] **Step 2: Add controlled props**
 
 Extend `ProjectAssistantPanelProps`:
 
@@ -452,9 +454,9 @@ type ProjectAssistantPanelProps = {
 
 Use shadcn-compatible button/menu patterns and Lucide icons. Keep the panel width and resize behavior unchanged.
 
-- [ ] **Step 3: Wire ProjectView state**
+- [x] **Step 3: Wire ProjectView state**
 
-In `ProjectView`, fetch conversations when the Assistant is opened. If there are no conversations, create one lazily when the user clicks `New chat` or sends a first prompt. Use React Query keys:
+In `ProjectView`, fetch conversations when the Assistant is opened. If there are no conversations, require `New chat` before sending and create the conversation from that action. Use React Query keys:
 
 ```ts
 ['project-agent-conversations', projectId]
@@ -463,7 +465,7 @@ In `ProjectView`, fetch conversations when the Assistant is opened. If there are
 
 Messages shown in the panel must come from the active conversation only.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -480,7 +482,15 @@ Expected:
 - New chat can be created without retaining old messages in the active panel.
 - No layout regression in existing workbench tests.
 
-- [ ] **Step 5: Browser verification**
+Verification results:
+
+- `npm --prefix website test -- project-assistant-panel` passed.
+- `npm --prefix website test -- index` passed.
+- `npm --prefix website test -- projects` passed.
+- `task check` passed.
+- `task test` passed.
+
+- [x] **Step 5: Browser verification**
 
 Run:
 
@@ -492,7 +502,11 @@ Expected:
 
 - The deterministic smoke opens the project workbench, opens Assistant, creates or selects a conversation, sends a message through mocked owner-scoped APIs, closes Assistant, and sees no unexpected console/page errors.
 
-- [ ] **Step 6: Commit**
+Verification result:
+
+- `task test-browser` passed with a stateful mocked conversation/message API.
+
+- [x] **Step 6: Commit**
 
 ```bash
 git add website/src/views/project website/src/api/projects.ts

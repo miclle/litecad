@@ -2,6 +2,7 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 
 const projectId = 'project_smoke'
 const now = '2026-07-10T00:00:00Z'
+let smokeMessages: unknown[] = []
 
 async function fulfillAPI(route: Route) {
   const request = route.request()
@@ -19,7 +20,10 @@ async function fulfillAPI(route: Route) {
       },
     },
     [`/api/v1/projects/${projectId}/models`]: { models: [] },
-    [`/api/v1/projects/${projectId}/agent/conversations`]: { conversations: [] },
+    [`/api/v1/projects/${projectId}/agent/conversations`]: {
+      conversations: [{ id: 'agc_smoke', project_id: projectId, title: 'Smoke chat', created_at: now, updated_at: now }],
+    },
+    [`/api/v1/projects/${projectId}/agent/conversations/agc_smoke/messages`]: { messages: smokeMessages },
     [`/api/v1/projects/${projectId}/cad-document`]: {
       document: {
         id: 'cad_document_smoke',
@@ -40,6 +44,36 @@ async function fulfillAPI(route: Route) {
     await route.fulfill({ json: responses[pathname] })
     return
   }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/agent/conversations/agc_smoke/messages`) {
+    const requestBody = request.postDataJSON() as { messages?: Array<{ role: 'assistant' | 'user'; body: string }> }
+    const userMessageBody = requestBody.messages?.at(-1)?.body ?? 'Inspect smoke project'
+    smokeMessages = [
+      {
+        id: 'agm_smoke_user',
+        project_id: projectId,
+        conversation_id: 'agc_smoke',
+        role: 'user',
+        body: userMessageBody,
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: 'agm_smoke',
+        project_id: projectId,
+        conversation_id: 'agc_smoke',
+        role: 'assistant',
+        body: 'Smoke reply ready.',
+        created_at: now,
+        updated_at: now,
+      },
+    ]
+    await route.fulfill({
+      json: {
+        message: smokeMessages[1],
+      },
+    })
+    return
+  }
   await route.fulfill({ json: { message: `Unhandled smoke request: ${request.method()} ${pathname}` }, status: 500 })
 }
 
@@ -55,6 +89,7 @@ function captureBrowserErrors(page: Page) {
 }
 
 test('opens the project workbench, History, and Assistant without browser errors', async ({ page }) => {
+  smokeMessages = []
   const browserErrors = captureBrowserErrors(page)
   await page.route('**/api/v1/**', fulfillAPI)
 
@@ -92,6 +127,10 @@ test('opens the project workbench, History, and Assistant without browser errors
   await page.getByRole('button', { name: 'Toggle Assistant' }).click()
   await expect(page.getByRole('complementary', { name: 'Assistant panel' })).toHaveAttribute('aria-hidden', 'false')
   await expect(page.getByText('0 project sources attached')).toBeVisible()
+  await expect(page.getByLabel('Assistant conversation')).toHaveValue('agc_smoke')
+  await page.getByLabel('Message Assistant').fill('Inspect smoke project')
+  await page.getByRole('button', { name: 'Send Assistant message' }).click()
+  await expect(page.getByText('Smoke reply ready.')).toBeVisible()
   await page.getByRole('button', { name: 'Close Assistant' }).click()
   await expect(page.locator('[aria-label="Assistant panel"]')).toHaveAttribute('aria-hidden', 'true')
 
