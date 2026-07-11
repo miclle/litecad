@@ -10,6 +10,7 @@ import {
   stepExportFilename,
 } from './project-step-export'
 import type { ProjectCADDocument, ProjectModel } from 'src/types/project'
+import type { StepExportTarget } from './project-step-export'
 
 const baseModel = {
   project_id: 'prj_01test',
@@ -76,12 +77,27 @@ describe('project STEP export helpers', () => {
     vi.useRealTimers()
   })
 
-  test('builds export targets for parsed STEP models with current document operations', () => {
+  test('builds export targets for parsed STEP and LiteCAD feature DSL models', () => {
     const stepModel = {
       ...baseModel,
       id: 'mdl_step',
       original_filename: 'bracket.step',
       metadata: { ...baseModel.metadata, product_names: ['Mount bracket'] },
+    } satisfies ProjectModel
+    const lcadModel = {
+      ...baseModel,
+      id: 'mdl_lcad',
+      original_filename: 'feature-dsl-bracket-litecad.lcad.json',
+      format: 'lcad',
+      content_type: 'application/json',
+      metadata: {
+        ...baseModel.metadata,
+        asset_type: 'lcad',
+        source_kind: 'litecad-feature-dsl',
+        schema: 'litecad-feature-dsl',
+        product_names: ['Feature DSL bracket'],
+        parameter_values: { width: 96 },
+      },
     } satisfies ProjectModel
     const stlModel = {
       ...baseModel,
@@ -90,10 +106,26 @@ describe('project STEP export helpers', () => {
       format: 'stl',
       content_type: 'model/stl',
     } satisfies ProjectModel
+    const exportDocument = {
+      ...cadDocument,
+      nodes: [
+        ...cadDocument.nodes,
+        {
+          id: 'node_mdl_lcad',
+          model_id: 'mdl_lcad',
+          source_model_id: 'mdl_lcad',
+          parent_node_id: '',
+          name: 'feature-dsl-bracket-litecad.lcad.json',
+          source_format: 'lcad',
+          transform: { matrix: [] },
+        },
+      ],
+    } satisfies ProjectCADDocument
 
-    expect(buildStepExportTargets([stepModel, stlModel], cadDocument)).toEqual([
+    expect(buildStepExportTargets([stepModel, lcadModel, stlModel], exportDocument)).toEqual([
       {
         modelId: 'mdl_step',
+        sourceFormat: 'step',
         displayName: 'Mount bracket',
         sourceFilename: 'bracket.step',
         downloadFilename: 'bracket-litecad-r7.step',
@@ -111,6 +143,15 @@ describe('project STEP export helpers', () => {
             matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1],
           },
         ],
+      },
+      {
+        modelId: 'mdl_lcad',
+        sourceFormat: 'lcad',
+        displayName: 'Feature DSL bracket',
+        sourceFilename: 'feature-dsl-bracket-litecad.lcad.json',
+        downloadFilename: 'feature-dsl-bracket-litecad.lcad-litecad-r7.step',
+        parameterValues: { width: 96 },
+        operations: [],
       },
     ])
   })
@@ -167,6 +208,7 @@ describe('project STEP export helpers', () => {
     const targets = [
       {
         modelId: 'mdl_a',
+        sourceFormat: 'step',
         displayName: 'A',
         sourceFilename: 'a.step',
         downloadFilename: 'a-litecad-r7.step',
@@ -174,12 +216,13 @@ describe('project STEP export helpers', () => {
       },
       {
         modelId: 'mdl_b',
+        sourceFormat: 'step',
         displayName: 'B',
         sourceFilename: 'b.step',
         downloadFilename: 'b-litecad-r7.step',
         operations: [],
       },
-    ]
+    ] satisfies StepExportTarget[]
 
     expect([...defaultSelectedStepExportTargetIDs(targets)]).toEqual(['mdl_a', 'mdl_b'])
     expect(selectedStepExportTargets(targets, new Set(['mdl_b']))).toEqual([targets[1]])

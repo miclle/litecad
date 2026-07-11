@@ -45,6 +45,7 @@ import {
   uploadProjectModel,
 } from 'src/api/projects'
 import {
+  runFeatureDSLExportInWorker,
   runFeatureDSLPreviewInWorker,
   runStepAssemblyExportInWorker,
   runStepPreviewInWorker,
@@ -1150,6 +1151,7 @@ function ProjectView() {
         downloadFilename: stepAssemblyDownloadFilename,
         fetchSourceText,
         runStepAssemblyExport: runStepAssemblyExportInWorker,
+        runFeatureDSLExport: runFeatureDSLExportInWorker,
         publishDownload: publishStepExportDownload,
       })
     } else {
@@ -1158,6 +1160,7 @@ function ProjectView() {
           target,
           fetchSourceText,
           runStepRoundTrip: runStepRoundTripInWorker,
+          runFeatureDSLExport: runFeatureDSLExportInWorker,
           publishDownload: publishStepExportDownload,
         })
       }

@@ -4,9 +4,11 @@ import { cadKernelOperationsForModel, getModelDisplayName, parsedPreviewModels, 
 
 export type StepExportTarget = {
   modelId: string
+  sourceFormat: 'step' | 'lcad'
   displayName: string
   sourceFilename: string
   downloadFilename: string
+  parameterValues?: Record<string, unknown>
   operations: CadKernelOperation[]
 }
 
@@ -19,13 +21,15 @@ export type StepExportMode = 'separate' | 'merged'
 
 export function buildStepExportTargets(models: ProjectModel[], cadDocument: ProjectCADDocument | undefined): StepExportTarget[] {
   return parsedPreviewModels(visibleProjectModels(models, cadDocument))
-    .filter((model) => model.format === 'step')
+    .filter((model) => model.format === 'step' || model.format === 'lcad')
     .map((model) => ({
       modelId: model.id,
+      sourceFormat: model.format === 'lcad' ? 'lcad' : 'step',
       displayName: getModelDisplayName(model),
       sourceFilename: model.original_filename,
       downloadFilename: stepExportFilename(model.original_filename, cadDocument?.revision ?? 0),
-      operations: cadKernelOperationsForModel(cadDocument, model.id),
+      ...(model.format === 'lcad' ? { parameterValues: model.metadata.parameter_values ?? {} } : {}),
+      operations: model.format === 'step' ? cadKernelOperationsForModel(cadDocument, model.id) : [],
     }))
 }
 

@@ -9,6 +9,7 @@ import { ProjectStepExportPopover } from './project-step-export-popover'
 const targets: StepExportTarget[] = [
   {
     modelId: 'model_one',
+    sourceFormat: 'step',
     displayName: 'Bracket',
     sourceFilename: 'bracket.step',
     downloadFilename: 'bracket-litecad-r3.step',

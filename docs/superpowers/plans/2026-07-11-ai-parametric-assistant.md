@@ -21,6 +21,7 @@
 - User-visible browser changes require `task test-browser` or a documented Playwright-equivalent rendered verification.
 - Every phase runs focused tests plus `task check`; behavior/API/database phases also run `task test`.
 - Keep shipped facts in README/docs and unfinished work in `TODO.md`; do not move roadmap claims into product language until the code and tests exist.
+- LiteCAD is not launched yet, so future AI Parametric Assistant phases may choose clean internal schemas and API contracts over backward-compatible legacy routes or data migrations unless a later requirement explicitly preserves existing local sample data.
 
 ---
 
@@ -1648,17 +1649,128 @@ Verification result on 2026-07-11:
 - `task test` passed with 43 frontend test files and 179 Vitest tests.
 - `task test-browser` passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add website/src/views/project docs TODO.md AGENTS.md .agents/rules
 git commit -m "feat(projects): preview feature dsl models"
 ```
 
+Commit result on 2026-07-11:
+
+- Committed and pushed as `d8ab5a4 feat(projects): preview feature dsl models`.
+
 Remaining after this task:
 
-- Project export UI does not yet expose saved DSL model STEP export through `feature-dsl-export`.
+- Project export UI does not yet expose saved DSL model STEP export through `feature-dsl-export`; Task 14 addresses this.
 - The DSL still supports only the minimal worker feature set from Task 11.
+
+---
+
+### Task 14: Saved LiteCAD feature DSL STEP export UI
+
+**Why this task exists:** Task 13 made saved `.lcad.json` models previewable, but export still only considered imported STEP targets. This task makes saved LiteCAD feature DSL models first-class STEP export targets by routing them through the existing browser CAD kernel `feature-dsl-export` request before download or compound assembly export.
+
+**Files:**
+- Modify: `website/src/views/project/index.tsx`
+- Modify: `website/src/views/project/project-step-export.ts`
+- Modify: `website/src/views/project/project-step-export-action.ts`
+- Modify: `website/src/views/project/project-feature-dsl-preview.ts`
+- Test: `website/src/views/project/project-step-export.test.ts`
+- Test: `website/src/views/project/project-step-export-action.test.ts`
+- Test: `website/src/views/project/project-step-export-popover.test.tsx`
+- Modify docs: `docs/ai-parametric-assistant.md`, `docs/browser-cad-kernel-roadmap.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, `.agents/rules/threejs-viewer.md`, this plan
+
+**Interfaces:**
+- `StepExportTarget` includes `sourceFormat: "step" | "lcad"` and optional saved parameter values.
+- `buildStepExportTargets(...)` includes visible saved `format = "lcad"` models.
+- Single-target export routes `lcad` through `runFeatureDSLExportInWorker(...)`.
+- Merged export converts `lcad` targets to STEP text first, then passes that text to `runStepAssemblyExportInWorker(...)`.
+- Imported STEP target behavior remains unchanged.
+
+- [x] **Step 1: Write failing tests**
+
+RED tests added:
+
+```bash
+npm --prefix website test -- project-step-export project-step-export-action
+```
+
+Expected failures were observed:
+
+- `buildStepExportTargets(...)` omitted `lcad` models.
+- `exportStepTarget(...)` treated an `lcad` target as STEP round-trip input and failed to publish the DSL-produced STEP text.
+- `exportMergedStepTargets(...)` did not call `runFeatureDSLExport(...)` before compound STEP assembly.
+
+- [x] **Step 2: Implement saved DSL export targets**
+
+Implemented:
+
+- `StepExportTarget.sourceFormat`.
+- Saved parameter values on `lcad` export targets.
+- `buildFeatureDSLKernelInput(...)` as a shared source parser for preview and export.
+- Separate export using `feature-dsl-export` for `lcad` targets.
+- Merged export that converts `lcad` targets to STEP text before compound STEP export.
+- Project route wiring to pass `runFeatureDSLExportInWorker(...)` into both export modes.
+
+- [x] **Step 3: Verify**
+
+Run:
+
+```bash
+npm --prefix website test -- project-step-export project-step-export-action project-step-export-popover
+npm --prefix website run build
+```
+
+Expected:
+
+- Saved `.lcad.json` targets appear in the STEP export selection list.
+- Separate saved DSL export publishes worker-produced STEP text.
+- Merged export includes converted DSL STEP text and preserves existing STEP operation replay.
+- Existing export failure feedback remains durable in the popover.
+
+Verification result on 2026-07-11:
+
+- `npm --prefix website test -- project-step-export project-step-export-action project-step-export-popover` passed with 3 files and 13 tests.
+- `npm --prefix website run build` passed. Vite still reports the existing WASM large chunk and browser-externalized Node module warnings for the OCCT bundle.
+- Real browser worker smoke through Vite/Chromium imported `buildFeatureDSLKernelInput(...)` and `runFeatureDSLExportInWorker(...)`; a saved-model-shaped `.lcad.json` source with `width = 96` returned STEP text beginning with `ISO-10303-21`, containing `END-ISO-10303-21`, and measuring 15403 bytes. The only console output was OCCT transfer statistics.
+
+- [x] **Step 4: Final gates, review, docs, commit, and push**
+
+Run:
+
+```bash
+git diff --check
+task check
+task test
+task test-browser
+git add website/src/views/project docs TODO.md AGENTS.md .agents/rules
+git commit -m "feat(projects): export feature dsl models"
+git push
+```
+
+Expected:
+
+- Full repository checks pass.
+- Code review finds no blocking issue.
+- Documentation no longer says saved DSL export UI is future work.
+
+Verification result on 2026-07-11:
+
+- `npm --prefix website test -- project-feature-dsl-preview project-step-export project-step-export-action project-step-export-popover` passed with 4 files and 15 tests.
+- `npm --prefix website run build` passed. Vite still reports the existing WASM large chunk and browser-externalized Node module warnings for the OCCT bundle.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed with Go race tests and 43 frontend test files / 181 Vitest tests.
+- `task test-browser` passed with the project workbench, History, and Assistant smoke.
+- Code review found no blocking issue after narrowing the shared DSL helper return type to `CadKernelFeatureDSLInput`.
+- Commit result: `feat(projects): export feature dsl models`, pushed to `origin/main`.
+
+Remaining after this task:
+
+- The DSL still supports only the minimal worker feature set from Task 11.
+- Saved DSL exports do not imply durable B-rep feature graph, general CAD History integration, or arbitrary AI geometry mutation.
+- OpenSCAD mesh preview/export remains unavailable until a compatible runtime is deliberately selected and bundled.
 
 ---
 

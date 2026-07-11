@@ -1,9 +1,20 @@
-import type { CadKernelFeatureDSLDocument, CadKernelFeatureDSLPreviewRequest } from 'src/cad/kernel-protocol'
+import type { CadKernelFeatureDSLDocument, CadKernelFeatureDSLInput } from 'src/cad/kernel-protocol'
 import type { ProjectModel } from 'src/types/project'
 
-type CadKernelFeatureDSLPreviewInput = CadKernelFeatureDSLPreviewRequest['payload']
+export function buildFeatureDSLPreviewInput(model: ProjectModel, sourceText: string): CadKernelFeatureDSLInput {
+  return buildFeatureDSLKernelInput(
+    {
+      filename: model.original_filename,
+      parameterValues: model.metadata.parameter_values ?? {},
+    },
+    sourceText,
+  )
+}
 
-export function buildFeatureDSLPreviewInput(model: ProjectModel, sourceText: string): CadKernelFeatureDSLPreviewInput {
+export function buildFeatureDSLKernelInput(
+  source: { filename: string; parameterValues?: Record<string, unknown> },
+  sourceText: string,
+): CadKernelFeatureDSLInput {
   let document: CadKernelFeatureDSLDocument
   try {
     document = JSON.parse(sourceText) as CadKernelFeatureDSLDocument
@@ -12,9 +23,9 @@ export function buildFeatureDSLPreviewInput(model: ProjectModel, sourceText: str
   }
 
   return {
-    filename: model.original_filename,
+    filename: source.filename,
     document,
-    parameterValues: numericFeatureDSLParameterValues(document, model.metadata.parameter_values ?? {}),
+    parameterValues: numericFeatureDSLParameterValues(document, source.parameterValues ?? {}),
   }
 }
 
