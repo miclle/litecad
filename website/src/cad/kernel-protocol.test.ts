@@ -109,10 +109,52 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts LiteCAD feature DSL preview and export requests', () => {
+    const document = {
+      version: 1,
+      unit: 'millimetre',
+      parameters: {
+        width: { type: 'number', default: 80, min: 20, max: 200 },
+      },
+      features: [
+        {
+          id: 'base',
+          type: 'box',
+          origin: [0, 0, 0],
+          size: ['width', 40, 6],
+        },
+      ],
+    }
+
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-preview',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'generated.litecad.json',
+          document,
+          parameterValues: { width: 96 },
+        },
+      }),
+    ).toBe(true)
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-export',
+        type: 'feature-dsl-export',
+        payload: {
+          filename: 'generated.step',
+          document,
+          parameterValues: { width: 96 },
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('rejects malformed worker requests before they reach the kernel', () => {
     expect(isCadKernelRequest({ id: 'job-1', type: 'step-round-trip', payload: { filename: 'part.step' } })).toBe(false)
     expect(isCadKernelRequest({ id: 'job-1', type: 'unknown', payload: { stepText: 'x' } })).toBe(false)
     expect(isCadKernelRequest({ id: 'job-1', type: 'step-assembly-export', payload: { filename: 'assembly.step', sources: [] } })).toBe(false)
+    expect(isCadKernelRequest({ id: 'job-1', type: 'feature-dsl-preview', payload: { filename: 'generated.json' } })).toBe(false)
     expect(isCadKernelRequest(null)).toBe(false)
   })
 

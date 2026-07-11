@@ -89,6 +89,8 @@ LiteCAD now stores AI-generated OpenSCAD-style source artifacts separately from 
 
 OpenSCAD mesh preview is still unavailable in normal use because no compatible OpenSCAD WASM runtime has been selected or bundled. The browser CAD kernel roadmap therefore remains OCCT-first for editable STEP/B-rep work. If OpenSCAD runtime licensing remains blocked, generated parametric CAD should move toward the LiteCAD-native feature DSL described in the AI Parametric Assistant plan, compiled through the existing OCCT worker path instead of through Three.js or ad hoc source loaders.
 
+The first feature DSL worker foundation is complete on 2026-07-11. The CAD kernel worker now accepts `feature-dsl-preview` and `feature-dsl-export` requests for a minimal JSON document with numeric parameters and `box` features. Browser verification through a real Vite/Chromium worker run compiled a parameterized 96 x 42 x 6 box into a mesh with 24 vertices, 12 triangles, normals present, and 15403 bytes of exported STEP text. This proves the license-safe OCCT path can produce nonblank generated geometry, but it is not yet connected to the Assistant route, persisted generated model format, Inspector parameter editor, or project preview pipeline.
+
 ## Phased Implementation Plan
 
 Every phase must end with:

@@ -1371,6 +1371,89 @@ Committed and pushed on 2026-07-11 as `docs(project): document parametric assist
 
 ---
 
+### Task 11: LiteCAD-native feature DSL worker foundation
+
+**Why this task exists:** OpenSCAD runtime bundling is still blocked by license/distribution review. The plan's fallback guidance says to switch to a LiteCAD-native feature DSL compiled by the existing OCCT worker when that gate blocks progress. This task creates the smallest verifiable worker foundation for that path without claiming a full Assistant/UI integration.
+
+**Files:**
+- Modify: `website/src/cad/kernel-protocol.ts`
+- Modify: `website/src/cad/kernel-worker-client.ts`
+- Modify: `website/src/cad/kernel-worker-handler.ts`
+- Modify: `website/src/cad/kernel.worker.ts`
+- Modify: `website/src/cad/opencascade-step.ts`
+- Test: `website/src/cad/kernel-protocol.test.ts`
+- Test: `website/src/cad/kernel-worker-client.test.ts`
+- Test: `website/src/cad/kernel-worker-handler.test.ts`
+- Test: `website/src/cad/opencascade-step.test.ts`
+- Modify docs: `docs/ai-parametric-assistant.md`, `docs/browser-cad-kernel-roadmap.md`, `TODO.md`, `AGENTS.md`
+
+**Interfaces:**
+- Produces `feature-dsl-preview` worker requests.
+- Produces `feature-dsl-export` worker requests.
+- Consumes a minimal LiteCAD feature DSL JSON document:
+
+```json
+{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 80, "min": 20, "max": 200 }
+  },
+  "features": [
+    { "id": "base", "type": "box", "origin": [0, 0, 0], "size": ["width", 40, 6] }
+  ]
+}
+```
+
+- Returns browser-kernel mesh buffers for preview.
+- Returns exported STEP text for export.
+
+- [x] **Step 1: Write failing tests**
+
+RED tests added for protocol validation, worker client request/response handling, worker handler dispatch, and OCCT export of a parameterized `box` feature.
+
+- [x] **Step 2: Add protocol and client**
+
+Added `CadKernelFeatureDSLDocument`, `feature-dsl-preview`, `feature-dsl-export`, `runFeatureDSLPreviewInWorker(...)`, and `runFeatureDSLExportInWorker(...)`.
+
+- [x] **Step 3: Add OCCT adapter**
+
+Implemented numeric parameter resolution, `box` feature compilation through `BRepPrimAPI_MakeBox`, preview tessellation through the existing OCCT mesh path, and STEP export through the existing STEP writer path.
+
+- [x] **Step 4: Verify**
+
+Commands:
+
+```bash
+npm --prefix website test -- kernel-protocol kernel-worker-handler kernel-worker-client opencascade-step
+npm --prefix website run build
+task check
+task test
+task test-browser
+```
+
+Browser worker smoke on 2026-07-11 used a real Vite/Chromium run and dynamically imported `runFeatureDSLPreviewInWorker(...)` plus `runFeatureDSLExportInWorker(...)`. A parameterized 96 x 42 x 6 box produced a mesh summary of `vertexCount: 24`, `triangleCount: 12`, `hasNormals: true`, and exported STEP text of 15403 bytes starting with `ISO-10303-21`; no browser console messages or HTTP 404s were observed in the final clean run.
+
+Result: all verification commands passed. `npm --prefix website run build` still reports the existing Vite warnings about browser-externalized Node modules and large chunks for the WASM stack, but exits successfully. `task test` reported 42 frontend test files and 173 Vitest tests passing; `task test-browser` reported the deterministic project workbench, History, and Assistant smoke passing.
+
+- [x] **Step 5: Commit**
+
+```bash
+git add website/src/cad docs TODO.md AGENTS.md
+git commit -m "feat(cad): add feature dsl worker path"
+```
+
+Committed and pushed on 2026-07-11 as `feat(cad): add feature dsl worker path`.
+
+Remaining after this task:
+
+- The Assistant route still emits OpenSCAD-style artifacts.
+- Project persistence does not yet store a LiteCAD feature DSL model format.
+- Inspector parameter editing is not yet wired to feature DSL documents.
+- Project workbench preview does not yet route saved DSL models through `feature-dsl-preview`.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

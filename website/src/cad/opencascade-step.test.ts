@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { applyCADOperationsToShape, createOpenCascadeLoader, runStepAssemblyExportWithKernel } from './opencascade-step'
+import {
+  applyCADOperationsToShape,
+  createOpenCascadeLoader,
+  runFeatureDSLExportWithKernel,
+  runStepAssemblyExportWithKernel,
+} from './opencascade-step'
 
 describe('createOpenCascadeLoader', () => {
   it('loads the OpenCascade factory with an explicit Vite wasm URL', async () => {
@@ -201,5 +206,61 @@ describe('runStepAssemblyExportWithKernel', () => {
     expect(result.exportedStepText).toContain('END-ISO-10303-21')
     expect(unlink).toHaveBeenCalledWith('/litecad-assembly-input-0.step')
     expect(unlink).toHaveBeenCalledWith('/litecad-assembly-input-1.step')
+  })
+})
+
+describe('runFeatureDSLExportWithKernel', () => {
+  it('builds a parameterized box feature before writing STEP', async () => {
+    const boxShape = { name: 'box-shape' }
+    const buildBox = vi.fn()
+    const transfer = vi.fn()
+    const write = vi.fn()
+    const openCascade = {
+      FS: {
+        readFile: vi.fn(() => 'ISO-10303-21;\nEND-ISO-10303-21;'),
+        unlink: vi.fn(),
+      },
+      IFSelect_ReturnStatus: {
+        IFSelect_RetDone: 1,
+      },
+      STEPControl_StepModelType: {
+        STEPControl_AsIs: 0,
+      },
+      STEPControl_Writer_1: vi.fn(function writer(this: {
+        Transfer: typeof transfer
+        Write: typeof write
+      }) {
+        this.Transfer = transfer.mockReturnValue(1)
+        this.Write = write.mockReturnValue(1)
+      }),
+      BRepPrimAPI_MakeBox_2: vi.fn(function makeBox(
+        this: { Build: typeof buildBox; Shape: () => unknown },
+        sizeX: number,
+        sizeY: number,
+        sizeZ: number,
+      ) {
+        expect([sizeX, sizeY, sizeZ]).toEqual([96, 40, 6])
+        this.Build = buildBox
+        this.Shape = () => boxShape
+      }),
+      Message_ProgressRange_1: vi.fn(function progressRange() {}),
+    }
+
+    const result = await runFeatureDSLExportWithKernel(openCascade, {
+      filename: 'generated.step',
+      parameterValues: { width: 96 },
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        parameters: {
+          width: { type: 'number', default: 80, min: 20, max: 200 },
+        },
+        features: [{ id: 'base', type: 'box', size: ['width', 40, 6] }],
+      },
+    })
+
+    expect(buildBox).toHaveBeenCalledOnce()
+    expect(transfer).toHaveBeenCalledWith(boxShape, 0, true, expect.anything())
+    expect(result.exportedStepText).toContain('END-ISO-10303-21')
   })
 })

@@ -1,4 +1,8 @@
 import type {
+  CadKernelFeatureDSLExportRequest,
+  CadKernelFeatureDSLExportResponse,
+  CadKernelFeatureDSLPreviewRequest,
+  CadKernelFeatureDSLPreviewResponse,
   CadKernelResponse,
   CadKernelStepAssemblyExportRequest,
   CadKernelStepAssemblyExportResponse,
@@ -7,7 +11,13 @@ import type {
   CadKernelStepRoundTripRequest,
   CadKernelStepRoundTripResponse,
 } from './kernel-protocol'
-import type { CadKernelStepAssemblyExportInput, CadKernelStepPreviewInput, CadKernelStepRoundTripInput } from './opencascade-step'
+import type {
+  CadKernelFeatureDSLExportInput,
+  CadKernelFeatureDSLPreviewInput,
+  CadKernelStepAssemblyExportInput,
+  CadKernelStepPreviewInput,
+  CadKernelStepRoundTripInput,
+} from './opencascade-step'
 
 export type CadKernelWorkerLike = {
   addEventListener: (type: 'message', listener: (event: MessageEvent<CadKernelResponse>) => void) => void
@@ -19,6 +29,8 @@ export type CadKernelWorkerLike = {
 export type CadKernelWorkerResult = CadKernelStepRoundTripResponse['result']
 export type CadKernelWorkerPreviewResult = CadKernelStepPreviewResponse['result']
 export type CadKernelWorkerAssemblyExportResult = CadKernelStepAssemblyExportResponse['result']
+export type CadKernelWorkerFeatureDSLPreviewResult = CadKernelFeatureDSLPreviewResponse['result']
+export type CadKernelWorkerFeatureDSLExportResult = CadKernelFeatureDSLExportResponse['result']
 export type CadKernelWorkerOptions = {
   timeoutMs?: number
 }
@@ -64,6 +76,32 @@ export function runStepAssemblyExportInWorker(
   return runCadKernelRequestInWorker(request, workerFactory, options)
 }
 
+export function runFeatureDSLPreviewInWorker(
+  input: CadKernelFeatureDSLPreviewInput,
+  workerFactory: () => CadKernelWorkerLike = createWorker,
+  options: CadKernelWorkerOptions = {},
+): Promise<CadKernelWorkerFeatureDSLPreviewResult> {
+  const request: CadKernelFeatureDSLPreviewRequest = {
+    id: createRequestID(),
+    type: 'feature-dsl-preview',
+    payload: input,
+  }
+  return runCadKernelRequestInWorker(request, workerFactory, options)
+}
+
+export function runFeatureDSLExportInWorker(
+  input: CadKernelFeatureDSLExportInput,
+  workerFactory: () => CadKernelWorkerLike = createWorker,
+  options: CadKernelWorkerOptions = {},
+): Promise<CadKernelWorkerFeatureDSLExportResult> {
+  const request: CadKernelFeatureDSLExportRequest = {
+    id: createRequestID(),
+    type: 'feature-dsl-export',
+    payload: input,
+  }
+  return runCadKernelRequestInWorker(request, workerFactory, options)
+}
+
 function runCadKernelRequestInWorker(
   request: CadKernelStepRoundTripRequest,
   workerFactory: () => CadKernelWorkerLike,
@@ -80,10 +118,31 @@ function runCadKernelRequestInWorker(
   options?: CadKernelWorkerOptions,
 ): Promise<CadKernelWorkerAssemblyExportResult>
 function runCadKernelRequestInWorker(
-  request: CadKernelStepRoundTripRequest | CadKernelStepPreviewRequest | CadKernelStepAssemblyExportRequest,
+  request: CadKernelFeatureDSLPreviewRequest,
+  workerFactory: () => CadKernelWorkerLike,
+  options?: CadKernelWorkerOptions,
+): Promise<CadKernelWorkerFeatureDSLPreviewResult>
+function runCadKernelRequestInWorker(
+  request: CadKernelFeatureDSLExportRequest,
+  workerFactory: () => CadKernelWorkerLike,
+  options?: CadKernelWorkerOptions,
+): Promise<CadKernelWorkerFeatureDSLExportResult>
+function runCadKernelRequestInWorker(
+  request:
+    | CadKernelStepRoundTripRequest
+    | CadKernelStepPreviewRequest
+    | CadKernelStepAssemblyExportRequest
+    | CadKernelFeatureDSLPreviewRequest
+    | CadKernelFeatureDSLExportRequest,
   workerFactory: () => CadKernelWorkerLike,
   options: CadKernelWorkerOptions = {},
-): Promise<CadKernelWorkerResult | CadKernelWorkerPreviewResult | CadKernelWorkerAssemblyExportResult> {
+): Promise<
+  | CadKernelWorkerResult
+  | CadKernelWorkerPreviewResult
+  | CadKernelWorkerAssemblyExportResult
+  | CadKernelWorkerFeatureDSLPreviewResult
+  | CadKernelWorkerFeatureDSLExportResult
+> {
   const worker = workerFactory()
   return new Promise((resolve, reject) => {
     const timeoutId =

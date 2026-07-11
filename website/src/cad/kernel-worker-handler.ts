@@ -5,6 +5,10 @@ import {
   type CadKernelResponse,
 } from './kernel-protocol'
 import type {
+  CadKernelFeatureDSLExportInput,
+  CadKernelFeatureDSLExportResult,
+  CadKernelFeatureDSLPreviewInput,
+  CadKernelFeatureDSLPreviewResult,
   CadKernelStepAssemblyExportInput,
   CadKernelStepAssemblyExportResult,
   CadKernelStepPreviewInput,
@@ -14,6 +18,8 @@ import type {
 } from './opencascade-step'
 
 type CadKernelWorkerHandlerOptions = {
+  runFeatureDSLExport: (input: CadKernelFeatureDSLExportInput) => Promise<CadKernelFeatureDSLExportResult>
+  runFeatureDSLPreview: (input: CadKernelFeatureDSLPreviewInput) => Promise<CadKernelFeatureDSLPreviewResult>
   runStepAssemblyExport: (input: CadKernelStepAssemblyExportInput) => Promise<CadKernelStepAssemblyExportResult>
   runStepPreview: (input: CadKernelStepPreviewInput) => Promise<CadKernelStepPreviewResult>
   runStepRoundTrip: (input: CadKernelStepRoundTripInput) => Promise<CadKernelStepRoundTripResult>
@@ -21,6 +27,8 @@ type CadKernelWorkerHandlerOptions = {
 }
 
 export function createCadKernelWorkerHandler({
+  runFeatureDSLExport,
+  runFeatureDSLPreview,
   runStepAssemblyExport,
   runStepPreview,
   runStepRoundTrip,
@@ -33,6 +41,29 @@ export function createCadKernelWorkerHandler({
     }
 
     try {
+      if (message.type === 'feature-dsl-preview') {
+        const result = await runFeatureDSLPreview(message.payload)
+        postMessage({
+          id: message.id,
+          type: 'feature-dsl-preview-result',
+          result: {
+            ...result,
+            meshSummary: summarizeCadKernelMesh(result.mesh),
+          },
+        })
+        return
+      }
+
+      if (message.type === 'feature-dsl-export') {
+        const result = await runFeatureDSLExport(message.payload)
+        postMessage({
+          id: message.id,
+          type: 'feature-dsl-export-result',
+          result,
+        })
+        return
+      }
+
       if (message.type === 'step-preview') {
         const result = await runStepPreview(message.payload)
         postMessage({

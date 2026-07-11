@@ -1,4 +1,4 @@
-import type { CadKernelMesh, CadKernelOperation } from './kernel-protocol'
+import type { CadKernelFeatureDSLDocument, CadKernelFeatureDSLInput, CadKernelMesh, CadKernelOperation } from './kernel-protocol'
 import initReplicadOpenCascade from 'replicad-opencascadejs'
 import replicadWasmUrl from 'replicad-opencascadejs/src/replicad_single.wasm?url'
 
@@ -17,13 +17,25 @@ export type CadKernelStepAssemblyExportInput = {
   sources: CadKernelStepAssemblyExportSource[]
 }
 
+export type CadKernelFeatureDSLPreviewInput = CadKernelFeatureDSLInput
+
+export type CadKernelFeatureDSLExportInput = CadKernelFeatureDSLInput
+
 export type CadKernelStepPreviewResult = {
   mesh: CadKernelMesh
   componentMeshes?: CadKernelMesh[]
 }
 
+export type CadKernelFeatureDSLPreviewResult = {
+  mesh: CadKernelMesh
+}
+
 export type CadKernelStepRoundTripResult = {
   mesh: CadKernelMesh
+  exportedStepText: string
+}
+
+export type CadKernelFeatureDSLExportResult = {
   exportedStepText: string
 }
 
@@ -88,6 +100,16 @@ export async function runOpenCascadeStepPreview(input: CadKernelStepPreviewInput
   return runStepPreviewWithKernel(openCascade, input)
 }
 
+export async function runOpenCascadeFeatureDSLPreview(input: CadKernelFeatureDSLPreviewInput) {
+  const openCascade = await loadOpenCascade()
+  return runFeatureDSLPreviewWithKernel(openCascade, input)
+}
+
+export async function runOpenCascadeFeatureDSLExport(input: CadKernelFeatureDSLExportInput) {
+  const openCascade = await loadOpenCascade()
+  return runFeatureDSLExportWithKernel(openCascade, input)
+}
+
 export async function runStepPreviewWithKernel(
   openCascade: OpenCascadeModule,
   input: CadKernelStepPreviewInput,
@@ -103,6 +125,27 @@ export async function runStepPreviewWithKernel(
     }
   } finally {
     cleanupVirtualFile(openCascade, inputStepPath)
+  }
+}
+
+export async function runFeatureDSLPreviewWithKernel(
+  openCascade: OpenCascadeModule,
+  input: CadKernelFeatureDSLPreviewInput,
+): Promise<CadKernelFeatureDSLPreviewResult> {
+  const shape = compileFeatureDSLShape(openCascade, input.document, input.parameterValues)
+  return { mesh: tessellateShape(openCascade, shape) }
+}
+
+export async function runFeatureDSLExportWithKernel(
+  openCascade: OpenCascadeModule,
+  input: CadKernelFeatureDSLExportInput,
+): Promise<CadKernelFeatureDSLExportResult> {
+  cleanupVirtualFile(openCascade, outputStepPath)
+  try {
+    const shape = compileFeatureDSLShape(openCascade, input.document, input.parameterValues)
+    return { exportedStepText: exportShapeToStep(openCascade, shape) }
+  } finally {
+    cleanupVirtualFile(openCascade, outputStepPath)
   }
 }
 
@@ -207,6 +250,73 @@ function boxUnionShape(
     new openCascade.Message_ProgressRange_1(),
   )
   return fuseBuilder.Shape()
+}
+
+function compileFeatureDSLShape(
+  openCascade: OpenCascadeModule,
+  document: CadKernelFeatureDSLDocument,
+  parameterValues: Record<string, number> = {},
+) {
+  const parameters = resolveFeatureDSLParameters(document, parameterValues)
+  const shapes = document.features.map((feature) => {
+    if (feature.type === 'box') {
+      const size = resolveFeatureDSLVector(feature.size, parameters)
+      const origin = resolveFeatureDSLVector(feature.origin ?? [0, 0, 0], parameters)
+      if (size.some((value) => value <= 0)) {
+        throw new Error(`Feature ${feature.id} box dimensions must be positive`)
+      }
+      if (origin.every((value) => value === 0)) {
+        const boxBuilder = new openCascade.BRepPrimAPI_MakeBox_2(size[0] ?? 1, size[1] ?? 1, size[2] ?? 1)
+        boxBuilder.Build(new openCascade.Message_ProgressRange_1())
+        return boxBuilder.Shape()
+      }
+      const originPoint = new openCascade.gp_Pnt_3(origin[0] ?? 0, origin[1] ?? 0, origin[2] ?? 0)
+      const boxBuilder = new openCascade.BRepPrimAPI_MakeBox_3(originPoint, size[0] ?? 1, size[1] ?? 1, size[2] ?? 1)
+      boxBuilder.Build(new openCascade.Message_ProgressRange_1())
+      return boxBuilder.Shape()
+    }
+    throw new Error(`Unsupported feature DSL type: ${(feature as { type?: string }).type}`)
+  })
+  if (shapes.length === 0) {
+    throw new Error('Feature DSL document has no features')
+  }
+  return shapes.length === 1 ? shapes[0] : compoundShapes(openCascade, shapes)
+}
+
+function resolveFeatureDSLParameters(document: CadKernelFeatureDSLDocument, parameterValues: Record<string, number>) {
+  const parameterDefinitions = document.parameters ?? {}
+  const unknownParameter = Object.keys(parameterValues).find((name) => !parameterDefinitions[name])
+  if (unknownParameter) {
+    throw new Error(`Unknown feature DSL parameter: ${unknownParameter}`)
+  }
+  const resolved: Record<string, number> = {}
+  for (const [name, definition] of Object.entries(parameterDefinitions)) {
+    const value = parameterValues[name] ?? definition.default
+    if (!Number.isFinite(value)) {
+      throw new Error(`Feature DSL parameter ${name} must be finite`)
+    }
+    if (definition.min !== undefined && value < definition.min) {
+      throw new Error(`Feature DSL parameter ${name} is below minimum`)
+    }
+    if (definition.max !== undefined && value > definition.max) {
+      throw new Error(`Feature DSL parameter ${name} is above maximum`)
+    }
+    resolved[name] = value
+  }
+  return resolved
+}
+
+function resolveFeatureDSLVector(values: readonly (number | string)[], parameters: Record<string, number>) {
+  return values.map((value) => {
+    if (typeof value === 'number') {
+      return value
+    }
+    const parameterValue = parameters[value]
+    if (parameterValue === undefined) {
+      throw new Error(`Unknown feature DSL parameter reference: ${value}`)
+    }
+    return parameterValue
+  })
 }
 
 function importStepShape(openCascade: OpenCascadeModule, input: CadKernelStepRoundTripInput) {
