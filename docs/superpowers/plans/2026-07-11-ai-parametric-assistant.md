@@ -197,7 +197,7 @@ Modify `TODO.md` under `Product Capability` by replacing the current broad CAD A
 Add this product boundary to `AGENTS.md` and `.agents/rules/litecad-architecture.md`:
 
 ```markdown
-- AI-generated parameterized CAD is planned but not shipped until LiteCAD has structured Assistant conversations, generated source artifacts, browser compilation, parameter editing, and save-as-project-model persistence. Do not copy CADAM code; use it only as product-flow reference.
+- AI-generated parameterized CAD is planned but not shipped until LiteCAD has structured tool calls, generated source artifacts, browser compilation, parameter editing, and save-as-project-model persistence. Do not copy CADAM code; use it only as product-flow reference.
 ```
 
 - [x] **Step 4: Verify documentation links**
@@ -227,15 +227,17 @@ git commit -m "docs(ai): plan parametric assistant"
 ### Task 2: Multi-session Assistant persistence
 
 **Files:**
-- Modify: `internal/entity/project_agent_message.go`
-- Create: `internal/entity/project_agent_conversation.go`
-- Modify: `internal/database/migrate.go`
+- Modify: `internal/entity/entity.go`
+- Modify: `internal/database/database.go`
 - Modify: `internal/service/ai.go`
-- Test: `internal/service/ai_conversation_test.go`
+- Test: `internal/service/ai_test.go`
 - Modify: `internal/handler/project_agent.go`
 - Test: `internal/handler/project_agent_test.go`
 - Modify: `website/src/types/project.ts`
 - Modify: `website/src/api/projects.ts`
+- Modify: `website/src/views/project/index.tsx`
+
+**Decision:** LiteCAD is not in production, so this phase does not keep old `/agent/messages` compatibility routes and does not include legacy message migration. New messages require a `conversation_id`.
 
 **Interfaces:**
 - Produces: `ProjectAgentConversation`.
@@ -249,7 +251,7 @@ git commit -m "docs(ai): plan parametric assistant"
   - `GET /api/v1/projects/:projectID/agent/conversations/:conversationID/messages`
   - `POST /api/v1/projects/:projectID/agent/conversations/:conversationID/messages`
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Add tests that assert:
 
@@ -277,7 +279,7 @@ go test ./internal/service -run 'TestProjectAgentConversation'
 
 Expected: FAIL because conversation entities and APIs do not exist.
 
-- [ ] **Step 2: Add entities and migration**
+- [x] **Step 2: Add entities and migration**
 
 Create `entity.ProjectAgentConversation`:
 
@@ -293,9 +295,9 @@ type ProjectAgentConversation struct {
 }
 ```
 
-Add `ConversationID string` to `ProjectAgentMessage` and index it. Migrate both tables in the existing database migration path. Existing installations can create one default conversation per project when messages are first listed if there are legacy project-level messages without a conversation ID.
+Add required `ConversationID string` to `ProjectAgentMessage` and index it. Migrate both tables in the existing database migration path.
 
-- [ ] **Step 3: Add service methods**
+- [x] **Step 3: Add service methods**
 
 Add explicit inputs:
 
@@ -314,13 +316,13 @@ type ProjectAgentMessageInput struct {
 }
 ```
 
-`SendProjectAgentMessage` must load conversation by `id + project_id` after loading the owner-scoped project. It must call `listRecentProjectAgentMessages(ctx, conversation.ID, maxAIChatMessages)`, not all messages for the project.
+`SendProjectAgentMessage` must load conversation by `id + project_id` after loading the owner-scoped project. It must call `listRecentProjectAgentMessages(ctx, project.ID, conversation.ID, maxAIChatMessages)`, not all messages for the project.
 
-- [ ] **Step 4: Add handler routes and DTOs**
+- [x] **Step 4: Add handler routes and DTOs**
 
-Register routes in `internal/handler/handler.go`. Keep request/response DTOs named and exported only where already local patterns require it. Return `404` through existing `projectError` for cross-project/cross-owner conversation access.
+Register routes in `internal/handler/handler.go`. Keep request/response DTOs named and exported only where already local patterns require it. Return `404` through existing `projectError` for cross-project/cross-owner conversation access. Remove old project-level `/agent/messages` routes.
 
-- [ ] **Step 5: Add frontend API types**
+- [x] **Step 5: Add frontend API types**
 
 Add:
 
@@ -349,7 +351,9 @@ export function fetchProjectAgentConversationMessages(projectId: string, convers
 export function sendProjectAgentConversationMessage(projectId: string, conversationId: string, payload: SendProjectAgentMessagePayload)
 ```
 
-- [ ] **Step 6: Verify**
+The current project view now uses the conversation API by fetching conversations, creating an initial conversation on first send, and loading messages for the selected conversation.
+
+- [x] **Step 6: Verify**
 
 Run:
 
@@ -367,6 +371,15 @@ Expected:
 - Handler tests prove owner scoping and route behavior.
 - Frontend API type tests compile.
 - `task check` and `task test` pass.
+
+Verification results:
+
+- `go test ./internal/service -run 'TestProjectAgentConversation|TestProjectAgentMessage'` passed.
+- `go test ./internal/handler -run 'TestProjectAgent'` passed.
+- `npm --prefix website test -- projects` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed after updating the deterministic workbench fixture to the new conversation endpoint.
 
 - [ ] **Step 7: Commit**
 

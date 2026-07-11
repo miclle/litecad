@@ -54,10 +54,19 @@ func TestSendProjectAgentMessageUsesProjectContext(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("UploadProjectModel returned error: %v", err)
 	}
-
-	reply, err := svc.SendProjectAgentMessage(ctx, ProjectAgentMessageInput{
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
 		OwnerUserID: user.ID,
 		ProjectID:   project.ID,
+		Title:       "Bracket review",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	reply, err := svc.SendProjectAgentMessage(ctx, ProjectAgentMessageInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
 		Messages: []AIChatMessage{
 			{Role: "user", Body: "What sources are attached?"},
 		},
@@ -76,7 +85,7 @@ func TestSendProjectAgentMessageUsesProjectContext(t *testing.T) {
 		}
 	}
 
-	storedMessages, err := svc.ListProjectAgentMessages(ctx, user.ID, project.ID)
+	storedMessages, err := svc.ListProjectAgentMessages(ctx, user.ID, project.ID, conversation.ID)
 	if err != nil {
 		t.Fatalf("ListProjectAgentMessages returned error: %v", err)
 	}
@@ -89,8 +98,168 @@ func TestSendProjectAgentMessageUsesProjectContext(t *testing.T) {
 	if storedMessages[1].Role != "assistant" || storedMessages[1].Body != "The bracket source is ready to inspect." {
 		t.Fatalf("stored assistant message = %+v", storedMessages[1])
 	}
-	if storedMessages[0].ID == "" || storedMessages[0].ProjectID != project.ID || storedMessages[0].CreatedAt == "" {
+	if storedMessages[0].ID == "" || storedMessages[0].ProjectID != project.ID || storedMessages[0].ConversationID != conversation.ID || storedMessages[0].CreatedAt == "" {
 		t.Fatalf("stored message metadata = %+v", storedMessages[0])
+	}
+}
+
+func TestProjectAgentConversationsAreProjectScoped(t *testing.T) {
+	svc := newTestService(t)
+	svc.aiClient = &recordingAIClient{reply: "ok"}
+	ctx := context.Background()
+
+	owner, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "agent-conversation-owner@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser owner returned error: %v", err)
+	}
+	other, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Grace Hopper",
+		Email:    "agent-conversation-other@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser other returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: owner.ID,
+		Name:        "Scoped conversation study",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: owner.ID,
+		ProjectID:   project.ID,
+		Title:       "First pass",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	conversations, err := svc.ListProjectAgentConversations(ctx, owner.ID, project.ID)
+	if err != nil {
+		t.Fatalf("ListProjectAgentConversations returned error: %v", err)
+	}
+	if len(conversations) != 1 || conversations[0].ID != conversation.ID {
+		t.Fatalf("conversations = %+v, want only %+v", conversations, conversation)
+	}
+
+	if _, err := svc.ListProjectAgentConversations(ctx, other.ID, project.ID); err != ErrProjectNotFound {
+		t.Fatalf("other user list error = %v, want ErrProjectNotFound", err)
+	}
+	if _, err := svc.SendProjectAgentMessage(ctx, ProjectAgentMessageInput{
+		OwnerUserID:    other.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
+		Messages: []AIChatMessage{
+			{Role: "user", Body: "Can I use this conversation?"},
+		},
+	}); err != ErrProjectNotFound {
+		t.Fatalf("other user send error = %v, want ErrProjectNotFound", err)
+	}
+}
+
+func TestProjectAgentConversationRejectsUnknownActiveModel(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "agent-conversation-model@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Conversation active model study",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	_, err = svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID:   user.ID,
+		ProjectID:     project.ID,
+		Title:         "Missing model",
+		ActiveModelID: "mdl_missing",
+	})
+	if err != ErrProjectNotFound {
+		t.Fatalf("CreateProjectAgentConversation error = %v, want ErrProjectNotFound", err)
+	}
+}
+
+func TestNewProjectAgentConversationStartsWithoutOldMessages(t *testing.T) {
+	svc := newTestService(t)
+	aiClient := &recordingAIClient{reply: "ok"}
+	svc.aiClient = aiClient
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "agent-conversation-isolation@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Conversation isolation study",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	firstConversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Old thread",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation first returned error: %v", err)
+	}
+	if _, err := svc.SendProjectAgentMessage(ctx, ProjectAgentMessageInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: firstConversation.ID,
+		Messages: []AIChatMessage{
+			{Role: "user", Body: "This old-context marker must stay in the old conversation."},
+		},
+	}); err != nil {
+		t.Fatalf("SendProjectAgentMessage first returned error: %v", err)
+	}
+
+	secondConversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Fresh thread",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation second returned error: %v", err)
+	}
+	if _, err := svc.SendProjectAgentMessage(ctx, ProjectAgentMessageInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: secondConversation.ID,
+		Messages: []AIChatMessage{
+			{Role: "user", Body: "Fresh prompt only."},
+		},
+	}); err != nil {
+		t.Fatalf("SendProjectAgentMessage second returned error: %v", err)
+	}
+
+	joined := joinAIMessageBodies(aiClient.messages)
+	if strings.Contains(joined, "old-context marker") {
+		t.Fatalf("new conversation provider context should not include old conversation messages, got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "Fresh prompt only.") {
+		t.Fatalf("new conversation provider context should include fresh prompt, got:\n%s", joined)
 	}
 }
 
@@ -114,10 +283,19 @@ func TestSendProjectAgentMessageDoesNotPersistOnProviderFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateProject returned error: %v", err)
 	}
-
-	if _, err := svc.SendProjectAgentMessage(ctx, ProjectAgentMessageInput{
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
 		OwnerUserID: user.ID,
 		ProjectID:   project.ID,
+		Title:       "Failure test",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	if _, err := svc.SendProjectAgentMessage(ctx, ProjectAgentMessageInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
 		Messages: []AIChatMessage{
 			{Role: "user", Body: "Will this be persisted?"},
 		},
@@ -125,7 +303,7 @@ func TestSendProjectAgentMessageDoesNotPersistOnProviderFailure(t *testing.T) {
 		t.Fatal("SendProjectAgentMessage should return provider failure")
 	}
 
-	storedMessages, err := svc.ListProjectAgentMessages(ctx, user.ID, project.ID)
+	storedMessages, err := svc.ListProjectAgentMessages(ctx, user.ID, project.ID, conversation.ID)
 	if err != nil {
 		t.Fatalf("ListProjectAgentMessages returned error: %v", err)
 	}

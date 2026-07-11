@@ -44,7 +44,27 @@ func TestProjectAgentRouteReturnsAIReply(t *testing.T) {
 		t.Fatalf("decode create response: %v", err)
 	}
 
-	agent := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/messages", map[string]any{
+	conversation := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations", map[string]string{
+		"title": "Initial review",
+	}, sessionCookie)
+	if conversation.Code != http.StatusOK {
+		t.Fatalf("conversation status = %d, body = %s", conversation.Code, conversation.Body.String())
+	}
+	var conversationResponse struct {
+		Conversation struct {
+			ID        string `json:"id"`
+			ProjectID string `json:"project_id"`
+			Title     string `json:"title"`
+		} `json:"conversation"`
+	}
+	if err := json.Unmarshal(conversation.Body.Bytes(), &conversationResponse); err != nil {
+		t.Fatalf("decode conversation response: %v", err)
+	}
+	if conversationResponse.Conversation.ID == "" || conversationResponse.Conversation.ProjectID != createResponse.Project.ID || conversationResponse.Conversation.Title != "Initial review" {
+		t.Fatalf("conversation response = %+v", conversationResponse.Conversation)
+	}
+
+	agent := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations/"+conversationResponse.Conversation.ID+"/messages", map[string]any{
 		"messages": []map[string]string{
 			{"role": "user", "body": "What can you see?"},
 		},
@@ -54,11 +74,12 @@ func TestProjectAgentRouteReturnsAIReply(t *testing.T) {
 	}
 	var agentResponse struct {
 		Message struct {
-			ID        string `json:"id"`
-			ProjectID string `json:"project_id"`
-			Role      string `json:"role"`
-			Body      string `json:"body"`
-			CreatedAt string `json:"created_at"`
+			ID             string `json:"id"`
+			ProjectID      string `json:"project_id"`
+			ConversationID string `json:"conversation_id"`
+			Role           string `json:"role"`
+			Body           string `json:"body"`
+			CreatedAt      string `json:"created_at"`
 		} `json:"message"`
 	}
 	if err := json.Unmarshal(agent.Body.Bytes(), &agentResponse); err != nil {
@@ -67,11 +88,27 @@ func TestProjectAgentRouteReturnsAIReply(t *testing.T) {
 	if agentResponse.Message.Role != "assistant" || agentResponse.Message.Body != "This project has usable CAD context." {
 		t.Fatalf("agent response = %+v", agentResponse.Message)
 	}
-	if agentResponse.Message.ID == "" || agentResponse.Message.ProjectID != createResponse.Project.ID || agentResponse.Message.CreatedAt == "" {
+	if agentResponse.Message.ID == "" || agentResponse.Message.ProjectID != createResponse.Project.ID || agentResponse.Message.ConversationID != conversationResponse.Conversation.ID || agentResponse.Message.CreatedAt == "" {
 		t.Fatalf("agent response metadata = %+v", agentResponse.Message)
 	}
 
-	list := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/messages", sessionCookie)
+	listConversations := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations", sessionCookie)
+	if listConversations.Code != http.StatusOK {
+		t.Fatalf("conversation list status = %d, body = %s", listConversations.Code, listConversations.Body.String())
+	}
+	var listConversationsResponse struct {
+		Conversations []struct {
+			ID string `json:"id"`
+		} `json:"conversations"`
+	}
+	if err := json.Unmarshal(listConversations.Body.Bytes(), &listConversationsResponse); err != nil {
+		t.Fatalf("decode conversation list response: %v", err)
+	}
+	if len(listConversationsResponse.Conversations) != 1 || listConversationsResponse.Conversations[0].ID != conversationResponse.Conversation.ID {
+		t.Fatalf("conversation list = %+v", listConversationsResponse.Conversations)
+	}
+
+	list := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations/"+conversationResponse.Conversation.ID+"/messages", sessionCookie)
 	if list.Code != http.StatusOK {
 		t.Fatalf("agent message list status = %d, body = %s", list.Code, list.Body.String())
 	}
@@ -125,7 +162,22 @@ func TestProjectAgentRouteRequiresAIConfiguration(t *testing.T) {
 		t.Fatalf("decode create response: %v", err)
 	}
 
-	agent := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/messages", map[string]any{
+	conversation := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations", map[string]string{
+		"title": "Unconfigured test",
+	}, sessionCookie)
+	if conversation.Code != http.StatusOK {
+		t.Fatalf("conversation status = %d, body = %s", conversation.Code, conversation.Body.String())
+	}
+	var conversationResponse struct {
+		Conversation struct {
+			ID string `json:"id"`
+		} `json:"conversation"`
+	}
+	if err := json.Unmarshal(conversation.Body.Bytes(), &conversationResponse); err != nil {
+		t.Fatalf("decode conversation response: %v", err)
+	}
+
+	agent := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations/"+conversationResponse.Conversation.ID+"/messages", map[string]any{
 		"messages": []map[string]string{
 			{"role": "user", "body": "Hello"},
 		},

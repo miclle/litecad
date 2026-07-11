@@ -79,7 +79,7 @@ func newTestRouterWithAI(t *testing.T, aiClient service.AIClient) *fox.Engine {
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.User{}, &entity.UserSession{}, &entity.Project{}, &entity.ProjectModel{}, &entity.ProjectModelPreviewArtifact{}, &entity.ProjectThumbnailSnapshot{}, &entity.ProjectGeometryVersion{}, &entity.ProjectCADDocument{}, &entity.ProjectCADHistoryEntry{}, &entity.ProjectAgentMessage{}); err != nil {
+	if err := db.AutoMigrate(&entity.User{}, &entity.UserSession{}, &entity.Project{}, &entity.ProjectModel{}, &entity.ProjectModelPreviewArtifact{}, &entity.ProjectThumbnailSnapshot{}, &entity.ProjectGeometryVersion{}, &entity.ProjectCADDocument{}, &entity.ProjectCADHistoryEntry{}, &entity.ProjectAgentConversation{}, &entity.ProjectAgentMessage{}); err != nil {
 		t.Fatalf("migrate test db: %v", err)
 	}
 

@@ -4,7 +4,7 @@ LiteCAD's AI Assistant target is text-to-parameterized CAD: users can start a pr
 
 ## Current Status
 
-The current CAD Agent is advisory. It stores project-scoped messages and can include project/source metadata in provider context, but it does not yet create parametric artifacts, execute CAD tools, compile generated source, or save generated models.
+The current CAD Agent is advisory. It supports project-owned Assistant conversations, stores messages per conversation, and can include project/source metadata in provider context, but it does not yet create parametric artifacts, execute CAD tools, compile generated source, or save generated models.
 
 ## Source Model Direction
 

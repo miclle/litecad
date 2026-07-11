@@ -18,11 +18,13 @@ import (
 )
 
 const (
-	maxAIChatMessages     = 24
-	maxAIChatMessageRunes = 4000
-	cadAgentSystemPrompt  = "You are CAD Agent inside LiteCAD. Help the user inspect CAD sources, metadata, design intent, and possible model changes. Be clear about the current product boundary: you can discuss and plan changes, but you cannot directly mutate persisted CAD geometry unless a dedicated tool is available."
-	defaultAITimeout      = 30 * time.Second
-	defaultAITemperature  = 0.2
+	maxAIChatMessages                     = 24
+	maxAIChatMessageRunes                 = 4000
+	maxProjectAgentConversationTitleRunes = 120
+	defaultProjectAgentConversationTitle  = "Project chat"
+	cadAgentSystemPrompt                  = "You are CAD Agent inside LiteCAD. Help the user inspect CAD sources, metadata, design intent, and possible model changes. Be clear about the current product boundary: you can discuss and plan changes, but you cannot directly mutate persisted CAD geometry unless a dedicated tool is available."
+	defaultAITimeout                      = 30 * time.Second
+	defaultAITemperature                  = 0.2
 )
 
 var (
@@ -43,33 +45,117 @@ type AIChatMessage struct {
 	Body string `json:"body"`
 }
 
+// CreateProjectAgentConversationInput is the data required to start a CAD Agent thread.
+type CreateProjectAgentConversationInput struct {
+	OwnerUserID   string
+	ProjectID     string
+	Title         string
+	ActiveModelID string
+}
+
 // ProjectAgentMessageInput is the data required to ask the CAD Agent about a project.
 type ProjectAgentMessageInput struct {
-	OwnerUserID string
-	ProjectID   string
-	Messages    []AIChatMessage
+	OwnerUserID    string
+	ProjectID      string
+	ConversationID string
+	Messages       []AIChatMessage
+}
+
+// ProjectAgentConversation is a persisted CAD Agent thread returned to the browser.
+type ProjectAgentConversation struct {
+	ID            string `json:"id"`
+	ProjectID     string `json:"project_id"`
+	Title         string `json:"title"`
+	ActiveModelID string `json:"active_model_id,omitempty"`
+	ArchivedAt    string `json:"archived_at,omitempty"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 // ProjectAgentMessage is the CAD Agent reply returned to the browser.
 type ProjectAgentMessage struct {
-	ID        string `json:"id"`
-	ProjectID string `json:"project_id"`
-	Role      string `json:"role"`
-	Body      string `json:"body"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID             string `json:"id"`
+	ProjectID      string `json:"project_id"`
+	ConversationID string `json:"conversation_id"`
+	Role           string `json:"role"`
+	Body           string `json:"body"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
 }
 
-// ListProjectAgentMessages returns persisted CAD Agent messages for a project.
-func (s *Service) ListProjectAgentMessages(ctx context.Context, ownerUserID, projectID string) ([]ProjectAgentMessage, error) {
+// ListProjectAgentConversations returns CAD Agent threads for a project.
+func (s *Service) ListProjectAgentConversations(ctx context.Context, ownerUserID, projectID string) ([]ProjectAgentConversation, error) {
 	project, err := s.loadOwnedProject(ctx, ownerUserID, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	var conversations []entity.ProjectAgentConversation
+	if err := s.db.WithContext(ctx).
+		Where("project_id = ?", project.ID).
+		Order("updated_at DESC, created_at DESC, id DESC").
+		Find(&conversations).Error; err != nil {
+		return nil, fmt.Errorf("list project agent conversations: %w", err)
+	}
+
+	result := make([]ProjectAgentConversation, 0, len(conversations))
+	for _, conversation := range conversations {
+		result = append(result, publicProjectAgentConversation(conversation))
+	}
+	return result, nil
+}
+
+// CreateProjectAgentConversation creates a fresh CAD Agent thread for a project.
+func (s *Service) CreateProjectAgentConversation(ctx context.Context, input CreateProjectAgentConversationInput) (ProjectAgentConversation, error) {
+	project, err := s.loadOwnedProject(ctx, input.OwnerUserID, input.ProjectID)
+	if err != nil {
+		return ProjectAgentConversation{}, err
+	}
+
+	title := strings.TrimSpace(input.Title)
+	if title == "" {
+		title = defaultProjectAgentConversationTitle
+	}
+	if utf8.RuneCountInString(title) > maxProjectAgentConversationTitleRunes {
+		return ProjectAgentConversation{}, ErrInvalidAIChatInput
+	}
+	activeModelID := strings.TrimSpace(input.ActiveModelID)
+	if activeModelID != "" {
+		var model entity.ProjectModel
+		if err := s.db.WithContext(ctx).First(&model, "id = ? AND project_id = ?", activeModelID, project.ID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ProjectAgentConversation{}, ErrProjectNotFound
+			}
+			return ProjectAgentConversation{}, fmt.Errorf("load project agent active model: %w", err)
+		}
+	}
+
+	conversationID, err := id.NewPrefixed("agc")
+	if err != nil {
+		return ProjectAgentConversation{}, err
+	}
+	conversation := entity.ProjectAgentConversation{
+		ID:            conversationID,
+		ProjectID:     project.ID,
+		Title:         title,
+		ActiveModelID: activeModelID,
+	}
+	if err := s.db.WithContext(ctx).Create(&conversation).Error; err != nil {
+		return ProjectAgentConversation{}, fmt.Errorf("create project agent conversation: %w", err)
+	}
+	return publicProjectAgentConversation(conversation), nil
+}
+
+// ListProjectAgentMessages returns persisted CAD Agent messages for a project conversation.
+func (s *Service) ListProjectAgentMessages(ctx context.Context, ownerUserID, projectID, conversationID string) ([]ProjectAgentMessage, error) {
+	project, conversation, err := s.loadOwnedProjectAgentConversation(ctx, ownerUserID, projectID, conversationID)
 	if err != nil {
 		return nil, err
 	}
 
 	var messages []entity.ProjectAgentMessage
 	if err := s.db.WithContext(ctx).
-		Where("project_id = ?", project.ID).
+		Where("project_id = ? AND conversation_id = ?", project.ID, conversation.ID).
 		Order("created_at ASC, id ASC").
 		Find(&messages).Error; err != nil {
 		return nil, fmt.Errorf("list project agent messages: %w", err)
@@ -100,7 +186,7 @@ func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgen
 	}
 	userMessage := messages[len(messages)-1]
 
-	projectEntity, err := s.loadOwnedProject(ctx, ownerUserID, projectID)
+	projectEntity, conversation, err := s.loadOwnedProjectAgentConversation(ctx, ownerUserID, projectID, input.ConversationID)
 	if err != nil {
 		return ProjectAgentMessage{}, err
 	}
@@ -109,7 +195,7 @@ func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgen
 	if err != nil {
 		return ProjectAgentMessage{}, err
 	}
-	persistedMessages, err := s.listRecentProjectAgentMessages(ctx, project.ID, maxAIChatMessages)
+	persistedMessages, err := s.listRecentProjectAgentMessages(ctx, project.ID, conversation.ID, maxAIChatMessages)
 	if err != nil {
 		return ProjectAgentMessage{}, err
 	}
@@ -135,10 +221,10 @@ func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgen
 
 	var assistantMessage ProjectAgentMessage
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if _, err := createProjectAgentMessageInDB(ctx, tx, project.ID, userMessage); err != nil {
+		if _, err := createProjectAgentMessageInDB(ctx, tx, project.ID, conversation.ID, userMessage); err != nil {
 			return err
 		}
-		message, err := createProjectAgentMessageInDB(ctx, tx, project.ID, AIChatMessage{Role: "assistant", Body: reply})
+		message, err := createProjectAgentMessageInDB(ctx, tx, project.ID, conversation.ID, AIChatMessage{Role: "assistant", Body: reply})
 		if err != nil {
 			return err
 		}
@@ -170,16 +256,40 @@ func (s *Service) loadOwnedProject(ctx context.Context, ownerUserID, projectID s
 	return project, nil
 }
 
-func createProjectAgentMessageInDB(ctx context.Context, db *gorm.DB, projectID string, input AIChatMessage) (ProjectAgentMessage, error) {
+func (s *Service) loadOwnedProjectAgentConversation(ctx context.Context, ownerUserID, projectID, conversationID string) (entity.Project, entity.ProjectAgentConversation, error) {
+	project, err := s.loadOwnedProject(ctx, ownerUserID, projectID)
+	if err != nil {
+		return entity.Project{}, entity.ProjectAgentConversation{}, err
+	}
+
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return entity.Project{}, entity.ProjectAgentConversation{}, ErrProjectNotFound
+	}
+
+	var conversation entity.ProjectAgentConversation
+	if err := s.db.WithContext(ctx).
+		First(&conversation, "id = ? AND project_id = ?", conversationID, project.ID).
+		Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return entity.Project{}, entity.ProjectAgentConversation{}, ErrProjectNotFound
+		}
+		return entity.Project{}, entity.ProjectAgentConversation{}, fmt.Errorf("load project agent conversation: %w", err)
+	}
+	return project, conversation, nil
+}
+
+func createProjectAgentMessageInDB(ctx context.Context, db *gorm.DB, projectID, conversationID string, input AIChatMessage) (ProjectAgentMessage, error) {
 	messageID, err := id.NewPrefixed("agm")
 	if err != nil {
 		return ProjectAgentMessage{}, err
 	}
 	message := entity.ProjectAgentMessage{
-		ID:        messageID,
-		ProjectID: projectID,
-		Role:      input.Role,
-		Body:      input.Body,
+		ID:             messageID,
+		ProjectID:      projectID,
+		ConversationID: conversationID,
+		Role:           input.Role,
+		Body:           input.Body,
 	}
 	if err := db.WithContext(ctx).Create(&message).Error; err != nil {
 		return ProjectAgentMessage{}, fmt.Errorf("store project agent message: %w", err)
@@ -187,10 +297,10 @@ func createProjectAgentMessageInDB(ctx context.Context, db *gorm.DB, projectID s
 	return publicProjectAgentMessage(message), nil
 }
 
-func (s *Service) listRecentProjectAgentMessages(ctx context.Context, projectID string, limit int) ([]ProjectAgentMessage, error) {
+func (s *Service) listRecentProjectAgentMessages(ctx context.Context, projectID, conversationID string, limit int) ([]ProjectAgentMessage, error) {
 	var messages []entity.ProjectAgentMessage
 	if err := s.db.WithContext(ctx).
-		Where("project_id = ?", projectID).
+		Where("project_id = ? AND conversation_id = ?", projectID, conversationID).
 		Order("created_at DESC, id DESC").
 		Limit(limit).
 		Find(&messages).Error; err != nil {
@@ -204,14 +314,30 @@ func (s *Service) listRecentProjectAgentMessages(ctx context.Context, projectID 
 	return result, nil
 }
 
+func publicProjectAgentConversation(conversation entity.ProjectAgentConversation) ProjectAgentConversation {
+	result := ProjectAgentConversation{
+		ID:            conversation.ID,
+		ProjectID:     conversation.ProjectID,
+		Title:         conversation.Title,
+		ActiveModelID: conversation.ActiveModelID,
+		CreatedAt:     conversation.CreatedAt.Format(timeFormatRFC3339),
+		UpdatedAt:     conversation.UpdatedAt.Format(timeFormatRFC3339),
+	}
+	if conversation.ArchivedAt != nil {
+		result.ArchivedAt = conversation.ArchivedAt.Format(timeFormatRFC3339)
+	}
+	return result
+}
+
 func publicProjectAgentMessage(message entity.ProjectAgentMessage) ProjectAgentMessage {
 	return ProjectAgentMessage{
-		ID:        message.ID,
-		ProjectID: message.ProjectID,
-		Role:      message.Role,
-		Body:      message.Body,
-		CreatedAt: message.CreatedAt.Format(timeFormatRFC3339),
-		UpdatedAt: message.UpdatedAt.Format(timeFormatRFC3339),
+		ID:             message.ID,
+		ProjectID:      message.ProjectID,
+		ConversationID: message.ConversationID,
+		Role:           message.Role,
+		Body:           message.Body,
+		CreatedAt:      message.CreatedAt.Format(timeFormatRFC3339),
+		UpdatedAt:      message.UpdatedAt.Format(timeFormatRFC3339),
 	}
 }
 

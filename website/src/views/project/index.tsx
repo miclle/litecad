@@ -27,7 +27,9 @@ import {
 import { Link, useParams } from 'react-router-dom'
 
 import {
-  fetchProjectAgentMessages,
+  createProjectAgentConversation,
+  fetchProjectAgentConversationMessages,
+  fetchProjectAgentConversations,
   fetchProject,
   fetchProjectCADDocument,
   fetchProjectCADHistory,
@@ -35,7 +37,7 @@ import {
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
   fetchProjectModels,
-  sendProjectAgentMessage,
+  sendProjectAgentConversationMessage,
   uploadProjectThumbnailSnapshot,
   uploadProjectModel,
 } from 'src/api/projects'
@@ -315,10 +317,16 @@ function ProjectView() {
     queryFn: async () => (await fetchProjectModels(projectId)).data.models,
     enabled: projectId !== '' && projectQuery.isSuccess,
   })
-  const projectAgentMessagesQuery = useQuery({
-    queryKey: ['projects', projectId, 'agent', 'messages'],
-    queryFn: async () => (await fetchProjectAgentMessages(projectId)).data.messages,
+  const projectAgentConversationsQuery = useQuery({
+    queryKey: ['projects', projectId, 'agent', 'conversations'],
+    queryFn: async () => (await fetchProjectAgentConversations(projectId)).data.conversations,
     enabled: projectId !== '' && projectQuery.isSuccess,
+  })
+  const activeAgentConversationID = projectAgentConversationsQuery.data?.[0]?.id ?? ''
+  const projectAgentMessagesQuery = useQuery({
+    queryKey: ['projects', projectId, 'agent', 'conversations', activeAgentConversationID, 'messages'],
+    queryFn: async () => (await fetchProjectAgentConversationMessages(projectId, activeAgentConversationID)).data.messages,
+    enabled: projectId !== '' && activeAgentConversationID !== '',
   })
   const uploadModelMutation = useMutation({
     mutationFn: (file: File) => uploadProjectModel(projectId, file),
@@ -333,7 +341,12 @@ function ProjectView() {
   })
   const projectAgentMutation = useMutation({
     mutationFn: async (messageBody: string) => {
-      const response = await sendProjectAgentMessage(projectId, {
+      let conversationID = activeAgentConversationID
+      if (!conversationID) {
+        const conversationResponse = await createProjectAgentConversation(projectId, { title: 'Project chat' })
+        conversationID = conversationResponse.data.conversation.id
+      }
+      const response = await sendProjectAgentConversationMessage(projectId, conversationID, {
         messages: [{ role: 'user', body: messageBody }],
       })
       return response.data.message
@@ -347,7 +360,8 @@ function ProjectView() {
           body: message.body,
         },
       ])
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'agent', 'messages'] })
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'agent', 'conversations'] })
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'agent', 'conversations', message.conversation_id, 'messages'] })
       setLocalAiChatMessages([])
     },
     onError: (error) => {

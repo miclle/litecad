@@ -3,6 +3,9 @@ import type {
   CreateProjectPayload,
   CADBoxFeature,
   CADTransform,
+  CreateProjectAgentConversationPayload,
+  ProjectAgentConversationResponse,
+  ProjectAgentConversationsResponse,
   ProjectAgentMessageResponse,
   ProjectAgentMessagesResponse,
   ProjectCADDocumentResponse,
@@ -78,12 +81,24 @@ export function redoProjectCADDocument(projectId: string, expectedRevision: numb
   })
 }
 
-export function sendProjectAgentMessage(projectId: string, payload: SendProjectAgentMessagePayload) {
-  return client.post<ProjectAgentMessageResponse>(`/projects/${projectId}/agent/messages`, payload)
+export function fetchProjectAgentConversations(projectId: string) {
+  return client.get<ProjectAgentConversationsResponse>(`/projects/${projectId}/agent/conversations`)
 }
 
-export function fetchProjectAgentMessages(projectId: string) {
-  return client.get<ProjectAgentMessagesResponse>(`/projects/${projectId}/agent/messages`)
+export function createProjectAgentConversation(projectId: string, payload: CreateProjectAgentConversationPayload = {}) {
+  return client.post<ProjectAgentConversationResponse>(`/projects/${projectId}/agent/conversations`, payload)
+}
+
+export function sendProjectAgentConversationMessage(
+  projectId: string,
+  conversationId: string,
+  payload: SendProjectAgentMessagePayload,
+) {
+  return client.post<ProjectAgentMessageResponse>(`/projects/${projectId}/agent/conversations/${conversationId}/messages`, payload)
+}
+
+export function fetchProjectAgentConversationMessages(projectId: string, conversationId: string) {
+  return client.get<ProjectAgentMessagesResponse>(`/projects/${projectId}/agent/conversations/${conversationId}/messages`)
 }
 
 export function createProject(payload: CreateProjectPayload) {

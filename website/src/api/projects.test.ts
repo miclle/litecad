@@ -5,13 +5,15 @@ import {
   deleteProjectCADNode,
   fetchProjectCADDocument,
   fetchProjectCADHistory,
-  fetchProjectAgentMessages,
+  createProjectAgentConversation,
+  fetchProjectAgentConversationMessages,
+  fetchProjectAgentConversations,
   fetchProjectGeometryDocument,
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
   addProjectCADModelBoxUnion,
-  sendProjectAgentMessage,
+  sendProjectAgentConversationMessage,
   redoProjectCADDocument,
   undoProjectCADDocument,
   updateProjectCADNodeTransform,
@@ -141,19 +143,27 @@ describe('project API', () => {
     expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/history/redo', { expected_revision: 12 })
   })
 
-  test('sends project agent messages', () => {
+  test('creates and fetches project agent conversations', () => {
+    createProjectAgentConversation('prj_01test', { title: 'Fresh thread' })
+    fetchProjectAgentConversations('prj_01test')
+
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/agent/conversations', { title: 'Fresh thread' })
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/agent/conversations')
+  })
+
+  test('sends project agent conversation messages', () => {
     const payload = {
       messages: [{ role: 'user' as const, body: 'Inspect the model' }],
     }
 
-    sendProjectAgentMessage('prj_01test', payload)
+    sendProjectAgentConversationMessage('prj_01test', 'agc_01test', payload)
 
-    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/agent/messages', payload)
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/agent/conversations/agc_01test/messages', payload)
   })
 
-  test('fetches project agent messages', () => {
-    fetchProjectAgentMessages('prj_01test')
+  test('fetches project agent conversation messages', () => {
+    fetchProjectAgentConversationMessages('prj_01test', 'agc_01test')
 
-    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/agent/messages')
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/agent/conversations/agc_01test/messages')
   })
 })

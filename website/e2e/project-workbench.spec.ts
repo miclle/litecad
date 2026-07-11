@@ -19,7 +19,7 @@ async function fulfillAPI(route: Route) {
       },
     },
     [`/api/v1/projects/${projectId}/models`]: { models: [] },
-    [`/api/v1/projects/${projectId}/agent/messages`]: { messages: [] },
+    [`/api/v1/projects/${projectId}/agent/conversations`]: { conversations: [] },
     [`/api/v1/projects/${projectId}/cad-document`]: {
       document: {
         id: 'cad_document_smoke',

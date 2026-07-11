@@ -143,14 +143,29 @@ type ProjectCADHistoryEntry struct {
 	Document      ProjectCADDocument `gorm:"foreignKey:DocumentID" json:"document"`
 }
 
+// ProjectAgentConversation stores one CAD Agent thread for a project.
+type ProjectAgentConversation struct {
+	ID            string         `gorm:"size:32;primaryKey" json:"id"`
+	CreatedAt     time.Time      `gorm:"index" json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	DeletedAt     gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	ProjectID     string         `gorm:"size:32;index;not null" json:"project_id"`
+	Title         string         `gorm:"size:120;not null" json:"title"`
+	ActiveModelID string         `gorm:"size:32;index" json:"active_model_id"`
+	ArchivedAt    *time.Time     `gorm:"index" json:"archived_at,omitempty"`
+	Project       Project        `gorm:"foreignKey:ProjectID" json:"project"`
+}
+
 // ProjectAgentMessage stores one CAD Agent conversation message for a project.
 type ProjectAgentMessage struct {
-	ID        string         `gorm:"size:32;primaryKey" json:"id"`
-	CreatedAt time.Time      `gorm:"index" json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
-	ProjectID string         `gorm:"size:32;index;not null" json:"project_id"`
-	Role      string         `gorm:"size:16;index;not null" json:"role"`
-	Body      string         `gorm:"type:text;not null" json:"body"`
-	Project   Project        `gorm:"foreignKey:ProjectID" json:"project"`
+	ID             string                   `gorm:"size:32;primaryKey" json:"id"`
+	CreatedAt      time.Time                `gorm:"index" json:"created_at"`
+	UpdatedAt      time.Time                `json:"updated_at"`
+	DeletedAt      gorm.DeletedAt           `gorm:"index" json:"deleted_at,omitempty"`
+	ProjectID      string                   `gorm:"size:32;index;not null" json:"project_id"`
+	ConversationID string                   `gorm:"size:32;index;not null" json:"conversation_id"`
+	Role           string                   `gorm:"size:16;index;not null" json:"role"`
+	Body           string                   `gorm:"type:text;not null" json:"body"`
+	Project        Project                  `gorm:"foreignKey:ProjectID" json:"project"`
+	Conversation   ProjectAgentConversation `gorm:"foreignKey:ConversationID" json:"conversation"`
 }

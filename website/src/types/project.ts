@@ -201,14 +201,38 @@ export interface ProjectCADDocumentResponse {
 export interface ProjectAgentMessage {
   id: string
   project_id: string
+  conversation_id: string
   role: 'assistant' | 'user'
   body: string
   created_at: string
   updated_at: string
 }
 
+export interface ProjectAgentConversation {
+  id: string
+  project_id: string
+  title: string
+  active_model_id?: string
+  archived_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateProjectAgentConversationPayload {
+  title?: string
+  active_model_id?: string
+}
+
 export interface SendProjectAgentMessagePayload {
   messages: Pick<ProjectAgentMessage, 'body' | 'role'>[]
+}
+
+export interface ProjectAgentConversationResponse {
+  conversation: ProjectAgentConversation
+}
+
+export interface ProjectAgentConversationsResponse {
+  conversations: ProjectAgentConversation[]
 }
 
 export interface ProjectAgentMessageResponse {
