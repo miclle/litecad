@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -396,6 +397,10 @@ func publicProjectModelSummary(model entity.ProjectModel) ProjectModelSummary {
 }
 
 func projectModelFormat(filename string) (string, error) {
+	lowerFilename := strings.ToLower(filename)
+	if strings.HasSuffix(lowerFilename, ".lcad.json") {
+		return "lcad", nil
+	}
 	switch strings.ToLower(filepath.Ext(filename)) {
 	case ".step", ".stp":
 		return "step", nil
@@ -454,6 +459,12 @@ func applyModelMetadata(model *entity.ProjectModel) {
 		metadata, err = ExtractSTLMetadata(model.SourceData)
 	case "scad":
 		metadata = ExtractSCADMetadata(model.OriginalFilename, model.SourceData)
+	case "lcad":
+		if !json.Valid(model.SourceData) {
+			err = ErrInvalidProjectParametricArtifactInput
+		} else {
+			metadata = ExtractLiteCADFeatureDSLMetadata(model.OriginalFilename, model.SourceData)
+		}
 	default:
 		model.ParseStatus = "pending"
 		return
@@ -492,7 +503,61 @@ func ExtractSCADMetadata(filename string, data []byte) StepMetadata {
 	}
 }
 
-func slugifyProjectModelFilename(title string) string {
+type liteCADFeatureDSLMetadataDocument struct {
+	Version    int                                   `json:"version"`
+	Unit       string                                `json:"unit"`
+	Parameters map[string]liteCADFeatureDSLParameter `json:"parameters"`
+	Features   []map[string]any                      `json:"features"`
+}
+
+type liteCADFeatureDSLParameter struct {
+	Type    string `json:"type"`
+	Default any    `json:"default"`
+}
+
+func ExtractLiteCADFeatureDSLMetadata(filename string, data []byte) StepMetadata {
+	var document liteCADFeatureDSLMetadataDocument
+	_ = json.Unmarshal(data, &document)
+	parameterValues := liteCADFeatureDSLParameterValues(data)
+	unit := strings.TrimSpace(document.Unit)
+	if unit == "" {
+		unit = "unit"
+	}
+	version := "1"
+	if document.Version > 0 {
+		version = strconv.Itoa(document.Version)
+	}
+	productName := strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
+	productName = strings.TrimSuffix(productName, ".lcad")
+	return StepMetadata{
+		AssetType:           "lcad",
+		SourceKind:          projectParametricSourceKindLiteCADDSL,
+		Version:             version,
+		Schema:              projectParametricSourceKindLiteCADDSL,
+		ProductNames:        []string{productName},
+		LengthUnit:          unit,
+		EntityCount:         len(data),
+		ParameterCount:      len(parameterValues),
+		ParameterValues:     parameterValues,
+		RepresentationCount: len(document.Features),
+	}
+}
+
+func liteCADFeatureDSLParameterValues(data []byte) map[string]any {
+	var document liteCADFeatureDSLMetadataDocument
+	if err := json.Unmarshal(data, &document); err != nil {
+		return map[string]any{}
+	}
+	parameterValues := make(map[string]any, len(document.Parameters))
+	for name, parameter := range document.Parameters {
+		if parameter.Default != nil {
+			parameterValues[name] = parameter.Default
+		}
+	}
+	return parameterValues
+}
+
+func slugifyProjectModelFilename(title, suffix string) string {
 	var builder strings.Builder
 	lastHyphen := false
 	for _, r := range strings.ToLower(title) {
@@ -510,5 +575,8 @@ func slugifyProjectModelFilename(title string) string {
 	if slug == "" {
 		slug = "parametric-model"
 	}
-	return slug + "-litecad.scad"
+	if suffix == "" {
+		suffix = ".scad"
+	}
+	return slug + "-litecad" + suffix
 }

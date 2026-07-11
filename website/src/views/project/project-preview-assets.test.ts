@@ -80,6 +80,28 @@ describe('project preview assets', () => {
     expect(buildProjectPreviewAssets([scadModel], [], {})).toEqual([])
   })
 
+  test('keeps saved LiteCAD feature DSL sources in the tree without inventing URL preview assets', () => {
+    const lcadModel = {
+      ...baseModel,
+      id: 'mdl_lcad',
+      original_filename: 'feature-dsl-bracket-litecad.lcad.json',
+      format: 'lcad',
+      content_type: 'application/json',
+      metadata: {
+        ...baseModel.metadata,
+        asset_type: 'lcad',
+        source_kind: 'litecad-feature-dsl',
+        schema: 'litecad-feature-dsl',
+        product_names: ['Feature DSL bracket'],
+        parameter_count: 1,
+        parameter_values: { width: 96 },
+      },
+    } satisfies ProjectModel
+
+    expect(buildProjectModelTree([lcadModel])).toMatchObject([{ model: lcadModel, displayName: 'Feature DSL bracket' }])
+    expect(buildProjectPreviewAssets([lcadModel], [], {})).toEqual([])
+  })
+
   test('builds one preview asset for each model with a ready preview URL', () => {
     const pulley = {
       ...baseModel,

@@ -23,6 +23,27 @@ const artifact = {
 afterEach(() => cleanup())
 
 describe('ParametricArtifactEditor', () => {
+  it('renders LiteCAD feature DSL parameters without compiling as OpenSCAD', async () => {
+    const compile = vi.fn()
+    const featureDSLArtifact = {
+      ...artifact,
+      id: 'pma_lcad',
+      title: 'Feature DSL bracket',
+      source_kind: 'litecad-feature-dsl',
+      source_code:
+        '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80,"min":20,"max":200}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
+      parameter_values: { width: 96 },
+      compile_status: 'success',
+    } satisfies ProjectParametricArtifact
+
+    render(<ParametricArtifactEditor artifact={featureDSLArtifact} compile={compile} debounceMs={0} onSaveAsModel={vi.fn()} />)
+
+    expect(screen.getByRole('heading', { name: 'Feature DSL bracket' })).not.toBeNull()
+    expect(screen.getByLabelText('width parameter')).not.toBeNull()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save as model' }).disabled).toBe(false)
+    await waitFor(() => expect(compile).not.toHaveBeenCalled())
+  })
+
   it('renders parsed parameters and recompiles when a slider changes', async () => {
     const compile = vi.fn().mockResolvedValue({
       output: 'preview',

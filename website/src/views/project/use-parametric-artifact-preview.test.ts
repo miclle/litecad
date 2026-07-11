@@ -25,6 +25,41 @@ afterEach(() => {
 })
 
 describe('useParametricArtifactPreview', () => {
+  it('reads LiteCAD feature DSL parameters without calling the OpenSCAD compiler', async () => {
+    vi.useFakeTimers()
+    const compile = vi.fn()
+    const featureDSLArtifact = {
+      ...artifact,
+      id: 'pma_lcad',
+      title: 'Feature DSL bracket',
+      source_kind: 'litecad-feature-dsl',
+      source_code:
+        '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80,"min":20,"max":200},"centered":{"type":"boolean","default":true}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
+      parameter_values: { width: 96 },
+      compile_status: 'success',
+    } satisfies ProjectParametricArtifact
+
+    const { result } = renderHook(() =>
+      useParametricArtifactPreview({
+        artifact: featureDSLArtifact,
+        compile,
+        debounceMs: 20,
+        parameterValues: { width: 96, centered: true },
+      }),
+    )
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20)
+    })
+
+    expect(compile).not.toHaveBeenCalled()
+    expect(result.current.status).toBe('success')
+    expect(result.current.parameters).toEqual([
+      { name: 'width', type: 'number', value: 80, range: { min: 20, step: 1, max: 200 }, group: '' },
+      { name: 'centered', type: 'boolean', value: true, group: '' },
+    ])
+  })
+
   it('debounces parameter changes before compiling', async () => {
     vi.useFakeTimers()
     const compile = vi.fn().mockResolvedValue({

@@ -14,7 +14,7 @@ import (
 
 const (
 	aiParametricToolBuildModel = "build_parametric_model"
-	aiParametricSystemPrompt   = "You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Use OpenSCAD source for the first milestone. Declare editable parameters at the top of the file with Customizer-style comments."
+	aiParametricSystemPrompt   = "You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Prefer source_kind litecad-feature-dsl with a valid JSON document using version, unit, parameters, and features. Use openscad only when the user explicitly asks for OpenSCAD source. Declare editable parameters in the artifact so LiteCAD can preview and save them."
 )
 
 // AIParametricArtifactInput is the validated tool input for generated CAD source.
@@ -79,9 +79,12 @@ func ParseAIParametricToolCall(output string) (AIParametricToolCall, error) {
 	if call.Tool != aiParametricToolBuildModel ||
 		call.Input.Title == "" ||
 		utf8.RuneCountInString(call.Input.Title) > maxProjectParametricArtifactTitleRunes ||
-		call.Input.SourceKind != projectParametricSourceKindOpenSCAD ||
+		!isProjectParametricSourceKind(call.Input.SourceKind) ||
 		call.Input.Code == "" ||
 		len([]byte(call.Input.Code)) > maxProjectParametricArtifactSourceBytes {
+		return AIParametricToolCall{}, ErrInvalidAIChatInput
+	}
+	if call.Input.SourceKind == projectParametricSourceKindLiteCADDSL && !json.Valid([]byte(call.Input.Code)) {
 		return AIParametricToolCall{}, ErrInvalidAIChatInput
 	}
 	return call, nil

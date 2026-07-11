@@ -1454,6 +1454,122 @@ Remaining after this task:
 
 ---
 
+### Task 12: Assistant and project persistence for LiteCAD feature DSL
+
+**Why this task exists:** Task 11 proved the license-safe OCCT worker path for a minimal LiteCAD feature DSL, but the Assistant and project asset flow still only accepted OpenSCAD-style generated artifacts. This task makes `litecad-feature-dsl` a first-class generated source kind without yet wiring saved DSL models into the project preview/export UI.
+
+**Files:**
+- Modify: `internal/service/parametric_artifact.go`
+- Modify: `internal/service/project.go`
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/parametric_artifact_test.go`
+- Test: `internal/service/ai_tools_test.go`
+- Test: `internal/handler/project_parametric_test.go`
+- Modify: `website/src/types/project.ts`
+- Modify: `website/src/views/project/index.tsx`
+- Modify: `website/src/views/project/use-parametric-artifact-preview.ts`
+- Test: `website/src/views/project/use-parametric-artifact-preview.test.ts`
+- Test: `website/src/views/project/parametric-artifact-editor.test.tsx`
+- Modify docs: `docs/ai-parametric-assistant.md`, `docs/browser-cad-kernel-roadmap.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, `.agents/rules/threejs-viewer.md`
+
+**Interfaces:**
+- Accepts AI tool calls and artifact API payloads with `source_kind = "litecad-feature-dsl"`.
+- Saves successful DSL artifacts as project models with:
+  - `format = "lcad"`
+  - generated filename `<title-slug>-litecad.lcad.json`
+  - content type `application/json`
+  - metadata `asset_type = "lcad"`, `source_kind = "litecad-feature-dsl"`, `schema = "litecad-feature-dsl"`
+- Extracts DSL `unit`, parameter defaults, artifact parameter values, and feature count into model metadata.
+- Lets saved `.lcad.json` model parameter values persist through the existing parametric revision route.
+- Lets the Inspector read DSL parameter defaults and edit saved parameter values without calling the OpenSCAD worker.
+
+- [x] **Step 1: Write failing tests**
+
+RED tests covered:
+
+- `litecad-feature-dsl` artifact creation and save-as-model.
+- AI parser and parametric run accepting `litecad-feature-dsl`.
+- Handler route saving DSL artifact as `format = "lcad"`.
+- Saved DSL parameter revision persistence.
+- Frontend API/types, project tree behavior, preview hook, and editor behavior for DSL artifacts.
+
+Initial RED result:
+
+```bash
+go test ./internal/service -run 'TestSaveLiteCADFeatureDSLArtifactCreatesProjectModel|TestAIParametricToolCallParserAcceptsLiteCADFeatureDSL|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+go test ./internal/handler -run 'TestProjectParametricArtifactRoutesSaveLiteCADFeatureDSL'
+go test ./internal/service -run 'TestUpdateLiteCADFeatureDSLModelParametersPersistsRevision'
+```
+
+Expected failures were observed: `litecad-feature-dsl` was rejected by service/parser/handler validation, and saved DSL models were rejected by the parameter update route.
+
+- [x] **Step 2: Extend backend source kind, model format, and metadata**
+
+Implemented:
+
+- `projectParametricSourceKindLiteCADDSL = "litecad-feature-dsl"`.
+- Source-kind validation for OpenSCAD and LiteCAD DSL, including JSON validity for DSL source.
+- Save-as-model storage selection for `.scad` and `.lcad.json`.
+- `ExtractLiteCADFeatureDSLMetadata(...)` for unit, version, parameter values, and feature count.
+- Artifact parameter-value merging into saved model metadata.
+- `UpdateParametricModelParameters(...)` support for saved `lcad` models and revision records.
+
+- [x] **Step 3: Extend AI tool parser and prompt**
+
+Updated strict tool-call parsing to accept `litecad-feature-dsl`, reject invalid DSL JSON, and prompt the provider to prefer LiteCAD feature DSL unless the user explicitly asks for OpenSCAD source.
+
+- [x] **Step 4: Extend frontend type/API/editor recognition**
+
+Updated TypeScript contracts for `format = "lcad"` and `source_kind = "litecad-feature-dsl"`. The Inspector can now represent a saved `.lcad.json` model as a parametric artifact, parse DSL parameters from JSON defaults, and edit saved parameter values without sending DSL JSON to the unavailable OpenSCAD worker.
+
+- [x] **Step 5: Verify**
+
+Run:
+
+```bash
+go test ./internal/service -run 'TestSaveLiteCADFeatureDSLArtifactCreatesProjectModel|TestAIParametricToolCallParserAcceptsLiteCADFeatureDSL|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact|TestUpdateLiteCADFeatureDSLModelParametersPersistsRevision|TestUploadProjectModelMarksInvalidLiteCADFeatureDSLError|TestSaveParametricArtifactCreatesProjectModel|TestUpdateParametricModelParametersPersistsRevision'
+go test ./internal/handler -run 'TestProjectParametricArtifactRoutesSaveLiteCADFeatureDSL|TestProjectParametricArtifactRoutes'
+npm --prefix website test -- projects project-preview-assets use-parametric-artifact-preview parametric-artifact-editor index
+npm --prefix website run build
+git diff --check
+task check
+task test
+task test-browser
+```
+
+Expected:
+
+- OpenSCAD artifact save/edit behavior remains green.
+- LiteCAD DSL artifact save/edit behavior is green.
+- TypeScript accepts `lcad`/`litecad-feature-dsl`.
+- Browser smoke remains green, while saved DSL preview mesh remains explicitly future work.
+
+Verification result on 2026-07-11:
+
+- `go test ./internal/service -run 'TestSaveLiteCADFeatureDSLArtifactCreatesProjectModel|TestAIParametricToolCallParserAcceptsLiteCADFeatureDSL|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact|TestUpdateLiteCADFeatureDSLModelParametersPersistsRevision|TestUploadProjectModelMarksInvalidLiteCADFeatureDSLError|TestSaveParametricArtifactCreatesProjectModel|TestUpdateParametricModelParametersPersistsRevision'` passed.
+- `go test ./internal/handler -run 'TestProjectParametricArtifactRoutesSaveLiteCADFeatureDSL|TestProjectParametricArtifactRoutes'` passed.
+- `npm --prefix website test -- projects project-preview-assets use-parametric-artifact-preview parametric-artifact-editor index` passed with 5 files and 48 tests.
+- `npm --prefix website run build` passed. Vite still reports the existing WASM large chunk and browser-externalized Node module warnings for the OCCT bundle.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed with 42 frontend test files and 177 Vitest tests.
+- `task test-browser` passed.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add internal/service internal/handler website/src docs TODO.md AGENTS.md .agents/rules
+git commit -m "feat(agent): persist feature dsl artifacts"
+```
+
+Remaining after this task:
+
+- Project workbench preview does not yet route saved `.lcad.json` models through `feature-dsl-preview`.
+- Project export UI does not yet expose saved DSL model STEP export through `feature-dsl-export`.
+- The DSL still supports only the minimal worker feature set from Task 11.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

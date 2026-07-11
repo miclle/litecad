@@ -490,6 +490,29 @@ func TestUploadProjectModelRejectsUnsupportedFormat(t *testing.T) {
 	}
 }
 
+func TestUploadProjectModelMarksInvalidLiteCADFeatureDSLError(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	user, project := createTestProjectForModel(t, svc, ctx)
+
+	model, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Filename:    "broken-litecad.lcad.json",
+		ContentType: "application/json",
+		Data:        []byte("{not-json"),
+	})
+	if err != nil {
+		t.Fatalf("UploadProjectModel returned error: %v", err)
+	}
+	if model.Format != "lcad" || model.ParseStatus != "error" {
+		t.Fatalf("model = %+v", model)
+	}
+	if model.ParseError == "" {
+		t.Fatal("model should record a parse error")
+	}
+}
+
 func TestUploadProjectModelStoresGLBAsset(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

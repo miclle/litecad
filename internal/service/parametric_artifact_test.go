@@ -192,6 +192,82 @@ func TestSaveParametricArtifactCreatesProjectModel(t *testing.T) {
 	}
 }
 
+func TestSaveLiteCADFeatureDSLArtifactCreatesProjectModel(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-save@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Save generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	dslSource := `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 80, "min": 20, "max": 200 },
+    "depth": { "type": "number", "default": 40, "min": 10, "max": 100 }
+  },
+  "features": [
+    { "id": "base", "type": "box", "origin": [0, 0, 0], "size": ["width", "depth", 6] }
+  ]
+}`
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID:     user.ID,
+		ProjectID:       project.ID,
+		Title:           "Feature DSL bracket",
+		SourceKind:      "litecad-feature-dsl",
+		SourceCode:      dslSource,
+		ParameterValues: map[string]any{"width": float64(96), "depth": float64(42), "unused": float64(999)},
+		CompileStatus:   "success",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+
+	model, err := svc.SaveParametricArtifactAsProjectModel(ctx, SaveParametricArtifactAsProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		ArtifactID:  artifact.ID,
+	})
+	if err != nil {
+		t.Fatalf("SaveParametricArtifactAsProjectModel returned error: %v", err)
+	}
+	if model.Format != "lcad" || model.OriginalFilename != "feature-dsl-bracket-litecad.lcad.json" || model.ContentType != "application/json" {
+		t.Fatalf("model = %+v", model)
+	}
+	if model.ParseStatus != "parsed" || model.Metadata.AssetType != "lcad" || model.Metadata.SourceKind != "litecad-feature-dsl" || model.Metadata.Schema != "litecad-feature-dsl" {
+		t.Fatalf("model metadata = %+v", model.Metadata)
+	}
+	if model.Metadata.LengthUnit != "millimetre" || model.Metadata.ParameterCount != 2 || model.Metadata.RepresentationCount != 1 {
+		t.Fatalf("model metadata counts = %+v", model.Metadata)
+	}
+	if model.Metadata.ParameterValues["width"] != float64(96) || model.Metadata.ParameterValues["depth"] != float64(42) {
+		t.Fatalf("model parameter values = %+v", model.Metadata.ParameterValues)
+	}
+	if _, ok := model.Metadata.ParameterValues["unused"]; ok {
+		t.Fatalf("model parameter values should ignore undeclared parameters: %+v", model.Metadata.ParameterValues)
+	}
+
+	source, err := svc.GetProjectModelSource(ctx, user.ID, project.ID, model.ID)
+	if err != nil {
+		t.Fatalf("GetProjectModelSource returned error: %v", err)
+	}
+	if string(source.Data) != artifact.SourceCode {
+		t.Fatalf("source = %q, want %q", string(source.Data), artifact.SourceCode)
+	}
+}
+
 func TestSaveParametricArtifactRejectsFailedCompile(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
@@ -306,5 +382,80 @@ func TestUpdateParametricModelParametersPersistsRevision(t *testing.T) {
 	}
 	if revisionValues["width"] != float64(72) || revisionValues["height"] != float64(12) || revisionValues["centered"] != false {
 		t.Fatalf("revision parameter values = %+v", revisionValues)
+	}
+}
+
+func TestUpdateLiteCADFeatureDSLModelParametersPersistsRevision(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-revision@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "LiteCAD DSL revisions",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Adjustable DSL spacer",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode: `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 40 },
+    "centered": { "type": "boolean", "default": true }
+  },
+  "features": [
+    { "id": "base", "type": "box", "origin": [0, 0, 0], "size": ["width", 12, 6] }
+  ]
+}`,
+		ParameterValues: map[string]any{"width": float64(40), "centered": true},
+		CompileStatus:   "success",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	model, err := svc.SaveParametricArtifactAsProjectModel(ctx, SaveParametricArtifactAsProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		ArtifactID:  artifact.ID,
+	})
+	if err != nil {
+		t.Fatalf("SaveParametricArtifactAsProjectModel returned error: %v", err)
+	}
+
+	updated, err := svc.UpdateParametricModelParameters(ctx, UpdateParametricModelParametersInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		ModelID:     model.ID,
+		ParameterValues: map[string]any{
+			"width":    float64(72),
+			"centered": false,
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateParametricModelParameters returned error: %v", err)
+	}
+	if updated.Metadata.ParameterValues["width"] != float64(72) || updated.Metadata.ParameterValues["centered"] != false {
+		t.Fatalf("updated parameter metadata = %+v", updated.Metadata.ParameterValues)
+	}
+
+	var revisions []entity.ProjectParametricRevision
+	if err := svc.db.WithContext(ctx).Where("project_id = ? AND model_id = ?", project.ID, model.ID).Find(&revisions).Error; err != nil {
+		t.Fatalf("load revisions: %v", err)
+	}
+	if len(revisions) != 1 || revisions[0].SourceChecksum == "" {
+		t.Fatalf("revisions = %+v", revisions)
 	}
 }

@@ -28,7 +28,7 @@ export interface ProjectThumbnailSnapshotResponse {
 
 export interface ProjectModelSummary {
   id: string
-  format: 'step' | 'glb' | 'gltf' | 'stl' | 'scad'
+  format: 'step' | 'glb' | 'gltf' | 'stl' | 'scad' | 'lcad'
   parse_status: 'pending' | 'parsed' | 'error'
   metadata: StepMetadata
   updated_at: string
@@ -46,7 +46,7 @@ export interface ProjectModel {
   id: string
   project_id: string
   original_filename: string
-  format: 'step' | 'glb' | 'gltf' | 'stl' | 'scad'
+  format: 'step' | 'glb' | 'gltf' | 'stl' | 'scad' | 'lcad'
   content_type: string
   byte_size: number
   parse_status: 'pending' | 'parsed' | 'error'
@@ -236,7 +236,7 @@ export interface AIParametricToolCall {
   input: {
     title: string
     version: string
-    source_kind: 'openscad'
+    source_kind: 'openscad' | 'litecad-feature-dsl'
     code: string
   }
 }
@@ -283,7 +283,7 @@ export interface ProjectParametricArtifact {
   conversation_id: string
   message_id: string
   title: string
-  source_kind: 'openscad'
+  source_kind: 'openscad' | 'litecad-feature-dsl'
   source_code: string
   parameter_values: Record<string, unknown>
   compile_status: 'pending' | 'success' | 'error'
@@ -297,7 +297,7 @@ export interface ProjectParametricArtifactPayload {
   conversation_id?: string
   message_id?: string
   title: string
-  source_kind: 'openscad'
+  source_kind: 'openscad' | 'litecad-feature-dsl'
   source_code: string
   parameter_values?: Record<string, unknown>
   compile_status?: 'pending' | 'success' | 'error'

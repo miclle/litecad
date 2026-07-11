@@ -20,6 +20,7 @@ const (
 	maxProjectParametricArtifactTitleRunes  = 160
 	maxProjectParametricArtifactSourceBytes = 256 * 1024
 	projectParametricSourceKindOpenSCAD     = "openscad"
+	projectParametricSourceKindLiteCADDSL   = "litecad-feature-dsl"
 	projectParametricCompileStatusPending   = "pending"
 	projectParametricCompileStatusSuccess   = "success"
 	projectParametricCompileStatusError     = "error"
@@ -235,16 +236,21 @@ func (s *Service) SaveParametricArtifactAsProjectModel(ctx context.Context, inpu
 			return err
 		}
 		sourceData := []byte(artifact.SourceCode)
+		format, contentType, filename, err := projectParametricModelStorage(artifact.Title, artifact.SourceKind)
+		if err != nil {
+			return err
+		}
 		modelEntity := entity.ProjectModel{
 			ID:               modelID,
 			ProjectID:        project.ID,
-			OriginalFilename: slugifyProjectModelFilename(artifact.Title),
-			Format:           "scad",
-			ContentType:      "text/plain; charset=utf-8",
+			OriginalFilename: filename,
+			Format:           format,
+			ContentType:      contentType,
 			ByteSize:         int64(len(sourceData)),
 			SourceData:       append([]byte(nil), sourceData...),
 		}
 		applyModelMetadata(&modelEntity)
+		mergeParametricArtifactValuesIntoModelMetadata(&modelEntity, projectParametricArtifactParameters(artifact.ParameterValuesJSON))
 		if err := tx.Create(&modelEntity).Error; err != nil {
 			return fmt.Errorf("store parametric project model: %w", err)
 		}
@@ -279,17 +285,19 @@ func (s *Service) UpdateParametricModelParameters(ctx context.Context, input Upd
 		}
 		return ProjectModel{}, fmt.Errorf("load parametric project model: %w", err)
 	}
-	if model.Format != "scad" {
+	if model.Format != "scad" && model.Format != "lcad" {
 		return ProjectModel{}, ErrInvalidProjectParametricArtifactInput
 	}
 
-	defaultValues := openSCADTopLevelParameterValues(string(model.SourceData))
-	metadata := StepMetadata{}
-	if len(model.MetadataJSON) > 0 {
-		_ = json.Unmarshal(model.MetadataJSON, &metadata)
+	defaultValues, metadata, err := parametricModelParameterDefaults(model)
+	if err != nil {
+		return ProjectModel{}, err
 	}
-	if metadata.AssetType == "" {
-		metadata = ExtractSCADMetadata(model.OriginalFilename, model.SourceData)
+	if len(model.MetadataJSON) > 0 {
+		var storedMetadata StepMetadata
+		if err := json.Unmarshal(model.MetadataJSON, &storedMetadata); err == nil && storedMetadata.AssetType != "" {
+			metadata = storedMetadata
+		}
 	}
 	mergedValues := map[string]any{}
 	for name, value := range defaultValues {
@@ -299,7 +307,7 @@ func (s *Service) UpdateParametricModelParameters(ctx context.Context, input Upd
 		mergedValues[name] = value
 	}
 	for name, value := range input.ParameterValues {
-		normalizedValue, err := normalizeOpenSCADParameterValue(name, value, defaultValues)
+		normalizedValue, err := normalizeParametricParameterValue(name, value, defaultValues)
 		if err != nil {
 			return ProjectModel{}, err
 		}
@@ -309,10 +317,19 @@ func (s *Service) UpdateParametricModelParameters(ctx context.Context, input Upd
 	if err != nil {
 		return ProjectModel{}, ErrInvalidProjectParametricArtifactInput
 	}
-	metadata.AssetType = "scad"
-	metadata.SourceKind = projectParametricSourceKindOpenSCAD
-	metadata.Version = "1"
-	metadata.Schema = "openscad"
+	if model.Format == "scad" {
+		metadata.AssetType = "scad"
+		metadata.SourceKind = projectParametricSourceKindOpenSCAD
+		metadata.Version = "1"
+		metadata.Schema = "openscad"
+	} else {
+		metadata.AssetType = "lcad"
+		metadata.SourceKind = projectParametricSourceKindLiteCADDSL
+		if metadata.Version == "" {
+			metadata.Version = "1"
+		}
+		metadata.Schema = projectParametricSourceKindLiteCADDSL
+	}
 	metadata.ParameterCount = len(defaultValues)
 	metadata.ParameterValues = mergedValues
 	metadataJSON, err := json.Marshal(metadata)
@@ -391,12 +408,15 @@ func normalizeProjectParametricArtifactInput(input projectParametricArtifactInpu
 	}
 
 	sourceKind := strings.TrimSpace(input.SourceKind)
-	if sourceKind != projectParametricSourceKindOpenSCAD {
+	if !isProjectParametricSourceKind(sourceKind) {
 		return normalizedProjectParametricArtifactInput{}, ErrInvalidProjectParametricArtifactInput
 	}
 
 	sourceCode := strings.TrimSpace(input.SourceCode)
 	if sourceCode == "" || len([]byte(sourceCode)) > maxProjectParametricArtifactSourceBytes {
+		return normalizedProjectParametricArtifactInput{}, ErrInvalidProjectParametricArtifactInput
+	}
+	if sourceKind == projectParametricSourceKindLiteCADDSL && !json.Valid([]byte(sourceCode)) {
 		return normalizedProjectParametricArtifactInput{}, ErrInvalidProjectParametricArtifactInput
 	}
 
@@ -434,6 +454,45 @@ func isProjectParametricCompileStatus(status string) bool {
 		status == projectParametricCompileStatusError
 }
 
+func isProjectParametricSourceKind(sourceKind string) bool {
+	return sourceKind == projectParametricSourceKindOpenSCAD ||
+		sourceKind == projectParametricSourceKindLiteCADDSL
+}
+
+func projectParametricModelStorage(title, sourceKind string) (format, contentType, filename string, err error) {
+	switch sourceKind {
+	case projectParametricSourceKindOpenSCAD:
+		return "scad", "text/plain; charset=utf-8", slugifyProjectModelFilename(title, ".scad"), nil
+	case projectParametricSourceKindLiteCADDSL:
+		return "lcad", "application/json", slugifyProjectModelFilename(title, ".lcad.json"), nil
+	default:
+		return "", "", "", ErrInvalidProjectParametricArtifactInput
+	}
+}
+
+func mergeParametricArtifactValuesIntoModelMetadata(model *entity.ProjectModel, parameterValues map[string]any) {
+	if len(parameterValues) == 0 || len(model.MetadataJSON) == 0 {
+		return
+	}
+	var metadata StepMetadata
+	if err := json.Unmarshal(model.MetadataJSON, &metadata); err != nil {
+		return
+	}
+	if metadata.ParameterValues == nil {
+		metadata.ParameterValues = map[string]any{}
+	}
+	for name, value := range parameterValues {
+		if _, ok := metadata.ParameterValues[name]; ok {
+			metadata.ParameterValues[name] = value
+		}
+	}
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return
+	}
+	model.MetadataJSON = metadataJSON
+}
+
 func publicProjectParametricArtifact(artifact entity.ProjectParametricArtifact) ProjectParametricArtifact {
 	return ProjectParametricArtifact{
 		ID:              artifact.ID,
@@ -461,6 +520,17 @@ func projectParametricArtifactParameters(data []byte) map[string]any {
 		return map[string]any{}
 	}
 	return values
+}
+
+func parametricModelParameterDefaults(model entity.ProjectModel) (map[string]any, StepMetadata, error) {
+	switch model.Format {
+	case "scad":
+		return openSCADTopLevelParameterValues(string(model.SourceData)), ExtractSCADMetadata(model.OriginalFilename, model.SourceData), nil
+	case "lcad":
+		return liteCADFeatureDSLParameterValues(model.SourceData), ExtractLiteCADFeatureDSLMetadata(model.OriginalFilename, model.SourceData), nil
+	default:
+		return nil, StepMetadata{}, ErrInvalidProjectParametricArtifactInput
+	}
 }
 
 func openSCADTopLevelParameterValues(source string) map[string]any {
@@ -491,7 +561,7 @@ func openSCADTopLevelParameterValues(source string) map[string]any {
 	return values
 }
 
-func normalizeOpenSCADParameterValue(name string, value any, defaults map[string]any) (any, error) {
+func normalizeParametricParameterValue(name string, value any, defaults map[string]any) (any, error) {
 	defaultValue, ok := defaults[name]
 	if !ok {
 		return nil, ErrInvalidProjectParametricArtifactInput

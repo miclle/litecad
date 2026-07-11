@@ -554,10 +554,10 @@ function ProjectView() {
   const selectedParametricModelSourceQuery = useQuery({
     queryKey: ['projects', projectId, 'models', selectedSourceModelID, 'parametric-source'],
     queryFn: async () => (await fetchProjectModelSource(projectId, selectedSourceModelID)).data.text(),
-    enabled: projectId !== '' && selectedSourceModel?.format === 'scad' && !selectedParametricArtifact,
+    enabled: projectId !== '' && isParametricProjectModelFormat(selectedSourceModel?.format) && !selectedParametricArtifact,
   })
   const selectedSavedParametricArtifact = useMemo<ProjectParametricArtifact | undefined>(() => {
-    if (!selectedSourceModel || selectedSourceModel.format !== 'scad' || !selectedParametricModelSourceQuery.data) {
+    if (!selectedSourceModel || !isParametricProjectModelFormat(selectedSourceModel.format) || !selectedParametricModelSourceQuery.data) {
       return undefined
     }
     return {
@@ -566,7 +566,7 @@ function ProjectView() {
       conversation_id: '',
       message_id: '',
       title: getModelDisplayName(selectedSourceModel),
-      source_kind: 'openscad',
+      source_kind: selectedSourceModel.format === 'lcad' ? 'litecad-feature-dsl' : 'openscad',
       source_code: selectedParametricModelSourceQuery.data,
       parameter_values: selectedSourceModel.metadata.parameter_values ?? {},
       compile_status: 'success',
@@ -1674,6 +1674,10 @@ function ProjectView() {
       </div>
     </div>
   )
+}
+
+function isParametricProjectModelFormat(format: string | undefined) {
+  return format === 'scad' || format === 'lcad'
 }
 
 export default ProjectView

@@ -155,6 +155,83 @@ func TestProjectParametricArtifactRoutes(t *testing.T) {
 	}
 }
 
+func TestProjectParametricArtifactRoutesSaveLiteCADFeatureDSL(t *testing.T) {
+	router := newTestRouter(t)
+
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name":     "Ada Lovelace",
+		"email":    "parametric-lcad-route@example.com",
+		"password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+
+	createProject := postJSONWithCookie(t, router, "/api/v1/projects", map[string]string{
+		"name": "LiteCAD DSL route project",
+	}, sessionCookie)
+	if createProject.Code != http.StatusCreated {
+		t.Fatalf("create project status = %d, body = %s", createProject.Code, createProject.Body.String())
+	}
+	var projectResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(createProject.Body.Bytes(), &projectResponse); err != nil {
+		t.Fatalf("decode project response: %v", err)
+	}
+
+	dslSource := `{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}`
+	createArtifact := postJSONWithCookie(t, router, "/api/v1/projects/"+projectResponse.Project.ID+"/parametric-artifacts", map[string]any{
+		"title":            "Feature DSL bracket",
+		"source_kind":      "litecad-feature-dsl",
+		"source_code":      dslSource,
+		"parameter_values": map[string]any{"width": 96},
+		"compile_status":   "success",
+	}, sessionCookie)
+	if createArtifact.Code != http.StatusOK {
+		t.Fatalf("create artifact status = %d, body = %s", createArtifact.Code, createArtifact.Body.String())
+	}
+	var artifactResponse struct {
+		Artifact struct {
+			ID string `json:"id"`
+		} `json:"artifact"`
+	}
+	if err := json.Unmarshal(createArtifact.Body.Bytes(), &artifactResponse); err != nil {
+		t.Fatalf("decode artifact response: %v", err)
+	}
+
+	saveArtifact := postJSONWithCookie(t, router, "/api/v1/projects/"+projectResponse.Project.ID+"/parametric-artifacts/"+artifactResponse.Artifact.ID+"/save-model", map[string]any{}, sessionCookie)
+	if saveArtifact.Code != http.StatusOK {
+		t.Fatalf("save artifact status = %d, body = %s", saveArtifact.Code, saveArtifact.Body.String())
+	}
+	var saveResponse struct {
+		Model struct {
+			ID               string `json:"id"`
+			OriginalFilename string `json:"original_filename"`
+			Format           string `json:"format"`
+			ContentType      string `json:"content_type"`
+			Metadata         struct {
+				AssetType       string         `json:"asset_type"`
+				SourceKind      string         `json:"source_kind"`
+				Schema          string         `json:"schema"`
+				ParameterValues map[string]any `json:"parameter_values"`
+			} `json:"metadata"`
+		} `json:"model"`
+	}
+	if err := json.Unmarshal(saveArtifact.Body.Bytes(), &saveResponse); err != nil {
+		t.Fatalf("decode save response: %v", err)
+	}
+	if saveResponse.Model.ID == "" || saveResponse.Model.Format != "lcad" || saveResponse.Model.ContentType != "application/json" || saveResponse.Model.OriginalFilename != "feature-dsl-bracket-litecad.lcad.json" {
+		t.Fatalf("save response = %+v", saveResponse.Model)
+	}
+	if saveResponse.Model.Metadata.AssetType != "lcad" || saveResponse.Model.Metadata.SourceKind != "litecad-feature-dsl" || saveResponse.Model.Metadata.Schema != "litecad-feature-dsl" || saveResponse.Model.Metadata.ParameterValues["width"] != float64(96) {
+		t.Fatalf("save metadata = %+v", saveResponse.Model.Metadata)
+	}
+}
+
 func TestProjectParametricArtifactRejectsInvalidInput(t *testing.T) {
 	router := newTestRouter(t)
 

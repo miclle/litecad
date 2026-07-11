@@ -27,6 +27,24 @@ func TestAIParametricToolCallParser(t *testing.T) {
 	}
 }
 
+func TestAIParametricToolCallParserAcceptsLiteCADFeatureDSL(t *testing.T) {
+	call, err := ParseAIParametricToolCall(`{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Feature DSL bracket",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":1,\"unit\":\"millimetre\",\"parameters\":{\"width\":{\"type\":\"number\",\"default\":80}},\"features\":[{\"id\":\"base\",\"type\":\"box\",\"origin\":[0,0,0],\"size\":[\"width\",40,6]}]}"
+  }
+}`)
+	if err != nil {
+		t.Fatalf("ParseAIParametricToolCall returned error: %v", err)
+	}
+	if call.Input.SourceKind != "litecad-feature-dsl" || call.Input.Code == "" {
+		t.Fatalf("call input = %+v", call.Input)
+	}
+}
+
 func TestAIParametricToolCallParserRejectsInvalidOutput(t *testing.T) {
 	for _, output := range []string{
 		`{"tool":"build_parametric_model","input":{"title":"No code","version":"v1","source_kind":"openscad","code":""}}`,
@@ -95,6 +113,54 @@ func TestAIParametricRunCreatesPendingArtifact(t *testing.T) {
 	}
 	if len(messages) != 2 || messages[0].Role != "user" || messages[1].Role != "assistant" {
 		t.Fatalf("messages = %+v", messages)
+	}
+}
+
+func TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact(t *testing.T) {
+	svc := newTestService(t)
+	svc.aiClient = &recordingAIClient{reply: `{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Feature DSL bracket",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":1,\"unit\":\"millimetre\",\"parameters\":{\"width\":{\"type\":\"number\",\"default\":80}},\"features\":[{\"id\":\"base\",\"type\":\"box\",\"origin\":[0,0,0],\"size\":[\"width\",40,6]}]}"
+  }
+}`}
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-run-lcad@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{OwnerUserID: user.ID, Name: "Feature DSL run study"})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "DSL run",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	run, err := svc.RunProjectAgentParametric(ctx, ProjectAgentParametricRunInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
+		Message:        "Make a native LiteCAD feature DSL bracket",
+	})
+	if err != nil {
+		t.Fatalf("RunProjectAgentParametric returned error: %v", err)
+	}
+	if run.Artifact.SourceKind != "litecad-feature-dsl" || run.Artifact.CompileStatus != "pending" {
+		t.Fatalf("artifact = %+v", run.Artifact)
 	}
 }
 

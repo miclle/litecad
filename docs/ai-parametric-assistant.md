@@ -4,15 +4,17 @@ LiteCAD's AI Assistant target is text-to-parameterized CAD: users can start a pr
 
 ## Current Status
 
-The current CAD Agent supports project-owned Assistant conversations, stores messages per conversation, can include project/source metadata in provider context, and has backend APIs for project-owned OpenSCAD-style parametric artifact drafts. A dedicated parametric-run API asks the configured provider for strict `build_parametric_model` JSON output, validates it server-side, stores the user prompt and Assistant tool message, and creates a pending artifact draft. The workbench can open that draft in an Inspector-side editor, parse top-level OpenSCAD-style parameters, request browser-worker compilation, and keep compile errors visible with Save disabled. Successfully compiled artifacts can be saved as durable `.scad` project model sources. Saved `.scad` source models can be selected later, edited through the same parameter controls, and persisted with separate parameter revision records. LiteCAD does not yet bundle an OpenSCAD runtime or produce mesh previews from generated source.
+The current CAD Agent supports project-owned Assistant conversations, stores messages per conversation, can include project/source metadata in provider context, and has backend APIs for project-owned parametric artifact drafts. A dedicated parametric-run API asks the configured provider for strict `build_parametric_model` JSON output, validates it server-side, stores the user prompt and Assistant tool message, and creates a pending artifact draft. The accepted generated source kinds are `openscad` and `litecad-feature-dsl`; the provider prompt now prefers LiteCAD feature DSL JSON unless the user explicitly asks for OpenSCAD source.
 
-The first LiteCAD-native feature DSL worker foundation is also implemented. The CAD kernel worker accepts a minimal JSON DSL with numeric parameters and `box` features, compiles it through the existing OCCT/OpenCascade worker, and can return a nonblank preview mesh or exported STEP text. This is not wired into the Assistant generation route, project model persistence, or Inspector UI yet; it is the license-safe compile path to expand if OpenSCAD runtime bundling remains blocked.
+The workbench can open OpenSCAD drafts in an Inspector-side editor, parse top-level OpenSCAD-style parameters, request browser-worker compilation, and keep compile errors visible with Save disabled. Successfully compiled OpenSCAD artifacts can be saved as durable `.scad` project model sources. Saved `.scad` source models can be selected later, edited through the same parameter controls, and persisted with separate parameter revision records. LiteCAD does not yet bundle an OpenSCAD runtime or produce mesh previews from generated OpenSCAD source.
+
+The LiteCAD-native feature DSL path is now connected to Assistant tool validation, generated artifact persistence, save-as-project-model persistence, and saved parameter revision editing. A successful `litecad-feature-dsl` artifact is stored as a durable `.lcad.json` project model with `format = "lcad"` and metadata for schema, unit, parameter values, and feature count. The Inspector can read the DSL parameter defaults and edit saved parameter values. The project preview pipeline still does not route saved `.lcad.json` models through `feature-dsl-preview`, so generated DSL models are source assets until the worker preview/export UI integration lands.
 
 ## Source Model Direction
 
-Imported STEP, GLB, GLTF, and STL files are source assets. AI-generated parameterized models are also source assets. The first generated-source kind is OpenSCAD-style source because it supports a fast browser compile and parameter extraction loop.
+Imported STEP, GLB, GLTF, and STL files are source assets. AI-generated parameterized models are also source assets. Supported generated-source kinds are OpenSCAD-style source and LiteCAD feature DSL JSON.
 
-If the OpenSCAD runtime remains blocked by license or distribution constraints, the next generated-source kind should be LiteCAD feature DSL JSON compiled by the existing OCCT worker. The foundation currently supports numeric parameters and box features only.
+Because the OpenSCAD runtime remains blocked by license or distribution constraints, LiteCAD feature DSL JSON is the preferred generated-source kind. The current DSL foundation supports numeric, boolean, and string parameter metadata at the artifact/model layer, and numeric-parameter `box` features in the OCCT worker compiler.
 
 ## Dependency Decision
 
@@ -29,10 +31,10 @@ Each project can own multiple Assistant conversations. New conversations start w
 1. Create or select an Assistant conversation.
 2. Send a text prompt to the parametric-run endpoint.
 3. The model must return strict `build_parametric_model` JSON.
-4. LiteCAD stores a project-owned OpenSCAD-style artifact draft and opens it in the Inspector.
-5. The Inspector parses top-level parameters and shows compile errors from the unavailable runtime path.
-6. A successfully compiled artifact can be saved as a durable `.scad` source model.
-7. Saved `.scad` model parameters can be edited later and persisted with revision records.
+4. LiteCAD stores a project-owned parametric artifact draft and opens it in the Inspector.
+5. The Inspector parses OpenSCAD top-level parameters or LiteCAD DSL parameter defaults.
+6. A successfully compiled artifact can be saved as a durable `.scad` or `.lcad.json` source model.
+7. Saved `.scad` and `.lcad.json` model parameters can be edited later and persisted with revision records.
 
 ## Target MVP Workflow
 

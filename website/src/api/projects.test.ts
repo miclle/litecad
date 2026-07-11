@@ -210,4 +210,20 @@ describe('project API', () => {
       parameter_values: { width: 12 },
     })
   })
+
+  test('manages LiteCAD feature DSL parametric artifacts', () => {
+    const payload = {
+      title: 'Feature DSL bracket',
+      source_kind: 'litecad-feature-dsl' as const,
+      source_code: '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
+      parameter_values: { width: 96 },
+      compile_status: 'success' as const,
+    }
+
+    createProjectParametricArtifact('prj_01test', payload)
+    updateProjectParametricArtifact('prj_01test', 'pma_01test', payload)
+
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts', payload)
+    expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts/pma_01test', payload)
+  })
 })
