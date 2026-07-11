@@ -83,6 +83,12 @@ Recommended concepts:
 
 The first browser-kernel proof of concept has proven import, tessellation, constrained per-model edit replay, direct per-model STEP export, and selected multi-model compound STEP export. LiteCAD now persists reversible command History for its supported edits, but a durable database schema for kernel shape state, rich parametric B-rep feature semantics, and backend export artifact history is still future design work.
 
+## Generated Parametric Source Status
+
+LiteCAD now stores AI-generated OpenSCAD-style source artifacts separately from uploaded STEP/GLTF/GLB/STL assets. Generated artifacts can expose top-level parameters in the Inspector, successful artifacts can be saved as durable `.scad` project model sources, and saved `.scad` parameter changes are recorded as separate revision records. These `.scad` records are source assets, not browser-kernel B-rep shape state.
+
+OpenSCAD mesh preview is still unavailable in normal use because no compatible OpenSCAD WASM runtime has been selected or bundled. The browser CAD kernel roadmap therefore remains OCCT-first for editable STEP/B-rep work. If OpenSCAD runtime licensing remains blocked, generated parametric CAD should move toward the LiteCAD-native feature DSL described in the AI Parametric Assistant plan, compiled through the existing OCCT worker path instead of through Three.js or ad hoc source loaders.
+
 ## Phased Implementation Plan
 
 Every phase must end with:

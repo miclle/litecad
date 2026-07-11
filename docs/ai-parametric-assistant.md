@@ -1,6 +1,6 @@
 # AI Parametric Assistant
 
-LiteCAD's AI Assistant target is text-to-parameterized CAD: users can start a project-scoped Assistant session, generate a parameterized model from text, preview it in the browser, edit exposed parameters, and save the result as a project-owned model source.
+LiteCAD's AI Assistant target is text-to-parameterized CAD: users can start a project-scoped Assistant session, generate a parameterized model from text, preview it in the browser once a compatible runtime is selected, edit exposed parameters, and save the result as a project-owned model source.
 
 ## Current Status
 
@@ -20,7 +20,17 @@ Current dependency status: no OpenSCAD WASM package or asset is bundled yet. The
 
 Each project can own multiple Assistant conversations. New conversations start with project/model context only, not old chat transcript text. Saved project assets remain available to later conversations through project metadata and source summaries.
 
-## MVP Workflow
+## Current Shipped Workflow
+
+1. Create or select an Assistant conversation.
+2. Send a text prompt to the parametric-run endpoint.
+3. The model must return strict `build_parametric_model` JSON.
+4. LiteCAD stores a project-owned OpenSCAD-style artifact draft and opens it in the Inspector.
+5. The Inspector parses top-level parameters and shows compile errors from the unavailable runtime path.
+6. A successfully compiled artifact can be saved as a durable `.scad` source model.
+7. Saved `.scad` model parameters can be edited later and persisted with revision records.
+
+## Target MVP Workflow
 
 1. Create or select an Assistant conversation.
 2. Send a text prompt.

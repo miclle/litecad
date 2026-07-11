@@ -1300,7 +1300,7 @@ Committed on 2026-07-11 as `feat(projects): edit parametric model parameters`.
 - Removes completed roadmap bullets from `TODO.md`.
 - Leaves future work for feature DSL, STEP/B-rep parametric export, richer boolean operations, source editing, and cost controls if still unfinished.
 
-- [ ] **Step 1: Update README**
+- [x] **Step 1: Update README**
 
 Add to current implemented surface only after browser verification passes:
 
@@ -1315,7 +1315,9 @@ Keep product boundary:
 Generated OpenSCAD-style models are parameterized source assets. They are not the same as durable OCCT B-rep feature graphs, preserved source-application history, or general STEP assembly semantics.
 ```
 
-- [ ] **Step 2: Update TODO**
+Execution note on 2026-07-11: browser worker mesh preview was not added to README as shipped behavior because the compatible OpenSCAD runtime gate has not passed. README instead documents the implemented Assistant conversations, draft artifacts, parameter controls, save-as-`.scad`, and saved parameter revisions, while keeping OpenSCAD mesh compilation as future work.
+
+- [x] **Step 2: Update TODO**
 
 Remove completed bullets for multi-session Assistant and OpenSCAD generated model MVP. Keep future bullets:
 
@@ -1325,11 +1327,13 @@ Remove completed bullets for multi-session Assistant and OpenSCAD generated mode
 - Add source-code editing and diff review for generated parametric artifacts if product usage demands direct code control.
 ```
 
-- [ ] **Step 3: Update agent rules**
+- [x] **Step 3: Update agent rules**
 
 State exactly what is shipped and what remains future work. Make sure later agents do not treat OpenSCAD generated source as full editable B-rep state.
 
-- [ ] **Step 4: Final verification bundle**
+Updated on 2026-07-11 to keep shipped Assistant conversations, OpenSCAD-style artifact drafts, save-as-`.scad`, and saved parameter revisions separate from the still-unshipped OpenSCAD mesh runtime and future LiteCAD-native OCCT feature DSL. Also updated `docs/browser-cad-kernel-roadmap.md` and `.agents/rules/threejs-viewer.md` so later viewer work treats `.scad` records as source assets, not renderable Three.js geometry or durable B-rep shape state.
+
+- [x] **Step 4: Final verification bundle**
 
 Run:
 
@@ -1343,14 +1347,27 @@ task test-browser
 Expected:
 
 - All commands pass.
-- Browser smoke covers Assistant conversation creation, generated artifact preview, parameter edit, save as model, reload, and no unexpected browser errors.
+- Browser smoke covers the currently implemented Assistant/workbench shell without unexpected browser errors. Generated artifact mesh preview, browser save smoke, and nonblank OpenSCAD preview remain deferred until the OpenSCAD runtime gate is resolved.
 
-- [ ] **Step 5: Commit**
+Actual Task 10 verification on 2026-07-11:
+
+```bash
+git diff --check
+task check
+task test
+task test-browser
+```
+
+Result: all commands passed. `task test` reported 42 frontend test files and 168 Vitest tests passing. `task test-browser` reported the deterministic project workbench, History, and Assistant smoke passing without unexpected browser errors.
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md TODO.md AGENTS.md .agents/rules docs
 git commit -m "docs(project): document parametric assistant"
 ```
+
+Committed and pushed on 2026-07-11 as `docs(project): document parametric assistant`.
 
 ---
 
