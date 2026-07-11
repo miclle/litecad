@@ -150,6 +150,97 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts LiteCAD feature DSL cylinder and cylinder-cut features', () => {
+    const document = {
+      version: 1,
+      unit: 'millimetre',
+      parameters: {
+        hole_diameter: { type: 'number', default: 8, min: 2, max: 20 },
+        boss_radius: { type: 'number', default: 6 },
+      },
+      features: [
+        {
+          id: 'plate',
+          type: 'box',
+          size: [80, 40, 6],
+        },
+        {
+          id: 'boss',
+          type: 'cylinder',
+          origin: [20, 20, 6],
+          radius: 'boss_radius',
+          height: 10,
+        },
+        {
+          id: 'mount_hole',
+          type: 'cylinder_cut',
+          origin: [40, 20, -1],
+          diameter: 'hole_diameter',
+          depth: 8,
+        },
+      ],
+    }
+
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-cylinder-preview',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'plate-with-hole.lcad.json',
+          document,
+          parameterValues: { hole_diameter: 10, boss_radius: 7 },
+        },
+      }),
+    ).toBe(true)
+  })
+
+  test('rejects malformed LiteCAD feature DSL cylinder features', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-bad-cylinder',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'bad.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            features: [
+              {
+                id: 'ambiguous',
+                type: 'cylinder',
+                origin: [0, 0, 0],
+                radius: 5,
+                diameter: 10,
+                height: 8,
+              },
+            ],
+          },
+        },
+      }),
+    ).toBe(false)
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-bad-cut',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'bad.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            features: [
+              {
+                id: 'missing-depth',
+                type: 'cylinder_cut',
+                origin: [0, 0, 0],
+                radius: 5,
+              },
+            ],
+          },
+        },
+      }),
+    ).toBe(false)
+  })
+
   test('rejects malformed worker requests before they reach the kernel', () => {
     expect(isCadKernelRequest({ id: 'job-1', type: 'step-round-trip', payload: { filename: 'part.step' } })).toBe(false)
     expect(isCadKernelRequest({ id: 'job-1', type: 'unknown', payload: { stepText: 'x' } })).toBe(false)

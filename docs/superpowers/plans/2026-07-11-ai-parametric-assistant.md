@@ -1774,6 +1774,133 @@ Remaining after this task:
 
 ---
 
+### Task 15: LiteCAD feature DSL cylinder and cut features
+
+**Why this task exists:** Saved LiteCAD feature DSL models now preview and export, but the DSL can only create boxes. Text-to-parameterized model generation needs at least common boss/hole primitives before it is useful for brackets, clamps, and plates. This task adds a narrow OCCT-backed cylinder foundation without claiming a full sketch/extrude or B-rep feature graph.
+
+**Files:**
+- Modify: `website/src/cad/kernel-protocol.ts`
+- Modify: `website/src/cad/opencascade-step.ts`
+- Test: `website/src/cad/kernel-protocol.test.ts`
+- Test: `website/src/cad/opencascade-step.test.ts`
+- Modify docs: `docs/ai-parametric-assistant.md`, `docs/browser-cad-kernel-roadmap.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- Add DSL feature:
+  - `{ "id": "...", "type": "cylinder", "origin": [x, y, z], "radius": r, "height": h }`
+  - `{ "id": "...", "type": "cylinder", "origin": [x, y, z], "diameter": d, "height": h }`
+- Add DSL feature:
+  - `{ "id": "...", "type": "cylinder_cut", "origin": [x, y, z], "radius": r, "depth": h }`
+  - `{ "id": "...", "type": "cylinder_cut", "origin": [x, y, z], "diameter": d, "depth": h }`
+- `origin`, `radius`/`diameter`, `height`, and `depth` accept numeric literals or numeric parameter names.
+- First milestone cylinders are Z-axis only.
+- `cylinder` contributes an additive shape to the document compound.
+- `cylinder_cut` subtracts from the accumulated prior shape and must not be the first feature.
+
+- [x] **Step 1: Write failing worker/protocol tests**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+```
+
+Expected failures:
+
+- Protocol validation rejects `cylinder` and `cylinder_cut` features.
+- The OCCT worker compiler does not construct `BRepPrimAPI_MakeCylinder_3`.
+- The OCCT worker compiler does not call `BRepAlgoAPI_Cut_3` for `cylinder_cut`.
+
+Verification result on 2026-07-11:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` failed as expected: protocol validation returned `false` for cylinder/cut DSL, and the compiler threw `Unsupported feature DSL type: cylinder` / `cylinder_cut`.
+
+- [x] **Step 2: Implement protocol types and validation**
+
+Extend `CadKernelFeatureDSLFeature` with `cylinder` and `cylinder_cut`. Keep validation strict:
+
+- Exactly one of `radius` or `diameter` is accepted.
+- Radius, derived radius, height, and depth must be positive after parameter resolution.
+- `origin` must be a three-entry numeric expression tuple.
+
+- [x] **Step 3: Implement OCCT geometry compile path**
+
+Add helpers that:
+
+- Resolve scalar expressions from literals or parameter names.
+- Build Z-axis cylinders with `gp_Pnt_3`, `gp_Dir_4(0, 0, 1)`, `gp_Ax2_3(...)`, and `BRepPrimAPI_MakeCylinder_3(...)`.
+- Accumulate additive features in order.
+- Apply `BRepAlgoAPI_Cut_3(...)` for `cylinder_cut`.
+- Continue using compounds when there are multiple additive solids.
+
+- [x] **Step 4: Browser worker smoke**
+
+Run a real Vite/Chromium worker check that compiles a box plate with a parameterized through-hole:
+
+```json
+{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "hole_diameter": { "type": "number", "default": 8, "min": 2, "max": 20 }
+  },
+  "features": [
+    { "id": "plate", "type": "box", "size": [80, 40, 6] },
+    { "id": "hole", "type": "cylinder_cut", "origin": [40, 20, -1], "diameter": "hole_diameter", "depth": 8 }
+  ]
+}
+```
+
+Expected:
+
+- `feature-dsl-preview` returns a nonblank mesh.
+- `feature-dsl-export` returns STEP text containing `ISO-10303-21` and `END-ISO-10303-21`.
+
+Verification result on 2026-07-11:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` passed with 2 files and 19 tests.
+- Real browser worker smoke through Vite/Chromium compiled a box plate with a parameterized `cylinder_cut` through-hole. `feature-dsl-preview` returned `vertexCount: 130`, `triangleCount: 120`, and `hasNormals: true`; `feature-dsl-export` returned STEP text beginning with `ISO-10303-21`, containing `END-ISO-10303-21`, and measuring 19014 bytes. The only console output was OCCT transfer statistics.
+
+- [x] **Step 5: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+npm --prefix website run build
+git diff --check
+task check
+task test
+task test-browser
+git add website/src/cad docs TODO.md AGENTS.md .agents/rules
+git commit -m "feat(cad): add feature dsl cylinder cuts"
+git push
+```
+
+Expected:
+
+- Existing box-only DSL models remain valid.
+- New cylinder/cylinder-cut DSL models preview and export through the existing worker requests.
+- Documentation states this is still a minimal Z-axis primitive set, not durable B-rep feature history.
+
+Verification result on 2026-07-11:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` passed with 2 files and 19 tests.
+- `npm --prefix website run build` passed. Vite still reports the existing WASM large chunk and browser-externalized Node module warnings for the OCCT bundle.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed with Go race tests and 43 frontend test files / 185 Vitest tests.
+- `task test-browser` passed with the project workbench, History, and Assistant smoke.
+- Code review found no blocking issue; the new DSL features remain limited to Z-axis `cylinder` and `cylinder_cut` primitives.
+- Commit result: `feat(cad): add feature dsl cylinder cuts`, pushed to `origin/main`.
+
+Remaining after this task:
+
+- The DSL still lacks sketches, extrudes, fillets/chamfers, patterns, arbitrary-axis primitives, and CAD document History integration for generated DSL features.
+- OpenSCAD mesh preview/export remains unavailable until a compatible runtime is deliberately selected and bundled.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

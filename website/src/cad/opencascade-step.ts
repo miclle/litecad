@@ -258,29 +258,102 @@ function compileFeatureDSLShape(
   parameterValues: Record<string, number> = {},
 ) {
   const parameters = resolveFeatureDSLParameters(document, parameterValues)
-  const shapes = document.features.map((feature) => {
+  let accumulatedShape: any | undefined
+  for (const feature of document.features) {
     if (feature.type === 'box') {
-      const size = resolveFeatureDSLVector(feature.size, parameters)
-      const origin = resolveFeatureDSLVector(feature.origin ?? [0, 0, 0], parameters)
-      if (size.some((value) => value <= 0)) {
-        throw new Error(`Feature ${feature.id} box dimensions must be positive`)
+      accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLBoxShape(openCascade, feature, parameters))
+      continue
+    }
+    if (feature.type === 'cylinder') {
+      accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'height'))
+      continue
+    }
+    if (feature.type === 'cylinder_cut') {
+      if (!accumulatedShape) {
+        throw new Error(`Feature ${feature.id} cylinder_cut requires a prior solid feature`)
       }
-      if (origin.every((value) => value === 0)) {
-        const boxBuilder = new openCascade.BRepPrimAPI_MakeBox_2(size[0] ?? 1, size[1] ?? 1, size[2] ?? 1)
-        boxBuilder.Build(new openCascade.Message_ProgressRange_1())
-        return boxBuilder.Shape()
-      }
-      const originPoint = new openCascade.gp_Pnt_3(origin[0] ?? 0, origin[1] ?? 0, origin[2] ?? 0)
-      const boxBuilder = new openCascade.BRepPrimAPI_MakeBox_3(originPoint, size[0] ?? 1, size[1] ?? 1, size[2] ?? 1)
-      boxBuilder.Build(new openCascade.Message_ProgressRange_1())
-      return boxBuilder.Shape()
+      const cutterShape = buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'depth')
+      const cutBuilder = new openCascade.BRepAlgoAPI_Cut_3(
+        accumulatedShape,
+        cutterShape,
+        new openCascade.Message_ProgressRange_1(),
+      )
+      accumulatedShape = cutBuilder.Shape()
+      continue
     }
     throw new Error(`Unsupported feature DSL type: ${(feature as { type?: string }).type}`)
-  })
-  if (shapes.length === 0) {
+  }
+  if (!accumulatedShape) {
     throw new Error('Feature DSL document has no features')
   }
-  return shapes.length === 1 ? shapes[0] : compoundShapes(openCascade, shapes)
+  return accumulatedShape
+}
+
+function appendFeatureDSLShape(openCascade: OpenCascadeModule, accumulatedShape: any | undefined, nextShape: any) {
+  return accumulatedShape ? compoundShapes(openCascade, [accumulatedShape, nextShape]) : nextShape
+}
+
+function buildFeatureDSLBoxShape(openCascade: OpenCascadeModule, feature: { id: string; origin?: readonly (number | string)[]; size: readonly (number | string)[] }, parameters: Record<string, number>) {
+  const size = resolveFeatureDSLVector(feature.size, parameters)
+  const origin = resolveFeatureDSLVector(feature.origin ?? [0, 0, 0], parameters)
+  if (size.some((value) => value <= 0)) {
+    throw new Error(`Feature ${feature.id} box dimensions must be positive`)
+  }
+  if (origin.every((value) => value === 0)) {
+    const boxBuilder = new openCascade.BRepPrimAPI_MakeBox_2(size[0] ?? 1, size[1] ?? 1, size[2] ?? 1)
+    boxBuilder.Build(new openCascade.Message_ProgressRange_1())
+    return boxBuilder.Shape()
+  }
+  const originPoint = new openCascade.gp_Pnt_3(origin[0] ?? 0, origin[1] ?? 0, origin[2] ?? 0)
+  const boxBuilder = new openCascade.BRepPrimAPI_MakeBox_3(originPoint, size[0] ?? 1, size[1] ?? 1, size[2] ?? 1)
+  boxBuilder.Build(new openCascade.Message_ProgressRange_1())
+  return boxBuilder.Shape()
+}
+
+function buildFeatureDSLCylinderShape(
+  openCascade: OpenCascadeModule,
+  feature: {
+    id: string
+    origin: readonly (number | string)[]
+    radius?: number | string
+    diameter?: number | string
+    height?: number | string
+    depth?: number | string
+  },
+  parameters: Record<string, number>,
+  lengthKey: 'height' | 'depth',
+) {
+  const origin = resolveFeatureDSLVector(feature.origin, parameters)
+  const radius = resolveFeatureDSLRadius(feature, parameters)
+  const lengthExpression = feature[lengthKey]
+  if (lengthExpression === undefined) {
+    throw new Error(`Feature ${feature.id} cylinder ${lengthKey} is required`)
+  }
+  const length = resolveFeatureDSLScalar(lengthExpression, parameters)
+  if (radius <= 0 || length <= 0) {
+    throw new Error(`Feature ${feature.id} cylinder dimensions must be positive`)
+  }
+  const originPoint = new openCascade.gp_Pnt_3(origin[0] ?? 0, origin[1] ?? 0, origin[2] ?? 0)
+  const direction = new openCascade.gp_Dir_4(0, 0, 1)
+  const axis = new openCascade.gp_Ax2_3(originPoint, direction)
+  const cylinderBuilder = new openCascade.BRepPrimAPI_MakeCylinder_3(axis, radius, length)
+  cylinderBuilder.Build(new openCascade.Message_ProgressRange_1())
+  return cylinderBuilder.Shape()
+}
+
+function resolveFeatureDSLRadius(
+  feature: { id: string; radius?: number | string; diameter?: number | string },
+  parameters: Record<string, number>,
+) {
+  const hasRadius = feature.radius !== undefined
+  const hasDiameter = feature.diameter !== undefined
+  if (hasRadius === hasDiameter) {
+    throw new Error(`Feature ${feature.id} cylinder requires exactly one of radius or diameter`)
+  }
+  if (hasRadius) {
+    return resolveFeatureDSLScalar(feature.radius ?? 0, parameters)
+  }
+  return resolveFeatureDSLScalar(feature.diameter ?? 0, parameters) / 2
 }
 
 function resolveFeatureDSLParameters(document: CadKernelFeatureDSLDocument, parameterValues: Record<string, number>) {
@@ -307,16 +380,18 @@ function resolveFeatureDSLParameters(document: CadKernelFeatureDSLDocument, para
 }
 
 function resolveFeatureDSLVector(values: readonly (number | string)[], parameters: Record<string, number>) {
-  return values.map((value) => {
-    if (typeof value === 'number') {
-      return value
-    }
-    const parameterValue = parameters[value]
-    if (parameterValue === undefined) {
-      throw new Error(`Unknown feature DSL parameter reference: ${value}`)
-    }
-    return parameterValue
-  })
+  return values.map((value) => resolveFeatureDSLScalar(value, parameters))
+}
+
+function resolveFeatureDSLScalar(value: number | string, parameters: Record<string, number>) {
+  if (typeof value === 'number') {
+    return value
+  }
+  const parameterValue = parameters[value]
+  if (parameterValue === undefined) {
+    throw new Error(`Unknown feature DSL parameter reference: ${value}`)
+  }
+  return parameterValue
 }
 
 function importStepShape(openCascade: OpenCascadeModule, input: CadKernelStepRoundTripInput) {

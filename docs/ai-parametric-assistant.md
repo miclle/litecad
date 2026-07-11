@@ -14,7 +14,7 @@ The LiteCAD-native feature DSL path is now connected to Assistant tool validatio
 
 Imported STEP, GLB, GLTF, and STL files are source assets. AI-generated parameterized models are also source assets. Supported generated-source kinds are OpenSCAD-style source and LiteCAD feature DSL JSON.
 
-Because the OpenSCAD runtime remains blocked by license or distribution constraints, LiteCAD feature DSL JSON is the preferred generated-source kind. The current DSL foundation supports numeric, boolean, and string parameter metadata at the artifact/model layer, and numeric-parameter `box` features in the OCCT worker compiler.
+Because the OpenSCAD runtime remains blocked by license or distribution constraints, LiteCAD feature DSL JSON is the preferred generated-source kind. The current DSL foundation supports numeric, boolean, and string parameter metadata at the artifact/model layer, and numeric-parameter Z-axis `box`, `cylinder`, and `cylinder_cut` features in the OCCT worker compiler.
 
 ## Dependency Decision
 
