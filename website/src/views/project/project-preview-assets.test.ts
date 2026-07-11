@@ -80,7 +80,7 @@ describe('project preview assets', () => {
     expect(buildProjectPreviewAssets([scadModel], [], {})).toEqual([])
   })
 
-  test('keeps saved LiteCAD feature DSL sources in the tree without inventing URL preview assets', () => {
+  test('uses browser-kernel mesh data for saved LiteCAD feature DSL sources', () => {
     const lcadModel = {
       ...baseModel,
       id: 'mdl_lcad',
@@ -97,9 +97,24 @@ describe('project preview assets', () => {
         parameter_values: { width: 96 },
       },
     } satisfies ProjectModel
+    const mesh = {
+      positions: [0, 0, 0, 96, 0, 0, 0, 42, 0],
+      normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+      indices: [0, 1, 2],
+    }
 
     expect(buildProjectModelTree([lcadModel])).toMatchObject([{ model: lcadModel, displayName: 'Feature DSL bracket' }])
-    expect(buildProjectPreviewAssets([lcadModel], [], {})).toEqual([])
+    expect(
+      buildProjectPreviewAssets([lcadModel], [], {}, { mdl_lcad: { mesh, meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true } } }),
+    ).toEqual([
+      {
+        modelId: 'mdl_lcad',
+        name: 'Feature DSL bracket',
+        previewFormat: 'kernel-mesh',
+        mesh,
+        meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true },
+      },
+    ])
   })
 
   test('builds one preview asset for each model with a ready preview URL', () => {

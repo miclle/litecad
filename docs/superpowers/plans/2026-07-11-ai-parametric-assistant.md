@@ -1555,16 +1555,108 @@ Verification result on 2026-07-11:
 - `task test` passed with 42 frontend test files and 177 Vitest tests.
 - `task test-browser` passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/service internal/handler website/src docs TODO.md AGENTS.md .agents/rules
 git commit -m "feat(agent): persist feature dsl artifacts"
 ```
 
+Committed and pushed on 2026-07-11 as `feat(agent): persist feature dsl artifacts`.
+
 Remaining after this task:
 
-- Project workbench preview does not yet route saved `.lcad.json` models through `feature-dsl-preview`.
+- Project export UI does not yet expose saved DSL model STEP export through `feature-dsl-export`.
+- The DSL still supports only the minimal worker feature set from Task 11.
+
+---
+
+### Task 13: Saved LiteCAD feature DSL project preview
+
+**Why this task exists:** Task 12 made LiteCAD feature DSL artifacts durable project assets, but saved `.lcad.json` models still appeared only as source records. This task routes saved DSL project models through the existing browser CAD kernel `feature-dsl-preview` path so generated parametric source can produce a real workbench mesh.
+
+**Files:**
+- Modify: `website/src/views/project/index.tsx`
+- Modify: `website/src/views/project/project-preview-assets.ts`
+- Create: `website/src/views/project/project-feature-dsl-preview.ts`
+- Test: `website/src/views/project/project-feature-dsl-preview.test.ts`
+- Test: `website/src/views/project/project-preview-assets.test.ts`
+- Modify docs: `docs/ai-parametric-assistant.md`, `docs/browser-cad-kernel-roadmap.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, `.agents/rules/threejs-viewer.md`, this plan
+
+**Interfaces:**
+- Saved `format = "lcad"` models use `fetchProjectModelSource(...)` to load `.lcad.json` source text.
+- The project view builds `CadKernelFeatureDSLInput` from source JSON plus numeric saved parameter values.
+- The project view calls `runFeatureDSLPreviewInWorker(...)`.
+- `buildProjectPreviewAssets(...)` treats `lcad` worker results as `kernel-mesh` preview assets.
+- Backend preview artifact fetches are skipped for `lcad` models.
+
+- [x] **Step 1: Write failing tests**
+
+RED tests added:
+
+```bash
+npm --prefix website test -- project-feature-dsl-preview project-preview-assets
+```
+
+Expected failures were observed:
+
+- `project-feature-dsl-preview.ts` did not exist.
+- `buildProjectPreviewAssets(...)` returned no preview asset for an `lcad` model even when worker mesh data was available.
+
+- [x] **Step 2: Add feature DSL preview input helper**
+
+Implemented `buildFeatureDSLPreviewInput(...)` to parse saved `.lcad.json` source and pass only numeric saved parameter values declared by the DSL document to the worker.
+
+- [x] **Step 3: Wire project preview**
+
+Implemented:
+
+- `browserKernelFeatureDSLPreviewModels` in the project route.
+- `runFeatureDSLPreviewInWorker(...)` React Query calls for saved `lcad` models.
+- Combined STEP and DSL worker results into the existing `kernelMeshesByModelID` map.
+- Excluded `lcad` from backend preview-artifact queries.
+- Allowed `buildProjectPreviewAssets(...)` to emit `kernel-mesh` assets for saved `lcad` models.
+
+- [x] **Step 4: Verify**
+
+Run:
+
+```bash
+npm --prefix website test -- project-feature-dsl-preview project-preview-assets index
+npm --prefix website run build
+git diff --check
+task check
+task test
+task test-browser
+```
+
+Expected:
+
+- Saved `.lcad.json` models produce `kernel-mesh` preview assets when `feature-dsl-preview` returns mesh data.
+- Existing STEP browser-kernel preview remains green.
+- Backend GLB/GLTF/STL preview paths remain unchanged.
+- Browser smoke remains green.
+
+Verification result on 2026-07-11:
+
+- `npm --prefix website test -- project-feature-dsl-preview project-preview-assets` passed after the RED failures.
+- `npm --prefix website test -- project-feature-dsl-preview project-preview-assets index` passed with 3 files and 25 tests.
+- `npm --prefix website run build` passed. Vite still reports the existing WASM large chunk and browser-externalized Node module warnings for the OCCT bundle.
+- Real browser worker smoke through Vite/Chromium imported `buildFeatureDSLPreviewInput(...)` and `runFeatureDSLPreviewInWorker(...)`; a saved-model-shaped `.lcad.json` source produced `vertexCount: 24`, `triangleCount: 12`, `hasNormals: true`, 72 position values, 72 normal values, and 36 indices with no console messages or HTTP 404s.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed with 43 frontend test files and 179 Vitest tests.
+- `task test-browser` passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add website/src/views/project docs TODO.md AGENTS.md .agents/rules
+git commit -m "feat(projects): preview feature dsl models"
+```
+
+Remaining after this task:
+
 - Project export UI does not yet expose saved DSL model STEP export through `feature-dsl-export`.
 - The DSL still supports only the minimal worker feature set from Task 11.
 

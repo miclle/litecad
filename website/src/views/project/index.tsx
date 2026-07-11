@@ -45,6 +45,7 @@ import {
   uploadProjectModel,
 } from 'src/api/projects'
 import {
+  runFeatureDSLPreviewInWorker,
   runStepAssemblyExportInWorker,
   runStepPreviewInWorker,
   runStepRoundTripInWorker,
@@ -84,6 +85,7 @@ import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
 import { ProjectAssistantPanel, type AiChatMessage } from './project-assistant-panel'
+import { buildFeatureDSLPreviewInput } from './project-feature-dsl-preview'
 import { ProjectHistoryPopover } from './project-history-popover'
 import { ProjectInspector, type ProjectInspectorSelection, type TransformDraft } from './project-inspector'
 import { ProjectModelTree } from './project-model-tree'
@@ -603,12 +605,13 @@ function ProjectView() {
     return translations
   }, [cadNodeByID, transformDraftsByModelID])
   const previewModels = useMemo(() => parsedPreviewModels(projectModels), [projectModels])
-  const browserKernelPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'step'), [previewModels])
-  const backendPreviewModels = useMemo(() => previewModels.filter((model) => model.format !== 'step'), [previewModels])
+  const browserKernelStepPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'step'), [previewModels])
+  const browserKernelFeatureDSLPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'lcad'), [previewModels])
+  const backendPreviewModels = useMemo(() => previewModels.filter((model) => model.format !== 'step' && model.format !== 'lcad'), [previewModels])
   const latestModel = projectModels[0]
   const latestProductName = latestModel?.metadata.product_names?.[0]
   const browserKernelPreviewQueries = useQueries({
-    queries: browserKernelPreviewModels.map((model) => {
+    queries: browserKernelStepPreviewModels.map((model) => {
       const geometryOperationSignature = cadKernelGeometryOperationSignature(projectCADDocument, model.id)
       return {
         queryKey: ['projects', projectId, 'models', model.id, 'kernel-preview', geometryOperationSignature],
@@ -625,9 +628,20 @@ function ProjectView() {
       }
     }),
   })
+  const browserKernelFeatureDSLPreviewQueries = useQueries({
+    queries: browserKernelFeatureDSLPreviewModels.map((model) => ({
+      queryKey: ['projects', projectId, 'models', model.id, 'feature-dsl-preview', model.updated_at, stableJSONStringify(model.metadata.parameter_values ?? {})],
+      queryFn: async () => {
+        const sourceText = await (await fetchProjectModelSource(projectId, model.id)).data.text()
+        return runFeatureDSLPreviewInWorker(buildFeatureDSLPreviewInput(model, sourceText))
+      },
+      enabled: projectId !== '',
+      retry: false,
+    })),
+  })
   const kernelMeshesByModelID = browserKernelPreviewQueries.reduce<Record<string, CadKernelWorkerPreviewResult>>(
     (meshByModelID, query, index) => {
-      const modelID = browserKernelPreviewModels[index]?.id
+      const modelID = browserKernelStepPreviewModels[index]?.id
       if (modelID && query.data) {
         meshByModelID[modelID] = query.data
       }
@@ -635,6 +649,12 @@ function ProjectView() {
     },
     {},
   )
+  browserKernelFeatureDSLPreviewQueries.forEach((query, index) => {
+    const modelID = browserKernelFeatureDSLPreviewModels[index]?.id
+    if (modelID && query.data) {
+      kernelMeshesByModelID[modelID] = query.data
+    }
+  })
   const projectModelPreviewArtifactQueries = useQueries({
     queries: backendPreviewModels.map((model) => ({
       queryKey: ['projects', projectId, 'models', model.id, 'preview-artifact'],
@@ -1678,6 +1698,14 @@ function ProjectView() {
 
 function isParametricProjectModelFormat(format: string | undefined) {
   return format === 'scad' || format === 'lcad'
+}
+
+function stableJSONStringify(value: Record<string, unknown>) {
+  const ordered: Record<string, unknown> = {}
+  for (const key of Object.keys(value).sort()) {
+    ordered[key] = value[key]
+  }
+  return JSON.stringify(ordered)
 }
 
 export default ProjectView

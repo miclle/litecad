@@ -108,7 +108,7 @@ export function buildProjectPreviewAssets(
   }
 
   return visibleProjectModels(models, cadDocument).flatMap((model): ProjectPreviewAsset[] => {
-    const kernelMesh = model.format === 'step' ? kernelMeshesByModelID[model.id] : undefined
+    const kernelMesh = model.format === 'step' || model.format === 'lcad' ? kernelMeshesByModelID[model.id] : undefined
     const transform = transformByModelID.get(model.id)
     if (kernelMesh) {
       const geometrySignature = cadKernelGeometryOperationSignature(cadDocument, model.id)
