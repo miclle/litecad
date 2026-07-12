@@ -317,6 +317,13 @@ test('opens the project workbench, History, and Assistant without browser errors
   await expect(page.getByRole('heading', { name: 'Smoke bracket' })).toBeVisible()
   await expect(page.getByLabel('width parameter')).toBeVisible()
   await expect(page.getByText('success')).toBeVisible()
+  const generatedParameterBounds = await page.getByLabel('width parameter').boundingBox()
+  const generatedInspectorBounds = await page.getByRole('region', { name: 'Parametric artifact' }).boundingBox()
+  expect(generatedParameterBounds).not.toBeNull()
+  expect(generatedInspectorBounds).not.toBeNull()
+  expect(generatedParameterBounds!.x + generatedParameterBounds!.width).toBeLessThanOrEqual(
+    generatedInspectorBounds!.x + generatedInspectorBounds!.width + 1,
+  )
   await expect(page.getByRole('option', { name: 'Smoke bracket' })).toBeVisible()
   await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
   expect(smokeArtifactUpdateCount).toBe(1)

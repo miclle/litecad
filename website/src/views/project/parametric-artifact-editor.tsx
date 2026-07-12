@@ -88,7 +88,7 @@ export function ParametricArtifactEditor({
   }, [artifact.id, onSaveAsModel, onSaveParameters, parameterSignature, parameterValues, preview.isCurrent, preview.status, shouldAutoSaveOnPreviewSuccess])
 
   return (
-    <section aria-label="Parametric artifact" className="mt-4 border-t border-[#e2e8f0] pt-4">
+    <section aria-label="Parametric artifact" className="mt-4 min-w-0 overflow-hidden border-t border-[#e2e8f0] pt-4">
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-mono text-[11px] uppercase text-[#64748b]">Generated source</p>
@@ -104,17 +104,17 @@ export function ParametricArtifactEditor({
         </span>
       </div>
 
-      <FieldSet className="mt-3 gap-3">
+      <FieldSet className="mt-3 min-w-0 gap-3">
         {preview.parameters.length > 0 ? (
-          <FieldGroup className="gap-2">
+          <FieldGroup className="min-w-0 gap-2">
             <FieldTitle className="text-xs text-[#334155]">Parameters</FieldTitle>
-            <div className="grid gap-2">
+            <div className="grid min-w-0 gap-2">
               {preview.parameters.map((parameter) => {
                 const value = parameterValues[parameter.name] ?? parameter.value
                 if (parameter.type === 'number') {
                   const range = parameter.range ?? { min: 0, step: 1, max: Math.max(Number(value) || 1, 1) * 2 }
                   return (
-                    <Field className="gap-1" key={parameter.name}>
+                    <Field className="min-w-0 gap-1" key={parameter.name}>
                       <div className="flex items-center justify-between gap-2">
                         <FieldLabel className="font-mono text-[10px] uppercase text-[#64748b]">{parameter.name}</FieldLabel>
                         <Input
@@ -128,7 +128,7 @@ export function ParametricArtifactEditor({
                       </div>
                       <input
                         aria-label={`${parameter.name} parameter`}
-                        className="h-5 w-full accent-[#1d4ed8]"
+                        className="h-5 min-w-0 max-w-full accent-[#1d4ed8]"
                         max={range.max}
                         min={range.min}
                         onChange={(event) => updateParameterValue(parameter.name, Number(event.target.value))}
@@ -155,7 +155,7 @@ export function ParametricArtifactEditor({
                 }
                 if (parameter.type === 'color') {
                   return (
-                    <Field className="gap-1" key={parameter.name}>
+                    <Field className="min-w-0 gap-1" key={parameter.name}>
                       <FieldLabel className="font-mono text-[10px] uppercase text-[#64748b]">{parameter.name}</FieldLabel>
                       <Input
                         aria-label={`${parameter.name} parameter`}
@@ -169,7 +169,7 @@ export function ParametricArtifactEditor({
                 }
                 if (parameter.options && parameter.options.length > 0) {
                   return (
-                    <Field className="gap-1" key={parameter.name}>
+                    <Field className="min-w-0 gap-1" key={parameter.name}>
                       <FieldLabel className="font-mono text-[10px] uppercase text-[#64748b]">{parameter.name}</FieldLabel>
                       <select
                         aria-label={`${parameter.name} parameter`}
@@ -187,7 +187,7 @@ export function ParametricArtifactEditor({
                   )
                 }
                 return (
-                  <Field className="gap-1" key={parameter.name}>
+                  <Field className="min-w-0 gap-1" key={parameter.name}>
                     <FieldLabel className="font-mono text-[10px] uppercase text-[#64748b]">{parameter.name}</FieldLabel>
                     <Input
                       aria-label={`${parameter.name} parameter`}
@@ -210,7 +210,7 @@ export function ParametricArtifactEditor({
           </FieldError>
         ) : null}
 
-        <pre className="max-h-44 overflow-auto rounded-md border border-[#e2e8f0] bg-[#f8fafc] p-2 font-mono text-[10px] leading-4 text-[#334155]">
+        <pre className="max-h-44 min-w-0 max-w-full overflow-auto rounded-md border border-[#e2e8f0] bg-[#f8fafc] p-2 font-mono text-[10px] leading-4 text-[#334155]">
           {artifact.source_code}
         </pre>
 
