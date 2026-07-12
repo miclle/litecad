@@ -498,8 +498,10 @@ type liteCADFeatureDSLValidationFeature struct {
 }
 
 type liteCADFeatureDSLValidationSketch struct {
-	Type string `json:"type"`
-	Size []any  `json:"size"`
+	Type     string `json:"type"`
+	Size     []any  `json:"size"`
+	Radius   any    `json:"radius"`
+	Diameter any    `json:"diameter"`
 }
 
 type liteCADFeatureDSLValidationRepeat struct {
@@ -653,11 +655,8 @@ func validateLiteCADFeatureDSLBoxCutFeature(feature liteCADFeatureDSLValidationF
 }
 
 func validateLiteCADFeatureDSLExtrudeFeature(feature liteCADFeatureDSLValidationFeature, parameterNames map[string]struct{}) error {
-	if feature.Sketch == nil || feature.Sketch.Type != "rectangle" {
+	if err := validateLiteCADFeatureDSLSketch(feature.Sketch, parameterNames); err != nil {
 		return ErrInvalidProjectParametricArtifactInput
-	}
-	if err := validateLiteCADFeatureDSLPositiveExpressionTuple(feature.Sketch.Size, 2, parameterNames); err != nil {
-		return err
 	}
 	if feature.Origin != nil {
 		if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameterNames); err != nil {
@@ -671,11 +670,8 @@ func validateLiteCADFeatureDSLExtrudeFeature(feature liteCADFeatureDSLValidation
 }
 
 func validateLiteCADFeatureDSLExtrudeCutFeature(feature liteCADFeatureDSLValidationFeature, parameterNames map[string]struct{}) error {
-	if feature.Sketch == nil || feature.Sketch.Type != "rectangle" {
+	if err := validateLiteCADFeatureDSLSketch(feature.Sketch, parameterNames); err != nil {
 		return ErrInvalidProjectParametricArtifactInput
-	}
-	if err := validateLiteCADFeatureDSLPositiveExpressionTuple(feature.Sketch.Size, 2, parameterNames); err != nil {
-		return err
 	}
 	if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameterNames); err != nil {
 		return err
@@ -684,6 +680,31 @@ func validateLiteCADFeatureDSLExtrudeCutFeature(feature liteCADFeatureDSLValidat
 		return err
 	}
 	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameterNames)
+}
+
+func validateLiteCADFeatureDSLSketch(sketch *liteCADFeatureDSLValidationSketch, parameterNames map[string]struct{}) error {
+	if sketch == nil {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	switch sketch.Type {
+	case "rectangle":
+		return validateLiteCADFeatureDSLPositiveExpressionTuple(sketch.Size, 2, parameterNames)
+	case "circle":
+		hasRadius := sketch.Radius != nil
+		hasDiameter := sketch.Diameter != nil
+		if hasRadius == hasDiameter {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		if len(sketch.Size) != 0 {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		if hasRadius {
+			return validateLiteCADFeatureDSLPositiveExpression(sketch.Radius, parameterNames)
+		}
+		return validateLiteCADFeatureDSLPositiveExpression(sketch.Diameter, parameterNames)
+	default:
+		return ErrInvalidProjectParametricArtifactInput
+	}
 }
 
 func validateLiteCADFeatureDSLCylinderLikeFeature(feature liteCADFeatureDSLValidationFeature, lengthName string, lengthValue any, parameterNames map[string]struct{}) error {

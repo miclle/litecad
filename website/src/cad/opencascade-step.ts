@@ -1,8 +1,10 @@
 import type {
   CadKernelFeatureDSLArithmeticExpression,
+  CadKernelFeatureDSLCircleSketch,
   CadKernelFeatureDSLDocument,
   CadKernelFeatureDSLExpression,
   CadKernelFeatureDSLInput,
+  CadKernelFeatureDSLSketch,
   CadKernelMesh,
   CadKernelOperation,
 } from './kernel-protocol'
@@ -377,15 +379,18 @@ function buildFeatureDSLExtrudeShape(
   feature: {
     id: string
     origin?: readonly CadKernelFeatureDSLExpression[]
-    sketch: { type: 'rectangle'; size: readonly CadKernelFeatureDSLExpression[] }
+    sketch: CadKernelFeatureDSLSketch
     height: CadKernelFeatureDSLExpression
   },
   parameters: Record<string, number>,
   repeatedOrigin?: readonly number[],
 ) {
   const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin ?? [0, 0, 0], parameters)
-  const sketchSize = resolveFeatureDSLVector(feature.sketch.size, parameters)
   const height = resolveFeatureDSLScalar(feature.height, parameters)
+  if (feature.sketch.type === 'circle') {
+    return buildFeatureDSLCirclePrismShape(openCascade, feature.id, origin, feature.sketch, parameters, height, 'extrude')
+  }
+  const sketchSize = resolveFeatureDSLVector(feature.sketch.size, parameters)
   return buildFeatureDSLRectanglePrismShape(openCascade, feature.id, origin, sketchSize, height, 'extrude')
 }
 
@@ -394,16 +399,40 @@ function buildFeatureDSLExtrudeCutShape(
   feature: {
     id: string
     origin: readonly CadKernelFeatureDSLExpression[]
-    sketch: { type: 'rectangle'; size: readonly CadKernelFeatureDSLExpression[] }
+    sketch: CadKernelFeatureDSLSketch
     depth: CadKernelFeatureDSLExpression
   },
   parameters: Record<string, number>,
   repeatedOrigin?: readonly number[],
 ) {
   const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin, parameters)
-  const sketchSize = resolveFeatureDSLVector(feature.sketch.size, parameters)
   const depth = resolveFeatureDSLScalar(feature.depth, parameters)
+  if (feature.sketch.type === 'circle') {
+    return buildFeatureDSLCirclePrismShape(openCascade, feature.id, origin, feature.sketch, parameters, depth, 'extrude_cut')
+  }
+  const sketchSize = resolveFeatureDSLVector(feature.sketch.size, parameters)
   return buildFeatureDSLRectanglePrismShape(openCascade, feature.id, origin, sketchSize, depth, 'extrude_cut')
+}
+
+function buildFeatureDSLCirclePrismShape(
+  openCascade: OpenCascadeModule,
+  featureID: string,
+  origin: readonly number[],
+  sketch: CadKernelFeatureDSLCircleSketch,
+  parameters: Record<string, number>,
+  length: number,
+  label: string,
+) {
+  const radius = resolveFeatureDSLCircleRadius(featureID, sketch, parameters)
+  if (radius <= 0 || length <= 0) {
+    throw new Error(`Feature ${featureID} ${label} dimensions must be positive`)
+  }
+  const originPoint = new openCascade.gp_Pnt_3(origin[0] ?? 0, origin[1] ?? 0, origin[2] ?? 0)
+  const direction = new openCascade.gp_Dir_4(0, 0, 1)
+  const axis = new openCascade.gp_Ax2_3(originPoint, direction)
+  const cylinderBuilder = new openCascade.BRepPrimAPI_MakeCylinder_3(axis, radius, length)
+  cylinderBuilder.Build(new openCascade.Message_ProgressRange_1())
+  return cylinderBuilder.Shape()
 }
 
 function buildFeatureDSLCylinderShape(
@@ -472,6 +501,18 @@ function resolveFeatureDSLRadius(
     return resolveFeatureDSLScalar(feature.radius ?? 0, parameters)
   }
   return resolveFeatureDSLScalar(feature.diameter ?? 0, parameters) / 2
+}
+
+function resolveFeatureDSLCircleRadius(featureID: string, sketch: CadKernelFeatureDSLCircleSketch, parameters: Record<string, number>) {
+  const hasRadius = sketch.radius !== undefined
+  const hasDiameter = sketch.diameter !== undefined
+  if (hasRadius === hasDiameter) {
+    throw new Error(`Feature ${featureID} circle sketch requires exactly one of radius or diameter`)
+  }
+  if (hasRadius) {
+    return resolveFeatureDSLScalar(sketch.radius ?? 0, parameters)
+  }
+  return resolveFeatureDSLScalar(sketch.diameter ?? 0, parameters) / 2
 }
 
 function resolveFeatureDSLParameters(document: CadKernelFeatureDSLDocument, parameterValues: Record<string, number>) {

@@ -3127,6 +3127,89 @@ Verification results on 2026-07-12:
 
 ---
 
+### Task 30: LiteCAD feature DSL circular sketch extrudes
+
+**Why this task exists:** Rectangular sketch extrudes gave the Assistant a more CAD-like modeling vocabulary, but many useful generated parts also need round bosses and circular through-cuts. The DSL already has direct cylinder/cylinder-cut primitives; this task adds a narrow circle sketch profile for `extrude` and `extrude_cut` so generated models can describe circular sketch intent without adding arbitrary freeform profiles or sketch constraints.
+
+**Files:**
+- Modify: `website/src/cad/kernel-protocol.ts`
+- Test: `website/src/cad/kernel-protocol.test.ts`
+- Modify: `website/src/cad/opencascade-step.ts`
+- Test: `website/src/cad/opencascade-step.test.ts`
+- Modify: `internal/service/parametric_artifact.go`
+- Test: `internal/service/parametric_artifact_test.go`
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/ai_tools_test.go`
+- Modify docs: `README.md`, `docs/ai-parametric-assistant.md`, `docs/browser-cad-kernel-roadmap.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- Circle sketch shape:
+  - `{ "type": "circle", "radius": r }`
+  - `{ "type": "circle", "diameter": d }`
+- Exactly one of `radius` or `diameter` is required.
+- Radius/diameter can use the existing numeric expression form: finite number, numeric parameter name, or structured `add`/`sub`/`mul`/`div` expression object.
+- `extrude` with a circle sketch compiles to a +Z OCCT cylinder at `origin`.
+- `extrude_cut` with a circle sketch compiles to a +Z OCCT cylinder cutter and still requires a prior solid.
+- Full sketch constraints, arbitrary profiles, arcs, splines, bidirectional cuts, tapers, revolve, and CAD document History integration remain future work.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsCircularExtrudeSketches|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedCircularSketches|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+cd website && npx tsc -b
+```
+
+Observed RED results on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` failed because protocol validation returned `false` for circle sketch extrudes and the worker still assumed every sketch had rectangle `size`.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsCircularExtrudeSketches|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedCircularSketches|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` failed because backend DSL validation rejected valid circle sketches and provider context did not mention circle sketches.
+- `cd website && npx tsc -b` failed because `circle` was not assignable to the current rectangle-only sketch type.
+
+- [x] **Step 2: Implement circular sketch extrudes**
+
+Extend the worker protocol sketch union and guards, compile circle `extrude` / `extrude_cut` through the existing OCCT cylinder builder on the Z axis, validate circle sketch `radius` / `diameter` recursively in the backend, reject malformed circle sketches, and update provider prompt/tool descriptions.
+
+Implemented on 2026-07-12 with circle sketch protocol support, worker cylinder compilation, backend validation, Assistant guidance, and synchronized product docs.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsCircularExtrudeSketches|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedCircularSketches|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+cd website && npx tsc -b
+git diff --check
+task check
+task test
+task test-browser
+git add website/src/cad/kernel-protocol.ts website/src/cad/kernel-protocol.test.ts website/src/cad/opencascade-step.ts website/src/cad/opencascade-step.test.ts internal/service/parametric_artifact.go internal/service/parametric_artifact_test.go internal/service/ai_tools.go internal/service/ai_tools_test.go README.md docs/ai-parametric-assistant.md docs/browser-cad-kernel-roadmap.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(cad): add feature dsl circular extrudes"
+git push
+```
+
+Expected:
+
+- Generated LiteCAD DSL can describe round bosses and vertical circular cut profiles through sketch-style `extrude` and `extrude_cut`.
+- Saved `.lcad.json` preview/export paths compile circle sketches through the browser OCCT worker.
+- Existing direct `cylinder` / `cylinder_cut` features and rectangular sketch extrudes remain unchanged.
+- Full sketch constraints, non-circular profiles, bidirectional cuts, tapers, revolve, fillets/chamfers, and durable CAD feature history remain future work.
+
+Verification results on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` passed.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsCircularExtrudeSketches|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedCircularSketches|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` passed.
+- `cd website && npx tsc -b` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

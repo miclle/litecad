@@ -94,11 +94,19 @@ export type CadKernelFeatureDSLRectangleSketch = {
   size: readonly CadKernelFeatureDSLExpression[]
 }
 
+export type CadKernelFeatureDSLCircleSketch = {
+  type: 'circle'
+  radius?: CadKernelFeatureDSLExpression
+  diameter?: CadKernelFeatureDSLExpression
+}
+
+export type CadKernelFeatureDSLSketch = CadKernelFeatureDSLRectangleSketch | CadKernelFeatureDSLCircleSketch
+
 export type CadKernelFeatureDSLExtrudeFeature = {
   id: string
   type: 'extrude'
   origin?: readonly CadKernelFeatureDSLExpression[]
-  sketch: CadKernelFeatureDSLRectangleSketch
+  sketch: CadKernelFeatureDSLSketch
   height: CadKernelFeatureDSLExpression
   repeat?: CadKernelFeatureDSLRepeat
 }
@@ -107,7 +115,7 @@ export type CadKernelFeatureDSLExtrudeCutFeature = {
   id: string
   type: 'extrude_cut'
   origin: readonly CadKernelFeatureDSLExpression[]
-  sketch: CadKernelFeatureDSLRectangleSketch
+  sketch: CadKernelFeatureDSLSketch
   depth: CadKernelFeatureDSLExpression
   repeat?: CadKernelFeatureDSLRepeat
 }
@@ -375,7 +383,7 @@ function isFeatureDSLBoxLikeFeature(value: Record<string, unknown>) {
 function isFeatureDSLExtrudeFeature(value: Record<string, unknown>) {
   return (
     (value.origin === undefined || isFeatureDSLExpressionTuple(value.origin, 3)) &&
-    isFeatureDSLRectangleSketch(value.sketch) &&
+    isFeatureDSLSketch(value.sketch) &&
     isFeatureDSLExpression(value.height) &&
     (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
   )
@@ -384,14 +392,30 @@ function isFeatureDSLExtrudeFeature(value: Record<string, unknown>) {
 function isFeatureDSLExtrudeCutFeature(value: Record<string, unknown>) {
   return (
     isFeatureDSLExpressionTuple(value.origin, 3) &&
-    isFeatureDSLRectangleSketch(value.sketch) &&
+    isFeatureDSLSketch(value.sketch) &&
     isFeatureDSLExpression(value.depth) &&
     (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
   )
 }
 
+function isFeatureDSLSketch(value: unknown): value is CadKernelFeatureDSLSketch {
+  return isFeatureDSLRectangleSketch(value) || isFeatureDSLCircleSketch(value)
+}
+
 function isFeatureDSLRectangleSketch(value: unknown): value is CadKernelFeatureDSLRectangleSketch {
   return isRecord(value) && value.type === 'rectangle' && isFeatureDSLExpressionTuple(value.size, 2)
+}
+
+function isFeatureDSLCircleSketch(value: unknown): value is CadKernelFeatureDSLCircleSketch {
+  if (!isRecord(value) || value.type !== 'circle') {
+    return false
+  }
+  if (value.size !== undefined) {
+    return false
+  }
+  const hasRadius = value.radius !== undefined
+  const hasDiameter = value.diameter !== undefined
+  return hasRadius !== hasDiameter && (hasRadius ? isFeatureDSLExpression(value.radius) : isFeatureDSLExpression(value.diameter))
 }
 
 function isFeatureDSLCylinderLikeFeature(value: Record<string, unknown>, lengthKey: 'height' | 'depth') {

@@ -651,6 +651,93 @@ func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrude(t *testing.T) {
 	}
 }
 
+func TestCreateLiteCADFeatureDSLArtifactAcceptsCircularExtrudeSketches(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-circle-extrude@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Circular extrude generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Round boss with center hole",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode: `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "boss_diameter": { "type": "number", "default": 18, "min": 4, "max": 40 },
+    "hole_radius": { "type": "number", "default": 3, "min": 1, "max": 8 }
+  },
+  "features": [
+    { "id": "boss", "type": "extrude", "origin": [0, 0, 0], "sketch": { "type": "circle", "diameter": "boss_diameter" }, "height": 8 },
+    { "id": "hole", "type": "extrude_cut", "origin": [0, 0, -1], "sketch": { "type": "circle", "radius": "hole_radius" }, "depth": 10 }
+  ]
+}`,
+		CompileStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	if artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", artifact)
+	}
+}
+
+func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedCircularSketches(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-bad-circle-extrude@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Reject bad circular sketch generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	for _, source := range []string{
+		`{"version":1,"unit":"millimetre","features":[{"id":"boss","type":"extrude","origin":[0,0,0],"sketch":{"type":"circle","size":[10,10]},"height":6}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"boss","type":"extrude","origin":[0,0,0],"sketch":{"type":"circle","radius":4,"diameter":8},"height":6}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"boss","type":"extrude","origin":[0,0,0],"sketch":{"type":"circle","radius":0},"height":6}]}`,
+		`{"version":1,"unit":"millimetre","parameters":{"finish":{"type":"string","default":"matte"}},"features":[{"id":"boss","type":"extrude","origin":[0,0,0],"sketch":{"type":"circle","radius":"finish"},"height":6}]}`,
+	} {
+		_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+			OwnerUserID:   user.ID,
+			ProjectID:     project.ID,
+			Title:         "Bad circular sketch bracket",
+			SourceKind:    "litecad-feature-dsl",
+			SourceCode:    source,
+			CompileStatus: "pending",
+		})
+		if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+			t.Fatalf("CreateProjectParametricArtifact(%s) error = %v, want ErrInvalidProjectParametricArtifactInput", source, err)
+		}
+	}
+}
+
 func TestCreateLiteCADFeatureDSLArtifactAcceptsRectangularExtrudeCut(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

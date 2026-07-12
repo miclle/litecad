@@ -283,6 +283,47 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts LiteCAD feature DSL circular sketch extrudes', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-circle-extrude-preview',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'round-boss.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            parameters: {
+              boss_diameter: { type: 'number', default: 18, min: 4, max: 40 },
+              hole_radius: { type: 'number', default: 3, min: 1, max: 8 },
+            },
+            features: [
+              { id: 'boss', type: 'extrude', origin: [0, 0, 0], sketch: { type: 'circle', diameter: 'boss_diameter' }, height: 8 },
+              { id: 'hole', type: 'extrude_cut', origin: [0, 0, -1], sketch: { type: 'circle', radius: 'hole_radius' }, depth: 10 },
+            ],
+          },
+        },
+      }),
+    ).toBe(true)
+  })
+
+  test('rejects malformed LiteCAD feature DSL circular sketches', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-bad-circle-preview',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'bad-round-boss.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            features: [{ id: 'boss', type: 'extrude', sketch: { type: 'circle', radius: 4, size: [8, 8] }, height: 6 }],
+          },
+        },
+      }),
+    ).toBe(false)
+  })
+
   test('accepts LiteCAD feature DSL structured numeric expressions', () => {
     expect(
       isCadKernelRequest({

@@ -502,6 +502,76 @@ describe('runFeatureDSLExportWithKernel', () => {
     expect(result.exportedStepText).toContain('END-ISO-10303-21')
   })
 
+  it('builds a circular sketch extrude before writing STEP', async () => {
+    const extrudeShape = { name: 'circle-extrude-shape' }
+    const buildCylinder = vi.fn()
+    const transfer = vi.fn()
+    const write = vi.fn()
+    const openCascade = {
+      FS: {
+        readFile: vi.fn(() => 'ISO-10303-21;\nEND-ISO-10303-21;'),
+        unlink: vi.fn(),
+      },
+      IFSelect_ReturnStatus: {
+        IFSelect_RetDone: 1,
+      },
+      STEPControl_StepModelType: {
+        STEPControl_AsIs: 0,
+      },
+      STEPControl_Writer_1: vi.fn(function writer(this: {
+        Transfer: typeof transfer
+        Write: typeof write
+      }) {
+        this.Transfer = transfer.mockReturnValue(1)
+        this.Write = write.mockReturnValue(1)
+      }),
+      gp_Pnt_3: vi.fn(function point(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      gp_Dir_4: vi.fn(function direction(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      gp_Ax2_3: vi.fn(function axis(this: { origin: unknown; direction: unknown }, origin: unknown, direction: unknown) {
+        this.origin = origin
+        this.direction = direction
+      }),
+      BRepPrimAPI_MakeCylinder_3: vi.fn(function makeCylinder(
+        this: { Build: typeof buildCylinder; Shape: () => unknown },
+        axis: unknown,
+        radius: number,
+        height: number,
+      ) {
+        expect(axis).toBeDefined()
+        expect([radius, height]).toEqual([9, 8])
+        this.Build = buildCylinder
+        this.Shape = () => extrudeShape
+      }),
+      Message_ProgressRange_1: vi.fn(function progressRange() {}),
+    }
+
+    const result = await runFeatureDSLExportWithKernel(openCascade, {
+      filename: 'round-boss.step',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        parameters: {
+          boss_diameter: { type: 'number', default: 18 },
+        },
+        features: [{ id: 'boss', type: 'extrude', origin: [2, 3, 4], sketch: { type: 'circle', diameter: 'boss_diameter' }, height: 8 }],
+      },
+    })
+
+    expect(openCascade.gp_Pnt_3).toHaveBeenCalledWith(2, 3, 4)
+    expect(openCascade.gp_Dir_4).toHaveBeenCalledWith(0, 0, 1)
+    expect(buildCylinder).toHaveBeenCalledOnce()
+    expect(transfer).toHaveBeenCalledWith(extrudeShape, 0, true, expect.anything())
+    expect(result.exportedStepText).toContain('END-ISO-10303-21')
+  })
+
   it('builds additive cylinder features along a provided axis before writing STEP', async () => {
     const cylinderShape = { name: 'cylinder-shape' }
     const buildCylinder = vi.fn()
