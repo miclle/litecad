@@ -3618,7 +3618,7 @@ Fix path:
 - Keep native `build_parametric_model` tool calls as the first attempt for OpenAI-compatible providers.
 - If the native tool request itself fails, retry the same provider context with an explicit strict JSON fallback prompt before surfacing a provider failure.
 - Default OpenAI-compatible provider timeout is 90 seconds so providers that reject native `tool_choice` still have time to complete the strict JSON fallback generation.
-- Normalize common provider fallback envelopes and LiteCAD DSL shorthand (`input`/`parameters`, `code`/`source`, object-shaped code, `version: "v1"`, `unit: "millimeter"`, numeric parameter defaults, array-style parameter rows, and missing feature IDs) before applying the existing strict tool and DSL validation.
+- Normalize common provider fallback envelopes and LiteCAD DSL shorthand (`input`/`parameters`, `code`/`source`, object-shaped code, `version: "v1"` / `"1.0"`, `unit: "millimeter"` / `"mm"`, numeric or `length` parameter defaults, array-style parameter rows, object-style box sizes, and missing feature IDs) before applying the existing strict tool and DSL validation.
 - Preserve the existing invalid-output behavior: malformed fallback JSON stores a safe Assistant failure message and creates no artifact.
 - Preserve the provider-failure behavior: if native tool calling and JSON fallback both fail, create no messages and no artifact.
 
@@ -3633,8 +3633,15 @@ Validation guidance:
 
 - Run the service regression tests with `-count=1` so cached results cannot hide this flow.
 - Direct API verification should distinguish invalid provider output from provider timeout. If fallback times out, increase `ai.timeout_seconds` or use the 90-second default.
+- Browser UI verification should still inspect the final Assistant message or draft state because real providers may return additional safe DSL shorthand that needs parser coverage rather than UI changes.
 - Run `task check`, `task test`, and `task test-browser` before committing.
 - For live browser verification, ensure the backend process serving the in-app browser is running the fixed code before retrying the same Assistant prompt; otherwise the browser will still exercise the old binary.
+
+In-app browser verification result on 2026-07-12:
+
+- Claimed the already-open in-app browser project tab and performed the UI flow through real controls: toggle Assistant into the clickable panel layout, click New chat, click the Assistant prompt textbox, type the model-generation prompt, click Generate parametric model, and wait for the provider response.
+- The workbench produced a generated-source draft titled `Simple Rectangular Box`.
+- The Inspector showed `Generated with JSON fallback · litecad-feature-dsl · 5.48s`, editable `DEPTH` / `THICKNESS` / `WIDTH` parameters, normalized LiteCAD DSL source, and the `Save as model` action.
 
 ---
 

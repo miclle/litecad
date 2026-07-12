@@ -145,6 +145,24 @@ func TestAIParametricToolCallParserNormalizesProviderLiteCADDSLShorthand(t *test
 		!strings.Contains(call.Input.Code, `"thickness":{"default":6,"type":"number"}`) {
 		t.Fatalf("normalized array parameter code = %s", call.Input.Code)
 	}
+
+	call, err = ParseAIParametricToolCall(`{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Length parameter box",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":\"1.0\",\"unit\":\"mm\",\"parameters\":[{\"name\":\"width\",\"type\":\"length\",\"default\":80},{\"name\":\"depth\",\"type\":\"length\",\"default\":40},{\"name\":\"thickness\",\"type\":\"length\",\"default\":6}],\"features\":[{\"type\":\"box\",\"center\":true,\"size\":{\"x\":\"width\",\"y\":\"depth\",\"z\":\"thickness\"}}]}"
+  }
+}`)
+	if err != nil {
+		t.Fatalf("ParseAIParametricToolCall with length parameters and size object returned error: %v", err)
+	}
+	if !strings.Contains(call.Input.Code, `"version":1`) ||
+		!strings.Contains(call.Input.Code, `"width":{"default":80,"type":"number"}`) ||
+		!strings.Contains(call.Input.Code, `"size":["width","depth","thickness"]`) {
+		t.Fatalf("normalized length parameter code = %s", call.Input.Code)
+	}
 }
 
 func TestAIParametricToolCallParserRejectsMalformedLiteCADFeatureDSL(t *testing.T) {

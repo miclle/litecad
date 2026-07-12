@@ -192,8 +192,11 @@ func normalizeAIParametricLiteCADFeatureDSLSource(source string) (string, error)
 	if err := json.Unmarshal([]byte(source), &document); err != nil {
 		return "", err
 	}
-	if version, ok := document["version"].(string); ok && strings.EqualFold(strings.TrimSpace(version), "v1") {
-		document["version"] = float64(1)
+	if version, ok := document["version"].(string); ok {
+		switch strings.ToLower(strings.TrimSpace(version)) {
+		case "v1", "1.0":
+			document["version"] = float64(1)
+		}
 	}
 	if unit, ok := document["unit"].(string); ok {
 		switch strings.ToLower(strings.TrimSpace(unit)) {
@@ -208,6 +211,9 @@ func normalizeAIParametricLiteCADFeatureDSLSource(source string) (string, error)
 			case float64:
 				parameters[name] = map[string]any{"type": "number", "default": typedValue}
 			case map[string]any:
+				if parameterType, ok := typedValue["type"].(string); ok && strings.EqualFold(strings.TrimSpace(parameterType), "length") {
+					typedValue["type"] = "number"
+				}
 				if _, hasType := typedValue["type"]; !hasType {
 					if _, ok := typedValue["default"].(float64); ok {
 						typedValue["type"] = "number"
@@ -238,6 +244,8 @@ func normalizeAIParametricLiteCADFeatureDSLSource(source string) (string, error)
 				if _, ok := parameter["default"].(float64); ok {
 					parameter["type"] = "number"
 				}
+			} else if parameterType, ok := parameter["type"].(string); ok && strings.EqualFold(strings.TrimSpace(parameterType), "length") {
+				parameter["type"] = "number"
 			}
 			normalizedParameters[name] = parameter
 		}
@@ -249,11 +257,16 @@ func normalizeAIParametricLiteCADFeatureDSLSource(source string) (string, error)
 			if !ok {
 				continue
 			}
+			featureType, _ := feature["type"].(string)
+			featureType = strings.TrimSpace(featureType)
+			if featureType == "box" || featureType == "box_cut" {
+				if size, ok := feature["size"].(map[string]any); ok {
+					feature["size"] = []any{size["x"], size["y"], size["z"]}
+				}
+			}
 			if id, ok := feature["id"].(string); ok && strings.TrimSpace(id) != "" {
 				continue
 			}
-			featureType, _ := feature["type"].(string)
-			featureType = strings.TrimSpace(featureType)
 			if featureType == "" {
 				featureType = "feature"
 			}
