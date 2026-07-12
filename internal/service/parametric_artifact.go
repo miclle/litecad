@@ -739,6 +739,10 @@ func validateLiteCADFeatureDSLAxisTuple(values []any, parameterNames map[string]
 			}
 			continue
 		}
+		if _, ok := value.(map[string]any); ok {
+			hasNonZeroComponent = true
+			continue
+		}
 		if number, ok := value.(float64); ok && number != 0 {
 			hasNonZeroComponent = true
 		}
@@ -798,9 +802,34 @@ func validateLiteCADFeatureDSLExpression(value any, parameterNames map[string]st
 			return ErrInvalidProjectParametricArtifactInput
 		}
 		return nil
+	case map[string]any:
+		return validateLiteCADFeatureDSLArithmeticExpression(typed, parameterNames)
 	default:
 		return ErrInvalidProjectParametricArtifactInput
 	}
+}
+
+func validateLiteCADFeatureDSLArithmeticExpression(expression map[string]any, parameterNames map[string]struct{}) error {
+	op, ok := expression["op"].(string)
+	if !ok || (op != "add" && op != "sub" && op != "mul" && op != "div") {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	args, ok := expression["args"].([]any)
+	if !ok || len(args) != 2 {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	if err := validateLiteCADFeatureDSLExpression(args[0], parameterNames); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLExpression(args[1], parameterNames); err != nil {
+		return err
+	}
+	if op == "div" {
+		if divisor, ok := args[1].(float64); ok && divisor == 0 {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+	}
+	return nil
 }
 
 func isFiniteFloat(value float64) bool {

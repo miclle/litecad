@@ -15,7 +15,12 @@ export type CadKernelBoxFeature = {
   size: readonly number[]
 }
 
-export type CadKernelFeatureDSLExpression = number | string
+export type CadKernelFeatureDSLArithmeticExpression = {
+  op: 'add' | 'sub' | 'mul' | 'div'
+  args: readonly [CadKernelFeatureDSLExpression, CadKernelFeatureDSLExpression]
+}
+
+export type CadKernelFeatureDSLExpression = number | string | CadKernelFeatureDSLArithmeticExpression
 
 export type CadKernelFeatureDSLNumberParameter = {
   type: 'number'
@@ -421,15 +426,20 @@ function isFeatureDSLAxisTuple(value: unknown): value is CadKernelFeatureDSLExpr
 }
 
 function isFeatureDSLExpressionTuple(value: unknown, length: number): value is CadKernelFeatureDSLExpression[] {
-  return (
-    Array.isArray(value) &&
-    value.length === length &&
-    value.every((entry) => (typeof entry === 'number' && Number.isFinite(entry)) || typeof entry === 'string')
-  )
+  return Array.isArray(value) && value.length === length && value.every(isFeatureDSLExpression)
 }
 
 function isFeatureDSLExpression(value: unknown): value is CadKernelFeatureDSLExpression {
-  return (typeof value === 'number' && Number.isFinite(value)) || typeof value === 'string'
+  if ((typeof value === 'number' && Number.isFinite(value)) || typeof value === 'string') {
+    return true
+  }
+  return (
+    isRecord(value) &&
+    (value.op === 'add' || value.op === 'sub' || value.op === 'mul' || value.op === 'div') &&
+    Array.isArray(value.args) &&
+    value.args.length === 2 &&
+    value.args.every(isFeatureDSLExpression)
+  )
 }
 
 function isFeatureDSLParameterValues(value: unknown): value is Record<string, number> | undefined {

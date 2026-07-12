@@ -1,4 +1,11 @@
-import type { CadKernelFeatureDSLDocument, CadKernelFeatureDSLInput, CadKernelMesh, CadKernelOperation } from './kernel-protocol'
+import type {
+  CadKernelFeatureDSLArithmeticExpression,
+  CadKernelFeatureDSLDocument,
+  CadKernelFeatureDSLExpression,
+  CadKernelFeatureDSLInput,
+  CadKernelMesh,
+  CadKernelOperation,
+} from './kernel-protocol'
 import initReplicadOpenCascade from 'replicad-opencascadejs'
 import replicadWasmUrl from 'replicad-opencascadejs/src/replicad_single.wasm?url'
 
@@ -326,7 +333,12 @@ function appendFeatureDSLShape(openCascade: OpenCascadeModule, accumulatedShape:
   return accumulatedShape ? compoundShapes(openCascade, [accumulatedShape, nextShape]) : nextShape
 }
 
-function buildFeatureDSLBoxShape(openCascade: OpenCascadeModule, feature: { id: string; origin?: readonly (number | string)[]; size: readonly (number | string)[] }, parameters: Record<string, number>, repeatedOrigin?: readonly number[]) {
+function buildFeatureDSLBoxShape(
+  openCascade: OpenCascadeModule,
+  feature: { id: string; origin?: readonly CadKernelFeatureDSLExpression[]; size: readonly CadKernelFeatureDSLExpression[] },
+  parameters: Record<string, number>,
+  repeatedOrigin?: readonly number[],
+) {
   const size = resolveFeatureDSLVector(feature.size, parameters)
   const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin ?? [0, 0, 0], parameters)
   if (size.some((value) => value <= 0)) {
@@ -364,9 +376,9 @@ function buildFeatureDSLExtrudeShape(
   openCascade: OpenCascadeModule,
   feature: {
     id: string
-    origin?: readonly (number | string)[]
-    sketch: { type: 'rectangle'; size: readonly (number | string)[] }
-    height: number | string
+    origin?: readonly CadKernelFeatureDSLExpression[]
+    sketch: { type: 'rectangle'; size: readonly CadKernelFeatureDSLExpression[] }
+    height: CadKernelFeatureDSLExpression
   },
   parameters: Record<string, number>,
   repeatedOrigin?: readonly number[],
@@ -381,9 +393,9 @@ function buildFeatureDSLExtrudeCutShape(
   openCascade: OpenCascadeModule,
   feature: {
     id: string
-    origin: readonly (number | string)[]
-    sketch: { type: 'rectangle'; size: readonly (number | string)[] }
-    depth: number | string
+    origin: readonly CadKernelFeatureDSLExpression[]
+    sketch: { type: 'rectangle'; size: readonly CadKernelFeatureDSLExpression[] }
+    depth: CadKernelFeatureDSLExpression
   },
   parameters: Record<string, number>,
   repeatedOrigin?: readonly number[],
@@ -398,12 +410,12 @@ function buildFeatureDSLCylinderShape(
   openCascade: OpenCascadeModule,
   feature: {
     id: string
-    origin: readonly (number | string)[]
-    axis?: readonly (number | string)[]
-    radius?: number | string
-    diameter?: number | string
-    height?: number | string
-    depth?: number | string
+    origin: readonly CadKernelFeatureDSLExpression[]
+    axis?: readonly CadKernelFeatureDSLExpression[]
+    radius?: CadKernelFeatureDSLExpression
+    diameter?: CadKernelFeatureDSLExpression
+    height?: CadKernelFeatureDSLExpression
+    depth?: CadKernelFeatureDSLExpression
   },
   parameters: Record<string, number>,
   lengthKey: 'height' | 'depth',
@@ -432,7 +444,7 @@ function buildFeatureDSLCylinderShape(
 }
 
 function resolveFeatureDSLRepeatedOrigins(
-  feature: { id: string; origin?: readonly (number | string)[]; repeat?: { count: number; step: readonly (number | string)[] } },
+  feature: { id: string; origin?: readonly CadKernelFeatureDSLExpression[]; repeat?: { count: number; step: readonly CadKernelFeatureDSLExpression[] } },
   parameters: Record<string, number>,
 ) {
   const origin = resolveFeatureDSLVector(feature.origin ?? [0, 0, 0], parameters)
@@ -448,7 +460,7 @@ function resolveFeatureDSLRepeatedOrigins(
 }
 
 function resolveFeatureDSLRadius(
-  feature: { id: string; radius?: number | string; diameter?: number | string },
+  feature: { id: string; radius?: CadKernelFeatureDSLExpression; diameter?: CadKernelFeatureDSLExpression },
   parameters: Record<string, number>,
 ) {
   const hasRadius = feature.radius !== undefined
@@ -489,19 +501,58 @@ function resolveFeatureDSLParameters(document: CadKernelFeatureDSLDocument, para
   return resolved
 }
 
-function resolveFeatureDSLVector(values: readonly (number | string)[], parameters: Record<string, number>) {
+function resolveFeatureDSLVector(values: readonly CadKernelFeatureDSLExpression[], parameters: Record<string, number>) {
   return values.map((value) => resolveFeatureDSLScalar(value, parameters))
 }
 
-function resolveFeatureDSLScalar(value: number | string, parameters: Record<string, number>) {
+function resolveFeatureDSLScalar(value: CadKernelFeatureDSLExpression, parameters: Record<string, number>): number {
   if (typeof value === 'number') {
     return value
+  }
+  if (isFeatureDSLArithmeticExpression(value)) {
+    const left = resolveFeatureDSLScalar(value.args[0], parameters)
+    const right = resolveFeatureDSLScalar(value.args[1], parameters)
+    let result: number
+    switch (value.op) {
+      case 'add':
+        result = left + right
+        break
+      case 'sub':
+        result = left - right
+        break
+      case 'mul':
+        result = left * right
+        break
+      case 'div':
+        if (right === 0) {
+          throw new Error('Feature DSL expression division by zero')
+        }
+        result = left / right
+        break
+    }
+    if (!Number.isFinite(result)) {
+      throw new Error('Feature DSL expression result must be finite')
+    }
+    return result
+  }
+  if (typeof value === 'object' && value !== null) {
+    throw new Error('Invalid feature DSL expression')
   }
   const parameterValue = parameters[value]
   if (parameterValue === undefined) {
     throw new Error(`Unknown feature DSL parameter reference: ${value}`)
   }
   return parameterValue
+}
+
+function isFeatureDSLArithmeticExpression(value: CadKernelFeatureDSLExpression): value is CadKernelFeatureDSLArithmeticExpression {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value.op === 'add' || value.op === 'sub' || value.op === 'mul' || value.op === 'div') &&
+    Array.isArray(value.args) &&
+    value.args.length === 2
+  )
 }
 
 function importStepShape(openCascade: OpenCascadeModule, input: CadKernelStepRoundTripInput) {

@@ -283,6 +283,38 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts LiteCAD feature DSL structured numeric expressions', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-expression-preview',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'expression-bracket.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            parameters: {
+              width: { type: 'number', default: 80, min: 20, max: 200 },
+              clearance: { type: 'number', default: 2, min: 0, max: 10 },
+            },
+            features: [
+              {
+                id: 'base',
+                type: 'extrude',
+                sketch: {
+                  type: 'rectangle',
+                  size: [{ op: 'add', args: ['width', { op: 'mul', args: ['clearance', 2] }] }, 40],
+                },
+                height: { op: 'div', args: ['width', 20] },
+              },
+            ],
+          },
+          parameterValues: { width: 100, clearance: 3 },
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('accepts LiteCAD feature DSL non-geometry parameter metadata', () => {
     expect(
       isCadKernelRequest({

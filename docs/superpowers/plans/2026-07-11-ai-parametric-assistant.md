@@ -3036,6 +3036,97 @@ Remaining after this task:
 
 ---
 
+### Task 29: LiteCAD feature DSL structured numeric expressions
+
+**Why this task exists:** Current geometry values can be literal numbers or direct numeric parameter references, but generated parametric models often need relationships such as half-width placement, clearance offsets, or derived cut depth. This task adds a small, safe JSON expression form for arithmetic without introducing free-form string parsing or arbitrary JavaScript evaluation.
+
+**Files:**
+- Modify: `website/src/cad/kernel-protocol.ts`
+- Test: `website/src/cad/kernel-protocol.test.ts`
+- Modify: `website/src/cad/opencascade-step.ts`
+- Test: `website/src/cad/opencascade-step.test.ts`
+- Modify: `internal/service/parametric_artifact.go`
+- Test: `internal/service/parametric_artifact_test.go`
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/ai_tools_test.go`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- Supported expression object:
+  - `{ "op": "add"|"sub"|"mul"|"div", "args": [left, right] }`
+- `left` and `right` may be literal numbers, numeric parameter references, or nested expression objects.
+- Expression results must be finite numbers at worker runtime.
+- Division by zero is rejected at worker runtime and backend validation rejects literal zero divisors.
+- Existing geometry fields that use `CadKernelFeatureDSLExpression` can use expression objects: `origin`, `size`, `axis`, `radius`, `diameter`, `height`, `depth`, sketch rectangle `size`, and `repeat.step`.
+- Backend validation still rejects references to boolean/string parameters from geometry expressions.
+- Arbitrary infix strings, functions, units, conditionals, comparisons, and boolean expressions remain future work.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsNumericExpressions|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedNumericExpressions|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+cd website && npx tsc -b
+```
+
+Expected failures:
+
+- Worker protocol rejects expression objects.
+- OCCT DSL compile/export cannot evaluate expression objects and fails to compile the test source.
+- Backend validation rejects valid numeric expression objects.
+- TypeScript expression union does not include expression objects.
+- Provider prompt tests fail until the Assistant mentions expressions.
+
+Observed RED results on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` failed because protocol tuple validation rejected expression objects and worker scalar resolution saw expression objects as unknown parameter references.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsNumericExpressions|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedNumericExpressions|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` failed because backend artifact validation rejected expression objects and provider prompt expectations did not mention expression support.
+- `cd website && npx tsc -b` failed because `CadKernelFeatureDSLExpression` did not include expression objects.
+
+- [x] **Step 2: Implement structured numeric expressions**
+
+Extend the worker protocol type/guards, evaluate expression objects recursively in the OCCT worker, validate expression objects recursively in the backend, reject malformed operators/arity and literal division by zero, and update provider prompt/tool descriptions.
+
+Implemented on 2026-07-12 with recursive worker protocol guards, finite worker evaluation, backend recursive validation, literal zero-divisor rejection, and provider prompt/tool-description guidance.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsNumericExpressions|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedNumericExpressions|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+cd website && npx tsc -b
+git diff --check
+task check
+task test
+task test-browser
+git add website/src/cad/kernel-protocol.ts website/src/cad/kernel-protocol.test.ts website/src/cad/opencascade-step.ts website/src/cad/opencascade-step.test.ts internal/service/parametric_artifact.go internal/service/parametric_artifact_test.go internal/service/ai_tools.go internal/service/ai_tools_test.go docs/ai-parametric-assistant.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(cad): add feature dsl numeric expressions"
+git push
+```
+
+Expected:
+
+- Generated LiteCAD DSL can express simple derived numeric geometry values without free-form code execution.
+- Saved `.lcad.json` preview/export paths evaluate numeric expressions through the browser OCCT worker.
+- Existing literal number and direct parameter reference behavior remains unchanged.
+- Conditionals, non-numeric expressions, unit math, and arbitrary formula parsing remain future work.
+
+Verification results on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` passed.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsNumericExpressions|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedNumericExpressions|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` passed.
+- `cd website && npx tsc -b` passed.
+- `git diff --check` passed.
+- `task check` passed. An earlier parallel run overlapped Playwright cleanup and failed while `go vet` enumerated a transient `website/test-results` directory; a standalone rerun passed.
+- `task test` passed.
+- `task test-browser` passed.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

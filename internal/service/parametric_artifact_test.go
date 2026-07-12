@@ -741,6 +741,99 @@ func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrudeCut(t *testing.T)
 	}
 }
 
+func TestCreateLiteCADFeatureDSLArtifactAcceptsNumericExpressions(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-expressions@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Expression generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Expression bracket",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode: `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 80, "min": 20, "max": 200 },
+    "clearance": { "type": "number", "default": 2, "min": 0, "max": 10 }
+  },
+  "features": [
+    {
+      "id": "base",
+      "type": "extrude",
+      "origin": [{ "op": "sub", "args": ["clearance", 1] }, 0, 0],
+      "sketch": { "type": "rectangle", "size": [{ "op": "add", "args": ["width", { "op": "mul", "args": ["clearance", 2] }] }, 40] },
+      "height": { "op": "div", "args": ["width", 20] }
+    }
+  ]
+}`,
+		CompileStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	if artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", artifact)
+	}
+}
+
+func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedNumericExpressions(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-bad-expressions@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Reject bad expression generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	for _, source := range []string{
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"box","size":[{"op":"pow","args":[2,3]},40,6]}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"box","size":[{"op":"add","args":[2]},40,6]}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"box","size":[{"op":"div","args":[10,0]},40,6]}]}`,
+		`{"version":1,"unit":"millimetre","parameters":{"finish":{"type":"string","default":"matte"}},"features":[{"id":"base","type":"box","size":[{"op":"add","args":["finish",2]},40,6]}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"box","size":[{"op":"add","args":[2,{"op":"bad","args":[1,1]}]},40,6]}]}`,
+	} {
+		_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+			OwnerUserID:   user.ID,
+			ProjectID:     project.ID,
+			Title:         "Bad expression bracket",
+			SourceKind:    "litecad-feature-dsl",
+			SourceCode:    source,
+			CompileStatus: "pending",
+		})
+		if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+			t.Fatalf("CreateProjectParametricArtifact(%s) error = %v, want ErrInvalidProjectParametricArtifactInput", source, err)
+		}
+	}
+}
+
 func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedBoxCut(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

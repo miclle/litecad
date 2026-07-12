@@ -428,6 +428,80 @@ describe('runFeatureDSLExportWithKernel', () => {
     expect(result.exportedStepText).toContain('END-ISO-10303-21')
   })
 
+  it('evaluates structured numeric expressions before writing STEP', async () => {
+    const extrudeShape = { name: 'expression-shape' }
+    const buildExtrude = vi.fn()
+    const transfer = vi.fn()
+    const write = vi.fn()
+    const openCascade = {
+      FS: {
+        readFile: vi.fn(() => 'ISO-10303-21;\nEND-ISO-10303-21;'),
+        unlink: vi.fn(),
+      },
+      IFSelect_ReturnStatus: {
+        IFSelect_RetDone: 1,
+      },
+      STEPControl_StepModelType: {
+        STEPControl_AsIs: 0,
+      },
+      STEPControl_Writer_1: vi.fn(function writer(this: {
+        Transfer: typeof transfer
+        Write: typeof write
+      }) {
+        this.Transfer = transfer.mockReturnValue(1)
+        this.Write = write.mockReturnValue(1)
+      }),
+      gp_Pnt_3: vi.fn(function point(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      BRepPrimAPI_MakeBox_3: vi.fn(function makeBoxAtOrigin(
+        this: { Build: typeof buildExtrude; Shape: () => unknown },
+        origin: unknown,
+        sizeX: number,
+        sizeY: number,
+        sizeZ: number,
+      ) {
+        expect(origin).toBeDefined()
+        expect([sizeX, sizeY, sizeZ]).toEqual([106, 40, 5])
+        this.Build = buildExtrude
+        this.Shape = () => extrudeShape
+      }),
+      Message_ProgressRange_1: vi.fn(function progressRange() {}),
+    }
+
+    const result = await runFeatureDSLExportWithKernel(openCascade, {
+      filename: 'expression-bracket.step',
+      parameterValues: { width: 100, clearance: 3 },
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        parameters: {
+          width: { type: 'number', default: 80, min: 20, max: 200 },
+          clearance: { type: 'number', default: 2, min: 0, max: 10 },
+        },
+        features: [
+          {
+            id: 'base',
+            type: 'extrude',
+            origin: [{ op: 'sub', args: ['clearance', 1] }, 0, 0],
+            sketch: {
+              type: 'rectangle',
+              size: [{ op: 'add', args: ['width', { op: 'mul', args: ['clearance', 2] }] }, 40],
+            },
+            height: { op: 'div', args: ['width', 20] },
+          },
+        ],
+      },
+    })
+
+    expect(openCascade.gp_Pnt_3).toHaveBeenCalledWith(2, 0, 0)
+    expect(buildExtrude).toHaveBeenCalledOnce()
+    expect(transfer).toHaveBeenCalledWith(extrudeShape, 0, true, expect.anything())
+    expect(result.exportedStepText).toContain('END-ISO-10303-21')
+  })
+
   it('builds additive cylinder features along a provided axis before writing STEP', async () => {
     const cylinderShape = { name: 'cylinder-shape' }
     const buildCylinder = vi.fn()
