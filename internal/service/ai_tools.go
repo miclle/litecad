@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	aiParametricToolBuildModel = "build_parametric_model"
-	aiParametricSystemPrompt   = "You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Prefer source_kind litecad-feature-dsl with a valid JSON document using version, unit, parameters, and features. Use box features for plates and bodies, cylinder features for bosses or posts, and cylinder_cut features for holes. The current LiteCAD feature DSL is Z-axis only: box uses origin and size, cylinder uses origin plus radius or diameter and height, and cylinder_cut uses origin plus radius or diameter and depth. Use openscad only when the user explicitly asks for OpenSCAD source. Declare editable numeric parameters in the artifact so LiteCAD can preview and save them."
+	aiParametricToolBuildModel            = "build_parametric_model"
+	aiParametricSystemPrompt              = "You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Prefer source_kind litecad-feature-dsl with a valid JSON document using version, unit, parameters, and features. Use box features for plates and bodies, cylinder features for bosses or posts, and cylinder_cut features for holes. The current LiteCAD feature DSL is Z-axis only: box uses origin and size, cylinder uses origin plus radius or diameter and height, and cylinder_cut uses origin plus radius or diameter and depth. Use openscad only when the user explicitly asks for OpenSCAD source. Declare editable numeric parameters in the artifact so LiteCAD can preview and save them."
+	aiParametricInvalidToolFailureMessage = "I could not create a valid parametric model from that response. Please try again with a more specific request."
 )
 
 // AIParametricArtifactInput is the validated tool input for generated CAD source.
@@ -187,6 +188,9 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 		}
 		call, err = ParseAIParametricNativeToolCall(nativeCall)
 		if err != nil {
+			if persistErr := s.persistProjectAgentParametricFailure(ctx, project.ID, conversation.ID, userMessage); persistErr != nil {
+				return ProjectAgentParametricRun{}, persistErr
+			}
 			return ProjectAgentParametricRun{}, err
 		}
 		reply = marshalAIParametricToolCall(call)
@@ -197,6 +201,9 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 		}
 		call, err = ParseAIParametricToolCall(providerReply)
 		if err != nil {
+			if persistErr := s.persistProjectAgentParametricFailure(ctx, project.ID, conversation.ID, userMessage); persistErr != nil {
+				return ProjectAgentParametricRun{}, persistErr
+			}
 			return ProjectAgentParametricRun{}, err
 		}
 		reply = strings.TrimSpace(providerReply)
@@ -244,6 +251,19 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 		return ProjectAgentParametricRun{}, err
 	}
 	return run, nil
+}
+
+func (s *Service) persistProjectAgentParametricFailure(ctx context.Context, projectID, conversationID string, userMessage AIChatMessage) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if _, err := createProjectAgentMessageInDB(ctx, tx, projectID, conversationID, userMessage); err != nil {
+			return err
+		}
+		_, err := createProjectAgentMessageInDB(ctx, tx, projectID, conversationID, AIChatMessage{
+			Role: "assistant",
+			Body: aiParametricInvalidToolFailureMessage,
+		})
+		return err
+	})
 }
 
 func createProjectParametricArtifactInDB(ctx context.Context, db *gorm.DB, projectID string, input CreateProjectParametricArtifactInput) (ProjectParametricArtifact, error) {

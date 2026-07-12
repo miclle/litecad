@@ -2077,7 +2077,83 @@ Verification result on 2026-07-12:
 
 Remaining after this task:
 
-- Assistant run failure states, provider telemetry, and richer provider-specific options remain future work.
+- Provider telemetry, richer run-status UI, retry guidance, and richer provider-specific options remain future work.
+- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, patterns, arbitrary-axis primitives, and CAD document History integration for generated DSL features.
+
+---
+
+### Task 18: Persist invalid parametric output failures
+
+**Why this task exists:** Task 17 can force native `build_parametric_model` calls, but providers can still return malformed native arguments or invalid strict JSON fallback output. Users should be able to refresh the conversation and see that a generation attempt failed safely, without LiteCAD storing raw invalid provider text or creating a misleading artifact draft.
+
+**Files:**
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/ai_tools_test.go`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- `RunProjectAgentParametric(...)` persists the user prompt plus a safe Assistant failure message when provider output reaches LiteCAD but fails `build_parametric_model` validation.
+- Invalid provider output still returns `ErrInvalidAIChatInput`.
+- No `ProjectParametricArtifact` is created for invalid provider output.
+- Provider transport failures still return an error without persisting chat messages.
+
+- [x] **Step 1: Write failing service tests**
+
+Run:
+
+```bash
+go test ./internal/service -run 'TestAIParametricRunRejectsInvalidToolOutput|TestAIParametricRunPersistsNativeToolFailureWithoutArtifact|TestAIParametricRunDoesNotPersistOnProviderFailure'
+```
+
+Expected failures:
+
+- Fallback invalid JSON/text output creates no persisted user or Assistant messages.
+- Native invalid tool-call arguments create no persisted user or Assistant messages.
+- Both paths still create no artifacts.
+
+Verification result on 2026-07-12:
+
+- The command failed as expected because both tests found an empty conversation message list after invalid provider output.
+
+- [x] **Step 2: Implement safe failure persistence**
+
+Add a shared service helper that stores the user prompt and a canonical Assistant failure body in the selected conversation when tool-call parsing/validation fails. Do not store raw invalid provider output, and do not create a parametric artifact.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+go test ./internal/service -run 'TestAIParametricRunRejectsInvalidToolOutput|TestAIParametricRunPersistsNativeToolFailureWithoutArtifact'
+go test ./internal/service -run 'TestAIParametric|TestOpenAICompatible|TestSendProjectAgent'
+git diff --check
+task check
+task test
+task test-browser
+git add internal/service/ai_tools.go internal/service/ai_tools_test.go docs/ai-parametric-assistant.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(agent): persist parametric run failures"
+git push
+```
+
+Expected:
+
+- Invalid parametric provider output is visible in refreshed conversation history as a safe Assistant failure.
+- Invalid output still fails the generation request and creates no artifact.
+- Existing successful native-tool and strict-JSON generation paths keep working.
+
+Verification result on 2026-07-12:
+
+- `go test ./internal/service -run 'TestAIParametricRunRejectsInvalidToolOutput|TestAIParametricRunPersistsNativeToolFailureWithoutArtifact|TestAIParametricRunDoesNotPersistOnProviderFailure'` passed after the RED failures.
+- `go test ./internal/service -run 'TestAIParametric|TestOpenAICompatible|TestSendProjectAgent'` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+- Code review found no blocking issues.
+
+Remaining after this task:
+
+- Provider telemetry, richer run-status UI, retry guidance, and richer provider-specific options remain future work.
 - The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, patterns, arbitrary-axis primitives, and CAD document History integration for generated DSL features.
 
 ---

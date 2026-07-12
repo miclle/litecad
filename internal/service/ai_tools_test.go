@@ -303,4 +303,133 @@ func TestAIParametricRunRejectsInvalidToolOutput(t *testing.T) {
 	if len(artifacts) != 0 {
 		t.Fatalf("artifacts = %+v, want none", artifacts)
 	}
+
+	messages, err := svc.ListProjectAgentMessages(ctx, user.ID, project.ID, conversation.ID)
+	if err != nil {
+		t.Fatalf("ListProjectAgentMessages returned error: %v", err)
+	}
+	if len(messages) != 2 || messages[0].Role != "user" || messages[1].Role != "assistant" {
+		t.Fatalf("messages = %+v, want persisted user and assistant failure messages", messages)
+	}
+	if messages[0].Body != "Make a parametric mounting bracket" {
+		t.Fatalf("user message body = %q", messages[0].Body)
+	}
+	if !strings.Contains(messages[1].Body, "could not create a valid parametric model") {
+		t.Fatalf("assistant failure body = %q", messages[1].Body)
+	}
+	if strings.Contains(messages[1].Body, "I created the model for you") {
+		t.Fatalf("assistant failure body should not store raw invalid provider output: %q", messages[1].Body)
+	}
+}
+
+func TestAIParametricRunPersistsNativeToolFailureWithoutArtifact(t *testing.T) {
+	svc := newTestService(t)
+	svc.aiClient = &recordingAIToolClient{call: AIChatToolCall{
+		Tool:      aiParametricToolBuildModel,
+		Arguments: []byte(`{"title":"Bad native output","version":"v1","source_kind":"python","code":"print(1)"}`),
+	}}
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-run-native-invalid@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{OwnerUserID: user.ID, Name: "Invalid native run study"})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Invalid native run",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	if _, err := svc.RunProjectAgentParametric(ctx, ProjectAgentParametricRunInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
+		Message:        "Make a native parametric mounting bracket",
+	}); !errors.Is(err, ErrInvalidAIChatInput) {
+		t.Fatalf("RunProjectAgentParametric error = %v, want ErrInvalidAIChatInput", err)
+	}
+
+	artifacts, err := svc.ListProjectParametricArtifacts(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("ListProjectParametricArtifacts returned error: %v", err)
+	}
+	if len(artifacts) != 0 {
+		t.Fatalf("artifacts = %+v, want none", artifacts)
+	}
+
+	messages, err := svc.ListProjectAgentMessages(ctx, user.ID, project.ID, conversation.ID)
+	if err != nil {
+		t.Fatalf("ListProjectAgentMessages returned error: %v", err)
+	}
+	if len(messages) != 2 || messages[0].Role != "user" || messages[1].Role != "assistant" {
+		t.Fatalf("messages = %+v, want persisted user and assistant failure messages", messages)
+	}
+	if messages[0].Body != "Make a native parametric mounting bracket" {
+		t.Fatalf("user message body = %q", messages[0].Body)
+	}
+	if !strings.Contains(messages[1].Body, "could not create a valid parametric model") {
+		t.Fatalf("assistant failure body = %q", messages[1].Body)
+	}
+}
+
+func TestAIParametricRunDoesNotPersistOnProviderFailure(t *testing.T) {
+	svc := newTestService(t)
+	svc.aiClient = failingAIClient{}
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-run-provider-failure@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{OwnerUserID: user.ID, Name: "Provider failure parametric study"})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Provider failure run",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	if _, err := svc.RunProjectAgentParametric(ctx, ProjectAgentParametricRunInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
+		Message:        "Make a parametric mounting bracket",
+	}); err == nil {
+		t.Fatal("RunProjectAgentParametric should return provider failure")
+	}
+
+	artifacts, err := svc.ListProjectParametricArtifacts(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("ListProjectParametricArtifacts returned error: %v", err)
+	}
+	if len(artifacts) != 0 {
+		t.Fatalf("artifacts = %+v, want none", artifacts)
+	}
+	messages, err := svc.ListProjectAgentMessages(ctx, user.ID, project.ID, conversation.ID)
+	if err != nil {
+		t.Fatalf("ListProjectAgentMessages returned error: %v", err)
+	}
+	if len(messages) != 0 {
+		t.Fatalf("messages = %+v, want none", messages)
+	}
 }
