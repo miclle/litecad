@@ -260,28 +260,31 @@ function compileFeatureDSLShape(
   const parameters = resolveFeatureDSLParameters(document, parameterValues)
   let accumulatedShape: any | undefined
   for (const feature of document.features) {
-    if (feature.type === 'box') {
-      accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLBoxShape(openCascade, feature, parameters))
-      continue
-    }
-    if (feature.type === 'cylinder') {
-      accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'height'))
-      continue
-    }
-    if (feature.type === 'cylinder_cut') {
-      if (!accumulatedShape) {
-        throw new Error(`Feature ${feature.id} cylinder_cut requires a prior solid feature`)
+    const origins = resolveFeatureDSLRepeatedOrigins(feature, parameters)
+    for (const origin of origins) {
+      if (feature.type === 'box') {
+        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLBoxShape(openCascade, feature, parameters, origin))
+        continue
       }
-      const cutterShape = buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'depth')
-      const cutBuilder = new openCascade.BRepAlgoAPI_Cut_3(
-        accumulatedShape,
-        cutterShape,
-        new openCascade.Message_ProgressRange_1(),
-      )
-      accumulatedShape = cutBuilder.Shape()
-      continue
+      if (feature.type === 'cylinder') {
+        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'height', origin))
+        continue
+      }
+      if (feature.type === 'cylinder_cut') {
+        if (!accumulatedShape) {
+          throw new Error(`Feature ${feature.id} cylinder_cut requires a prior solid feature`)
+        }
+        const cutterShape = buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'depth', origin)
+        const cutBuilder = new openCascade.BRepAlgoAPI_Cut_3(
+          accumulatedShape,
+          cutterShape,
+          new openCascade.Message_ProgressRange_1(),
+        )
+        accumulatedShape = cutBuilder.Shape()
+        continue
+      }
+      throw new Error(`Unsupported feature DSL type: ${(feature as { type?: string }).type}`)
     }
-    throw new Error(`Unsupported feature DSL type: ${(feature as { type?: string }).type}`)
   }
   if (!accumulatedShape) {
     throw new Error('Feature DSL document has no features')
@@ -293,9 +296,9 @@ function appendFeatureDSLShape(openCascade: OpenCascadeModule, accumulatedShape:
   return accumulatedShape ? compoundShapes(openCascade, [accumulatedShape, nextShape]) : nextShape
 }
 
-function buildFeatureDSLBoxShape(openCascade: OpenCascadeModule, feature: { id: string; origin?: readonly (number | string)[]; size: readonly (number | string)[] }, parameters: Record<string, number>) {
+function buildFeatureDSLBoxShape(openCascade: OpenCascadeModule, feature: { id: string; origin?: readonly (number | string)[]; size: readonly (number | string)[] }, parameters: Record<string, number>, repeatedOrigin?: readonly number[]) {
   const size = resolveFeatureDSLVector(feature.size, parameters)
-  const origin = resolveFeatureDSLVector(feature.origin ?? [0, 0, 0], parameters)
+  const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin ?? [0, 0, 0], parameters)
   if (size.some((value) => value <= 0)) {
     throw new Error(`Feature ${feature.id} box dimensions must be positive`)
   }
@@ -323,8 +326,9 @@ function buildFeatureDSLCylinderShape(
   },
   parameters: Record<string, number>,
   lengthKey: 'height' | 'depth',
+  repeatedOrigin?: readonly number[],
 ) {
-  const origin = resolveFeatureDSLVector(feature.origin, parameters)
+  const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin, parameters)
   const radius = resolveFeatureDSLRadius(feature, parameters)
   const lengthExpression = feature[lengthKey]
   if (lengthExpression === undefined) {
@@ -344,6 +348,22 @@ function buildFeatureDSLCylinderShape(
   const cylinderBuilder = new openCascade.BRepPrimAPI_MakeCylinder_3(axis, radius, length)
   cylinderBuilder.Build(new openCascade.Message_ProgressRange_1())
   return cylinderBuilder.Shape()
+}
+
+function resolveFeatureDSLRepeatedOrigins(
+  feature: { id: string; origin?: readonly (number | string)[]; repeat?: { count: number; step: readonly (number | string)[] } },
+  parameters: Record<string, number>,
+) {
+  const origin = resolveFeatureDSLVector(feature.origin ?? [0, 0, 0], parameters)
+  if (!feature.repeat) {
+    return [origin]
+  }
+  const count = feature.repeat.count
+  if (!Number.isInteger(count) || count < 1 || count > 128) {
+    throw new Error(`Feature ${feature.id} repeat count must be an integer from 1 to 128`)
+  }
+  const step = resolveFeatureDSLVector(feature.repeat.step, parameters)
+  return Array.from({ length: count }, (_entry, index) => origin.map((value, axis) => value + (step[axis] ?? 0) * index))
 }
 
 function resolveFeatureDSLRadius(

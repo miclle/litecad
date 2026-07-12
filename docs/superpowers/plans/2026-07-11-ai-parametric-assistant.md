@@ -2242,7 +2242,94 @@ Verification result on 2026-07-12:
 Remaining after this task:
 
 - Provider telemetry, richer run-status UI, retry guidance, and richer provider-specific options remain future work.
-- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, patterns, and CAD document History integration for generated DSL features.
+- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, and CAD document History integration for generated DSL features.
+
+---
+
+### Task 20: LiteCAD feature DSL bounded repeat patterns
+
+**Why this task exists:** Task 19 made side holes and horizontal posts possible, but generated mechanical parts still need repeated holes, posts, ribs, and simple arrays. This task adds a bounded linear `repeat` pattern to the existing primitives without introducing a full feature graph, sketch system, or persistent B-rep history.
+
+**Files:**
+- Modify: `website/src/cad/kernel-protocol.ts`
+- Test: `website/src/cad/kernel-protocol.test.ts`
+- Modify: `website/src/cad/opencascade-step.ts`
+- Test: `website/src/cad/opencascade-step.test.ts`
+- Modify: `internal/service/parametric_artifact.go`
+- Test: `internal/service/parametric_artifact_test.go`
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/ai_tools_test.go`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- Supported feature objects may include `repeat: { "count": n, "step": [dx, dy, dz] }`.
+- `count` is a literal integer from 1 to 128.
+- `step` is a three-value LiteCAD expression tuple, so spacing can reference declared numeric parameters.
+- Omitted `repeat` keeps existing single-feature behavior.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsRepeatPattern|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedRepeatPattern'
+go test ./internal/service -run 'TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+```
+
+Expected failures:
+
+- Worker protocol accepts invalid repeat counts.
+- OCCT compile/export applies only the first repeated feature instance.
+- Backend validation accepts malformed repeat patterns.
+- Provider prompt does not mention `repeat`.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` failed as expected: invalid repeat count was accepted, and the repeated cylinder-cut test only created one cutter origin.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsRepeatPattern|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedRepeatPattern'` failed as expected: malformed repeat input with `count = 0` was accepted.
+- `go test ./internal/service -run 'TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` failed as expected: provider context did not mention `repeat`.
+
+- [x] **Step 2: Implement bounded linear repeat**
+
+Add `repeat` to the worker protocol types, strict frontend/backend validators, OCCT worker expansion, and provider/tool descriptions. Keep the scope bounded to linear repeats of existing primitives.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsRepeatPattern|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedRepeatPattern|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+git diff --check
+task check
+task test
+task test-browser
+git add website/src/cad/kernel-protocol.ts website/src/cad/kernel-protocol.test.ts website/src/cad/opencascade-step.ts website/src/cad/opencascade-step.test.ts internal/service/parametric_artifact.go internal/service/parametric_artifact_test.go internal/service/ai_tools.go internal/service/ai_tools_test.go docs/ai-parametric-assistant.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(cad): add feature dsl repeat patterns"
+git push
+```
+
+Expected:
+
+- Generated DSL can represent repeated holes/posts with bounded linear `repeat`.
+- Existing non-repeated feature behavior remains unchanged.
+- Strict validation rejects invalid repeat counts and malformed step vectors before persistence or worker dispatch.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` passed.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsRepeatPattern|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedRepeatPattern|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+- Code review found no blocking issues.
+
+Remaining after this task:
+
+- Provider telemetry, richer run-status UI, retry guidance, and richer provider-specific options remain future work.
+- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, and CAD document History integration for generated DSL features.
 
 ---
 

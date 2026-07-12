@@ -450,4 +450,98 @@ describe('runFeatureDSLExportWithKernel', () => {
     expect(transfer).toHaveBeenCalledWith(cutShape, 0, true, expect.anything())
     expect(result.exportedStepText).toContain('END-ISO-10303-21')
   })
+
+  it('expands repeated cylinder-cut features before writing STEP', async () => {
+    const boxShape = { name: 'box-shape' }
+    const cutterShapes = [{ name: 'cutter-a' }, { name: 'cutter-b' }]
+    const cutShapes = [{ name: 'cut-a' }, { name: 'cut-b' }]
+    const buildBox = vi.fn()
+    const buildCylinder = vi.fn()
+    const transfer = vi.fn()
+    const write = vi.fn()
+    const openCascade = {
+      FS: {
+        readFile: vi.fn(() => 'ISO-10303-21;\nEND-ISO-10303-21;'),
+        unlink: vi.fn(),
+      },
+      IFSelect_ReturnStatus: {
+        IFSelect_RetDone: 1,
+      },
+      STEPControl_StepModelType: {
+        STEPControl_AsIs: 0,
+      },
+      STEPControl_Writer_1: vi.fn(function writer(this: {
+        Transfer: typeof transfer
+        Write: typeof write
+      }) {
+        this.Transfer = transfer.mockReturnValue(1)
+        this.Write = write.mockReturnValue(1)
+      }),
+      BRepPrimAPI_MakeBox_2: vi.fn(function makeBox(
+        this: { Build: typeof buildBox; Shape: () => unknown },
+        sizeX: number,
+        sizeY: number,
+        sizeZ: number,
+      ) {
+        expect([sizeX, sizeY, sizeZ]).toEqual([80, 40, 6])
+        this.Build = buildBox
+        this.Shape = () => boxShape
+      }),
+      gp_Pnt_3: vi.fn(function point(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      gp_Dir_4: vi.fn(function direction(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      gp_Ax2_3: vi.fn(function axis(this: { origin: unknown; direction: unknown }, origin: unknown, direction: unknown) {
+        this.origin = origin
+        this.direction = direction
+      }),
+      BRepPrimAPI_MakeCylinder_3: vi.fn(function makeCylinder(
+        this: { Build: typeof buildCylinder; Shape: () => unknown },
+        axis: unknown,
+        radius: number,
+        height: number,
+      ) {
+        expect(axis).toBeDefined()
+        expect([radius, height]).toEqual([3, 8])
+        const shape = cutterShapes[buildCylinder.mock.calls.length]
+        this.Build = buildCylinder
+        this.Shape = () => shape
+      }),
+      BRepAlgoAPI_Cut_3: vi.fn(function cut(this: { Shape: () => unknown }, base: unknown, cutter: unknown) {
+        const callIndex = openCascade.BRepAlgoAPI_Cut_3.mock.calls.length - 1
+        expect(base).toBe(callIndex === 0 ? boxShape : cutShapes[0])
+        expect(cutter).toBe(cutterShapes[callIndex])
+        this.Shape = () => cutShapes[callIndex]
+      }),
+      Message_ProgressRange_1: vi.fn(function progressRange() {}),
+    }
+
+    const result = await runFeatureDSLExportWithKernel(openCascade, {
+      filename: 'plate-hole-pattern.step',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        parameters: {
+          spacing: { type: 'number', default: 20 },
+        },
+        features: [
+          { id: 'plate', type: 'box', size: [80, 40, 6] },
+          { id: 'holes', type: 'cylinder_cut', origin: [20, 10, -1], diameter: 6, depth: 8, repeat: { count: 2, step: ['spacing', 0, 0] } },
+        ],
+      },
+    })
+
+    expect(openCascade.gp_Pnt_3).toHaveBeenCalledWith(20, 10, -1)
+    expect(openCascade.gp_Pnt_3).toHaveBeenCalledWith(40, 10, -1)
+    expect(buildCylinder).toHaveBeenCalledTimes(2)
+    expect(openCascade.BRepAlgoAPI_Cut_3).toHaveBeenCalledTimes(2)
+    expect(transfer).toHaveBeenCalledWith(cutShapes[1], 0, true, expect.anything())
+    expect(result.exportedStepText).toContain('END-ISO-10303-21')
+  })
 })

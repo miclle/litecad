@@ -177,6 +177,7 @@ describe('CAD kernel worker protocol', () => {
           type: 'cylinder_cut',
           origin: [40, 20, -1],
           axis: [1, 0, 0],
+          repeat: { count: 3, step: [0, 12, 0] },
           diameter: 'hole_diameter',
           depth: 8,
         },
@@ -194,6 +195,32 @@ describe('CAD kernel worker protocol', () => {
         },
       }),
     ).toBe(true)
+  })
+
+  test('rejects malformed LiteCAD feature DSL repeat patterns', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-bad-repeat',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'bad-repeat.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            features: [
+              {
+                id: 'hole_pattern',
+                type: 'cylinder_cut',
+                origin: [0, 0, 0],
+                radius: 4,
+                depth: 8,
+                repeat: { count: 0, step: [10, 0, 0] },
+              },
+            ],
+          },
+        },
+      }),
+    ).toBe(false)
   })
 
   test('rejects malformed LiteCAD feature DSL cylinder axes', () => {

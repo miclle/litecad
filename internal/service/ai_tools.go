@@ -14,7 +14,7 @@ import (
 
 const (
 	aiParametricToolBuildModel            = "build_parametric_model"
-	aiParametricSystemPrompt              = "You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Prefer source_kind litecad-feature-dsl with a valid JSON document using version, unit, parameters, and features. Use box features for plates and bodies, cylinder features for bosses or posts, and cylinder_cut features for holes. In LiteCAD feature DSL, box uses origin and size; cylinder uses origin, optional non-zero axis, radius or diameter, and height; cylinder_cut uses origin, optional non-zero axis, radius or diameter, and depth. Omit axis for default Z-axis cylinders, and use axis such as [1,0,0] or [0,1,0] for side holes or horizontal posts. Use openscad only when the user explicitly asks for OpenSCAD source. Declare editable numeric parameters in the artifact so LiteCAD can preview and save them."
+	aiParametricSystemPrompt              = "You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Prefer source_kind litecad-feature-dsl with a valid JSON document using version, unit, parameters, and features. Use box features for plates and bodies, cylinder features for bosses or posts, and cylinder_cut features for holes. In LiteCAD feature DSL, box uses origin and size; cylinder uses origin, optional non-zero axis, radius or diameter, and height; cylinder_cut uses origin, optional non-zero axis, radius or diameter, and depth. Omit axis for default Z-axis cylinders, and use axis such as [1,0,0] or [0,1,0] for side holes or horizontal posts. Use repeat with integer count from 1 to 128 and a step vector for linear patterns such as repeated holes or posts; keep count literal and make step spacing parameterized when useful. Use openscad only when the user explicitly asks for OpenSCAD source. Declare editable numeric parameters in the artifact so LiteCAD can preview and save them."
 	aiParametricInvalidToolFailureMessage = "I could not create a valid parametric model from that response. Please try again with a more specific request."
 )
 
@@ -128,7 +128,7 @@ func buildParametricModelAITool() AIChatTool {
 				},
 				"code": map[string]any{
 					"type":        "string",
-					"description": "Complete source text. For litecad-feature-dsl, use version 1 JSON with box, cylinder, and cylinder_cut features. Cylinders and cuts may include an optional non-zero axis vector.",
+					"description": "Complete source text. For litecad-feature-dsl, use version 1 JSON with box, cylinder, and cylinder_cut features. Cylinders and cuts may include an optional non-zero axis vector, and features may include repeat with integer count 1..128 plus a step vector.",
 				},
 			},
 		},

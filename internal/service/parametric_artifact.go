@@ -25,6 +25,7 @@ const (
 	projectParametricCompileStatusPending   = "pending"
 	projectParametricCompileStatusSuccess   = "success"
 	projectParametricCompileStatusError     = "error"
+	maxLiteCADFeatureDSLRepeatCount         = 128
 )
 
 var (
@@ -475,15 +476,21 @@ type liteCADFeatureDSLValidationParameter struct {
 }
 
 type liteCADFeatureDSLValidationFeature struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"`
-	Origin   []any  `json:"origin"`
-	Axis     []any  `json:"axis"`
-	Size     []any  `json:"size"`
-	Radius   any    `json:"radius"`
-	Diameter any    `json:"diameter"`
-	Height   any    `json:"height"`
-	Depth    any    `json:"depth"`
+	ID       string                             `json:"id"`
+	Type     string                             `json:"type"`
+	Origin   []any                              `json:"origin"`
+	Axis     []any                              `json:"axis"`
+	Size     []any                              `json:"size"`
+	Radius   any                                `json:"radius"`
+	Diameter any                                `json:"diameter"`
+	Height   any                                `json:"height"`
+	Depth    any                                `json:"depth"`
+	Repeat   *liteCADFeatureDSLValidationRepeat `json:"repeat"`
+}
+
+type liteCADFeatureDSLValidationRepeat struct {
+	Count any   `json:"count"`
+	Step  []any `json:"step"`
 }
 
 func validateLiteCADFeatureDSLSource(data []byte) error {
@@ -531,9 +538,11 @@ func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature
 			return err
 		}
 		if feature.Origin != nil {
-			return validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameterNames)
+			if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameterNames); err != nil {
+				return err
+			}
 		}
-		return nil
+		return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameterNames)
 	case "cylinder":
 		return validateLiteCADFeatureDSLCylinderLikeFeature(feature, "height", feature.Height, parameterNames)
 	case "cylinder_cut":
@@ -552,6 +561,9 @@ func validateLiteCADFeatureDSLCylinderLikeFeature(feature liteCADFeatureDSLValid
 			return err
 		}
 	}
+	if err := validateLiteCADFeatureDSLRepeat(feature.Repeat, parameterNames); err != nil {
+		return err
+	}
 	hasRadius := feature.Radius != nil
 	hasDiameter := feature.Diameter != nil
 	if hasRadius == hasDiameter {
@@ -568,6 +580,17 @@ func validateLiteCADFeatureDSLCylinderLikeFeature(feature liteCADFeatureDSLValid
 		return fmt.Errorf("%w: missing cylinder %s", ErrInvalidProjectParametricArtifactInput, lengthName)
 	}
 	return validateLiteCADFeatureDSLExpression(lengthValue, parameterNames)
+}
+
+func validateLiteCADFeatureDSLRepeat(repeat *liteCADFeatureDSLValidationRepeat, parameterNames map[string]struct{}) error {
+	if repeat == nil {
+		return nil
+	}
+	count, ok := repeat.Count.(float64)
+	if !ok || !isFiniteFloat(count) || math.Trunc(count) != count || count < 1 || count > maxLiteCADFeatureDSLRepeatCount {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	return validateLiteCADFeatureDSLExpressionTuple(repeat.Step, 3, parameterNames)
 }
 
 func validateLiteCADFeatureDSLAxisTuple(values []any, parameterNames map[string]struct{}) error {

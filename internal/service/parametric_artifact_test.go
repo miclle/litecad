@@ -381,6 +381,91 @@ func TestCreateLiteCADFeatureDSLArtifactRejectsZeroCylinderAxis(t *testing.T) {
 	}
 }
 
+func TestCreateLiteCADFeatureDSLArtifactAcceptsRepeatPattern(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-repeat@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Repeat generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Repeated hole bracket",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode: `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "spacing": { "type": "number", "default": 18, "min": 8, "max": 40 }
+  },
+  "features": [
+    { "id": "plate", "type": "box", "origin": [0, 0, 0], "size": [80, 40, 6] },
+    { "id": "mount_holes", "type": "cylinder_cut", "origin": [18, 20, -1], "diameter": 6, "depth": 8, "repeat": { "count": 3, "step": ["spacing", 0, 0] } }
+  ]
+}`,
+		CompileStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	if artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", artifact)
+	}
+}
+
+func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedRepeatPattern(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-bad-repeat@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Reject bad repeat generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	for _, source := range []string{
+		`{"version":1,"unit":"millimetre","features":[{"id":"holes","type":"cylinder_cut","origin":[0,0,0],"radius":4,"depth":8,"repeat":{"count":0,"step":[10,0,0]}}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"holes","type":"cylinder_cut","origin":[0,0,0],"radius":4,"depth":8,"repeat":{"count":129,"step":[10,0,0]}}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"holes","type":"cylinder_cut","origin":[0,0,0],"radius":4,"depth":8,"repeat":{"count":2,"step":[10,0]}}]}`,
+	} {
+		_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+			OwnerUserID:   user.ID,
+			ProjectID:     project.ID,
+			Title:         "Bad repeat bracket",
+			SourceKind:    "litecad-feature-dsl",
+			SourceCode:    source,
+			CompileStatus: "pending",
+		})
+		if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+			t.Fatalf("CreateProjectParametricArtifact(%s) error = %v, want ErrInvalidProjectParametricArtifactInput", source, err)
+		}
+	}
+}
+
 func TestSaveParametricArtifactRejectsFailedCompile(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

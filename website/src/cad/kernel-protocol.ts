@@ -26,11 +26,17 @@ export type CadKernelFeatureDSLNumberParameter = {
 
 export type CadKernelFeatureDSLParameter = CadKernelFeatureDSLNumberParameter
 
+export type CadKernelFeatureDSLRepeat = {
+  count: number
+  step: readonly CadKernelFeatureDSLExpression[]
+}
+
 export type CadKernelFeatureDSLBoxFeature = {
   id: string
   type: 'box'
   origin?: readonly CadKernelFeatureDSLExpression[]
   size: readonly CadKernelFeatureDSLExpression[]
+  repeat?: CadKernelFeatureDSLRepeat
 }
 
 export type CadKernelFeatureDSLCylinderFeature = {
@@ -41,6 +47,7 @@ export type CadKernelFeatureDSLCylinderFeature = {
   radius?: CadKernelFeatureDSLExpression
   diameter?: CadKernelFeatureDSLExpression
   height: CadKernelFeatureDSLExpression
+  repeat?: CadKernelFeatureDSLRepeat
 }
 
 export type CadKernelFeatureDSLCylinderCutFeature = {
@@ -51,6 +58,7 @@ export type CadKernelFeatureDSLCylinderCutFeature = {
   radius?: CadKernelFeatureDSLExpression
   diameter?: CadKernelFeatureDSLExpression
   depth: CadKernelFeatureDSLExpression
+  repeat?: CadKernelFeatureDSLRepeat
 }
 
 export type CadKernelFeatureDSLFeature =
@@ -273,7 +281,11 @@ function isFeatureDSLFeature(value: unknown): value is CadKernelFeatureDSLFeatur
     return false
   }
   if (value.type === 'box') {
-    return isFeatureDSLExpressionTuple(value.size, 3) && (value.origin === undefined || isFeatureDSLExpressionTuple(value.origin, 3))
+    return (
+      isFeatureDSLExpressionTuple(value.size, 3) &&
+      (value.origin === undefined || isFeatureDSLExpressionTuple(value.origin, 3)) &&
+      (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
+    )
   }
   if (value.type === 'cylinder') {
     return isFeatureDSLCylinderLikeFeature(value, 'height')
@@ -290,9 +302,21 @@ function isFeatureDSLCylinderLikeFeature(value: Record<string, unknown>, lengthK
   return (
     isFeatureDSLExpressionTuple(value.origin, 3) &&
     (value.axis === undefined || isFeatureDSLAxisTuple(value.axis)) &&
+    (value.repeat === undefined || isFeatureDSLRepeat(value.repeat)) &&
     hasRadius !== hasDiameter &&
     (hasRadius ? isFeatureDSLExpression(value.radius) : isFeatureDSLExpression(value.diameter)) &&
     isFeatureDSLExpression(value[lengthKey])
+  )
+}
+
+function isFeatureDSLRepeat(value: unknown): value is CadKernelFeatureDSLRepeat {
+  return (
+    isRecord(value) &&
+    typeof value.count === 'number' &&
+    Number.isInteger(value.count) &&
+    value.count >= 1 &&
+    value.count <= 128 &&
+    isFeatureDSLExpressionTuple(value.step, 3)
   )
 }
 
