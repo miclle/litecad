@@ -29,7 +29,12 @@ import {
   viewOrientationAnimationDuration,
   type ViewOrientation,
 } from './view-orientation'
-import { projectPreviewAssetSignature, type ProjectPreviewAsset } from './project-preview-assets'
+import {
+  projectPreviewAssetContentSignature,
+  projectPreviewSceneSignature,
+  type ProjectPreviewAsset,
+  type ProjectPreviewKernelMeshAsset,
+} from './project-preview-assets'
 import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { useModelPreviewResources } from './use-model-preview-resources'
 import { useModelPreviewSelection } from './use-model-preview-selection'
@@ -58,6 +63,10 @@ export type ModelPreviewProps = {
 type ZoomHUDState = {
   percent: number
   visible: boolean
+}
+
+type ModelPreviewSceneRuntime = {
+  updateKernelMeshAssets: (assets: readonly ProjectPreviewAsset[]) => void
 }
 
 const viewportBackground = 0xf8fafc
@@ -248,7 +257,8 @@ export function useModelPreviewScene({
   })
   const zoomHUDHideTimeoutRef = useRef<number | undefined>(undefined)
   const [zoomHUD, setZoomHUD] = useState<ZoomHUDState>({ percent: 100, visible: false })
-  const previewAssetSignature = useMemo(() => projectPreviewAssetSignature(previewAssets), [previewAssets])
+  const previewSceneSignature = useMemo(() => projectPreviewSceneSignature(previewAssets), [previewAssets])
+  const sceneRuntimeRef = useRef<ModelPreviewSceneRuntime | undefined>(undefined)
   const isPreviewObjectVisible = (modelId: string) => !visibleModelIdsRef.current || visibleModelIdsRef.current.includes(modelId)
   const clearZoomHUDHideTimeout = () => {
     if (zoomHUDHideTimeoutRef.current !== undefined) {
@@ -677,13 +687,17 @@ export function useModelPreviewScene({
       })
     }
 
-    const updatePreviewBounds = () => {
+    const updatePreviewBounds = ({ resetCamera = true }: { resetCamera?: boolean } = {}) => {
       const bounds = new THREE.Box3().setFromObject(previewGroup)
       if (bounds.isEmpty()) {
         previewCenter.set(0, 0, 0)
         previewRadius = 4
         updateWorldGrid()
-        resetView()
+        if (resetCamera) {
+          resetView()
+        } else {
+          renderScene()
+        }
         return
       }
       const sphere = new THREE.Sphere()
@@ -691,12 +705,46 @@ export function useModelPreviewScene({
       previewCenter.copy(sphere.center)
       previewRadius = Math.max(sphere.radius, 1)
       updateWorldGrid(bounds)
-      resetView()
+      if (resetCamera) {
+        resetView()
+      } else {
+        renderScene()
+      }
     }
 
-    const addPreviewObject = (asset: ProjectPreviewAsset, assetIndex: number, object: THREE.Object3D) => {
+    const assetContentSignatureByModelID = new Map<string, string>()
+    const deleteRegisteredPreviewObject = (modelID: string, object: THREE.Object3D) => {
+      const sourceNodeID = `node_${modelID}`
+      previewObjectsByModelIDRef.current.delete(modelID)
+      previewObjectsByNodeIDRef.current.delete(sourceNodeID)
+      previewObjectBasePositionsByObjectIDRef.current.delete(modelID)
+      previewObjectBasePositionsByObjectIDRef.current.delete(sourceNodeID)
+      previewObjectBaseUsesCADOrientationByObjectIDRef.current.delete(modelID)
+      previewObjectBaseUsesCADOrientationByObjectIDRef.current.delete(sourceNodeID)
+      previewObjectBaseTranslationsByObjectIDRef.current.delete(modelID)
+      previewObjectBaseTranslationsByObjectIDRef.current.delete(sourceNodeID)
+      object.traverse((child) => {
+        const nodeID = typeof child.userData.litecadNodeId === 'string' ? child.userData.litecadNodeId : undefined
+        if (!nodeID) {
+          return
+        }
+        previewObjectsByNodeIDRef.current.delete(nodeID)
+        previewObjectBasePositionsByObjectIDRef.current.delete(nodeID)
+        previewObjectBaseUsesCADOrientationByObjectIDRef.current.delete(nodeID)
+        previewObjectBaseTranslationsByObjectIDRef.current.delete(nodeID)
+      })
+      previewGroup.remove(object)
+      disposeObject3DResources(object)
+      assetContentSignatureByModelID.delete(modelID)
+    }
+
+    const addPreviewObject = (asset: ProjectPreviewAsset, assetIndex: number, object: THREE.Object3D, { resetCamera = true }: { resetCamera?: boolean } = {}) => {
       if (isDisposed || !acceptLoadedObject(resourceGeneration, object)) {
         return
+      }
+      const existingObject = previewObjectsByModelIDRef.current.get(asset.modelId)
+      if (existingObject) {
+        deleteRegisteredPreviewObject(asset.modelId, existingObject)
       }
       const sourceNodeID = `node_${asset.modelId}`
       const baseUsesCADOrientation = asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh'
@@ -775,10 +823,21 @@ export function useModelPreviewScene({
         }
       })
       previewGroup.add(object)
+      assetContentSignatureByModelID.set(asset.modelId, projectPreviewAssetContentSignature(asset))
       syncPreviewObjectTransformsRef.current()
       syncSelectedPreviewObjectRef.current()
-      updatePreviewBounds()
+      updatePreviewBounds({ resetCamera })
       scheduleSnapshotCapture()
+    }
+
+    const updateKernelMeshAsset = (asset: ProjectPreviewKernelMeshAsset, assetIndex: number) => {
+      const nextContentSignature = projectPreviewAssetContentSignature(asset)
+      if (assetContentSignatureByModelID.get(asset.modelId) === nextContentSignature) {
+        return
+      }
+      addPreviewObject(asset, assetIndex, createKernelMeshPreviewObject(asset.mesh, asset.pickTargets, asset.componentMeshes, asset.modelId), {
+        resetCamera: false,
+      })
     }
 
     renderer.domElement.style.cursor = idleCursor
@@ -993,6 +1052,15 @@ export function useModelPreviewScene({
         new GLTFLoader().load(asset.previewUrl, (gltf) => addPreviewObject(asset, assetIndex, gltf.scene))
       }
     })
+    sceneRuntimeRef.current = {
+      updateKernelMeshAssets: (assets) => {
+        assets.forEach((asset, assetIndex) => {
+          if (asset.previewFormat === 'kernel-mesh') {
+            updateKernelMeshAsset(asset, assetIndex)
+          }
+        })
+      },
+    }
 
     lifecycle.addCleanup(() => {
 	      cancelViewAnimation()
@@ -1022,6 +1090,7 @@ export function useModelPreviewScene({
       syncPreviewObjectVisibilityRef.current = () => undefined
       syncPreviewObjectTransformsRef.current = () => undefined
       syncSelectedPreviewObjectRef.current = () => undefined
+      sceneRuntimeRef.current = undefined
       invalidateGeneration()
       scene.remove(previewGroup)
       disposeObject3DResources(scene)
@@ -1031,9 +1100,13 @@ export function useModelPreviewScene({
       }
     })
     return () => lifecycle.dispose()
-    // The parent can re-render during view changes; only rebuild the Three.js scene when asset content changes.
+    // The parent can re-render during view changes; only rebuild the Three.js scene when asset structure changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewAssetSignature])
+  }, [previewSceneSignature])
+
+  useEffect(() => {
+    sceneRuntimeRef.current?.updateKernelMeshAssets(previewAssets)
+  }, [previewAssets])
 
   return { containerRef, zoomHUD }
 }

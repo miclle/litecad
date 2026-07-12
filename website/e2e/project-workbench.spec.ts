@@ -345,12 +345,18 @@ test('opens the project workbench, History, and Assistant without browser errors
   await expect(savedModelInspector.getByRole('button', { name: 'Save parameters' })).toBeHidden()
   const sourceRequestsBeforeParameterSave = smokeFeatureDSLSourceRequestCount
   const modelParameterUpdatesBefore = smokeModelParameterUpdateCount
+  await page.locator('[data-model-preview] canvas').first().evaluate((canvas) => {
+    canvas.setAttribute('data-litecad-stable-canvas', 'saved-parameter-edit')
+  })
   await page.getByLabel('width value').fill('70')
   await page.getByLabel('width value').fill('80')
   await page.getByLabel('width value').fill('90')
   await expect(page.getByLabel('width value')).toHaveValue('90')
   await expect.poll(() => smokeModelParameterUpdateCount).toBe(modelParameterUpdatesBefore + 1)
   await expect.poll(() => smokeFeatureDSLSourceRequestCount).toBeGreaterThan(sourceRequestsBeforeParameterSave)
+  await expect
+    .poll(() => page.locator('[data-model-preview] canvas').first().evaluate((canvas) => canvas.getAttribute('data-litecad-stable-canvas')))
+    .toBe('saved-parameter-edit')
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
   await page.getByRole('option', { name: 'Smoke bracket' }).click()

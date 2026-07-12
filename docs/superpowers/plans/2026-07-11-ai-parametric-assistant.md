@@ -3731,6 +3731,23 @@ In-app browser verification result on 2026-07-12:
 - Browser smoke should rapidly fill WIDTH values for a saved `.lcad.json` model, assert only one parameter PATCH is emitted for the final value, and confirm reload persistence.
 - In the in-app browser, select a saved model, rapidly adjust WIDTH, and verify the Inspector keeps the final value, the main model remains visible, and the ViewCube center still renders.
 
+### Task 41: Update saved parameter meshes without rebuilding the viewer
+
+**Why this task exists:** Even after save coalescing, saved parameter edits could make the main workbench feel jumpy because the `.lcad.json` preview mesh disappeared or the Three.js scene reset while the updated worker result was loading. Ordinary parameter edits should feel like adjusting the current model, not re-opening the entire scene.
+
+**Implementation summary:**
+
+- Project preview assets now have separate signatures for scene structure and mesh content.
+- `ModelPreview` rebuilds the Three.js scene only when the model set or asset structure changes.
+- Saved LiteCAD DSL mesh content changes replace the existing kernel-mesh object inside the current scene and keep the camera/viewer canvas stable.
+- `ProjectView` keeps the last successful `.lcad.json` worker mesh by model ID while a new parameter preview is compiling, so the preview asset does not briefly disappear between saved revisions.
+
+**Tests and verification guidance:**
+
+- Unit tests should assert that same-model, same-structure kernel meshes keep the same scene signature while content signatures differ.
+- Browser smoke should mark the workbench canvas before rapid WIDTH edits and assert the same canvas remains after the final parameter save and preview refresh.
+- In the in-app browser, select a saved `.lcad.json` model, adjust WIDTH repeatedly, and verify the model changes without camera jump, canvas replacement, or ViewCube blanking.
+
 ---
 
 ## Testing Matrix

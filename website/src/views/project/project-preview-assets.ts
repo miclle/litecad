@@ -177,20 +177,51 @@ function componentIndexFromNodeID(nodeID: string) {
 
 export function projectPreviewAssetSignature(assets: readonly ProjectPreviewAsset[]) {
   return assets
+    .map(projectPreviewAssetContentSignature)
+    .join('|')
+}
+
+export function projectPreviewSceneSignature(assets: readonly ProjectPreviewAsset[]) {
+  return assets
     .map((asset) => {
       if (asset.previewFormat === 'kernel-mesh') {
         const geometrySignature = asset.geometrySignature ? `:${asset.geometrySignature}` : ''
-        const componentMeshSignature = asset.componentMeshes?.length
-          ? `:${asset.componentMeshes.map((mesh) => `${mesh.positions.length}/${mesh.normals.length}/${mesh.indices.length}`).join(',')}`
-          : ''
         const pickTargetSignature = asset.pickTargets
           ? `:${asset.pickTargets.map((target) => `${target.modelId}/${target.nodeId}/${target.name}`).join(',')}`
           : ''
-        return `${asset.modelId}:${asset.previewFormat}:${asset.mesh.positions.length}:${asset.mesh.normals.length}:${asset.mesh.indices.length}${geometrySignature}${componentMeshSignature}${pickTargetSignature}`
+        return `${asset.modelId}:${asset.previewFormat}:${asset.name}${geometrySignature}:${asset.componentMeshes?.length ?? 0}${pickTargetSignature}`
       }
       return `${asset.modelId}:${asset.previewFormat}:${asset.previewUrl}`
     })
     .join('|')
+}
+
+export function projectPreviewAssetContentSignature(asset: ProjectPreviewAsset) {
+  if (asset.previewFormat === 'kernel-mesh') {
+    const geometrySignature = asset.geometrySignature ? `:${asset.geometrySignature}` : ''
+    const componentMeshSignature = asset.componentMeshes?.length ? `:${asset.componentMeshes.map(cadKernelMeshContentSignature).join(',')}` : ''
+    const pickTargetSignature = asset.pickTargets ? `:${asset.pickTargets.map((target) => `${target.modelId}/${target.nodeId}/${target.name}`).join(',')}` : ''
+    return `${asset.modelId}:${asset.previewFormat}:${cadKernelMeshContentSignature(asset.mesh)}${geometrySignature}${componentMeshSignature}${pickTargetSignature}`
+  }
+  return `${asset.modelId}:${asset.previewFormat}:${asset.previewUrl}`
+}
+
+function cadKernelMeshContentSignature(mesh: CadKernelMesh) {
+  return [
+    numericArrayContentSignature(mesh.positions, 100000),
+    numericArrayContentSignature(mesh.normals, 100000),
+    numericArrayContentSignature(mesh.indices, 1),
+  ].join('/')
+}
+
+function numericArrayContentSignature(values: readonly number[], precision: number) {
+  let hash = 2166136261
+  for (const value of values) {
+    const normalizedValue = Number.isFinite(value) ? Math.round(value * precision) : 0
+    hash ^= normalizedValue
+    hash = Math.imul(hash, 16777619) >>> 0
+  }
+  return `${values.length}:${hash.toString(16)}`
 }
 
 export function cadKernelGeometryOperationsForModel(cadDocument: ProjectCADDocument | undefined, modelId: string): CadKernelOperation[] {

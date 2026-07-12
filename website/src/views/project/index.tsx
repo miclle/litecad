@@ -668,9 +668,11 @@ function ProjectView() {
         return runFeatureDSLPreviewInWorker(buildFeatureDSLPreviewInput(model, sourceText))
       },
       enabled: projectId !== '',
+      placeholderData: (previousData: CadKernelWorkerPreviewResult | undefined) => previousData,
       retry: false,
     })),
   })
+  const featureDSLKernelMeshesByModelIDRef = useRef<Record<string, CadKernelWorkerPreviewResult>>({})
   const kernelMeshesByModelID = browserKernelPreviewQueries.reduce<Record<string, CadKernelWorkerPreviewResult>>(
     (meshByModelID, query, index) => {
       const modelID = browserKernelStepPreviewModels[index]?.id
@@ -681,10 +683,23 @@ function ProjectView() {
     },
     {},
   )
+  const activeFeatureDSLModelIDs = new Set(browserKernelFeatureDSLPreviewModels.map((model) => model.id))
+  for (const cachedModelID of Object.keys(featureDSLKernelMeshesByModelIDRef.current)) {
+    if (!activeFeatureDSLModelIDs.has(cachedModelID)) {
+      delete featureDSLKernelMeshesByModelIDRef.current[cachedModelID]
+    }
+  }
   browserKernelFeatureDSLPreviewQueries.forEach((query, index) => {
     const modelID = browserKernelFeatureDSLPreviewModels[index]?.id
-    if (modelID && query.data) {
-      kernelMeshesByModelID[modelID] = query.data
+    if (!modelID) {
+      return
+    }
+    if (query.data) {
+      featureDSLKernelMeshesByModelIDRef.current[modelID] = query.data
+    }
+    const previewMesh = query.data ?? featureDSLKernelMeshesByModelIDRef.current[modelID]
+    if (previewMesh) {
+      kernelMeshesByModelID[modelID] = previewMesh
     }
   })
   const projectModelPreviewArtifactQueries = useQueries({

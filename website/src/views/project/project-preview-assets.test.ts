@@ -9,6 +9,7 @@ import {
   getModelDisplayName,
   parsedPreviewModels,
   projectPreviewAssetSignature,
+  projectPreviewSceneSignature,
   projectPreviewSummary,
 } from './project-preview-assets'
 import type { ProjectCADDocument, ProjectModel, ProjectModelPreviewArtifact } from 'src/types/project'
@@ -115,6 +116,40 @@ describe('project preview assets', () => {
         meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true },
       },
     ])
+  })
+
+  test('keeps scene identity stable while detecting same-size kernel mesh content changes', () => {
+    const firstMesh = {
+      positions: [0, 0, 0, 40, 0, 0, 0, 20, 0],
+      normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+      indices: [0, 1, 2],
+    }
+    const secondMesh = {
+      positions: [0, 0, 0, 96, 0, 0, 0, 20, 0],
+      normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+      indices: [0, 1, 2],
+    }
+    const firstAssets = [
+      {
+        modelId: 'mdl_lcad',
+        name: 'Feature DSL bracket',
+        previewFormat: 'kernel-mesh',
+        mesh: firstMesh,
+        meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true },
+      },
+    ] as const
+    const secondAssets = [
+      {
+        modelId: 'mdl_lcad',
+        name: 'Feature DSL bracket',
+        previewFormat: 'kernel-mesh',
+        mesh: secondMesh,
+        meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true },
+      },
+    ] as const
+
+    expect(projectPreviewSceneSignature(firstAssets)).toBe(projectPreviewSceneSignature(secondAssets))
+    expect(projectPreviewAssetSignature(firstAssets)).not.toBe(projectPreviewAssetSignature(secondAssets))
   })
 
   test('builds one preview asset for each model with a ready preview URL', () => {
@@ -335,7 +370,7 @@ describe('project preview assets', () => {
 
     expect(assets[0]).toMatchObject({ modelId: 'mdl_step', previewFormat: 'kernel-mesh' })
     expect(assets[0]).not.toHaveProperty('transform')
-    expect(projectPreviewAssetSignature(assets)).toBe('mdl_step:kernel-mesh:3:3:3')
+    expect(projectPreviewAssetSignature(assets)).toContain('mdl_step:kernel-mesh:')
   })
 
   test('attaches STEP component document nodes as kernel mesh pick targets', () => {
@@ -840,7 +875,39 @@ describe('project preview assets', () => {
     expect(projectPreviewAssetSignature(firstAssets)).toBe(projectPreviewAssetSignature(secondAssets))
   })
 
-  test('includes kernel mesh buffer sizes in preview signatures', () => {
+  test('includes kernel mesh buffer content in preview signatures', () => {
+    const firstSignature = projectPreviewAssetSignature([
+      {
+        modelId: 'mdl_step',
+        name: 'bracket',
+        previewFormat: 'kernel-mesh',
+        mesh: {
+          positions: [0, 0, 0],
+          normals: [0, 0, 1],
+          indices: [0, 0, 0],
+        },
+        meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
+      },
+    ])
+    const secondSignature = projectPreviewAssetSignature([
+      {
+        modelId: 'mdl_step',
+        name: 'bracket',
+        previewFormat: 'kernel-mesh',
+        mesh: {
+          positions: [1, 0, 0],
+          normals: [0, 0, 1],
+          indices: [0, 0, 0],
+        },
+        meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
+      },
+    ])
+
+    expect(firstSignature).toContain('mdl_step:kernel-mesh:')
+    expect(firstSignature).not.toBe(secondSignature)
+  })
+
+  test('includes kernel mesh pick targets in preview signatures', () => {
     expect(
       projectPreviewAssetSignature([
         {
@@ -853,12 +920,13 @@ describe('project preview assets', () => {
             indices: [0, 0, 0],
           },
           meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
+          pickTargets: [{ modelId: 'mdl_step', nodeId: 'node_mdl_step_component_1', name: 'Part A' }],
         },
       ]),
-    ).toBe('mdl_step:kernel-mesh:3:3:3')
+    ).toContain('mdl_step/node_mdl_step_component_1/Part A')
   })
 
-  test('includes kernel mesh pick targets in preview signatures', () => {
+  test('includes kernel mesh pick target changes in preview signatures', () => {
     const mesh = {
       positions: [0, 0, 0],
       normals: [0, 0, 1],
