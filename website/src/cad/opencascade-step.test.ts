@@ -112,9 +112,140 @@ describe('runOpenCascadeFeatureDSLPreview', () => {
 
     expect(cutEllipsoid.mesh.positions.length).toBeGreaterThan(ellipsoid.mesh.positions.length)
   }, 30000)
+
+  it('applies feature transforms with scale, rotate, and translate', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    const transformedBox = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'transformed-box.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          {
+            id: 'transformed_box',
+            type: 'box',
+            origin: [0, 0, 0],
+            size: [10, 20, 4],
+            transform: {
+              scale: [2, 0.5, 3],
+              rotate: { axis: [0, 0, 1], angle_degrees: 90 },
+              translate: [30, -5, 2],
+            },
+          },
+        ],
+      },
+      parameterValues: {},
+    })
+
+    const bounds = meshBounds(transformedBox.mesh)
+    expect(bounds.minX).toBeCloseTo(20, 1)
+    expect(bounds.maxX).toBeCloseTo(30, 1)
+    expect(bounds.minY).toBeCloseTo(-5, 1)
+    expect(bounds.maxY).toBeCloseTo(15, 1)
+    expect(bounds.minZ).toBeCloseTo(2, 1)
+    expect(bounds.maxZ).toBeCloseTo(14, 1)
+  }, 30000)
+
+  it('applies non-uniform feature scale to curved primitives', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    const scaledSphere = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'scaled-sphere.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          {
+            id: 'scaled_sphere',
+            type: 'sphere',
+            origin: [0, 0, 0],
+            diameter: 20,
+            transform: { scale: [1, 2, 0.5] },
+          },
+        ],
+      },
+      parameterValues: {},
+    })
+
+    const scaledExtrude = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'scaled-circle-extrude.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          {
+            id: 'scaled_circle_extrude',
+            type: 'extrude',
+            origin: [0, 0, 0],
+            sketch: { type: 'circle', diameter: 20 },
+            height: 8,
+            transform: { scale: [1, 2, 3] },
+          },
+        ],
+      },
+      parameterValues: {},
+    })
+
+    expect(meshSize(scaledSphere.mesh).x).toBeCloseTo(20, 0)
+    expect(meshSize(scaledSphere.mesh).y).toBeCloseTo(40, 0)
+    expect(meshSize(scaledSphere.mesh).z).toBeCloseTo(10, 0)
+    expect(meshSize(scaledExtrude.mesh).x).toBeCloseTo(20, 1)
+    expect(meshSize(scaledExtrude.mesh).y).toBeCloseTo(40, 1)
+    expect(meshSize(scaledExtrude.mesh).z).toBeCloseTo(24, 1)
+  }, 30000)
+
+  it('positions directed sketch extrudes after applying Z scale', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    const symmetricExtrude = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'scaled-symmetric-extrude.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          {
+            id: 'scaled_symmetric_extrude',
+            type: 'extrude',
+            origin: [0, 0, 0],
+            sketch: { type: 'rectangle', size: [10, 10] },
+            height: 10,
+            direction: 'symmetric',
+            transform: { scale: [1, 1, 2] },
+          },
+        ],
+      },
+      parameterValues: {},
+    })
+
+    const bounds = meshBounds(symmetricExtrude.mesh)
+    expect(bounds.minZ).toBeCloseTo(-10, 1)
+    expect(bounds.maxZ).toBeCloseTo(10, 1)
+  }, 30000)
 })
 
 function meshSize(mesh: { positions: readonly number[] }) {
+  const bounds = meshBounds(mesh)
+  return {
+    x: bounds.maxX - bounds.minX,
+    y: bounds.maxY - bounds.minY,
+    z: bounds.maxZ - bounds.minZ,
+  }
+}
+
+function meshBounds(mesh: { positions: readonly number[] }) {
   const bounds = {
     minX: Number.POSITIVE_INFINITY,
     minY: Number.POSITIVE_INFINITY,
@@ -134,11 +265,7 @@ function meshSize(mesh: { positions: readonly number[] }) {
     bounds.maxY = Math.max(bounds.maxY, y)
     bounds.maxZ = Math.max(bounds.maxZ, z)
   }
-  return {
-    x: bounds.maxX - bounds.minX,
-    y: bounds.maxY - bounds.minY,
-    z: bounds.maxZ - bounds.minZ,
-  }
+  return bounds
 }
 
 describe('applyCADOperationsToShape', () => {

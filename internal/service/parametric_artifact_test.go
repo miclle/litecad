@@ -519,6 +519,62 @@ func TestCreateLiteCADFeatureDSLArtifactAcceptsEllipseFeatures(t *testing.T) {
 	}
 }
 
+func TestCreateLiteCADFeatureDSLArtifactAcceptsFeatureTransforms(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-transform-features@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Transformed generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Transformed body",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode: `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "lift": { "type": "number", "default": 12 },
+    "turn": { "type": "number", "default": 90 }
+  },
+  "features": [
+    {
+      "id": "body",
+      "type": "box",
+      "origin": [0, 0, 0],
+      "size": [10, 20, 4],
+      "transform": {
+        "scale": [2, 0.5, 3],
+        "rotate": { "axis": [0, 0, 1], "angle_degrees": "turn" },
+        "translate": [30, -5, "lift"]
+      }
+    }
+  ]
+}`,
+		CompileStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	if artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", artifact)
+	}
+}
+
 func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedEllipseFeatures(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
@@ -547,6 +603,8 @@ func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedEllipseFeatures(t *testi
 		`{"version":1,"unit":"millimetre","features":[{"id":"body","type":"ellipsoid","origin":[0,0,0],"radius_x":10,"radius_y":5}]}`,
 		`{"version":1,"unit":"millimetre","features":[{"id":"body","type":"ellipsoid","origin":[0,0,0],"radius_x":10,"radius_y":5,"radius_z":0}]}`,
 		`{"version":1,"unit":"millimetre","parameters":{"finish":{"type":"string","default":"matte"}},"features":[{"id":"body","type":"ellipsoid","origin":[0,0,0],"radius_x":"finish","radius_y":5,"radius_z":3}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"body","type":"box","origin":[0,0,0],"size":[10,10,10],"transform":{"scale":[1,0,1]}}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"body","type":"box","origin":[0,0,0],"size":[10,10,10],"transform":{"rotate":{"axis":[0,0,0],"angle_degrees":45}}}]}`,
 	} {
 		_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
 			OwnerUserID:   user.ID,

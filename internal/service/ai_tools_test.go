@@ -197,6 +197,24 @@ func TestAIParametricToolCallParserNormalizesProviderLiteCADDSLShorthand(t *test
 		!strings.Contains(call.Input.Code, `"size":["width","depth","thickness"]`) {
 		t.Fatalf("normalized length parameter code = %s", call.Input.Code)
 	}
+
+	call, err = ParseAIParametricToolCall(`{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Debug Transform Sphere",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":\"v1\",\"unit\":\"mm\",\"parameters\":{\"sphere_diameter\":{\"type\":\"number\",\"default\":20}},\"features\":[{\"type\":\"sphere\",\"diameter\":\"sphere_diameter\",\"transform\":{\"translate\":[80,0,15],\"rotate\":{\"axis\":[0,0,1],\"angle_degrees\":30,\"origin\":[0,0,0]},\"scale\":[1,2,0.5]}}]}"
+  }
+}`)
+	if err != nil {
+		t.Fatalf("ParseAIParametricToolCall with transformed sphere shorthand returned error: %v", err)
+	}
+	if !strings.Contains(call.Input.Code, `"id":"sphere_1"`) ||
+		!strings.Contains(call.Input.Code, `"transform"`) ||
+		!strings.Contains(call.Input.Code, `"sphere_diameter":{"default":20,"type":"number"}`) {
+		t.Fatalf("normalized transformed sphere code = %s", call.Input.Code)
+	}
 }
 
 func TestAIParametricToolCallParserRejectsMalformedLiteCADFeatureDSL(t *testing.T) {

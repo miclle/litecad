@@ -269,6 +269,66 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('rejects malformed LiteCAD feature DSL transforms', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-bad-transform',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'bad-transform.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            features: [
+              {
+                id: 'bad_box',
+                type: 'box',
+                origin: [0, 0, 0],
+                size: [10, 10, 10],
+                transform: { scale: [1, 0, 1] },
+              },
+            ],
+          },
+          parameterValues: {},
+        },
+      }),
+    ).toBe(false)
+  })
+
+  test('accepts LiteCAD feature DSL transforms', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-transform-preview',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'transform.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            parameters: {
+              lift: { type: 'number', default: 12 },
+              turn: { type: 'number', default: 45 },
+            },
+            features: [
+              {
+                id: 'body',
+                type: 'box',
+                origin: [0, 0, 0],
+                size: [10, 10, 10],
+                transform: {
+                  scale: [1.5, 0.75, 2],
+                  rotate: { axis: [0, 0, 1], angle_degrees: 'turn' },
+                  translate: [0, 0, 'lift'],
+                },
+              },
+            ],
+          },
+          parameterValues: { lift: 18, turn: 90 },
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('accepts LiteCAD feature DSL box-cut features for rectangular pockets and slots', () => {
     expect(
       isCadKernelRequest({

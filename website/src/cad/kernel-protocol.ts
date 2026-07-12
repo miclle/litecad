@@ -51,12 +51,23 @@ export type CadKernelFeatureDSLRepeat = {
   step: readonly CadKernelFeatureDSLExpression[]
 }
 
+export type CadKernelFeatureDSLTransform = {
+  translate?: readonly CadKernelFeatureDSLExpression[]
+  rotate?: {
+    axis: readonly CadKernelFeatureDSLExpression[]
+    angle_degrees: CadKernelFeatureDSLExpression
+    origin?: readonly CadKernelFeatureDSLExpression[]
+  }
+  scale?: readonly CadKernelFeatureDSLExpression[]
+}
+
 export type CadKernelFeatureDSLBoxFeature = {
   id: string
   type: 'box'
   origin?: readonly CadKernelFeatureDSLExpression[]
   size: readonly CadKernelFeatureDSLExpression[]
   repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
 }
 
 export type CadKernelFeatureDSLBoxCutFeature = {
@@ -65,6 +76,7 @@ export type CadKernelFeatureDSLBoxCutFeature = {
   origin?: readonly CadKernelFeatureDSLExpression[]
   size: readonly CadKernelFeatureDSLExpression[]
   repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
 }
 
 export type CadKernelFeatureDSLCylinderFeature = {
@@ -76,6 +88,7 @@ export type CadKernelFeatureDSLCylinderFeature = {
   diameter?: CadKernelFeatureDSLExpression
   height: CadKernelFeatureDSLExpression
   repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
 }
 
 export type CadKernelFeatureDSLCylinderCutFeature = {
@@ -87,6 +100,7 @@ export type CadKernelFeatureDSLCylinderCutFeature = {
   diameter?: CadKernelFeatureDSLExpression
   depth: CadKernelFeatureDSLExpression
   repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
 }
 
 export type CadKernelFeatureDSLSphereFeature = {
@@ -96,6 +110,7 @@ export type CadKernelFeatureDSLSphereFeature = {
   radius?: CadKernelFeatureDSLExpression
   diameter?: CadKernelFeatureDSLExpression
   repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
 }
 
 export type CadKernelFeatureDSLEllipsoidFeature = {
@@ -109,6 +124,7 @@ export type CadKernelFeatureDSLEllipsoidFeature = {
   diameter_y?: CadKernelFeatureDSLExpression
   diameter_z?: CadKernelFeatureDSLExpression
   repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
 }
 
 export type CadKernelFeatureDSLEllipseExtrudeFeature = {
@@ -121,6 +137,7 @@ export type CadKernelFeatureDSLEllipseExtrudeFeature = {
   diameter_y?: CadKernelFeatureDSLExpression
   height: CadKernelFeatureDSLExpression
   repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
 }
 
 export type CadKernelFeatureDSLRectangleSketch = {
@@ -146,6 +163,7 @@ export type CadKernelFeatureDSLExtrudeFeature = {
   height: CadKernelFeatureDSLExpression
   direction?: CadKernelFeatureDSLExtrudeDirection
   repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
 }
 
 export type CadKernelFeatureDSLExtrudeCutFeature = {
@@ -156,6 +174,7 @@ export type CadKernelFeatureDSLExtrudeCutFeature = {
   depth: CadKernelFeatureDSLExpression
   direction?: CadKernelFeatureDSLExtrudeDirection
   repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
 }
 
 export type CadKernelFeatureDSLFeature =
@@ -395,6 +414,9 @@ function isFeatureDSLFeature(value: unknown): value is CadKernelFeatureDSLFeatur
   if (!isRecord(value) || typeof value.id !== 'string') {
     return false
   }
+  if (value.transform !== undefined && !isFeatureDSLTransform(value.transform)) {
+    return false
+  }
   if (value.type === 'box' || value.type === 'box_cut') {
     return isFeatureDSLBoxLikeFeature(value)
   }
@@ -532,6 +554,36 @@ function isFeatureDSLRepeat(value: unknown): value is CadKernelFeatureDSLRepeat 
     value.count >= 1 &&
     value.count <= 128 &&
     isFeatureDSLExpressionTuple(value.step, 3)
+  )
+}
+
+function isFeatureDSLTransform(value: unknown): value is CadKernelFeatureDSLTransform {
+  if (!isRecord(value)) {
+    return false
+  }
+  if (value.translate !== undefined && !isFeatureDSLExpressionTuple(value.translate, 3)) {
+    return false
+  }
+  if (value.scale !== undefined && !isFeatureDSLPositiveExpressionTuple(value.scale, 3)) {
+    return false
+  }
+  if (value.rotate === undefined) {
+    return true
+  }
+  if (!isRecord(value.rotate)) {
+    return false
+  }
+  return (
+    isFeatureDSLAxisTuple(value.rotate.axis) &&
+    isFeatureDSLExpression(value.rotate.angle_degrees) &&
+    (value.rotate.origin === undefined || isFeatureDSLExpressionTuple(value.rotate.origin, 3))
+  )
+}
+
+function isFeatureDSLPositiveExpressionTuple(value: unknown, length: number): value is CadKernelFeatureDSLExpression[] {
+  return (
+    isFeatureDSLExpressionTuple(value, length) &&
+    value.every((entry) => typeof entry !== 'number' || entry > 0)
   )
 }
 

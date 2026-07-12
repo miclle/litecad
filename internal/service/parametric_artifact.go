@@ -514,24 +514,25 @@ type liteCADFeatureDSLValidationParameter struct {
 }
 
 type liteCADFeatureDSLValidationFeature struct {
-	ID        string                             `json:"id"`
-	Type      string                             `json:"type"`
-	Origin    []any                              `json:"origin"`
-	Axis      []any                              `json:"axis"`
-	Sketch    *liteCADFeatureDSLValidationSketch `json:"sketch"`
-	Size      []any                              `json:"size"`
-	Radius    any                                `json:"radius"`
-	Diameter  any                                `json:"diameter"`
-	RadiusX   any                                `json:"radius_x"`
-	RadiusY   any                                `json:"radius_y"`
-	RadiusZ   any                                `json:"radius_z"`
-	DiameterX any                                `json:"diameter_x"`
-	DiameterY any                                `json:"diameter_y"`
-	DiameterZ any                                `json:"diameter_z"`
-	Height    any                                `json:"height"`
-	Depth     any                                `json:"depth"`
-	Direction string                             `json:"direction"`
-	Repeat    *liteCADFeatureDSLValidationRepeat `json:"repeat"`
+	ID        string                                `json:"id"`
+	Type      string                                `json:"type"`
+	Origin    []any                                 `json:"origin"`
+	Axis      []any                                 `json:"axis"`
+	Sketch    *liteCADFeatureDSLValidationSketch    `json:"sketch"`
+	Size      []any                                 `json:"size"`
+	Radius    any                                   `json:"radius"`
+	Diameter  any                                   `json:"diameter"`
+	RadiusX   any                                   `json:"radius_x"`
+	RadiusY   any                                   `json:"radius_y"`
+	RadiusZ   any                                   `json:"radius_z"`
+	DiameterX any                                   `json:"diameter_x"`
+	DiameterY any                                   `json:"diameter_y"`
+	DiameterZ any                                   `json:"diameter_z"`
+	Height    any                                   `json:"height"`
+	Depth     any                                   `json:"depth"`
+	Direction string                                `json:"direction"`
+	Repeat    *liteCADFeatureDSLValidationRepeat    `json:"repeat"`
+	Transform *liteCADFeatureDSLValidationTransform `json:"transform"`
 }
 
 type liteCADFeatureDSLValidationSketch struct {
@@ -544,6 +545,18 @@ type liteCADFeatureDSLValidationSketch struct {
 type liteCADFeatureDSLValidationRepeat struct {
 	Count any   `json:"count"`
 	Step  []any `json:"step"`
+}
+
+type liteCADFeatureDSLValidationTransform struct {
+	Translate []any                                `json:"translate"`
+	Rotate    *liteCADFeatureDSLValidationRotation `json:"rotate"`
+	Scale     []any                                `json:"scale"`
+}
+
+type liteCADFeatureDSLValidationRotation struct {
+	Axis         []any `json:"axis"`
+	AngleDegrees any   `json:"angle_degrees"`
+	Origin       []any `json:"origin"`
 }
 
 type liteCADFeatureDSLValidationParameters struct {
@@ -643,6 +656,9 @@ func validateLiteCADFeatureDSLParameter(parameter liteCADFeatureDSLValidationPar
 func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters, hasPriorSolid bool) error {
 	if strings.TrimSpace(feature.ID) == "" {
 		return ErrInvalidProjectParametricArtifactInput
+	}
+	if err := validateLiteCADFeatureDSLTransform(feature.Transform, parameters.numeric); err != nil {
+		return err
 	}
 	switch feature.Type {
 	case "box":
@@ -866,6 +882,35 @@ func validateLiteCADFeatureDSLRepeat(repeat *liteCADFeatureDSLValidationRepeat, 
 		return ErrInvalidProjectParametricArtifactInput
 	}
 	return validateLiteCADFeatureDSLExpressionTuple(repeat.Step, 3, parameterNames)
+}
+
+func validateLiteCADFeatureDSLTransform(transform *liteCADFeatureDSLValidationTransform, parameterNames map[string]struct{}) error {
+	if transform == nil {
+		return nil
+	}
+	if transform.Translate != nil {
+		if err := validateLiteCADFeatureDSLExpressionTuple(transform.Translate, 3, parameterNames); err != nil {
+			return err
+		}
+	}
+	if transform.Scale != nil {
+		if err := validateLiteCADFeatureDSLPositiveExpressionTuple(transform.Scale, 3, parameterNames); err != nil {
+			return err
+		}
+	}
+	if transform.Rotate == nil {
+		return nil
+	}
+	if err := validateLiteCADFeatureDSLAxisTuple(transform.Rotate.Axis, parameterNames); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLExpression(transform.Rotate.AngleDegrees, parameterNames); err != nil {
+		return err
+	}
+	if transform.Rotate.Origin != nil {
+		return validateLiteCADFeatureDSLExpressionTuple(transform.Rotate.Origin, 3, parameterNames)
+	}
+	return nil
 }
 
 func validateLiteCADFeatureDSLAxisTuple(values []any, parameterNames map[string]struct{}) error {
