@@ -651,6 +651,96 @@ func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrude(t *testing.T) {
 	}
 }
 
+func TestCreateLiteCADFeatureDSLArtifactAcceptsRectangularExtrudeCut(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-extrude-cut@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Extrude cut generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Extrude-cut bracket",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode: `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "slot_width": { "type": "number", "default": 12, "min": 4, "max": 30 },
+    "cut_depth": { "type": "number", "default": 8, "min": 2, "max": 20 }
+  },
+  "features": [
+    { "id": "base", "type": "extrude", "origin": [0, 0, 0], "sketch": { "type": "rectangle", "size": [80, 40] }, "height": 6 },
+    { "id": "slot", "type": "extrude_cut", "origin": [30, 14, -1], "sketch": { "type": "rectangle", "size": [20, "slot_width"] }, "depth": "cut_depth" }
+  ]
+}`,
+		CompileStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	if artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", artifact)
+	}
+}
+
+func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrudeCut(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-bad-extrude-cut@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Reject bad extrude cut generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	for _, source := range []string{
+		`{"version":1,"unit":"millimetre","features":[{"id":"slot","type":"extrude_cut","origin":[0,0,0],"sketch":{"type":"rectangle","size":[20,10]},"depth":8}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"hole","type":"cylinder_cut","origin":[0,0,0],"diameter":6,"depth":8},{"id":"slot","type":"extrude_cut","origin":[0,0,0],"sketch":{"type":"rectangle","size":[20,10]},"depth":8}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"box","size":[80,40,6]},{"id":"slot","type":"extrude_cut","origin":[0,0,0],"depth":8}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"box","size":[80,40,6]},{"id":"slot","type":"extrude_cut","origin":[0,0,0],"sketch":{"type":"circle","size":[20,10]},"depth":8}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"box","size":[80,40,6]},{"id":"slot","type":"extrude_cut","origin":[0,0,0],"sketch":{"type":"rectangle","size":[20]},"depth":8}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"box","size":[80,40,6]},{"id":"slot","type":"extrude_cut","origin":[0,0],"sketch":{"type":"rectangle","size":[20,10]},"depth":8}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"box","size":[80,40,6]},{"id":"slot","type":"extrude_cut","origin":[0,0,0],"sketch":{"type":"rectangle","size":[20,10]},"depth":0}]}`,
+	} {
+		_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+			OwnerUserID:   user.ID,
+			ProjectID:     project.ID,
+			Title:         "Bad extrude cut bracket",
+			SourceKind:    "litecad-feature-dsl",
+			SourceCode:    source,
+			CompileStatus: "pending",
+		})
+		if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+			t.Fatalf("CreateProjectParametricArtifact(%s) error = %v, want ErrInvalidProjectParametricArtifactInput", source, err)
+		}
+	}
+}
+
 func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedBoxCut(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

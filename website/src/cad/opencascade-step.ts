@@ -283,6 +283,19 @@ function compileFeatureDSLShape(
         accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLExtrudeShape(openCascade, feature, parameters, origin))
         continue
       }
+      if (feature.type === 'extrude_cut') {
+        if (!accumulatedShape) {
+          throw new Error(`Feature ${feature.id} extrude_cut requires a prior solid feature`)
+        }
+        const cutterShape = buildFeatureDSLExtrudeCutShape(openCascade, feature, parameters, origin)
+        const cutBuilder = new openCascade.BRepAlgoAPI_Cut_3(
+          accumulatedShape,
+          cutterShape,
+          new openCascade.Message_ProgressRange_1(),
+        )
+        accumulatedShape = cutBuilder.Shape()
+        continue
+      }
       if (feature.type === 'cylinder') {
         accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'height', origin))
         continue
@@ -330,6 +343,23 @@ function buildFeatureDSLBoxShape(openCascade: OpenCascadeModule, feature: { id: 
   return boxBuilder.Shape()
 }
 
+function buildFeatureDSLRectanglePrismShape(
+  openCascade: OpenCascadeModule,
+  featureID: string,
+  origin: readonly number[],
+  sketchSize: readonly number[],
+  length: number,
+  label: string,
+) {
+  if (sketchSize.some((value) => value <= 0) || length <= 0) {
+    throw new Error(`Feature ${featureID} ${label} dimensions must be positive`)
+  }
+  const originPoint = new openCascade.gp_Pnt_3(origin[0] ?? 0, origin[1] ?? 0, origin[2] ?? 0)
+  const boxBuilder = new openCascade.BRepPrimAPI_MakeBox_3(originPoint, sketchSize[0] ?? 1, sketchSize[1] ?? 1, length)
+  boxBuilder.Build(new openCascade.Message_ProgressRange_1())
+  return boxBuilder.Shape()
+}
+
 function buildFeatureDSLExtrudeShape(
   openCascade: OpenCascadeModule,
   feature: {
@@ -344,13 +374,24 @@ function buildFeatureDSLExtrudeShape(
   const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin ?? [0, 0, 0], parameters)
   const sketchSize = resolveFeatureDSLVector(feature.sketch.size, parameters)
   const height = resolveFeatureDSLScalar(feature.height, parameters)
-  if (sketchSize.some((value) => value <= 0) || height <= 0) {
-    throw new Error(`Feature ${feature.id} extrude dimensions must be positive`)
-  }
-  const originPoint = new openCascade.gp_Pnt_3(origin[0] ?? 0, origin[1] ?? 0, origin[2] ?? 0)
-  const boxBuilder = new openCascade.BRepPrimAPI_MakeBox_3(originPoint, sketchSize[0] ?? 1, sketchSize[1] ?? 1, height)
-  boxBuilder.Build(new openCascade.Message_ProgressRange_1())
-  return boxBuilder.Shape()
+  return buildFeatureDSLRectanglePrismShape(openCascade, feature.id, origin, sketchSize, height, 'extrude')
+}
+
+function buildFeatureDSLExtrudeCutShape(
+  openCascade: OpenCascadeModule,
+  feature: {
+    id: string
+    origin: readonly (number | string)[]
+    sketch: { type: 'rectangle'; size: readonly (number | string)[] }
+    depth: number | string
+  },
+  parameters: Record<string, number>,
+  repeatedOrigin?: readonly number[],
+) {
+  const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin, parameters)
+  const sketchSize = resolveFeatureDSLVector(feature.sketch.size, parameters)
+  const depth = resolveFeatureDSLScalar(feature.depth, parameters)
+  return buildFeatureDSLRectanglePrismShape(openCascade, feature.id, origin, sketchSize, depth, 'extrude_cut')
 }
 
 function buildFeatureDSLCylinderShape(

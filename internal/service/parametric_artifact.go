@@ -533,12 +533,25 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 			parameters.numeric[name] = struct{}{}
 		}
 	}
+	hasSolid := false
 	for _, feature := range document.Features {
-		if err := validateLiteCADFeatureDSLFeature(feature, parameters); err != nil {
+		if err := validateLiteCADFeatureDSLFeature(feature, parameters, hasSolid); err != nil {
 			return err
+		}
+		if isLiteCADFeatureDSLSolidFeature(feature.Type) {
+			hasSolid = true
 		}
 	}
 	return nil
+}
+
+func isLiteCADFeatureDSLSolidFeature(featureType string) bool {
+	switch featureType {
+	case "box", "extrude", "cylinder", "box_cut", "extrude_cut", "cylinder_cut":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateLiteCADFeatureDSLParameter(parameter liteCADFeatureDSLValidationParameter) error {
@@ -588,7 +601,7 @@ func validateLiteCADFeatureDSLParameter(parameter liteCADFeatureDSLValidationPar
 	}
 }
 
-func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters) error {
+func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters, hasPriorSolid bool) error {
 	if strings.TrimSpace(feature.ID) == "" {
 		return ErrInvalidProjectParametricArtifactInput
 	}
@@ -604,12 +617,23 @@ func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature
 		}
 		return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameters.numeric)
 	case "box_cut":
+		if !hasPriorSolid {
+			return ErrInvalidProjectParametricArtifactInput
+		}
 		return validateLiteCADFeatureDSLBoxCutFeature(feature, parameters.numeric)
 	case "extrude":
 		return validateLiteCADFeatureDSLExtrudeFeature(feature, parameters.numeric)
+	case "extrude_cut":
+		if !hasPriorSolid {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		return validateLiteCADFeatureDSLExtrudeCutFeature(feature, parameters.numeric)
 	case "cylinder":
 		return validateLiteCADFeatureDSLCylinderLikeFeature(feature, "height", feature.Height, parameters.numeric)
 	case "cylinder_cut":
+		if !hasPriorSolid {
+			return ErrInvalidProjectParametricArtifactInput
+		}
 		return validateLiteCADFeatureDSLCylinderLikeFeature(feature, "depth", feature.Depth, parameters.numeric)
 	default:
 		return ErrInvalidProjectParametricArtifactInput
@@ -641,6 +665,22 @@ func validateLiteCADFeatureDSLExtrudeFeature(feature liteCADFeatureDSLValidation
 		}
 	}
 	if err := validateLiteCADFeatureDSLPositiveExpression(feature.Height, parameterNames); err != nil {
+		return err
+	}
+	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameterNames)
+}
+
+func validateLiteCADFeatureDSLExtrudeCutFeature(feature liteCADFeatureDSLValidationFeature, parameterNames map[string]struct{}) error {
+	if feature.Sketch == nil || feature.Sketch.Type != "rectangle" {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	if err := validateLiteCADFeatureDSLPositiveExpressionTuple(feature.Sketch.Size, 2, parameterNames); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameterNames); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLPositiveExpression(feature.Depth, parameterNames); err != nil {
 		return err
 	}
 	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameterNames)

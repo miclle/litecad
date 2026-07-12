@@ -2942,6 +2942,100 @@ Remaining after this task:
 
 ---
 
+### Task 28: LiteCAD feature DSL rectangular sketch cut extrudes
+
+**Why this task exists:** Task 27 added additive rectangular sketch extrusion, but subtractive sketch operations are just as important for slots, pockets, and clearance notches. `box_cut` already handles rectangular subtraction, but a matching `extrude_cut` gives the Assistant a more CAD-like sketch/profile vocabulary while keeping the implementation narrow and verifiable.
+
+**Files:**
+- Modify: `website/src/cad/kernel-protocol.ts`
+- Test: `website/src/cad/kernel-protocol.test.ts`
+- Modify: `website/src/cad/opencascade-step.ts`
+- Test: `website/src/cad/opencascade-step.test.ts`
+- Modify: `internal/service/parametric_artifact.go`
+- Test: `internal/service/parametric_artifact_test.go`
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/ai_tools_test.go`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- Supported feature object:
+  - `{ "id": "...", "type": "extrude_cut", "origin": [x, y, z], "sketch": { "type": "rectangle", "size": [sx, sy] }, "depth": d }`
+- `extrude_cut` subtracts a rectangular sketch prism from the accumulated prior shape and must not be the first feature.
+- `origin`, `sketch.size`, and `depth` support literal numbers or numeric parameter references.
+- `extrude_cut` supports the existing bounded linear `repeat` pattern.
+- Backend validation rejects malformed `extrude_cut` features before persisting generated artifacts.
+- Provider prompting tells the model to use `extrude_cut` for rectangular sketch-based slots, pockets, and notches when that better describes design intent.
+- Arbitrary sketch constraints, non-rectangular profiles, cut direction control, tapers, revolve, fillets/chamfers, and durable CAD document History integration remain future work.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsRectangularExtrudeCut|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrudeCut|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+cd website && npx tsc -b
+```
+
+Expected failures:
+
+- Worker protocol rejects `extrude_cut`.
+- OCCT DSL compile/export throws `Unsupported feature DSL type: extrude_cut`.
+- Backend validation rejects a valid rectangular `extrude_cut` generated artifact.
+- TypeScript feature union does not include `extrude_cut`.
+- Provider prompt tests fail until the Assistant mentions `extrude_cut`.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` failed as expected: protocol validation returned `false` for valid `extrude_cut`, and the compiler threw `Unsupported feature DSL type: extrude_cut`.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsRectangularExtrudeCut|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrudeCut|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` failed as expected: valid `extrude_cut` source returned `invalid project parametric artifact input`, and the provider context did not mention `extrude_cut`.
+- `cd website && npx tsc -b` failed as expected because `extrude_cut` was not assignable to the current feature union.
+
+- [x] **Step 2: Implement rectangular `extrude_cut`**
+
+Extend the worker protocol type/guards, compile `extrude_cut` by resolving the rectangular sketch size and depth into an OCCT box cutter at the feature origin, subtract that cutter from the accumulated shape, validate generated DSL source in the backend, and update provider prompt/tool descriptions.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsRectangularExtrudeCut|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrudeCut|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+cd website && npx tsc -b
+git diff --check
+task check
+task test
+task test-browser
+git add website/src/cad/kernel-protocol.ts website/src/cad/kernel-protocol.test.ts website/src/cad/opencascade-step.ts website/src/cad/opencascade-step.test.ts internal/service/parametric_artifact.go internal/service/parametric_artifact_test.go internal/service/ai_tools.go internal/service/ai_tools_test.go docs/ai-parametric-assistant.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(cad): add feature dsl sketch cut extrudes"
+git push
+```
+
+Expected:
+
+- Generated LiteCAD DSL can represent a rectangular sketch cut extruded through an existing solid.
+- Saved `.lcad.json` preview/export paths compile `extrude_cut` through the browser OCCT worker.
+- Existing extrude/box/box-cut/cylinder/cylinder-cut/repeat behavior remains unchanged.
+- Full sketch constraints, non-rectangular profiles, bidirectional cuts, fillets/chamfers, and CAD document History integration remain future work.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` passed.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsRectangularExtrudeCut|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrudeCut|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` passed.
+- `cd website && npx tsc -b` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+
+Remaining after this task:
+
+- The LiteCAD feature DSL still lacks full sketch constraints, non-rectangular profiles, bidirectional cuts, revolve, fillets/chamfers, arbitrary expressions, conditional geometry, and CAD document History integration for generated DSL features.
+- Rectangular `extrude_cut` intentionally compiles to an OCCT box cutter for now; future cut work should add explicit profile and direction semantics rather than overloading direct `box_cut`.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

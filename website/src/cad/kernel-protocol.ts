@@ -98,10 +98,20 @@ export type CadKernelFeatureDSLExtrudeFeature = {
   repeat?: CadKernelFeatureDSLRepeat
 }
 
+export type CadKernelFeatureDSLExtrudeCutFeature = {
+  id: string
+  type: 'extrude_cut'
+  origin: readonly CadKernelFeatureDSLExpression[]
+  sketch: CadKernelFeatureDSLRectangleSketch
+  depth: CadKernelFeatureDSLExpression
+  repeat?: CadKernelFeatureDSLRepeat
+}
+
 export type CadKernelFeatureDSLFeature =
   | CadKernelFeatureDSLBoxFeature
   | CadKernelFeatureDSLBoxCutFeature
   | CadKernelFeatureDSLExtrudeFeature
+  | CadKernelFeatureDSLExtrudeCutFeature
   | CadKernelFeatureDSLCylinderFeature
   | CadKernelFeatureDSLCylinderCutFeature
 
@@ -337,6 +347,9 @@ function isFeatureDSLFeature(value: unknown): value is CadKernelFeatureDSLFeatur
   if (value.type === 'extrude') {
     return isFeatureDSLExtrudeFeature(value)
   }
+  if (value.type === 'extrude_cut') {
+    return isFeatureDSLExtrudeCutFeature(value)
+  }
   if (value.type === 'cylinder') {
     return isFeatureDSLCylinderLikeFeature(value, 'height')
   }
@@ -359,6 +372,15 @@ function isFeatureDSLExtrudeFeature(value: Record<string, unknown>) {
     (value.origin === undefined || isFeatureDSLExpressionTuple(value.origin, 3)) &&
     isFeatureDSLRectangleSketch(value.sketch) &&
     isFeatureDSLExpression(value.height) &&
+    (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
+  )
+}
+
+function isFeatureDSLExtrudeCutFeature(value: Record<string, unknown>) {
+  return (
+    isFeatureDSLExpressionTuple(value.origin, 3) &&
+    isFeatureDSLRectangleSketch(value.sketch) &&
+    isFeatureDSLExpression(value.depth) &&
     (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
   )
 }
