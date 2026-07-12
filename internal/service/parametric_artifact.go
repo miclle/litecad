@@ -522,6 +522,12 @@ type liteCADFeatureDSLValidationFeature struct {
 	Size      []any                              `json:"size"`
 	Radius    any                                `json:"radius"`
 	Diameter  any                                `json:"diameter"`
+	RadiusX   any                                `json:"radius_x"`
+	RadiusY   any                                `json:"radius_y"`
+	RadiusZ   any                                `json:"radius_z"`
+	DiameterX any                                `json:"diameter_x"`
+	DiameterY any                                `json:"diameter_y"`
+	DiameterZ any                                `json:"diameter_z"`
 	Height    any                                `json:"height"`
 	Depth     any                                `json:"depth"`
 	Direction string                             `json:"direction"`
@@ -580,7 +586,7 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 
 func isLiteCADFeatureDSLSolidFeature(featureType string) bool {
 	switch featureType {
-	case "box", "extrude", "cylinder", "sphere", "box_cut", "extrude_cut", "cylinder_cut":
+	case "box", "extrude", "cylinder", "sphere", "ellipsoid", "ellipse_extrude", "box_cut", "extrude_cut", "cylinder_cut":
 		return true
 	default:
 		return false
@@ -665,6 +671,10 @@ func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature
 		return validateLiteCADFeatureDSLCylinderLikeFeature(feature, "height", feature.Height, parameters.numeric)
 	case "sphere":
 		return validateLiteCADFeatureDSLSphereFeature(feature, parameters.numeric)
+	case "ellipsoid":
+		return validateLiteCADFeatureDSLEllipsoidFeature(feature, parameters.numeric)
+	case "ellipse_extrude":
+		return validateLiteCADFeatureDSLEllipseExtrudeFeature(feature, parameters.numeric)
 	case "cylinder_cut":
 		if !hasPriorSolid {
 			return ErrInvalidProjectParametricArtifactInput
@@ -801,6 +811,50 @@ func validateLiteCADFeatureDSLSphereFeature(feature liteCADFeatureDSLValidationF
 		return validateLiteCADFeatureDSLPositiveExpression(feature.Radius, parameterNames)
 	}
 	return validateLiteCADFeatureDSLPositiveExpression(feature.Diameter, parameterNames)
+}
+
+func validateLiteCADFeatureDSLEllipsoidFeature(feature liteCADFeatureDSLValidationFeature, parameterNames map[string]struct{}) error {
+	if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameterNames); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLRepeat(feature.Repeat, parameterNames); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLAxisRadiusExpression(feature.RadiusX, feature.DiameterX, parameterNames); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLAxisRadiusExpression(feature.RadiusY, feature.DiameterY, parameterNames); err != nil {
+		return err
+	}
+	return validateLiteCADFeatureDSLAxisRadiusExpression(feature.RadiusZ, feature.DiameterZ, parameterNames)
+}
+
+func validateLiteCADFeatureDSLEllipseExtrudeFeature(feature liteCADFeatureDSLValidationFeature, parameterNames map[string]struct{}) error {
+	if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameterNames); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLRepeat(feature.Repeat, parameterNames); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLAxisRadiusExpression(feature.RadiusX, feature.DiameterX, parameterNames); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLAxisRadiusExpression(feature.RadiusY, feature.DiameterY, parameterNames); err != nil {
+		return err
+	}
+	return validateLiteCADFeatureDSLPositiveExpression(feature.Height, parameterNames)
+}
+
+func validateLiteCADFeatureDSLAxisRadiusExpression(radius, diameter any, parameterNames map[string]struct{}) error {
+	hasRadius := radius != nil
+	hasDiameter := diameter != nil
+	if hasRadius == hasDiameter {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	if hasRadius {
+		return validateLiteCADFeatureDSLPositiveExpression(radius, parameterNames)
+	}
+	return validateLiteCADFeatureDSLPositiveExpression(diameter, parameterNames)
 }
 
 func validateLiteCADFeatureDSLRepeat(repeat *liteCADFeatureDSLValidationRepeat, parameterNames map[string]struct{}) error {

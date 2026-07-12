@@ -471,6 +471,97 @@ func TestCreateLiteCADFeatureDSLArtifactRejectsZeroCylinderAxis(t *testing.T) {
 	}
 }
 
+func TestCreateLiteCADFeatureDSLArtifactAcceptsEllipseFeatures(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-ellipse-features@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Ellipse generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Oval body",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode: `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "major": { "type": "number", "default": 30, "min": 1, "max": 80 },
+    "minor": { "type": "number", "default": 18, "min": 1, "max": 80 },
+    "height": { "type": "number", "default": 50, "min": 1, "max": 120 }
+  },
+  "features": [
+    { "id": "ellipsoid", "type": "ellipsoid", "origin": [0, 0, 0], "radius_x": { "op": "div", "args": ["major", 2] }, "radius_y": { "op": "div", "args": ["minor", 2] }, "radius_z": 12 },
+    { "id": "oval_post", "type": "ellipse_extrude", "origin": [45, 0, 0], "radius_x": { "op": "div", "args": ["major", 2] }, "radius_y": { "op": "div", "args": ["minor", 2] }, "height": "height" }
+  ]
+}`,
+		CompileStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	if artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", artifact)
+	}
+}
+
+func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedEllipseFeatures(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-bad-ellipse-features@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Reject bad ellipse generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	for _, source := range []string{
+		`{"version":1,"unit":"millimetre","features":[{"id":"oval","type":"ellipse_extrude","origin":[0,0,0],"radius_x":10,"radius_y":5}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"oval","type":"ellipse_extrude","origin":[0,0,0],"radius_x":10,"diameter_x":20,"radius_y":5,"height":12}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"oval","type":"ellipse_extrude","origin":[0,0],"radius_x":10,"radius_y":5,"height":12}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"oval","type":"ellipse_extrude","origin":[0,0,0],"radius_x":0,"radius_y":5,"height":12}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"body","type":"ellipsoid","origin":[0,0,0],"radius_x":10,"radius_y":5}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"body","type":"ellipsoid","origin":[0,0,0],"radius_x":10,"radius_y":5,"radius_z":0}]}`,
+		`{"version":1,"unit":"millimetre","parameters":{"finish":{"type":"string","default":"matte"}},"features":[{"id":"body","type":"ellipsoid","origin":[0,0,0],"radius_x":"finish","radius_y":5,"radius_z":3}]}`,
+	} {
+		_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+			OwnerUserID:   user.ID,
+			ProjectID:     project.ID,
+			Title:         "Bad ellipse feature",
+			SourceKind:    "litecad-feature-dsl",
+			SourceCode:    source,
+			CompileStatus: "pending",
+		})
+		if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+			t.Fatalf("CreateProjectParametricArtifact(%s) error = %v, want ErrInvalidProjectParametricArtifactInput", source, err)
+		}
+	}
+}
+
 func TestCreateLiteCADFeatureDSLArtifactAcceptsRepeatPattern(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

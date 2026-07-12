@@ -98,6 +98,31 @@ export type CadKernelFeatureDSLSphereFeature = {
   repeat?: CadKernelFeatureDSLRepeat
 }
 
+export type CadKernelFeatureDSLEllipsoidFeature = {
+  id: string
+  type: 'ellipsoid'
+  origin: readonly CadKernelFeatureDSLExpression[]
+  radius_x?: CadKernelFeatureDSLExpression
+  radius_y?: CadKernelFeatureDSLExpression
+  radius_z?: CadKernelFeatureDSLExpression
+  diameter_x?: CadKernelFeatureDSLExpression
+  diameter_y?: CadKernelFeatureDSLExpression
+  diameter_z?: CadKernelFeatureDSLExpression
+  repeat?: CadKernelFeatureDSLRepeat
+}
+
+export type CadKernelFeatureDSLEllipseExtrudeFeature = {
+  id: string
+  type: 'ellipse_extrude'
+  origin: readonly CadKernelFeatureDSLExpression[]
+  radius_x?: CadKernelFeatureDSLExpression
+  radius_y?: CadKernelFeatureDSLExpression
+  diameter_x?: CadKernelFeatureDSLExpression
+  diameter_y?: CadKernelFeatureDSLExpression
+  height: CadKernelFeatureDSLExpression
+  repeat?: CadKernelFeatureDSLRepeat
+}
+
 export type CadKernelFeatureDSLRectangleSketch = {
   type: 'rectangle'
   size: readonly CadKernelFeatureDSLExpression[]
@@ -141,6 +166,8 @@ export type CadKernelFeatureDSLFeature =
   | CadKernelFeatureDSLCylinderFeature
   | CadKernelFeatureDSLCylinderCutFeature
   | CadKernelFeatureDSLSphereFeature
+  | CadKernelFeatureDSLEllipsoidFeature
+  | CadKernelFeatureDSLEllipseExtrudeFeature
 
 export type CadKernelFeatureDSLDocument = {
   version: 1
@@ -386,6 +413,12 @@ function isFeatureDSLFeature(value: unknown): value is CadKernelFeatureDSLFeatur
   if (value.type === 'sphere') {
     return isFeatureDSLSphereFeature(value)
   }
+  if (value.type === 'ellipsoid') {
+    return isFeatureDSLEllipsoidFeature(value)
+  }
+  if (value.type === 'ellipse_extrude') {
+    return isFeatureDSLEllipseExtrudeFeature(value)
+  }
   return false
 }
 
@@ -450,6 +483,32 @@ function isFeatureDSLSphereFeature(value: Record<string, unknown>) {
     (hasRadius ? isFeatureDSLExpression(value.radius) : isFeatureDSLExpression(value.diameter)) &&
     (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
   )
+}
+
+function isFeatureDSLEllipsoidFeature(value: Record<string, unknown>) {
+  return (
+    isFeatureDSLExpressionTuple(value.origin, 3) &&
+    isFeatureDSLAxisRadiusExpression(value.radius_x, value.diameter_x) &&
+    isFeatureDSLAxisRadiusExpression(value.radius_y, value.diameter_y) &&
+    isFeatureDSLAxisRadiusExpression(value.radius_z, value.diameter_z) &&
+    (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
+  )
+}
+
+function isFeatureDSLEllipseExtrudeFeature(value: Record<string, unknown>) {
+  return (
+    isFeatureDSLExpressionTuple(value.origin, 3) &&
+    isFeatureDSLAxisRadiusExpression(value.radius_x, value.diameter_x) &&
+    isFeatureDSLAxisRadiusExpression(value.radius_y, value.diameter_y) &&
+    isFeatureDSLExpression(value.height) &&
+    (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
+  )
+}
+
+function isFeatureDSLAxisRadiusExpression(radius: unknown, diameter: unknown) {
+  const hasRadius = radius !== undefined
+  const hasDiameter = diameter !== undefined
+  return hasRadius !== hasDiameter && (hasRadius ? isFeatureDSLExpression(radius) : isFeatureDSLExpression(diameter))
 }
 
 function isFeatureDSLCylinderLikeFeature(value: Record<string, unknown>, lengthKey: 'height' | 'depth') {

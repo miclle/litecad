@@ -1,8 +1,12 @@
+/// <reference types="node" />
+
 import { describe, expect, it, vi } from 'vitest'
+import initReplicadOpenCascade from 'replicad-opencascadejs'
 
 import {
   applyCADOperationsToShape,
   createOpenCascadeLoader,
+  runFeatureDSLPreviewWithKernel,
   runFeatureDSLExportWithKernel,
   runStepAssemblyExportWithKernel,
 } from './opencascade-step'
@@ -37,6 +41,105 @@ describe('createOpenCascadeLoader', () => {
     expect(locateFile('other.data')).toBe('other.data')
   })
 })
+
+describe('runOpenCascadeFeatureDSLPreview', () => {
+  it('tessellates ellipsoid and ellipse extrude features with non-circular bounds', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    const ellipsoid = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'ellipsoid.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [{ id: 'ellipsoid', type: 'ellipsoid', origin: [0, 0, 0], diameter_x: 30, diameter_y: 20, diameter_z: 50 }],
+      },
+      parameterValues: {},
+    })
+    const ellipseExtrude = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'ellipse-extrude.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [{ id: 'post', type: 'ellipse_extrude', origin: [0, 0, 0], diameter_x: 30, diameter_y: 20, height: 50 }],
+      },
+      parameterValues: {},
+    })
+
+    expect(meshSize(ellipsoid.mesh)).toEqual({
+      x: expect.closeTo(30, 1),
+      y: expect.closeTo(20, 1),
+      z: expect.closeTo(50, 1),
+    })
+    expect(meshSize(ellipseExtrude.mesh)).toEqual({
+      x: expect.closeTo(30, 1),
+      y: expect.closeTo(20, 1),
+      z: expect.closeTo(50, 1),
+    })
+  }, 30000)
+
+  it('cuts ellipsoid features as solid geometry', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    const ellipsoid = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'ellipsoid.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [{ id: 'ellipsoid', type: 'ellipsoid', origin: [0, 0, 0], diameter_x: 36, diameter_y: 24, diameter_z: 36 }],
+      },
+      parameterValues: {},
+    })
+    const cutEllipsoid = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'ellipsoid-cut.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          { id: 'ellipsoid', type: 'ellipsoid', origin: [0, 0, 0], diameter_x: 36, diameter_y: 24, diameter_z: 36 },
+          { id: 'through_hole', type: 'cylinder_cut', origin: [0, 0, -18], diameter: 8, depth: 36 },
+        ],
+      },
+      parameterValues: {},
+    })
+
+    expect(cutEllipsoid.mesh.positions.length).toBeGreaterThan(ellipsoid.mesh.positions.length)
+  }, 30000)
+})
+
+function meshSize(mesh: { positions: readonly number[] }) {
+  const bounds = {
+    minX: Number.POSITIVE_INFINITY,
+    minY: Number.POSITIVE_INFINITY,
+    minZ: Number.POSITIVE_INFINITY,
+    maxX: Number.NEGATIVE_INFINITY,
+    maxY: Number.NEGATIVE_INFINITY,
+    maxZ: Number.NEGATIVE_INFINITY,
+  }
+  for (let index = 0; index < mesh.positions.length; index += 3) {
+    const x = mesh.positions[index] ?? 0
+    const y = mesh.positions[index + 1] ?? 0
+    const z = mesh.positions[index + 2] ?? 0
+    bounds.minX = Math.min(bounds.minX, x)
+    bounds.minY = Math.min(bounds.minY, y)
+    bounds.minZ = Math.min(bounds.minZ, z)
+    bounds.maxX = Math.max(bounds.maxX, x)
+    bounds.maxY = Math.max(bounds.maxY, y)
+    bounds.maxZ = Math.max(bounds.maxZ, z)
+  }
+  return {
+    x: bounds.maxX - bounds.minX,
+    y: bounds.maxY - bounds.minY,
+    z: bounds.maxZ - bounds.minZ,
+  }
+}
 
 describe('applyCADOperationsToShape', () => {
   it('replays transform operations through OpenCascade shape transforms', () => {
@@ -770,6 +873,244 @@ describe('runFeatureDSLExportWithKernel', () => {
     expect(result.exportedStepText).toContain('END-ISO-10303-21')
   })
 
+  it('builds ellipsoid features from sewn triangular faces before writing STEP', async () => {
+    const sewedShape = { name: 'sewed-ellipsoid-shape' }
+    const ellipsoidShell = { name: 'ellipsoid-shell' }
+    const ellipsoidSolid = { name: 'ellipsoid-solid' }
+    const sewingAdd = vi.fn()
+    const sewingPerform = vi.fn()
+    const transfer = vi.fn()
+    const write = vi.fn()
+    const openCascade = {
+      FS: {
+        readFile: vi.fn(() => 'ISO-10303-21;\nEND-ISO-10303-21;'),
+        unlink: vi.fn(),
+      },
+      IFSelect_ReturnStatus: {
+        IFSelect_RetDone: 1,
+      },
+      STEPControl_StepModelType: {
+        STEPControl_AsIs: 0,
+      },
+      STEPControl_Writer_1: vi.fn(function writer(this: {
+        Transfer: typeof transfer
+        Write: typeof write
+      }) {
+        this.Transfer = transfer.mockReturnValue(1)
+        this.Write = write.mockReturnValue(1)
+      }),
+      gp_Pnt_3: vi.fn(function point(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      BRepBuilderAPI_MakeEdge_3: vi.fn(function makeEdge(this: { Edge: () => unknown }, first: unknown, second: unknown) {
+        expect(first).toBeDefined()
+        expect(second).toBeDefined()
+        this.Edge = () => ({ kind: 'edge', first, second })
+      }),
+      BRepBuilderAPI_MakeWire_4: vi.fn(function makeWire(
+        this: { Wire: () => unknown },
+        first: unknown,
+        second: unknown,
+        third: unknown,
+      ) {
+        this.Wire = () => ({ kind: 'wire', edges: [first, second, third] })
+      }),
+      BRepBuilderAPI_MakeFace_15: vi.fn(function makeFace(this: { Face: () => unknown }, wire: unknown, onlyPlane: boolean) {
+        expect(wire).toBeDefined()
+        expect(onlyPlane).toBe(true)
+        this.Face = () => ({ kind: 'face', wire })
+      }),
+      BRepBuilderAPI_Sewing: vi.fn(function sewing(this: {
+        Add: typeof sewingAdd
+        Perform: typeof sewingPerform
+        SewedShape: () => unknown
+      }) {
+        this.Add = sewingAdd
+        this.Perform = sewingPerform
+        this.SewedShape = () => sewedShape
+      }),
+      TopoDS: {
+        Shell_1: vi.fn((shape: unknown) => {
+          expect(shape).toBe(sewedShape)
+          return ellipsoidShell
+        }),
+      },
+      ShapeFix_Solid_1: vi.fn(function shapeFixSolid(this: { SolidFromShell: (shell: unknown) => unknown }) {
+        this.SolidFromShell = (shell: unknown) => {
+          expect(shell).toBe(ellipsoidShell)
+          return ellipsoidSolid
+        }
+      }),
+      BRepLib: {
+        OrientClosedSolid: vi.fn((solid: unknown) => {
+          expect(solid).toBe(ellipsoidSolid)
+          return true
+        }),
+      },
+      BRepBuilderAPI_MakeSolid_3: vi.fn(function makeSolid(this: { Solid: () => unknown }, shell: unknown) {
+        expect(shell).toBe(ellipsoidShell)
+        this.Solid = () => ellipsoidSolid
+      }),
+      Message_ProgressRange_1: vi.fn(function progressRange() {}),
+    }
+
+    const result = await runFeatureDSLExportWithKernel(openCascade, {
+      filename: 'ellipsoid.step',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        parameters: {
+          major: { type: 'number', default: 30 },
+          minor: { type: 'number', default: 18 },
+        },
+        features: [
+          {
+            id: 'oval',
+            type: 'ellipsoid',
+            origin: [4, 5, 6],
+            radius_x: { op: 'div', args: ['major', 2] },
+            radius_y: { op: 'div', args: ['minor', 2] },
+            radius_z: 20,
+          },
+        ],
+      },
+      parameterValues: { major: 34, minor: 16 },
+    })
+
+    const pointBounds = boundsFromPointCalls(openCascade.gp_Pnt_3.mock.calls)
+    expect(pointBounds).toEqual({
+      x: expect.closeTo(34, 6),
+      y: expect.closeTo(16, 6),
+      z: expect.closeTo(40, 6),
+    })
+    expect(sewingAdd).toHaveBeenCalled()
+    expect(sewingPerform).toHaveBeenCalledOnce()
+    expect(transfer).toHaveBeenCalledWith(ellipsoidSolid, 0, true, expect.anything())
+    expect(result.exportedStepText).toContain('END-ISO-10303-21')
+  })
+
+  it('builds ellipse extrude features from an ellipse face prism before writing STEP', async () => {
+    const edge = { name: 'ellipse-edge' }
+    const wire = { name: 'ellipse-wire' }
+    const face = { name: 'ellipse-face' }
+    const ovalShape = { name: 'ellipse-prism-shape' }
+    const buildPrism = vi.fn()
+    const transfer = vi.fn()
+    const write = vi.fn()
+    const openCascade = {
+      FS: {
+        readFile: vi.fn(() => 'ISO-10303-21;\nEND-ISO-10303-21;'),
+        unlink: vi.fn(),
+      },
+      IFSelect_ReturnStatus: {
+        IFSelect_RetDone: 1,
+      },
+      STEPControl_StepModelType: {
+        STEPControl_AsIs: 0,
+      },
+      STEPControl_Writer_1: vi.fn(function writer(this: {
+        Transfer: typeof transfer
+        Write: typeof write
+      }) {
+        this.Transfer = transfer.mockReturnValue(1)
+        this.Write = write.mockReturnValue(1)
+      }),
+      gp_Pnt_3: vi.fn(function point(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      gp_Dir_4: vi.fn(function direction(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      gp_Ax2_2: vi.fn(function axis(this: { origin: unknown; normal: unknown; xDirection: unknown }, origin: unknown, normal: unknown, xDirection: unknown) {
+        this.origin = origin
+        this.normal = normal
+        this.xDirection = xDirection
+      }),
+      gp_Elips_2: vi.fn(function ellipse(
+        this: { axis: unknown; majorRadius: number; minorRadius: number },
+        axis: unknown,
+        majorRadius: number,
+        minorRadius: number,
+      ) {
+        expect(axis).toBeDefined()
+        this.axis = axis
+        this.majorRadius = majorRadius
+        this.minorRadius = minorRadius
+      }),
+      BRepBuilderAPI_MakeEdge_12: vi.fn(function makeEdge(this: { Edge: () => unknown }, ellipse: unknown) {
+        expect(ellipse).toBeDefined()
+        this.Edge = () => edge
+      }),
+      BRepBuilderAPI_MakeWire_2: vi.fn(function makeWire(this: { Wire: () => unknown }, edgeShape: unknown) {
+        expect(edgeShape).toBe(edge)
+        this.Wire = () => wire
+      }),
+      BRepBuilderAPI_MakeFace_15: vi.fn(function makeFace(this: { Face: () => unknown }, wireShape: unknown, onlyPlane: boolean) {
+        expect(wireShape).toBe(wire)
+        expect(onlyPlane).toBe(true)
+        this.Face = () => face
+      }),
+      gp_Vec_4: vi.fn(function vector(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      BRepPrimAPI_MakePrism_1: vi.fn(function makePrism(
+        this: { Build: typeof buildPrism; Shape: () => unknown },
+        faceShape: unknown,
+        vector: unknown,
+        copy: boolean,
+        canonize: boolean,
+      ) {
+        expect(faceShape).toBe(face)
+        expect(vector).toBeDefined()
+        expect(copy).toBe(false)
+        expect(canonize).toBe(true)
+        this.Build = buildPrism
+        this.Shape = () => ovalShape
+      }),
+      Message_ProgressRange_1: vi.fn(function progressRange() {}),
+    }
+
+    const result = await runFeatureDSLExportWithKernel(openCascade, {
+      filename: 'ellipse-extrude.step',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        parameters: {
+          major: { type: 'number', default: 30 },
+          minor: { type: 'number', default: 18 },
+          height: { type: 'number', default: 50 },
+        },
+        features: [
+          {
+            id: 'oval_post',
+            type: 'ellipse_extrude',
+            origin: [4, 5, 6],
+            diameter_x: 'major',
+            radius_y: { op: 'div', args: ['minor', 2] },
+            height: 'height',
+          },
+        ],
+      },
+      parameterValues: { major: 34, minor: 16, height: 48 },
+    })
+
+    expect(openCascade.gp_Dir_4).toHaveBeenCalledWith(0, 0, 1)
+    expect(openCascade.gp_Dir_4).toHaveBeenCalledWith(1, 0, 0)
+    expect(openCascade.gp_Elips_2).toHaveBeenCalledWith(expect.anything(), 17, 8)
+    expect(openCascade.gp_Vec_4).toHaveBeenCalledWith(0, 0, 48)
+    expect(buildPrism).toHaveBeenCalledOnce()
+    expect(transfer).toHaveBeenCalledWith(ovalShape, 0, true, expect.anything())
+    expect(result.exportedStepText).toContain('END-ISO-10303-21')
+  })
+
   it('rejects cylinder axes that resolve to zero before building OCCT directions', async () => {
     const openCascade = {
       FS: {
@@ -1064,3 +1405,27 @@ describe('runFeatureDSLExportWithKernel', () => {
     expect(result.exportedStepText).toContain('END-ISO-10303-21')
   })
 })
+
+function boundsFromPointCalls(calls: Array<[number, number, number]>) {
+  const bounds = {
+    minX: Number.POSITIVE_INFINITY,
+    minY: Number.POSITIVE_INFINITY,
+    minZ: Number.POSITIVE_INFINITY,
+    maxX: Number.NEGATIVE_INFINITY,
+    maxY: Number.NEGATIVE_INFINITY,
+    maxZ: Number.NEGATIVE_INFINITY,
+  }
+  for (const [x, y, z] of calls) {
+    bounds.minX = Math.min(bounds.minX, x)
+    bounds.minY = Math.min(bounds.minY, y)
+    bounds.minZ = Math.min(bounds.minZ, z)
+    bounds.maxX = Math.max(bounds.maxX, x)
+    bounds.maxY = Math.max(bounds.maxY, y)
+    bounds.maxZ = Math.max(bounds.maxZ, z)
+  }
+  return {
+    x: bounds.maxX - bounds.minX,
+    y: bounds.maxY - bounds.minY,
+    z: bounds.maxZ - bounds.minZ,
+  }
+}

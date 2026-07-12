@@ -227,6 +227,48 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts LiteCAD feature DSL ellipsoid and ellipse extrude features', () => {
+    const document = {
+      version: 1,
+      unit: 'millimetre',
+      parameters: {
+        major: { type: 'number', default: 30, min: 1, max: 120 },
+        minor: { type: 'number', default: 18, min: 1, max: 120 },
+        height: { type: 'number', default: 50, min: 1, max: 120 },
+      },
+      features: [
+        {
+          id: 'ellipsoid',
+          type: 'ellipsoid',
+          origin: [0, 0, 0],
+          radius_x: { op: 'div', args: ['major', 2] },
+          radius_y: { op: 'div', args: ['minor', 2] },
+          radius_z: 12,
+        },
+        {
+          id: 'oval_post',
+          type: 'ellipse_extrude',
+          origin: [45, 0, 0],
+          radius_x: { op: 'div', args: ['major', 2] },
+          radius_y: { op: 'div', args: ['minor', 2] },
+          height: 'height',
+        },
+      ],
+    }
+
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-ellipse-preview',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'ellipse-features.lcad.json',
+          document,
+          parameterValues: { major: 34, minor: 16, height: 48 },
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('accepts LiteCAD feature DSL box-cut features for rectangular pockets and slots', () => {
     expect(
       isCadKernelRequest({

@@ -80,6 +80,24 @@ func TestAIParametricToolCallParserAcceptsLiteCADFeatureDSLCylinderCuts(t *testi
 	}
 }
 
+func TestAIParametricToolCallParserAcceptsLiteCADFeatureDSLEllipseFeatures(t *testing.T) {
+	call, err := ParseAIParametricToolCall(`{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Feature DSL oval body",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":1,\"unit\":\"millimetre\",\"parameters\":{\"major\":{\"type\":\"number\",\"default\":30},\"minor\":{\"type\":\"number\",\"default\":18},\"height\":{\"type\":\"number\",\"default\":50}},\"features\":[{\"id\":\"ellipsoid\",\"type\":\"ellipsoid\",\"origin\":[0,0,0],\"radius_x\":{\"op\":\"div\",\"args\":[\"major\",2]},\"radius_y\":{\"op\":\"div\",\"args\":[\"minor\",2]},\"radius_z\":12},{\"id\":\"oval_post\",\"type\":\"ellipse_extrude\",\"origin\":[45,0,0],\"radius_x\":{\"op\":\"div\",\"args\":[\"major\",2]},\"radius_y\":{\"op\":\"div\",\"args\":[\"minor\",2]},\"height\":\"height\"}]}"
+  }
+}`)
+	if err != nil {
+		t.Fatalf("ParseAIParametricToolCall returned error: %v", err)
+	}
+	if call.Input.SourceKind != "litecad-feature-dsl" || !strings.Contains(call.Input.Code, `"ellipse_extrude"`) {
+		t.Fatalf("call input = %+v", call.Input)
+	}
+}
+
 func TestAIParametricToolCallParserAcceptsFallbackAliasesAndObjectCode(t *testing.T) {
 	call, err := ParseAIParametricToolCall(`{
   "tool": "build_parametric_model",

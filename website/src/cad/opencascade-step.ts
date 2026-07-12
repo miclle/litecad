@@ -2,6 +2,8 @@ import type {
   CadKernelFeatureDSLArithmeticExpression,
   CadKernelFeatureDSLCircleSketch,
   CadKernelFeatureDSLDocument,
+  CadKernelFeatureDSLEllipseExtrudeFeature,
+  CadKernelFeatureDSLEllipsoidFeature,
   CadKernelFeatureDSLExtrudeDirection,
   CadKernelFeatureDSLExpression,
   CadKernelFeatureDSLInput,
@@ -314,6 +316,14 @@ function compileFeatureDSLShape(
         accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLSphereShape(openCascade, feature, parameters, origin))
         continue
       }
+      if (feature.type === 'ellipsoid') {
+        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLEllipsoidShape(openCascade, feature, parameters, origin))
+        continue
+      }
+      if (feature.type === 'ellipse_extrude') {
+        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLEllipseExtrudeShape(openCascade, feature, parameters, origin))
+        continue
+      }
       if (feature.type === 'cylinder_cut') {
         if (!accumulatedShape) {
           throw new Error(`Feature ${feature.id} cylinder_cut requires a prior solid feature`)
@@ -503,6 +513,111 @@ function buildFeatureDSLSphereShape(
   return sphereBuilder.Shape()
 }
 
+function buildFeatureDSLEllipsoidShape(
+  openCascade: OpenCascadeModule,
+  feature: CadKernelFeatureDSLEllipsoidFeature,
+  parameters: Record<string, number>,
+  repeatedOrigin?: readonly number[],
+) {
+  const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin, parameters)
+  const radiusX = resolveFeatureDSLAxisRadius(feature, parameters, 'x', 'ellipsoid')
+  const radiusY = resolveFeatureDSLAxisRadius(feature, parameters, 'y', 'ellipsoid')
+  const radiusZ = resolveFeatureDSLAxisRadius(feature, parameters, 'z', 'ellipsoid')
+  if (radiusX <= 0 || radiusY <= 0 || radiusZ <= 0) {
+    throw new Error(`Feature ${feature.id} ellipsoid dimensions must be positive`)
+  }
+  return buildFeatureDSLFacetedEllipsoidShape(openCascade, origin, [radiusX, radiusY, radiusZ])
+}
+
+function buildFeatureDSLEllipseExtrudeShape(
+  openCascade: OpenCascadeModule,
+  feature: CadKernelFeatureDSLEllipseExtrudeFeature,
+  parameters: Record<string, number>,
+  repeatedOrigin?: readonly number[],
+) {
+  const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin, parameters)
+  const radiusX = resolveFeatureDSLAxisRadius(feature, parameters, 'x', 'ellipse_extrude')
+  const radiusY = resolveFeatureDSLAxisRadius(feature, parameters, 'y', 'ellipse_extrude')
+  const height = resolveFeatureDSLScalar(feature.height, parameters)
+  if (radiusX <= 0 || radiusY <= 0 || height <= 0) {
+    throw new Error(`Feature ${feature.id} ellipse_extrude dimensions must be positive`)
+  }
+  const center = new openCascade.gp_Pnt_3(origin[0] ?? 0, origin[1] ?? 0, origin[2] ?? 0)
+  const normal = new openCascade.gp_Dir_4(0, 0, 1)
+  const xDirection = radiusX >= radiusY ? new openCascade.gp_Dir_4(1, 0, 0) : new openCascade.gp_Dir_4(0, 1, 0)
+  const axis = new openCascade.gp_Ax2_2(center, normal, xDirection)
+  const ellipse = new openCascade.gp_Elips_2(axis, Math.max(radiusX, radiusY), Math.min(radiusX, radiusY))
+  const edgeBuilder = new openCascade.BRepBuilderAPI_MakeEdge_12(ellipse)
+  const wireBuilder = new openCascade.BRepBuilderAPI_MakeWire_2(edgeBuilder.Edge())
+  const faceBuilder = new openCascade.BRepBuilderAPI_MakeFace_15(wireBuilder.Wire(), true)
+  const prismBuilder = new openCascade.BRepPrimAPI_MakePrism_1(faceBuilder.Face(), new openCascade.gp_Vec_4(0, 0, height), false, true)
+  prismBuilder.Build(new openCascade.Message_ProgressRange_1())
+  return prismBuilder.Shape()
+}
+
+function buildFeatureDSLFacetedEllipsoidShape(
+  openCascade: OpenCascadeModule,
+  origin: readonly number[],
+  radii: readonly number[],
+) {
+  const longitudeSegments = 32
+  const latitudeSegments = 16
+  const points: any[][] = []
+  for (let latitude = 0; latitude <= latitudeSegments; latitude += 1) {
+    const theta = (Math.PI * latitude) / latitudeSegments
+    const sinTheta = Math.sin(theta)
+    const cosTheta = Math.cos(theta)
+    const row: any[] = []
+    for (let longitude = 0; longitude < longitudeSegments; longitude += 1) {
+      const phi = (2 * Math.PI * longitude) / longitudeSegments
+      row.push(
+        new openCascade.gp_Pnt_3(
+          (origin[0] ?? 0) + (radii[0] ?? 1) * sinTheta * Math.cos(phi),
+          (origin[1] ?? 0) + (radii[1] ?? 1) * sinTheta * Math.sin(phi),
+          (origin[2] ?? 0) + (radii[2] ?? 1) * cosTheta,
+        ),
+      )
+    }
+    points.push(row)
+  }
+
+  const sewing = new openCascade.BRepBuilderAPI_Sewing(0.001, true, true, true, false)
+  for (let latitude = 0; latitude < latitudeSegments; latitude += 1) {
+    for (let longitude = 0; longitude < longitudeSegments; longitude += 1) {
+      const nextLongitude = (longitude + 1) % longitudeSegments
+      const topLeft = points[latitude]?.[longitude]
+      const topRight = points[latitude]?.[nextLongitude]
+      const bottomLeft = points[latitude + 1]?.[longitude]
+      const bottomRight = points[latitude + 1]?.[nextLongitude]
+      if (!topLeft || !topRight || !bottomLeft || !bottomRight) {
+        continue
+      }
+      if (latitude === 0) {
+        sewing.Add(buildFeatureDSLTriangleFace(openCascade, topLeft, bottomRight, bottomLeft))
+      } else if (latitude === latitudeSegments - 1) {
+        sewing.Add(buildFeatureDSLTriangleFace(openCascade, topLeft, topRight, bottomLeft))
+      } else {
+        sewing.Add(buildFeatureDSLTriangleFace(openCascade, topLeft, topRight, bottomLeft))
+        sewing.Add(buildFeatureDSLTriangleFace(openCascade, topRight, bottomRight, bottomLeft))
+      }
+    }
+  }
+  sewing.Perform(new openCascade.Message_ProgressRange_1())
+  const shell = openCascade.TopoDS.Shell_1(sewing.SewedShape())
+  const solid = new openCascade.ShapeFix_Solid_1().SolidFromShell(shell)
+  openCascade.BRepLib.OrientClosedSolid(solid)
+  return solid
+}
+
+function buildFeatureDSLTriangleFace(openCascade: OpenCascadeModule, first: any, second: any, third: any) {
+  const firstEdge = new openCascade.BRepBuilderAPI_MakeEdge_3(first, second)
+  const secondEdge = new openCascade.BRepBuilderAPI_MakeEdge_3(second, third)
+  const thirdEdge = new openCascade.BRepBuilderAPI_MakeEdge_3(third, first)
+  const wire = new openCascade.BRepBuilderAPI_MakeWire_4(firstEdge.Edge(), secondEdge.Edge(), thirdEdge.Edge())
+  const face = new openCascade.BRepBuilderAPI_MakeFace_15(wire.Wire(), true)
+  return face.Face()
+}
+
 function resolveFeatureDSLRepeatedOrigins(
   feature: { id: string; origin?: readonly CadKernelFeatureDSLExpression[]; repeat?: { count: number; step: readonly CadKernelFeatureDSLExpression[] } },
   parameters: Record<string, number>,
@@ -545,6 +660,33 @@ function resolveFeatureDSLCircleRadius(featureID: string, sketch: CadKernelFeatu
     return resolveFeatureDSLScalar(sketch.radius ?? 0, parameters)
   }
   return resolveFeatureDSLScalar(sketch.diameter ?? 0, parameters) / 2
+}
+
+function resolveFeatureDSLAxisRadius(
+  feature: {
+    id: string
+    radius_x?: CadKernelFeatureDSLExpression
+    radius_y?: CadKernelFeatureDSLExpression
+    radius_z?: CadKernelFeatureDSLExpression
+    diameter_x?: CadKernelFeatureDSLExpression
+    diameter_y?: CadKernelFeatureDSLExpression
+    diameter_z?: CadKernelFeatureDSLExpression
+  },
+  parameters: Record<string, number>,
+  axis: 'x' | 'y' | 'z',
+  label: string,
+) {
+  const radius = feature[`radius_${axis}`]
+  const diameter = feature[`diameter_${axis}`]
+  const hasRadius = radius !== undefined
+  const hasDiameter = diameter !== undefined
+  if (hasRadius === hasDiameter) {
+    throw new Error(`Feature ${feature.id} ${label} ${axis} axis requires exactly one of radius_${axis} or diameter_${axis}`)
+  }
+  if (hasRadius) {
+    return resolveFeatureDSLScalar(radius ?? 0, parameters)
+  }
+  return resolveFeatureDSLScalar(diameter ?? 0, parameters) / 2
 }
 
 function resolveFeatureDSLDirectedOrigin(
