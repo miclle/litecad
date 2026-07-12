@@ -2754,6 +2754,100 @@ Remaining after this task:
 
 ---
 
+### Task 26: LiteCAD feature DSL non-geometry parameter metadata
+
+**Why this task exists:** The artifact editor and metadata extraction path can represent boolean/string controls, but the LiteCAD feature DSL backend validator and browser kernel protocol only accepted numeric parameters. This task makes boolean and string parameters first-class editable UI metadata while keeping geometry expressions numeric-only, so generated models can expose toggles/enums/labels without accidentally feeding non-numeric values into the OCCT compiler.
+
+**Files:**
+- Modify: `internal/service/parametric_artifact.go`
+- Test: `internal/service/parametric_artifact_test.go`
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/ai_tools_test.go`
+- Modify: `website/src/cad/kernel-protocol.ts`
+- Test: `website/src/cad/kernel-protocol.test.ts`
+- Modify: `website/src/cad/opencascade-step.ts`
+- Test: `website/src/views/project/project-feature-dsl-preview.test.ts`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- LiteCAD feature DSL `parameters` may contain:
+  - `{ "type": "number", "default": n, "min": n?, "max": n?, "step": n? }`
+  - `{ "type": "boolean", "default": true|false }`
+  - `{ "type": "string", "default": "...", "options": ["..."]? }`
+- Geometry expressions in `origin`, `size`, `axis`, `radius`, `diameter`, `height`, `depth`, and `repeat.step` may reference numeric parameters only.
+- The browser kernel worker receives only numeric `parameterValues`; boolean/string parameter values remain artifact/model metadata for Inspector controls and revision persistence.
+- Saved `.lcad.json` models preserve boolean/string metadata through save-as-model and parameter update revisions.
+- Because LiteCAD is not launched, no compatibility route or legacy data migration is required for older numeric-only drafts.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+go test ./internal/service -run TestSaveLiteCADFeatureDSLArtifactPreservesNonGeometryParameters
+npm --prefix website test -- kernel-protocol project-feature-dsl-preview
+go test ./internal/service -run TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact
+```
+
+Expected failures:
+
+- Backend validation rejects a valid LiteCAD feature DSL artifact that declares boolean/string parameters.
+- Browser kernel protocol rejects valid boolean/string parameter metadata.
+- Project feature DSL preview passes non-numeric values toward the kernel instead of preserving metadata and sending only numeric overrides.
+- Provider prompt tests fail until the Assistant explicitly tells the model that boolean/string parameters are UI metadata and not geometry expressions.
+
+Verification result on 2026-07-12:
+
+- `go test ./internal/service -run TestSaveLiteCADFeatureDSLArtifactPreservesNonGeometryParameters` failed as expected with `invalid project parametric artifact input`.
+- `npm --prefix website test -- kernel-protocol project-feature-dsl-preview` failed as expected because the protocol guard returned `false` for valid boolean/string metadata.
+- `go test ./internal/service -run TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact` failed as expected because the provider context did not mention boolean/string UI metadata.
+
+- [x] **Step 2: Implement non-geometry metadata parameters**
+
+Extend backend validation to accept number/boolean/string parameter definitions, record only numeric parameter names for geometry expression validation, extend the worker protocol type guards for boolean/string definitions, skip non-numeric definitions when resolving kernel parameter values, and update provider prompting/tool descriptions to prefer numeric geometry parameters while allowing boolean/string UI metadata.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol project-feature-dsl-preview use-parametric-artifact-preview
+go test ./internal/service -run 'TestSaveLiteCADFeatureDSLArtifactPreservesNonGeometryParameters|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact|TestCreateLiteCADFeatureDSLArtifactAcceptsBoxCut|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedSchema'
+cd website && npx tsc -b
+git diff --check
+task check
+task test
+task test-browser
+git add internal/service/parametric_artifact.go internal/service/parametric_artifact_test.go internal/service/ai_tools.go internal/service/ai_tools_test.go website/src/cad/kernel-protocol.ts website/src/cad/kernel-protocol.test.ts website/src/cad/opencascade-step.ts website/src/views/project/project-feature-dsl-preview.test.ts docs/ai-parametric-assistant.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(cad): support feature dsl ui parameters"
+git push
+```
+
+Expected:
+
+- Generated LiteCAD DSL can preserve editable boolean/string metadata without treating those values as geometry inputs.
+- Numeric geometry references continue to compile through the OCCT preview/export worker.
+- Invalid geometry references to boolean/string parameter names are rejected before persistence.
+- Saved `.lcad.json` models preserve all declared parameters while passing only numeric values into preview/export.
+- Sketches, extrudes, fillets/chamfers, arbitrary expressions, and conditional geometry remain future work.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol project-feature-dsl-preview use-parametric-artifact-preview` passed.
+- `go test ./internal/service -run 'TestSaveLiteCADFeatureDSLArtifactPreservesNonGeometryParameters|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact|TestCreateLiteCADFeatureDSLArtifactAcceptsBoxCut|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedSchema'` passed.
+- `cd website && npx tsc -b` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+
+Remaining after this task:
+
+- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, arbitrary expressions, conditional geometry, and CAD document History integration for generated DSL features.
+- Boolean/string parameters are preserved and editable metadata only; any future geometry conditionals need an explicit DSL design rather than implicit kernel behavior.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

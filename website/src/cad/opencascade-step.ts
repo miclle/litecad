@@ -397,11 +397,15 @@ function resolveFeatureDSLRadius(
 function resolveFeatureDSLParameters(document: CadKernelFeatureDSLDocument, parameterValues: Record<string, number>) {
   const parameterDefinitions = document.parameters ?? {}
   const unknownParameter = Object.keys(parameterValues).find((name) => !parameterDefinitions[name])
-  if (unknownParameter) {
-    throw new Error(`Unknown feature DSL parameter: ${unknownParameter}`)
+  const nonNumericParameter = Object.keys(parameterValues).find((name) => parameterDefinitions[name]?.type !== 'number')
+  if (unknownParameter || nonNumericParameter) {
+    throw new Error(`Unknown feature DSL parameter: ${unknownParameter ?? nonNumericParameter}`)
   }
   const resolved: Record<string, number> = {}
   for (const [name, definition] of Object.entries(parameterDefinitions)) {
+    if (definition.type !== 'number') {
+      continue
+    }
     const value = parameterValues[name] ?? definition.default
     if (!Number.isFinite(value)) {
       throw new Error(`Feature DSL parameter ${name} must be finite`)

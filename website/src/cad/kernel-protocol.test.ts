@@ -221,6 +221,29 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts LiteCAD feature DSL non-geometry parameter metadata', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-ui-params',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'panel-with-ui-params.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            parameters: {
+              width: { type: 'number', default: 80, min: 20, max: 200 },
+              include_holes: { type: 'boolean', default: true },
+              finish: { type: 'string', default: 'matte', options: ['matte', 'polished'] },
+            },
+            features: [{ id: 'base', type: 'box', size: ['width', 40, 6] }],
+          },
+          parameterValues: { width: 96 },
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('rejects malformed LiteCAD feature DSL repeat patterns', () => {
     expect(
       isCadKernelRequest({

@@ -59,6 +59,44 @@ describe('project feature DSL preview', () => {
     })
   })
 
+  test('keeps non-geometry parameter metadata while passing only numeric kernel values', () => {
+    const source = `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 80 },
+    "include_holes": { "type": "boolean", "default": true },
+    "finish": { "type": "string", "default": "matte", "options": ["matte", "polished"] }
+  },
+  "features": [
+    { "id": "base", "type": "box", "origin": [0, 0, 0], "size": ["width", 40, 6] }
+  ]
+}`
+    const model = {
+      ...baseModel,
+      metadata: {
+        ...baseModel.metadata,
+        parameter_count: 3,
+        parameter_values: { width: 96, include_holes: false, finish: 'polished' },
+      },
+    } satisfies ProjectModel
+
+    expect(buildFeatureDSLPreviewInput(model, source)).toEqual({
+      filename: 'feature-dsl-bracket-litecad.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        parameters: {
+          width: { type: 'number', default: 80 },
+          include_holes: { type: 'boolean', default: true },
+          finish: { type: 'string', default: 'matte', options: ['matte', 'polished'] },
+        },
+        features: [{ id: 'base', type: 'box', origin: [0, 0, 0], size: ['width', 40, 6] }],
+      },
+      parameterValues: { width: 96 },
+    })
+  })
+
   test('rejects non-JSON LiteCAD feature DSL source', () => {
     expect(() => buildFeatureDSLPreviewInput(baseModel, '{not-json')).toThrow('Invalid LiteCAD feature DSL source')
   })

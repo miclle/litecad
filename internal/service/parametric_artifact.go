@@ -476,9 +476,11 @@ type liteCADFeatureDSLValidationDocument struct {
 
 type liteCADFeatureDSLValidationParameter struct {
 	Type    string   `json:"type"`
-	Default float64  `json:"default"`
+	Default any      `json:"default"`
 	Min     *float64 `json:"min"`
 	Max     *float64 `json:"max"`
+	Step    *float64 `json:"step"`
+	Options []string `json:"options"`
 }
 
 type liteCADFeatureDSLValidationFeature struct {
@@ -499,6 +501,10 @@ type liteCADFeatureDSLValidationRepeat struct {
 	Step  []any `json:"step"`
 }
 
+type liteCADFeatureDSLValidationParameters struct {
+	numeric map[string]struct{}
+}
+
 func validateLiteCADFeatureDSLSource(data []byte) error {
 	var document liteCADFeatureDSLValidationDocument
 	if err := json.Unmarshal(data, &document); err != nil {
@@ -507,9 +513,33 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 	if document.Version != 1 || strings.TrimSpace(document.Unit) == "" || len(document.Features) == 0 {
 		return ErrInvalidProjectParametricArtifactInput
 	}
-	parameterNames := map[string]struct{}{}
+	parameters := liteCADFeatureDSLValidationParameters{
+		numeric: map[string]struct{}{},
+	}
 	for name, parameter := range document.Parameters {
-		if strings.TrimSpace(name) == "" || parameter.Type != "number" || !isFiniteFloat(parameter.Default) {
+		if strings.TrimSpace(name) == "" {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		if err := validateLiteCADFeatureDSLParameter(parameter); err != nil {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		if parameter.Type == "number" {
+			parameters.numeric[name] = struct{}{}
+		}
+	}
+	for _, feature := range document.Features {
+		if err := validateLiteCADFeatureDSLFeature(feature, parameters); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateLiteCADFeatureDSLParameter(parameter liteCADFeatureDSLValidationParameter) error {
+	switch parameter.Type {
+	case "number":
+		defaultValue, ok := parameter.Default.(float64)
+		if !ok || !isFiniteFloat(defaultValue) {
 			return ErrInvalidProjectParametricArtifactInput
 		}
 		if parameter.Min != nil && !isFiniteFloat(*parameter.Min) {
@@ -518,43 +548,61 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 		if parameter.Max != nil && !isFiniteFloat(*parameter.Max) {
 			return ErrInvalidProjectParametricArtifactInput
 		}
-		if parameter.Min != nil && parameter.Default < *parameter.Min {
+		if parameter.Step != nil && (!isFiniteFloat(*parameter.Step) || *parameter.Step <= 0) {
 			return ErrInvalidProjectParametricArtifactInput
 		}
-		if parameter.Max != nil && parameter.Default > *parameter.Max {
+		if parameter.Min != nil && defaultValue < *parameter.Min {
 			return ErrInvalidProjectParametricArtifactInput
 		}
-		parameterNames[name] = struct{}{}
-	}
-	for _, feature := range document.Features {
-		if err := validateLiteCADFeatureDSLFeature(feature, parameterNames); err != nil {
-			return err
+		if parameter.Max != nil && defaultValue > *parameter.Max {
+			return ErrInvalidProjectParametricArtifactInput
 		}
+		return nil
+	case "boolean":
+		if _, ok := parameter.Default.(bool); !ok {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		return nil
+	case "string":
+		defaultValue, ok := parameter.Default.(string)
+		if !ok {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		if len(parameter.Options) == 0 {
+			return nil
+		}
+		for _, option := range parameter.Options {
+			if option == defaultValue {
+				return nil
+			}
+		}
+		return ErrInvalidProjectParametricArtifactInput
+	default:
+		return ErrInvalidProjectParametricArtifactInput
 	}
-	return nil
 }
 
-func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature, parameterNames map[string]struct{}) error {
+func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters) error {
 	if strings.TrimSpace(feature.ID) == "" {
 		return ErrInvalidProjectParametricArtifactInput
 	}
 	switch feature.Type {
 	case "box":
-		if err := validateLiteCADFeatureDSLExpressionTuple(feature.Size, 3, parameterNames); err != nil {
+		if err := validateLiteCADFeatureDSLExpressionTuple(feature.Size, 3, parameters.numeric); err != nil {
 			return err
 		}
 		if feature.Origin != nil {
-			if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameterNames); err != nil {
+			if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameters.numeric); err != nil {
 				return err
 			}
 		}
-		return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameterNames)
+		return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameters.numeric)
 	case "box_cut":
-		return validateLiteCADFeatureDSLBoxCutFeature(feature, parameterNames)
+		return validateLiteCADFeatureDSLBoxCutFeature(feature, parameters.numeric)
 	case "cylinder":
-		return validateLiteCADFeatureDSLCylinderLikeFeature(feature, "height", feature.Height, parameterNames)
+		return validateLiteCADFeatureDSLCylinderLikeFeature(feature, "height", feature.Height, parameters.numeric)
 	case "cylinder_cut":
-		return validateLiteCADFeatureDSLCylinderLikeFeature(feature, "depth", feature.Depth, parameterNames)
+		return validateLiteCADFeatureDSLCylinderLikeFeature(feature, "depth", feature.Depth, parameters.numeric)
 	default:
 		return ErrInvalidProjectParametricArtifactInput
 	}

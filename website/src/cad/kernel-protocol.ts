@@ -22,9 +22,24 @@ export type CadKernelFeatureDSLNumberParameter = {
   default: number
   min?: number
   max?: number
+  step?: number
 }
 
-export type CadKernelFeatureDSLParameter = CadKernelFeatureDSLNumberParameter
+export type CadKernelFeatureDSLBooleanParameter = {
+  type: 'boolean'
+  default: boolean
+}
+
+export type CadKernelFeatureDSLStringParameter = {
+  type: 'string'
+  default: string
+  options?: string[]
+}
+
+export type CadKernelFeatureDSLParameter =
+  | CadKernelFeatureDSLNumberParameter
+  | CadKernelFeatureDSLBooleanParameter
+  | CadKernelFeatureDSLStringParameter
 
 export type CadKernelFeatureDSLRepeat = {
   count: number
@@ -275,13 +290,25 @@ function isCadKernelFeatureDSLDocument(value: unknown): value is CadKernelFeatur
 }
 
 function isFeatureDSLParameter(value: unknown): value is CadKernelFeatureDSLParameter {
+  if (!isRecord(value)) {
+    return false
+  }
+  if (value.type === 'boolean') {
+    return typeof value.default === 'boolean'
+  }
+  if (value.type === 'string') {
+    return (
+      typeof value.default === 'string' &&
+      (value.options === undefined || (Array.isArray(value.options) && value.options.every((option) => typeof option === 'string')))
+    )
+  }
   return (
-    isRecord(value) &&
     value.type === 'number' &&
     typeof value.default === 'number' &&
     Number.isFinite(value.default) &&
     (value.min === undefined || (typeof value.min === 'number' && Number.isFinite(value.min))) &&
-    (value.max === undefined || (typeof value.max === 'number' && Number.isFinite(value.max)))
+    (value.max === undefined || (typeof value.max === 'number' && Number.isFinite(value.max))) &&
+    (value.step === undefined || (typeof value.step === 'number' && Number.isFinite(value.step) && value.step > 0))
   )
 }
 

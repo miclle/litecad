@@ -269,6 +269,96 @@ func TestSaveLiteCADFeatureDSLArtifactCreatesProjectModel(t *testing.T) {
 	}
 }
 
+func TestSaveLiteCADFeatureDSLArtifactPreservesNonGeometryParameters(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-ui-params@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Save generated DSL UI parameters",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	dslSource := `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 80, "min": 20, "max": 200 },
+    "include_holes": { "type": "boolean", "default": true },
+    "finish": { "type": "string", "default": "matte", "options": ["matte", "polished"] }
+  },
+  "features": [
+    { "id": "base", "type": "box", "origin": [0, 0, 0], "size": ["width", 40, 6] }
+  ]
+}`
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Feature DSL panel",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode:  dslSource,
+		ParameterValues: map[string]any{
+			"width":         float64(96),
+			"include_holes": false,
+			"finish":        "polished",
+		},
+		CompileStatus: "success",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+
+	model, err := svc.SaveParametricArtifactAsProjectModel(ctx, SaveParametricArtifactAsProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		ArtifactID:  artifact.ID,
+	})
+	if err != nil {
+		t.Fatalf("SaveParametricArtifactAsProjectModel returned error: %v", err)
+	}
+	if model.Metadata.ParameterCount != 3 || model.Metadata.ParameterValues["width"] != float64(96) || model.Metadata.ParameterValues["include_holes"] != false || model.Metadata.ParameterValues["finish"] != "polished" {
+		t.Fatalf("model parameter values = %+v", model.Metadata.ParameterValues)
+	}
+
+	updated, err := svc.UpdateParametricModelParameters(ctx, UpdateParametricModelParametersInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		ModelID:     model.ID,
+		ParameterValues: map[string]any{
+			"width":         float64(120),
+			"include_holes": true,
+			"finish":        "matte",
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateParametricModelParameters returned error: %v", err)
+	}
+	if updated.Metadata.ParameterValues["width"] != float64(120) || updated.Metadata.ParameterValues["include_holes"] != true || updated.Metadata.ParameterValues["finish"] != "matte" {
+		t.Fatalf("updated parameter values = %+v", updated.Metadata.ParameterValues)
+	}
+
+	_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID:   user.ID,
+		ProjectID:     project.ID,
+		Title:         "Invalid UI parameter reference",
+		SourceKind:    "litecad-feature-dsl",
+		SourceCode:    `{"version":1,"unit":"millimetre","parameters":{"finish":{"type":"string","default":"matte"}},"features":[{"id":"base","type":"box","size":["finish",40,6]}]}`,
+		CompileStatus: "pending",
+	})
+	if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+		t.Fatalf("CreateProjectParametricArtifact error = %v, want ErrInvalidProjectParametricArtifactInput", err)
+	}
+}
+
 func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedSchema(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
