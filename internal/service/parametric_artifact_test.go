@@ -1197,6 +1197,113 @@ func TestUpdateParametricModelParametersPersistsRevision(t *testing.T) {
 	}
 }
 
+func TestUpdateParametricModelParametersCreatesReversibleHistoryEntry(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-history@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Parametric history",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID:     user.ID,
+		ProjectID:       project.ID,
+		Title:           "History spacer",
+		SourceKind:      "openscad",
+		SourceCode:      "width = 40;\nheight = 12;\ncube([width, height, 6]);",
+		ParameterValues: map[string]any{"width": float64(40), "height": float64(12)},
+		CompileStatus:   "success",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	model, err := svc.SaveParametricArtifactAsProjectModel(ctx, SaveParametricArtifactAsProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		ArtifactID:  artifact.ID,
+	})
+	if err != nil {
+		t.Fatalf("SaveParametricArtifactAsProjectModel returned error: %v", err)
+	}
+
+	updated, err := svc.UpdateParametricModelParameters(ctx, UpdateParametricModelParametersInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		ModelID:     model.ID,
+		ParameterValues: map[string]any{
+			"width": float64(72),
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateParametricModelParameters returned error: %v", err)
+	}
+	if updated.Metadata.ParameterValues["width"] != float64(72) {
+		t.Fatalf("updated parameter values = %+v", updated.Metadata.ParameterValues)
+	}
+
+	history, err := svc.ListProjectCADHistory(ctx, user.ID, project.ID, 10, 0)
+	if err != nil {
+		t.Fatalf("ListProjectCADHistory returned error: %v", err)
+	}
+	if len(history.Entries) != 1 {
+		t.Fatalf("history entries = %+v, want one parameter entry", history.Entries)
+	}
+	if history.Entries[0].CommandType != "parameter-change" || history.Entries[0].TargetID != model.ID {
+		t.Fatalf("history entry = %+v, want parameter-change for model", history.Entries[0])
+	}
+
+	document, err := svc.GetProjectCADDocument(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectCADDocument returned error: %v", err)
+	}
+	if !document.History.CanUndo || document.History.CanRedo || document.History.HeadID == "" {
+		t.Fatalf("document history = %+v, want undo available", document.History)
+	}
+
+	undone, err := svc.UndoProjectCADDocument(ctx, ModifyProjectCADHistoryInput{
+		OwnerUserID:      user.ID,
+		ProjectID:        project.ID,
+		ExpectedRevision: document.Revision,
+	})
+	if err != nil {
+		t.Fatalf("UndoProjectCADDocument returned error: %v", err)
+	}
+	modelsAfterUndo, err := svc.ListProjectModels(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("ListProjectModels after undo returned error: %v", err)
+	}
+	if len(modelsAfterUndo) != 1 || modelsAfterUndo[0].Metadata.ParameterValues["width"] != float64(40) {
+		t.Fatalf("models after undo = %+v, want width restored to 40", modelsAfterUndo)
+	}
+
+	_, err = svc.RedoProjectCADDocument(ctx, ModifyProjectCADHistoryInput{
+		OwnerUserID:      user.ID,
+		ProjectID:        project.ID,
+		ExpectedRevision: undone.Revision,
+	})
+	if err != nil {
+		t.Fatalf("RedoProjectCADDocument returned error: %v", err)
+	}
+	modelsAfterRedo, err := svc.ListProjectModels(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("ListProjectModels after redo returned error: %v", err)
+	}
+	if len(modelsAfterRedo) != 1 || modelsAfterRedo[0].Metadata.ParameterValues["width"] != float64(72) {
+		t.Fatalf("models after redo = %+v, want width restored to 72", modelsAfterRedo)
+	}
+}
+
 func TestUpdateLiteCADFeatureDSLModelParametersPersistsRevision(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

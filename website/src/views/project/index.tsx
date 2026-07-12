@@ -499,6 +499,8 @@ function ProjectView() {
     onSuccess: async (model) => {
       setSelectedModelID(model.id)
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
     },
   })
   const createProjectAgentConversationMutation = useMutation({

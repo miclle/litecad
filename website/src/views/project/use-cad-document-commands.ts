@@ -52,6 +52,7 @@ export function useCADDocumentCommands({
 
   const documentQueryKey = useMemo(() => ['projects', projectId, 'cad-document'] as const, [projectId])
   const historyQueryKey = useMemo(() => ['projects', projectId, 'cad-document', 'history'] as const, [projectId])
+  const modelsQueryKey = useMemo(() => ['projects', projectId, 'models'] as const, [projectId])
 
   const enqueueCommand = useCallback(<T,>(command: () => Promise<T>) => {
     const queuedCommand = commandQueueRef.current.then(command, command)
@@ -74,10 +75,11 @@ export function useCADDocumentCommands({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: documentQueryKey }),
         queryClient.invalidateQueries({ queryKey: historyQueryKey }),
+        queryClient.invalidateQueries({ queryKey: modelsQueryKey }),
       ])
       return true
     },
-    [documentQueryKey, historyQueryKey, onConflict, queryClient],
+    [documentQueryKey, historyQueryKey, modelsQueryKey, onConflict, queryClient],
   )
 
   const updateTransformMutation = useMutation({
@@ -221,7 +223,10 @@ export function useCADDocumentCommands({
       }),
     onSuccess: async () => {
       setHistoryError('')
-      await queryClient.invalidateQueries({ queryKey: historyQueryKey })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: historyQueryKey }),
+        queryClient.invalidateQueries({ queryKey: modelsQueryKey }),
+      ])
     },
     onError: async (error) => {
       if (!(await refreshAfterConflict(error))) {

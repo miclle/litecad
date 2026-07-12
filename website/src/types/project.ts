@@ -174,7 +174,7 @@ export interface CADHistoryEntry {
   sequence: number
   parent_entry_id?: string
   status: 'applied' | 'undone' | 'discarded'
-  command_type: 'transform' | 'box-union' | 'delete-node'
+  command_type: 'transform' | 'box-union' | 'delete-node' | 'parameter-change'
   target_id: string
   summary: string
   created_at: string

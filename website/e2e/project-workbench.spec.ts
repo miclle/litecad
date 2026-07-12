@@ -7,6 +7,7 @@ let smokeModels: unknown[] = []
 let smokeFeatureDSLSourceRequestCount = 0
 let smokeArtifactCompileStatus = 'pending'
 let smokeArtifactUpdateCount = 0
+let smokeHistoryEntries: unknown[] = []
 let smokeModelParameterUpdateCount = 0
 let smokeSavedParameterValues: Record<string, unknown> = {}
 const smokeFeatureDSLSource = JSON.stringify({
@@ -92,7 +93,11 @@ function smokeCADDocument() {
           ]
         : [],
     operations: [],
-    history: { head_id: '', can_undo: false, can_redo: false },
+    history: {
+      head_id: smokeHistoryEntries.length > 0 ? 'hist_smoke_parameter_change' : '',
+      can_undo: smokeHistoryEntries.length > 0,
+      can_redo: false,
+    },
     created_at: now,
     updated_at: now,
   }
@@ -120,7 +125,7 @@ async function fulfillAPI(route: Route) {
     [`/api/v1/projects/${projectId}/agent/conversations/agc_smoke/messages`]: { messages: smokeMessages },
     [`/api/v1/projects/${projectId}/parametric-artifacts`]: { artifacts: [] },
     [`/api/v1/projects/${projectId}/cad-document`]: { document: smokeCADDocument() },
-    [`/api/v1/projects/${projectId}/cad-document/history`]: { entries: [] },
+    [`/api/v1/projects/${projectId}/cad-document/history`]: { entries: smokeHistoryEntries },
   }
   if (request.method() === 'GET' && pathname in responses) {
     await route.fulfill({ json: responses[pathname] })
@@ -237,6 +242,17 @@ async function fulfillAPI(route: Route) {
     const requestBody = request.postDataJSON() as { parameter_values?: Record<string, unknown> }
     smokeSavedParameterValues = requestBody.parameter_values ?? {}
     smokeModelParameterUpdateCount += 1
+    smokeHistoryEntries = [
+      {
+        id: 'hist_smoke_parameter_change',
+        sequence: 1,
+        status: 'applied',
+        command_type: 'parameter-change',
+        target_id: baseSmokeSavedModel.id,
+        summary: 'Update parameters for smoke-bracket-litecad.lcad.json',
+        created_at: now,
+      },
+    ]
     smokeModels = [smokeSavedModel()]
     await route.fulfill({ json: { model: smokeSavedModel() } })
     return
@@ -269,6 +285,7 @@ test('opens the project workbench, History, and Assistant without browser errors
   smokeFeatureDSLSourceRequestCount = 0
   smokeArtifactCompileStatus = 'pending'
   smokeArtifactUpdateCount = 0
+  smokeHistoryEntries = []
   smokeModelParameterUpdateCount = 0
   smokeSavedParameterValues = {}
   const browserErrors = captureBrowserErrors(page)
@@ -303,7 +320,8 @@ test('opens the project workbench, History, and Assistant without browser errors
 
   await page.getByRole('button', { name: 'Operation history' }).click()
   await expect(page.getByRole('dialog', { name: 'Operation history' })).toBeVisible()
-  await expect(page.getByText('Edits will appear here after you move, add, or delete model content.')).toBeVisible()
+  await expect(page.getByText('Edits will appear here after you move, change parameters, add, or delete model content.')).toBeVisible()
+  await page.keyboard.press('Escape')
 
   await page.getByRole('button', { name: 'Toggle Assistant' }).click()
   await expect(page.getByRole('complementary', { name: 'Assistant panel' })).toHaveAttribute('aria-hidden', 'false')
@@ -359,6 +377,8 @@ test('opens the project workbench, History, and Assistant without browser errors
   expect(smokeModelParameterUpdateCount).toBe(modelParameterUpdatesBefore)
   await page.getByLabel('width value').press('Tab')
   await expect.poll(() => smokeModelParameterUpdateCount).toBe(modelParameterUpdatesBefore + 1)
+  await page.getByRole('button', { name: 'Operation history' }).click()
+  await expect(page.getByText('Update parameters for smoke-bracket-litecad.lcad.json')).toBeVisible()
   await expect
     .poll(() => page.locator('[data-model-preview] canvas').first().evaluate((canvas) => canvas.getAttribute('data-litecad-stable-canvas')))
     .toBe('saved-parameter-edit')

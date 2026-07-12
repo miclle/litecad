@@ -38,6 +38,12 @@ type cadDeleteNodeHistoryCommand struct {
 	OperationIndex int                      `json:"operation_index"`
 }
 
+type cadParameterChangeHistoryCommand struct {
+	ModelID        string       `json:"model_id"`
+	BeforeMetadata StepMetadata `json:"before_metadata"`
+	AfterMetadata  StepMetadata `json:"after_metadata"`
+}
+
 type cadDeletedDocumentNode struct {
 	Node  CADDocumentNode `json:"node"`
 	Index int             `json:"index"`
@@ -220,7 +226,7 @@ func (s *Service) UndoProjectCADDocument(ctx context.Context, input ModifyProjec
 			}
 			return fmt.Errorf("load CAD history head: %w", err)
 		}
-		if err := applyCADHistoryCommand(&state, entry, false); err != nil {
+		if err := applyCADHistoryCommand(ctx, tx, &state, entry, false); err != nil {
 			return err
 		}
 		if err := tx.WithContext(ctx).Model(&entry).Update("status", cadHistoryStatusUndone).Error; err != nil {
@@ -263,7 +269,7 @@ func (s *Service) RedoProjectCADDocument(ctx context.Context, input ModifyProjec
 			}
 			return fmt.Errorf("load CAD redo entry: %w", err)
 		}
-		if err := applyCADHistoryCommand(&state, entry, true); err != nil {
+		if err := applyCADHistoryCommand(ctx, tx, &state, entry, true); err != nil {
 			return err
 		}
 		if err := tx.WithContext(ctx).Model(&entry).Update("status", cadHistoryStatusApplied).Error; err != nil {
@@ -279,7 +285,7 @@ func (s *Service) RedoProjectCADDocument(ctx context.Context, input ModifyProjec
 	return publicDocument, err
 }
 
-func applyCADHistoryCommand(state *cadDocumentState, entry entity.ProjectCADHistoryEntry, forward bool) error {
+func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocumentState, entry entity.ProjectCADHistoryEntry, forward bool) error {
 	switch entry.CommandType {
 	case "transform":
 		var command cadTransformHistoryCommand
@@ -330,6 +336,29 @@ func applyCADHistoryCommand(state *cadDocumentState, entry entity.ProjectCADHist
 				state.Nodes = insertCADDocumentNode(state.Nodes, deletedNode.Index, deletedNode.Node)
 			}
 			state.Operations = removeCADOperation(state.Operations, command.Operation.ID)
+		}
+	case "parameter-change":
+		var command cadParameterChangeHistoryCommand
+		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
+			return fmt.Errorf("decode parameter change history command: %w", err)
+		}
+		metadata := command.BeforeMetadata
+		if forward {
+			metadata = command.AfterMetadata
+		}
+		metadataJSON, err := json.Marshal(metadata)
+		if err != nil {
+			return fmt.Errorf("serialize parameter change metadata: %w", err)
+		}
+		result := tx.WithContext(ctx).
+			Model(&entity.ProjectModel{}).
+			Where("id = ? AND project_id = ?", command.ModelID, entry.ProjectID).
+			Update("metadata_json", metadataJSON)
+		if result.Error != nil {
+			return fmt.Errorf("apply parameter change history command: %w", result.Error)
+		}
+		if result.RowsAffected != 1 {
+			return ErrProjectNotFound
 		}
 	default:
 		return ErrInvalidCADDocumentInput

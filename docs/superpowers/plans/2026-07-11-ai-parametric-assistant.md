@@ -3800,6 +3800,36 @@ Verification result on 2026-07-12:
 - `task test-browser`: passed.
 - In-app browser project `prj_01kxa5xrv2acmwth74m3yzhs51`: selected `rectangular-block-litecad`, rapidly filled WIDTH `60 -> 95 -> 118`, confirmed WIDTH stayed `118` after 500 ms with preview asset count `2` and a non-zero `1611 x 1520` canvas, then reloaded and confirmed WIDTH persisted as `118`; browser console errors were empty.
 
+### Task 44: Record saved parameter changes in Operation History
+
+**Why this task exists:** Saved model parameter edits were persisted as parametric revisions, but the workbench Operation History still only showed CAD document transform, box-union, and node-delete edits. Users expect History to record all visible modeling operations, including parameter changes created from the Inspector.
+
+**Implementation summary:**
+
+- Saved model parameter PATCH appends a reversible `parameter-change` CAD history command.
+- The command stores before/after model metadata so Undo restores previous parameter values and Redo reapplies the edited values.
+- Parameter changes advance the CAD document History head and revision even though they do not mutate the CAD document node/operation JSON.
+- The project view invalidates model, CAD document, and History queries after a parameter save so the History panel updates immediately.
+- History Undo/Redo invalidates model queries as well as History so a parameter-change replay refreshes the Inspector and model preview data.
+- The History UI type contract accepts `parameter-change`, and the empty-state copy names parameter changes as recorded edits.
+
+**Tests and verification guidance:**
+
+- Service tests should assert that `UpdateParametricModelParameters` creates one `parameter-change` history entry, exposes Undo, and that Undo/Redo restore model metadata parameter values.
+- Browser smoke should assert that a saved WIDTH edit appears in Operation History after the settled parameter PATCH.
+- Full verification should include `task check`, `task test`, and `task test-browser`.
+
+Verification result on 2026-07-12:
+
+- Initial red test: `go test -tags development ./internal/service -run TestUpdateParametricModelParametersCreatesReversibleHistoryEntry` failed with no history entries after the parameter update.
+- `go test -tags development ./internal/service -run 'TestUpdateParametricModelParameters(CreatesReversibleHistoryEntry|PersistsRevision)'`: passed.
+- `npm --prefix website test -- project-history-popover.test.tsx parametric-artifact-editor.test.tsx`: passed, 2 files / 13 tests.
+- `cd website && npx tsc -b`: passed.
+- `task check`: passed.
+- `task test`: passed, including Go race/coverage suite and 45 frontend test files / 219 frontend tests.
+- `task test-browser`: passed with the project workbench smoke asserting that a saved WIDTH edit appears in Operation History.
+- In-app browser project `prj_01kxa5xrv2acmwth74m3yzhs51`: selected `rectangular-block-litecad`, changed WIDTH `86 -> 87`, waited for autosave, opened Operation History, and confirmed `Update parameters for rectangular-block-litecad.lcad.json` appeared.
+
 ---
 
 ## Testing Matrix

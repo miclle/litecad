@@ -307,6 +307,10 @@ func (s *Service) UpdateParametricModelParameters(ctx context.Context, input Upd
 			metadata = storedMetadata
 		}
 	}
+	beforeMetadata, err := cloneStepMetadata(metadata)
+	if err != nil {
+		return ProjectModel{}, ErrInvalidProjectParametricArtifactInput
+	}
 	mergedValues := map[string]any{}
 	for name, value := range defaultValues {
 		mergedValues[name] = value
@@ -366,12 +370,38 @@ func (s *Service) UpdateParametricModelParameters(ctx context.Context, input Upd
 		if err := tx.Create(&revision).Error; err != nil {
 			return fmt.Errorf("create parametric revision: %w", err)
 		}
+		document, state, err := s.getOrCreateProjectCADDocumentEntity(ctx, tx, project)
+		if err != nil {
+			return err
+		}
+		if _, err := appendProjectCADHistoryEntry(ctx, tx, &document, "parameter-change", model.ID, "Update parameters for "+model.OriginalFilename, cadParameterChangeHistoryCommand{
+			ModelID:        model.ID,
+			BeforeMetadata: beforeMetadata,
+			AfterMetadata:  metadata,
+		}); err != nil {
+			return err
+		}
+		if err := persistProjectCADDocumentEntity(ctx, tx, &document, state); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
 		return ProjectModel{}, err
 	}
 	return publicProjectModel(model), nil
+}
+
+func cloneStepMetadata(metadata StepMetadata) (StepMetadata, error) {
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return StepMetadata{}, err
+	}
+	var clone StepMetadata
+	if err := json.Unmarshal(metadataJSON, &clone); err != nil {
+		return StepMetadata{}, err
+	}
+	return clone, nil
 }
 
 func (s *Service) loadProjectParametricArtifact(ctx context.Context, projectID, artifactID string) (entity.ProjectParametricArtifact, error) {

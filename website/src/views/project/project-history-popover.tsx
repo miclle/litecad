@@ -112,7 +112,7 @@ export function ProjectHistoryPopover({
             {isLoading ? <p className="px-2 py-4 text-xs text-[#64748b]">Loading history…</p> : null}
             {loadError ? <p className="px-2 py-4 text-xs text-[#8a2f24]">Could not load operation history.</p> : null}
             {!isLoading && !loadError && entries.length === 0 ? (
-              <p className="px-2 py-4 text-xs leading-5 text-[#64748b]">Edits will appear here after you move, add, or delete model content.</p>
+              <p className="px-2 py-4 text-xs leading-5 text-[#64748b]">Edits will appear here after you move, change parameters, add, or delete model content.</p>
             ) : null}
             {entries.map((entry) => (
               <div className="flex items-start gap-3 rounded px-2 py-2.5 hover:bg-[#f8fafc]" key={entry.id}>
