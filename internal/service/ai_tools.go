@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 const (
 	aiParametricToolBuildModel            = "build_parametric_model"
 	aiParametricSystemPrompt              = "You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Prefer source_kind litecad-feature-dsl with a valid JSON document using version, unit, parameters, and features. Use extrude features for rectangular or circular sketched bases, plates, and bosses when that better describes design intent, extrude_cut features for rectangular or circular sketch-based slots, pockets, notches, and holes, box features for direct rectangular bodies, box_cut features for direct rectangular slots, pockets, and edge notches, cylinder features for bosses or posts, and cylinder_cut features for round holes. In LiteCAD feature DSL, extrude uses an optional origin, a rectangle sketch with size or a circle sketch with radius or diameter, height, and optional direction positive, negative, or symmetric; extrude_cut uses origin, a rectangle sketch with size or a circle sketch with radius or diameter, depth, and optional direction positive, negative, or symmetric; box and box_cut use origin and size; cylinder uses origin, optional non-zero axis, radius or diameter, and height; cylinder_cut uses origin, optional non-zero axis, radius or diameter, and depth. Omit direction for default positive Z extrusion; use negative for downward cuts and symmetric for cuts centered on the sketch plane. Omit axis for default Z-axis cylinders, and use axis such as [1,0,0] or [0,1,0] for side holes or horizontal posts. Use repeat with integer count from 1 to 128 and a step vector for linear patterns such as repeated holes, slots, or posts; keep count literal and make step spacing parameterized when useful. Use numeric parameters or structured numeric expression objects such as {\"op\":\"add\",\"args\":[\"width\",2]} for geometry expressions; supported ops are add, sub, mul, and div. You may include boolean or string parameters as editable UI metadata, but do not reference them from geometry expressions. Use openscad only when the user explicitly asks for OpenSCAD source. Declare editable parameters in the artifact so LiteCAD can preview and save them."
+	aiParametricJSONFallbackPrompt        = "Native function calling is unavailable for this request. Return only strict JSON with no Markdown and no explanation, using exactly this shape: {\"tool\":\"build_parametric_model\",\"input\":{\"title\":\"...\",\"version\":\"v1\",\"source_kind\":\"litecad-feature-dsl\",\"code\":\"...\"}}. The input.code value must be a JSON-encoded string containing the generated source document."
 	aiParametricInvalidToolFailureMessage = "I could not create a valid parametric model from that response. Please try again with a more specific request."
 	aiParametricToolModeJSONFallback      = "json_fallback"
 	aiParametricToolModeNativeTool        = "native_tool"
@@ -77,22 +79,85 @@ type ProjectAgentParametricTelemetry struct {
 	DurationMS int64  `json:"duration_ms"`
 }
 
+func appendAIParametricJSONFallbackPrompt(messages []AIChatMessage) []AIChatMessage {
+	fallbackMessages := make([]AIChatMessage, 0, len(messages)+1)
+	fallbackMessages = append(fallbackMessages, messages...)
+	fallbackMessages = append(fallbackMessages, AIChatMessage{Role: "system", Body: aiParametricJSONFallbackPrompt})
+	return fallbackMessages
+}
+
 // ParseAIParametricToolCall validates strict JSON tool output from an AI provider.
 func ParseAIParametricToolCall(output string) (AIParametricToolCall, error) {
-	var call AIParametricToolCall
-	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &call); err != nil {
+	var envelope struct {
+		Tool       string          `json:"tool"`
+		Input      json.RawMessage `json:"input"`
+		Parameters json.RawMessage `json:"parameters"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &envelope); err != nil {
 		return AIParametricToolCall{}, ErrInvalidAIChatInput
 	}
-	return validateAIParametricToolCall(call)
+	inputBody := envelope.Input
+	if len(inputBody) == 0 {
+		inputBody = envelope.Parameters
+	}
+	input, err := parseAIParametricArtifactInput(inputBody)
+	if err != nil {
+		return AIParametricToolCall{}, err
+	}
+	return validateAIParametricToolCall(AIParametricToolCall{Tool: envelope.Tool, Input: input})
 }
 
 // ParseAIParametricNativeToolCall validates a native provider function call.
 func ParseAIParametricNativeToolCall(nativeCall AIChatToolCall) (AIParametricToolCall, error) {
-	var input AIParametricArtifactInput
-	if len(nativeCall.Arguments) == 0 || json.Unmarshal(nativeCall.Arguments, &input) != nil {
+	input, err := parseAIParametricArtifactInput(nativeCall.Arguments)
+	if err != nil {
 		return AIParametricToolCall{}, ErrInvalidAIChatInput
 	}
 	return validateAIParametricToolCall(AIParametricToolCall{Tool: nativeCall.Tool, Input: input})
+}
+
+func parseAIParametricArtifactInput(raw json.RawMessage) (AIParametricArtifactInput, error) {
+	if len(raw) == 0 {
+		return AIParametricArtifactInput{}, ErrInvalidAIChatInput
+	}
+	var input struct {
+		Title      string          `json:"title"`
+		Version    string          `json:"version"`
+		SourceKind string          `json:"source_kind"`
+		Code       json.RawMessage `json:"code"`
+		Source     json.RawMessage `json:"source"`
+	}
+	if err := json.Unmarshal(raw, &input); err != nil {
+		return AIParametricArtifactInput{}, ErrInvalidAIChatInput
+	}
+	code, ok := normalizeAIParametricSource(input.Code)
+	if !ok {
+		code, ok = normalizeAIParametricSource(input.Source)
+	}
+	if !ok {
+		return AIParametricArtifactInput{}, ErrInvalidAIChatInput
+	}
+	return AIParametricArtifactInput{
+		Title:      input.Title,
+		Version:    input.Version,
+		SourceKind: input.SourceKind,
+		Code:       code,
+	}, nil
+}
+
+func normalizeAIParametricSource(raw json.RawMessage) (string, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", false
+	}
+	var source string
+	if err := json.Unmarshal(raw, &source); err == nil {
+		return strings.TrimSpace(source), true
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, raw); err != nil {
+		return "", false
+	}
+	return compact.String(), true
 }
 
 func validateAIParametricToolCall(call AIParametricToolCall) (AIParametricToolCall, error) {
@@ -101,6 +166,13 @@ func validateAIParametricToolCall(call AIParametricToolCall) (AIParametricToolCa
 	call.Input.Version = strings.TrimSpace(call.Input.Version)
 	call.Input.SourceKind = strings.TrimSpace(call.Input.SourceKind)
 	call.Input.Code = strings.TrimSpace(call.Input.Code)
+	if call.Input.SourceKind == projectParametricSourceKindLiteCADDSL {
+		normalizedCode, err := normalizeAIParametricLiteCADFeatureDSLSource(call.Input.Code)
+		if err != nil {
+			return AIParametricToolCall{}, ErrInvalidAIChatInput
+		}
+		call.Input.Code = normalizedCode
+	}
 	if call.Tool != aiParametricToolBuildModel ||
 		call.Input.Title == "" ||
 		utf8.RuneCountInString(call.Input.Title) > maxProjectParametricArtifactTitleRunes ||
@@ -113,6 +185,86 @@ func validateAIParametricToolCall(call AIParametricToolCall) (AIParametricToolCa
 		return AIParametricToolCall{}, ErrInvalidAIChatInput
 	}
 	return call, nil
+}
+
+func normalizeAIParametricLiteCADFeatureDSLSource(source string) (string, error) {
+	var document map[string]any
+	if err := json.Unmarshal([]byte(source), &document); err != nil {
+		return "", err
+	}
+	if version, ok := document["version"].(string); ok && strings.EqualFold(strings.TrimSpace(version), "v1") {
+		document["version"] = float64(1)
+	}
+	if unit, ok := document["unit"].(string); ok {
+		switch strings.ToLower(strings.TrimSpace(unit)) {
+		case "millimeter", "millimeters", "mm":
+			document["unit"] = "millimetre"
+		}
+	}
+	switch parameters := document["parameters"].(type) {
+	case map[string]any:
+		for name, value := range parameters {
+			switch typedValue := value.(type) {
+			case float64:
+				parameters[name] = map[string]any{"type": "number", "default": typedValue}
+			case map[string]any:
+				if _, hasType := typedValue["type"]; !hasType {
+					if _, ok := typedValue["default"].(float64); ok {
+						typedValue["type"] = "number"
+					}
+				}
+			}
+		}
+	case []any:
+		normalizedParameters := map[string]any{}
+		for _, value := range parameters {
+			parameter, ok := value.(map[string]any)
+			if !ok {
+				continue
+			}
+			name, _ := parameter["name"].(string)
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			delete(parameter, "name")
+			if defaultValue, ok := parameter["value"]; ok {
+				delete(parameter, "value")
+				if _, hasDefault := parameter["default"]; !hasDefault {
+					parameter["default"] = defaultValue
+				}
+			}
+			if _, hasType := parameter["type"]; !hasType {
+				if _, ok := parameter["default"].(float64); ok {
+					parameter["type"] = "number"
+				}
+			}
+			normalizedParameters[name] = parameter
+		}
+		document["parameters"] = normalizedParameters
+	}
+	if features, ok := document["features"].([]any); ok {
+		for index, value := range features {
+			feature, ok := value.(map[string]any)
+			if !ok {
+				continue
+			}
+			if id, ok := feature["id"].(string); ok && strings.TrimSpace(id) != "" {
+				continue
+			}
+			featureType, _ := feature["type"].(string)
+			featureType = strings.TrimSpace(featureType)
+			if featureType == "" {
+				featureType = "feature"
+			}
+			feature["id"] = fmt.Sprintf("%s_%d", featureType, index+1)
+		}
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func buildParametricModelAITool() AIChatTool {
@@ -195,21 +347,33 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 	toolMode := aiParametricToolModeJSONFallback
 	startedAt := time.Now()
 	if toolClient, ok := s.aiClient.(AIChatToolClient); ok {
-		toolMode = aiParametricToolModeNativeTool
 		nativeCall, err := toolClient.ChatWithTools(ctx, providerMessages, []AIChatTool{buildParametricModelAITool()})
 		if err != nil {
-			return ProjectAgentParametricRun{}, fmt.Errorf("send ai parametric chat: %w", err)
-		}
-		call, err = ParseAIParametricNativeToolCall(nativeCall)
-		if err != nil {
-			if persistErr := s.persistProjectAgentParametricFailure(ctx, project.ID, conversation.ID, userMessage); persistErr != nil {
-				return ProjectAgentParametricRun{}, persistErr
+			providerReply, fallbackErr := s.aiClient.Chat(ctx, appendAIParametricJSONFallbackPrompt(providerMessages))
+			if fallbackErr != nil {
+				return ProjectAgentParametricRun{}, fmt.Errorf("send ai parametric chat: native tool call failed: %v; json fallback failed: %w", err, fallbackErr)
 			}
-			return ProjectAgentParametricRun{}, err
+			call, err = ParseAIParametricToolCall(providerReply)
+			if err != nil {
+				if persistErr := s.persistProjectAgentParametricFailure(ctx, project.ID, conversation.ID, userMessage); persistErr != nil {
+					return ProjectAgentParametricRun{}, persistErr
+				}
+				return ProjectAgentParametricRun{}, err
+			}
+			reply = strings.TrimSpace(providerReply)
+		} else {
+			call, err = ParseAIParametricNativeToolCall(nativeCall)
+			if err != nil {
+				if persistErr := s.persistProjectAgentParametricFailure(ctx, project.ID, conversation.ID, userMessage); persistErr != nil {
+					return ProjectAgentParametricRun{}, persistErr
+				}
+				return ProjectAgentParametricRun{}, err
+			}
+			reply = marshalAIParametricToolCall(call)
+			toolMode = aiParametricToolModeNativeTool
 		}
-		reply = marshalAIParametricToolCall(call)
 	} else {
-		providerReply, err := s.aiClient.Chat(ctx, providerMessages)
+		providerReply, err := s.aiClient.Chat(ctx, appendAIParametricJSONFallbackPrompt(providerMessages))
 		if err != nil {
 			return ProjectAgentParametricRun{}, fmt.Errorf("send ai parametric chat: %w", err)
 		}

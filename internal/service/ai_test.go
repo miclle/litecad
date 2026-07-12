@@ -18,20 +18,34 @@ func (c *recordingAIClient) Chat(ctx context.Context, messages []AIChatMessage) 
 }
 
 type recordingAIToolClient struct {
-	messages   []AIChatMessage
-	tools      []AIChatTool
-	call       AIChatToolCall
-	chatCalled bool
+	messages     []AIChatMessage
+	chatMessages []AIChatMessage
+	tools        []AIChatTool
+	call         AIChatToolCall
+	toolErr      error
+	chatReply    string
+	chatErr      error
+	chatCalled   bool
 }
 
 func (c *recordingAIToolClient) Chat(ctx context.Context, messages []AIChatMessage) (string, error) {
 	c.chatCalled = true
+	c.chatMessages = append([]AIChatMessage(nil), messages...)
+	if c.chatErr != nil {
+		return "", c.chatErr
+	}
+	if c.chatReply != "" {
+		return c.chatReply, nil
+	}
 	return "", errors.New("plain chat should not be used")
 }
 
 func (c *recordingAIToolClient) ChatWithTools(ctx context.Context, messages []AIChatMessage, tools []AIChatTool) (AIChatToolCall, error) {
 	c.messages = append([]AIChatMessage(nil), messages...)
 	c.tools = append([]AIChatTool(nil), tools...)
+	if c.toolErr != nil {
+		return AIChatToolCall{}, c.toolErr
+	}
 	return c.call, nil
 }
 

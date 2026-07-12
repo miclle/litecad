@@ -23,7 +23,7 @@ const (
 	maxProjectAgentConversationTitleRunes = 120
 	defaultProjectAgentConversationTitle  = "Project chat"
 	cadAgentSystemPrompt                  = "You are CAD Agent inside LiteCAD. Help the user inspect CAD sources, metadata, design intent, and possible model changes. Be clear about the current product boundary: you can discuss and plan changes, but you cannot directly mutate persisted CAD geometry unless a dedicated tool is available."
-	defaultAITimeout                      = 30 * time.Second
+	defaultAITimeout                      = 90 * time.Second
 	defaultAITemperature                  = 0.2
 	defaultAIMaxOutputTokens              = 2048
 )

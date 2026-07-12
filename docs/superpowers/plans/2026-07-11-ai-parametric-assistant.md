@@ -3605,6 +3605,39 @@ Verification results on 2026-07-12:
 
 ---
 
+## Post-Completion Regression: Native Tool Fallback
+
+Observed during in-app browser validation on 2026-07-12:
+
+- A fresh Assistant conversation on an empty project could submit a LiteCAD feature DSL generation prompt.
+- The UI stayed functional and showed the expected generation-progress/failure surfaces.
+- The generation route failed before draft creation when the configured OpenAI-compatible provider did not return a usable native `build_parametric_model` tool call.
+
+Fix path:
+
+- Keep native `build_parametric_model` tool calls as the first attempt for OpenAI-compatible providers.
+- If the native tool request itself fails, retry the same provider context with an explicit strict JSON fallback prompt before surfacing a provider failure.
+- Default OpenAI-compatible provider timeout is 90 seconds so providers that reject native `tool_choice` still have time to complete the strict JSON fallback generation.
+- Normalize common provider fallback envelopes and LiteCAD DSL shorthand (`input`/`parameters`, `code`/`source`, object-shaped code, `version: "v1"`, `unit: "millimeter"`, numeric parameter defaults, array-style parameter rows, and missing feature IDs) before applying the existing strict tool and DSL validation.
+- Preserve the existing invalid-output behavior: malformed fallback JSON stores a safe Assistant failure message and creates no artifact.
+- Preserve the provider-failure behavior: if native tool calling and JSON fallback both fail, create no messages and no artifact.
+
+Regression tests:
+
+- `TestAIParametricRunFallsBackToJSONWhenNativeToolCallFails` covers successful strict JSON fallback after a native tool-call failure and asserts that the fallback provider messages include the explicit strict JSON instruction.
+- `TestAIParametricToolCallParserAcceptsFallbackAliasesAndObjectCode` covers common provider envelope variants without bypassing LiteCAD DSL validation.
+- `TestAIParametricToolCallParserNormalizesProviderLiteCADDSLShorthand` covers the provider shorthand observed during local API validation.
+- `TestAIParametricRunDoesNotPersistWhenNativeToolAndFallbackBothFail` covers the double-provider-failure path with no persisted messages or artifacts.
+
+Validation guidance:
+
+- Run the service regression tests with `-count=1` so cached results cannot hide this flow.
+- Direct API verification should distinguish invalid provider output from provider timeout. If fallback times out, increase `ai.timeout_seconds` or use the 90-second default.
+- Run `task check`, `task test`, and `task test-browser` before committing.
+- For live browser verification, ensure the backend process serving the in-app browser is running the fixed code before retrying the same Assistant prompt; otherwise the browser will still exercise the old binary.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

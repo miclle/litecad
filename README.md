@@ -107,7 +107,7 @@ The workbench is the main product surface. It combines:
 
 ### CAD Agent
 
-The CAD Agent sends project and source metadata context to a configured OpenAI-compatible chat provider and stores user/assistant messages inside project-owned conversations. A separate parametric-run endpoint validates strict `build_parametric_model` JSON output and stores a pending generated-source artifact, preferring LiteCAD feature DSL JSON unless the user explicitly asks for OpenSCAD source. If no provider is configured, sending a message returns a configuration error while the rest of LiteCAD continues to run.
+The CAD Agent sends project and source metadata context to a configured OpenAI-compatible chat provider and stores user/assistant messages inside project-owned conversations. A separate parametric-run endpoint validates `build_parametric_model` output and stores a pending generated-source artifact, preferring LiteCAD feature DSL JSON unless the user explicitly asks for OpenSCAD source. OpenAI-compatible providers use native function tools first, then retry the same prompt with an explicit strict JSON fallback instruction when native tool calling fails. If no provider is configured, sending a message returns a configuration error while the rest of LiteCAD continues to run.
 
 ## Configuration
 
@@ -128,6 +128,7 @@ ai:
 ```
 
 Configuration supports `${NAME}` and `${NAME:-fallback}` environment variable expansion. Runtime database drivers are `postgres` and `mysql`. Leaving `ai.api_key` or `ai.model` empty disables CAD Agent sends.
+AI provider calls default to a 90-second timeout and can be tuned with `ai.timeout_seconds`; `ai.max_output_tokens` caps generated output tokens.
 
 ## Development Commands
 

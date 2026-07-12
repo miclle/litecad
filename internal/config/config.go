@@ -79,7 +79,7 @@ func normalizeAIConfig(ai AI) AI {
 		ai.BaseURL = "https://api.openai.com/v1"
 	}
 	if ai.TimeoutSeconds == 0 {
-		ai.TimeoutSeconds = 30
+		ai.TimeoutSeconds = 90
 	}
 	if ai.MaxOutputTokens <= 0 {
 		ai.MaxOutputTokens = 2048

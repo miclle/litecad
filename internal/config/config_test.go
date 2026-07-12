@@ -99,8 +99,8 @@ ai:
 	if cfg.AI.APIKey != "sk-test" || cfg.AI.Model != "cad-model" {
 		t.Fatalf("AI config = %+v", cfg.AI)
 	}
-	if cfg.AI.TimeoutSeconds != 30 {
-		t.Fatalf("AI.TimeoutSeconds = %d, want default 30", cfg.AI.TimeoutSeconds)
+	if cfg.AI.TimeoutSeconds != 90 {
+		t.Fatalf("AI.TimeoutSeconds = %d, want default 90", cfg.AI.TimeoutSeconds)
 	}
 	if cfg.AI.MaxOutputTokens != 768 {
 		t.Fatalf("AI.MaxOutputTokens = %d, want 768", cfg.AI.MaxOutputTokens)

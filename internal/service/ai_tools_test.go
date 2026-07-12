@@ -64,6 +64,89 @@ func TestAIParametricToolCallParserAcceptsLiteCADFeatureDSLCylinderCuts(t *testi
 	}
 }
 
+func TestAIParametricToolCallParserAcceptsFallbackAliasesAndObjectCode(t *testing.T) {
+	call, err := ParseAIParametricToolCall(`{
+  "tool": "build_parametric_model",
+  "parameters": {
+    "title": "Object DSL plate",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": {
+      "version": 1,
+      "unit": "millimetre",
+      "parameters": {
+        "width": { "type": "number", "default": 80 }
+      },
+      "features": [
+        { "id": "base", "type": "box", "origin": [0, 0, 0], "size": ["width", 40, 6] }
+      ]
+    }
+  }
+}`)
+	if err != nil {
+		t.Fatalf("ParseAIParametricToolCall returned error: %v", err)
+	}
+	if call.Input.Title != "Object DSL plate" || call.Input.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("call input = %+v", call.Input)
+	}
+	if !strings.Contains(call.Input.Code, `"features"`) || strings.Contains(call.Input.Code, "\n") {
+		t.Fatalf("code should be compact JSON source, got %q", call.Input.Code)
+	}
+
+	call, err = ParseAIParametricToolCall(`{
+  "tool": "build_parametric_model",
+  "parameters": {
+    "title": "Source alias plate",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "source": "{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"base\",\"type\":\"box\",\"origin\":[0,0,0],\"size\":[80,40,6]}]}"
+  }
+}`)
+	if err != nil {
+		t.Fatalf("ParseAIParametricToolCall with source alias returned error: %v", err)
+	}
+	if call.Input.Title != "Source alias plate" || !strings.Contains(call.Input.Code, `"box"`) {
+		t.Fatalf("source alias call input = %+v", call.Input)
+	}
+}
+
+func TestAIParametricToolCallParserNormalizesProviderLiteCADDSLShorthand(t *testing.T) {
+	call, err := ParseAIParametricToolCall(`{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Simple box",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":\"v1\",\"unit\":\"millimeter\",\"parameters\":{\"width\":80,\"depth\":40,\"thickness\":6},\"features\":[{\"type\":\"box\",\"origin\":[0,0,0],\"size\":[\"width\",\"depth\",\"thickness\"]}]}"
+  }
+}`)
+	if err != nil {
+		t.Fatalf("ParseAIParametricToolCall returned error: %v", err)
+	}
+	if !strings.Contains(call.Input.Code, `"unit":"millimetre"`) ||
+		!strings.Contains(call.Input.Code, `"width":{"default":80,"type":"number"}`) ||
+		!strings.Contains(call.Input.Code, `"id":"box_1"`) {
+		t.Fatalf("normalized code = %s", call.Input.Code)
+	}
+
+	call, err = ParseAIParametricToolCall(`{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Array parameters box",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":\"v1\",\"unit\":\"mm\",\"parameters\":[{\"name\":\"width\",\"type\":\"number\",\"value\":80},{\"name\":\"depth\",\"type\":\"number\",\"value\":40},{\"name\":\"thickness\",\"type\":\"number\",\"value\":6}],\"features\":[{\"type\":\"box\",\"origin\":[0,0,0],\"size\":[\"width\",\"depth\",\"thickness\"]}]}"
+  }
+}`)
+	if err != nil {
+		t.Fatalf("ParseAIParametricToolCall with array parameters returned error: %v", err)
+	}
+	if !strings.Contains(call.Input.Code, `"depth":{"default":40,"type":"number"}`) ||
+		!strings.Contains(call.Input.Code, `"thickness":{"default":6,"type":"number"}`) {
+		t.Fatalf("normalized array parameter code = %s", call.Input.Code)
+	}
+}
+
 func TestAIParametricToolCallParserRejectsMalformedLiteCADFeatureDSL(t *testing.T) {
 	for _, output := range []string{
 		`{"tool":"build_parametric_model","input":{"title":"Unknown feature","version":"v1","source_kind":"litecad-feature-dsl","code":"{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"base\",\"type\":\"sphere\",\"radius\":4}]}"}}`,
@@ -280,6 +363,74 @@ func TestAIParametricRunUsesNativeToolClient(t *testing.T) {
 	}
 }
 
+func TestAIParametricRunFallsBackToJSONWhenNativeToolCallFails(t *testing.T) {
+	toolClient := &recordingAIToolClient{
+		toolErr: errors.New("provider returned no tool call"),
+		chatReply: `{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Fallback feature DSL bracket",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":1,\"unit\":\"millimetre\",\"parameters\":{\"width\":{\"type\":\"number\",\"default\":80}},\"features\":[{\"id\":\"base\",\"type\":\"box\",\"origin\":[0,0,0],\"size\":[\"width\",40,6]}]}"
+  }
+}`,
+	}
+	svc := newTestService(t)
+	svc.aiClient = toolClient
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-run-tool-fallback@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{OwnerUserID: user.ID, Name: "Native tool fallback study"})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Fallback run",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	run, err := svc.RunProjectAgentParametric(ctx, ProjectAgentParametricRunInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
+		Message:        "Make a LiteCAD feature DSL bracket",
+	})
+	if err != nil {
+		t.Fatalf("RunProjectAgentParametric returned error: %v", err)
+	}
+	if !toolClient.chatCalled {
+		t.Fatal("RunProjectAgentParametric should fall back to plain JSON chat after native tool call failure")
+	}
+	if len(toolClient.tools) != 1 || toolClient.tools[0].Name != aiParametricToolBuildModel {
+		t.Fatalf("tools = %+v", toolClient.tools)
+	}
+	fallbackPrompt := joinAIMessageBodies(toolClient.chatMessages)
+	if len(toolClient.chatMessages) == 0 || !strings.Contains(fallbackPrompt, "build_parametric_model") || !strings.Contains(fallbackPrompt, "strict JSON") {
+		t.Fatalf("fallback chat messages should retain parametric tool instructions, got %+v", toolClient.chatMessages)
+	}
+	if run.Artifact.Title != "Fallback feature DSL bracket" || run.Artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", run.Artifact)
+	}
+	if run.Telemetry.ToolMode != "json_fallback" || run.Telemetry.SourceKind != "litecad-feature-dsl" || run.Telemetry.DurationMS < 0 {
+		t.Fatalf("telemetry = %+v", run.Telemetry)
+	}
+	if run.Artifact.GenerationToolMode != "json_fallback" || run.Artifact.GenerationDurationMS < 0 {
+		t.Fatalf("artifact generation telemetry = %+v", run.Artifact)
+	}
+}
+
 func TestAIParametricRunRejectsInvalidToolOutput(t *testing.T) {
 	svc := newTestService(t)
 	svc.aiClient = &recordingAIClient{reply: "I created the model for you."}
@@ -435,6 +586,60 @@ func TestAIParametricRunDoesNotPersistOnProviderFailure(t *testing.T) {
 		Message:        "Make a parametric mounting bracket",
 	}); err == nil {
 		t.Fatal("RunProjectAgentParametric should return provider failure")
+	}
+
+	artifacts, err := svc.ListProjectParametricArtifacts(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("ListProjectParametricArtifacts returned error: %v", err)
+	}
+	if len(artifacts) != 0 {
+		t.Fatalf("artifacts = %+v, want none", artifacts)
+	}
+	messages, err := svc.ListProjectAgentMessages(ctx, user.ID, project.ID, conversation.ID)
+	if err != nil {
+		t.Fatalf("ListProjectAgentMessages returned error: %v", err)
+	}
+	if len(messages) != 0 {
+		t.Fatalf("messages = %+v, want none", messages)
+	}
+}
+
+func TestAIParametricRunDoesNotPersistWhenNativeToolAndFallbackBothFail(t *testing.T) {
+	svc := newTestService(t)
+	svc.aiClient = &recordingAIToolClient{
+		toolErr: errors.New("native tools unavailable"),
+		chatErr: errors.New("json fallback unavailable"),
+	}
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-run-double-provider-failure@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{OwnerUserID: user.ID, Name: "Double provider failure study"})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Double provider failure run",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	if _, err := svc.RunProjectAgentParametric(ctx, ProjectAgentParametricRunInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
+		Message:        "Make a parametric mounting bracket",
+	}); err == nil || !strings.Contains(err.Error(), "native tool call failed") || !strings.Contains(err.Error(), "json fallback failed") {
+		t.Fatalf("RunProjectAgentParametric error = %v, want combined native and fallback provider failure", err)
 	}
 
 	artifacts, err := svc.ListProjectParametricArtifacts(ctx, user.ID, project.ID)
