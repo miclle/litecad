@@ -306,4 +306,34 @@ describe('ParametricArtifactEditor', () => {
     expect(onSaveParameters).toHaveBeenCalledTimes(1)
     expect(onSaveParameters).toHaveBeenCalledWith({ width: 72, style: 'square', centered: false })
   })
+
+  it('reports saved-model parameter edits immediately for live preview before persistence', async () => {
+    vi.useFakeTimers()
+    const compile = vi.fn().mockRejectedValue(new Error('OpenSCAD runtime unavailable'))
+    const onParameterValuesChange = vi.fn()
+    const onSaveParameters = vi.fn()
+
+    render(
+      <ParametricArtifactEditor
+        artifact={artifact}
+        compile={compile}
+        debounceMs={0}
+        initialParameterValues={{ width: 30, style: 'square', centered: false }}
+        onParameterValuesChange={onParameterValuesChange}
+        onSaveParameters={onSaveParameters}
+      />,
+    )
+
+    expect(onParameterValuesChange).toHaveBeenLastCalledWith({ width: 30, style: 'square', centered: false })
+    fireEvent.change(screen.getByLabelText('width value'), { target: { value: '48' } })
+
+    expect(onParameterValuesChange).toHaveBeenLastCalledWith({ width: 48, style: 'square', centered: false })
+    expect(onSaveParameters).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+
+    expect(onSaveParameters).toHaveBeenCalledWith({ width: 48, style: 'square', centered: false })
+  })
 })

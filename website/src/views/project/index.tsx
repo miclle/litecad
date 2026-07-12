@@ -301,6 +301,9 @@ function ProjectView() {
   const [stepExportErrorByModelID, setStepExportErrorByModelID] = useState<Record<string, string>>({})
   const [stepExportStatusByModelID, setStepExportStatusByModelID] = useState<Record<string, string>>({})
   const [selectedStepExportTargetIDs, setSelectedStepExportTargetIDs] = useState<Set<string>>(() => new Set())
+  const [parametricPreviewParameterOverridesByModelID, setParametricPreviewParameterOverridesByModelID] = useState<
+    Record<string, Record<string, OpenSCADParameterValue>>
+  >({})
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
   const hasTouchedStepExportSelectionRef = useRef(false)
   const lastRequestedThumbnailSignatureRef = useRef('')
@@ -637,8 +640,28 @@ function ProjectView() {
     return translations
   }, [cadNodeByID, transformDraftsByModelID])
   const previewModels = useMemo(() => parsedPreviewModels(projectModels), [projectModels])
+  const previewModelsWithParametricOverrides = useMemo(
+    () =>
+      previewModels.map((model) => {
+        const parameterValues = parametricPreviewParameterOverridesByModelID[model.id]
+        if (model.format !== 'lcad' || !parameterValues) {
+          return model
+        }
+        return {
+          ...model,
+          metadata: {
+            ...model.metadata,
+            parameter_values: parameterValues,
+          },
+        }
+      }),
+    [parametricPreviewParameterOverridesByModelID, previewModels],
+  )
   const browserKernelStepPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'step'), [previewModels])
-  const browserKernelFeatureDSLPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'lcad'), [previewModels])
+  const browserKernelFeatureDSLPreviewModels = useMemo(
+    () => previewModelsWithParametricOverrides.filter((model) => model.format === 'lcad'),
+    [previewModelsWithParametricOverrides],
+  )
   const backendPreviewModels = useMemo(() => previewModels.filter((model) => model.format !== 'step' && model.format !== 'lcad'), [previewModels])
   const latestModel = projectModels[0]
   const latestProductName = latestModel?.metadata.product_names?.[0]
@@ -664,7 +687,12 @@ function ProjectView() {
     queries: browserKernelFeatureDSLPreviewModels.map((model) => ({
       queryKey: ['projects', projectId, 'models', model.id, 'feature-dsl-preview', model.updated_at, stableJSONStringify(model.metadata.parameter_values ?? {})],
       queryFn: async () => {
-        const sourceText = await (await fetchProjectModelSource(projectId, model.id)).data.text()
+        const sourceQueryKey = ['projects', projectId, 'models', model.id, 'parametric-source'] as const
+        const cachedSourceText = queryClient.getQueryData<string>(sourceQueryKey)
+        const sourceText = cachedSourceText ?? (await (await fetchProjectModelSource(projectId, model.id)).data.text())
+        if (cachedSourceText === undefined) {
+          queryClient.setQueryData(sourceQueryKey, sourceText)
+        }
         return runFeatureDSLPreviewInWorker(buildFeatureDSLPreviewInput(model, sourceText))
       },
       enabled: projectId !== '',
@@ -913,6 +941,15 @@ function ProjectView() {
 
     openAiChat()
   }
+
+  const updateParametricPreviewParameters = useCallback((modelID: string, parameterValues: Record<string, OpenSCADParameterValue>) => {
+    setParametricPreviewParameterOverridesByModelID((currentOverrides) => {
+      if (stableJSONStringify(currentOverrides[modelID] ?? {}) === stableJSONStringify(parameterValues)) {
+        return currentOverrides
+      }
+      return { ...currentOverrides, [modelID]: parameterValues }
+    })
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -1715,6 +1752,9 @@ function ProjectView() {
                   <ParametricArtifactEditor
                     artifact={selectedSavedParametricArtifact}
                     initialParameterValues={selectedSavedParametricArtifact.parameter_values}
+                    onParameterValuesChange={(parameterValues) =>
+                      updateParametricPreviewParameters(selectedSavedParametricArtifact.preview_model_id, parameterValues)
+                    }
                     onSaveParameters={(parameterValues) =>
                       updateProjectParametricModelParametersMutation.mutate({
                         modelID: selectedSavedParametricArtifact.preview_model_id,

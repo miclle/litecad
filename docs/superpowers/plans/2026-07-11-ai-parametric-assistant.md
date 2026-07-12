@@ -3748,6 +3748,31 @@ In-app browser verification result on 2026-07-12:
 - Browser smoke should mark the workbench canvas before rapid WIDTH edits and assert the same canvas remains after the final parameter save and preview refresh.
 - In the in-app browser, select a saved `.lcad.json` model, adjust WIDTH repeatedly, and verify the model changes without camera jump, canvas replacement, or ViewCube blanking.
 
+### Task 42: Drive saved-model preview from local parameter edits
+
+**Why this task exists:** Task 41 kept the viewer stable, but the main canvas still waited for saved project model metadata before recompiling a saved `.lcad.json` preview. That made parameter edits feel delayed by the save debounce and server refetch. The desired interaction is local-first: parameter controls should update the visible model as soon as the user changes a value, while persistence remains automatic and debounced in the background.
+
+**Implementation summary:**
+
+- `ParametricArtifactEditor` reports every current parameter value set through `onParameterValuesChange` immediately, separate from debounced `onSaveParameters`.
+- `ProjectView` keeps per-model local parameter overrides for preview only.
+- Saved `.lcad.json` worker preview queries use local overrides before server metadata, so the main canvas starts recompiling from the edited value immediately.
+- Feature DSL preview queries reuse cached selected-model source text when available, so rapid parameter edits do not need another model-source download before entering the worker.
+- Debounced server persistence still writes the final value and reload persistence still comes from saved model metadata.
+
+**Tests and verification guidance:**
+
+- Component tests should assert that `onParameterValuesChange` fires immediately on initial saved-model values and each parameter edit, while `onSaveParameters` remains debounced.
+- Browser smoke should assert that a saved parameter edit does not wait for the debounced parameter PATCH, does not require another model-source download when source text is already cached, and still persists the final value.
+- In the in-app browser, change WIDTH on a saved `.lcad.json` model and verify the model responds without waiting for the save cycle.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- parametric-artifact-editor.test.tsx project-preview-assets.test.ts use-model-preview-scene.test.ts`: passed, 3 files / 36 tests.
+- `cd website && npx tsc -b`: passed.
+- `task test-browser`: passed.
+- In-app browser project `prj_01kxa5xrv2acmwth74m3yzhs51`: selected `rectangular-block-litecad`, rapidly filled WIDTH `45 -> 85 -> 110`, confirmed WIDTH stayed at `110` after debounce, preview asset count stayed `2`, canvas stayed non-zero at `1611 x 1520`, and browser console errors were empty.
+
 ---
 
 ## Testing Matrix

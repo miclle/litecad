@@ -21,6 +21,7 @@ type ParametricArtifactEditorProps = {
   compileFeatureDSL?: ParametricFeatureDSLArtifactCompile
   debounceMs?: number
   initialParameterValues?: Record<string, unknown>
+  onParameterValuesChange?: (parameterValues: Record<string, OpenSCADParameterValue>) => void
   onSaveAsModel?: (parameterValues: Record<string, OpenSCADParameterValue>) => void
   onSaveParameters?: (parameterValues: Record<string, OpenSCADParameterValue>) => void
   saveLabel?: string
@@ -41,6 +42,7 @@ export function ParametricArtifactEditor({
   compileFeatureDSL,
   debounceMs,
   initialParameterValues,
+  onParameterValuesChange,
   onSaveAsModel,
   onSaveParameters,
   saveLabel = 'Save as model',
@@ -64,11 +66,16 @@ export function ParametricArtifactEditor({
   const autoSaveSignatureRef = useRef('')
   const savedParameterSignatureRef = useRef(`${artifact.id}:${editorInitialSignature}`)
   const saveParametersTimeoutRef = useRef<number | undefined>(undefined)
+  const onParameterValuesChangeRef = useRef(onParameterValuesChange)
   const onSaveParametersRef = useRef(onSaveParameters)
   const parameterValues =
     parameterEditorState.artifactID === artifact.id && parameterEditorState.initialSignature === editorInitialSignature
       ? parameterEditorState.values
       : editorInitialValues
+
+  useEffect(() => {
+    onParameterValuesChangeRef.current = onParameterValuesChange
+  }, [onParameterValuesChange])
 
   useEffect(() => {
     onSaveParametersRef.current = onSaveParameters
@@ -117,6 +124,10 @@ export function ParametricArtifactEditor({
   const handleSave = () => {
     onSaveAsModel?.(parameterValues)
   }
+
+  useEffect(() => {
+    onParameterValuesChangeRef.current?.(parameterValues)
+  }, [parameterSignature, parameterValues])
 
   useEffect(() => {
     if (!shouldAutoSaveOnPreviewSuccess || onSaveParameters || preview.status !== 'success' || !preview.isCurrent || !onSaveAsModel) {
