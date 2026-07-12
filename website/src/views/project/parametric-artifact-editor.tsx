@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Box, Save } from 'lucide-react'
+import { AlertTriangle, Box, Code2, Save } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from '@/components/ui/field'
@@ -49,11 +49,16 @@ export function ParametricArtifactEditor({
     [artifact.parameter_values, defaultValues, initialParameterValues],
   )
   const [parameterValues, setParameterValues] = useState<Record<string, OpenSCADParameterValue>>(() => editorInitialValues)
+  const [isSourceVisible, setIsSourceVisible] = useState(false)
   const autoSaveSignatureRef = useRef('')
 
   useEffect(() => {
     setParameterValues(editorInitialValues)
   }, [artifact.id, editorInitialValues])
+
+  useEffect(() => {
+    setIsSourceVisible(false)
+  }, [artifact.id])
 
   const preview = useParametricArtifactPreview({ artifact, compile, compileFeatureDSL, debounceMs, parameterValues })
   const canSave = onSaveParameters ? true : preview.status === 'success' && Boolean(onSaveAsModel)
@@ -210,9 +215,16 @@ export function ParametricArtifactEditor({
           </FieldError>
         ) : null}
 
-        <pre className="max-h-44 min-w-0 max-w-full overflow-auto rounded-md border border-[#e2e8f0] bg-[#f8fafc] p-2 font-mono text-[10px] leading-4 text-[#334155]">
-          {artifact.source_code}
-        </pre>
+        <Button className="justify-center" onClick={() => setIsSourceVisible((current) => !current)} size="sm" type="button" variant="outline">
+          <Code2 data-icon="inline-start" />
+          {isSourceVisible ? 'Hide source' : 'Show source'}
+        </Button>
+
+        {isSourceVisible ? (
+          <pre className="max-h-44 min-w-0 max-w-full overflow-auto rounded-md border border-[#e2e8f0] bg-[#f8fafc] p-2 font-mono text-[10px] leading-4 text-[#334155]">
+            {artifact.source_code}
+          </pre>
+        ) : null}
 
         {shouldAutoSaveOnPreviewSuccess ? null : (
           <Button className="justify-center" disabled={!canSave} onClick={handleSave} size="sm" type="button">

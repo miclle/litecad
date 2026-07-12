@@ -3662,6 +3662,22 @@ In-app browser verification result on 2026-07-12:
 - Run `task check`, `task test`, and `task test-browser` before committing.
 - In the in-app browser, repeat the real Assistant prompt submission and verify the final state has a saved project source/model selected and the canvas no longer shows `AWAITING IMPORT`.
 
+### Task 37: Hide raw generated source by default
+
+**Why this task exists:** The generated-source editor exposed raw LiteCAD Feature DSL JSON directly under the parameter controls. That source is useful for debugging and export semantics, but it confused the normal modeling flow because users primarily need editable parameters and the visible model.
+
+**Implementation summary:**
+
+- `ParametricArtifactEditor` keeps raw `source_code` hidden by default behind a `Show source` / `Hide source` control.
+- Switching to another generated artifact or saved parametric model collapses the source again.
+- Parameter controls, preview, auto-save, and saved parameter editing remain unchanged.
+
+**Tests and verification guidance:**
+
+- Component tests should assert that source text is absent by default and appears only after clicking `Show source`.
+- Browser smoke should assert that generated-model source is hidden in the default workbench state and can still be expanded.
+- In the in-app browser, select a generated `.lcad.json` model and verify the Inspector shows parameters plus `Show source`, not raw JSON.
+
 ---
 
 ## Testing Matrix

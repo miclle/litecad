@@ -78,6 +78,33 @@ describe('ParametricArtifactEditor', () => {
     await waitFor(() => expect(compile).not.toHaveBeenCalled())
   })
 
+  it('keeps generated source hidden until the user asks for it', async () => {
+    const compile = vi.fn()
+    const compileFeatureDSL = vi.fn().mockResolvedValue({
+      mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0] },
+      meshSummary: { vertexCount: 1, triangleCount: 0, hasNormals: true },
+    })
+    const sourceCode =
+      '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}'
+    const featureDSLArtifact = {
+      ...artifact,
+      id: 'pma_hidden_source',
+      title: 'Hidden source block',
+      source_kind: 'litecad-feature-dsl',
+      source_code: sourceCode,
+      parameter_values: { width: 80 },
+      compile_status: 'pending',
+    } satisfies ProjectParametricArtifact
+
+    render(<ParametricArtifactEditor artifact={featureDSLArtifact} compile={compile} compileFeatureDSL={compileFeatureDSL} debounceMs={0} />)
+
+    expect(screen.queryByText(sourceCode)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Show source' }))
+
+    expect(screen.getByText(sourceCode)).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Hide source' })).not.toBeNull()
+  })
+
   it('automatically saves generated LiteCAD feature DSL drafts after preview succeeds', async () => {
     const compile = vi.fn()
     const compileFeatureDSL = vi.fn().mockResolvedValue({
