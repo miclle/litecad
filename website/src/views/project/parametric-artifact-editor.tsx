@@ -12,6 +12,7 @@ import {
   useParametricArtifactPreview,
   type ParametricArtifactCompile,
 } from './use-parametric-artifact-preview'
+import { formatParametricArtifactGenerationSummary } from './project-parametric-run-telemetry'
 
 type ParametricArtifactEditorProps = {
   artifact: ProjectParametricArtifact
@@ -50,6 +51,7 @@ export function ParametricArtifactEditor({
 
   const preview = useParametricArtifactPreview({ artifact, compile, debounceMs, parameterValues })
   const canSave = onSaveParameters ? true : preview.status === 'success' && Boolean(onSaveAsModel)
+  const generationSummary = formatParametricArtifactGenerationSummary(artifact)
 
   const updateParameterValue = (name: string, value: OpenSCADParameterValue) => {
     setParameterValues((currentValues) => ({ ...currentValues, [name]: value }))
@@ -71,6 +73,9 @@ export function ParametricArtifactEditor({
           <h2 className="mt-1 truncate text-sm font-semibold text-[#0f172a]" title={artifact.title}>
             {artifact.title}
           </h2>
+          {generationSummary ? (
+            <p className="mt-1 text-[11px] leading-4 text-[#64748b]">{generationSummary}</p>
+          ) : null}
         </div>
         <span className="shrink-0 rounded border border-[#dbe3ec] bg-[#f8fafc] px-2 py-1 font-mono text-[10px] uppercase text-[#475569]">
           {preview.status}

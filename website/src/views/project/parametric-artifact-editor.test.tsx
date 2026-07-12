@@ -25,6 +25,21 @@ const artifact = {
 afterEach(() => cleanup())
 
 describe('ParametricArtifactEditor', () => {
+  it('shows persisted generation telemetry when the artifact has it', async () => {
+    const compile = vi.fn()
+    const generatedArtifact = {
+      ...artifact,
+      source_kind: 'litecad-feature-dsl',
+      generation_tool_mode: 'native_tool',
+      generation_duration_ms: 240,
+    } satisfies ProjectParametricArtifact
+
+    render(<ParametricArtifactEditor artifact={generatedArtifact} compile={compile} debounceMs={0} />)
+
+    expect(screen.getByText('Generated with native tool · litecad-feature-dsl · 240ms')).not.toBeNull()
+    await waitFor(() => expect(compile).not.toHaveBeenCalled())
+  })
+
   it('renders LiteCAD feature DSL parameters without compiling as OpenSCAD', async () => {
     const compile = vi.fn()
     const featureDSLArtifact = {

@@ -2590,6 +2590,80 @@ Remaining after this task:
 
 ---
 
+### Task 24: Show persisted artifact generation telemetry
+
+**Why this task exists:** Task 23 persisted how an artifact was generated, but the Inspector-side artifact editor still looked the same after reload. This task surfaces the durable generation path inside the editor so users and debugging sessions can see whether a draft/model came from native tools or JSON fallback without opening network responses.
+
+**Files:**
+- Modify: `website/src/views/project/project-parametric-run-telemetry.ts`
+- Modify: `website/src/views/project/parametric-artifact-editor.tsx`
+- Test: `website/src/views/project/parametric-artifact-editor.test.tsx`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- `ParametricArtifactEditor` shows a compact generation summary when `generation_tool_mode` is present.
+- The summary includes tool mode, source kind, and elapsed generation duration.
+- Artifacts without generation telemetry keep the current editor header with no placeholder text.
+- This is display-only artifact provenance; it is not provider analytics, token accounting, or a run-history UI.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+npm --prefix website test -- parametric-artifact-editor
+```
+
+Expected failure:
+
+- The editor cannot find `Generated with native tool · litecad-feature-dsl · 240ms` because persisted artifact telemetry is not rendered.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- parametric-artifact-editor` failed as expected: Testing Library could not find the persisted generation telemetry text in the editor DOM.
+
+- [x] **Step 2: Implement editor telemetry display**
+
+Add a reusable artifact telemetry formatter beside the existing run telemetry formatter, and render it beneath the artifact title when the artifact has durable generation metadata.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- parametric-artifact-editor project-parametric-run-telemetry
+cd website && npx tsc -b
+git diff --check
+task check
+task test
+task test-browser
+git add website/src/views/project/project-parametric-run-telemetry.ts website/src/views/project/parametric-artifact-editor.tsx website/src/views/project/parametric-artifact-editor.test.tsx docs/ai-parametric-assistant.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(projects): show artifact generation telemetry"
+git push
+```
+
+Expected:
+
+- Reloaded generated artifacts expose their durable generation path inside the Inspector editor.
+- Non-generated or manually constructed artifacts keep a clean header without empty telemetry labels.
+- Full provider analytics, token accounting, streaming progress, and provider-specific tuning remain future work.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- parametric-artifact-editor project-parametric-run-telemetry` passed.
+- `cd website && npx tsc -b` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+
+Remaining after this task:
+
+- Full provider analytics, token accounting, richer long-run progress details, and provider-specific tuning remain future work.
+- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, and CAD document History integration for generated DSL features.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |
