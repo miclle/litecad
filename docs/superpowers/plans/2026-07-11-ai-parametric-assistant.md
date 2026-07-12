@@ -724,11 +724,11 @@ Add runtime validators like the existing CAD kernel protocol. Keep this testable
 
 Implement a conservative parser for top-of-file assignments before the first `module` or `function`. Do not parse executable OpenSCAD generally. Reject multiline values in the first milestone. Treat `*_color` string parameters as color controls.
 
-- [ ] **Step 4: Add worker loader behind license gate**
+- [x] **Step 4: Close worker loader behind license gate**
 
-Status: deferred. Initial package review found GPL-licensed OpenSCAD WASM candidates (`openscad-wasm` is GPL-2.0; `@bascanada/openscad-compiler` is GPL-3.0-only), so this phase adds the worker/client shape and structured unavailable error only. A later phase must either deliberately accept a compatible distribution model or switch to the LiteCAD-native feature DSL path.
+Closed as deferred. Initial package review found GPL-licensed OpenSCAD WASM candidates (`openscad-wasm` is GPL-2.0; `@bascanada/openscad-compiler` is GPL-3.0-only), so this phase added the worker/client shape and structured unavailable error only. Later tasks switched the shipped browser-compiled path to the LiteCAD-native feature DSL.
 
-After dependency decision is recorded, add the chosen OpenSCAD WASM dependency or vendored asset path. The worker must:
+If a future dependency decision deliberately reopens OpenSCAD browser compilation, add the chosen OpenSCAD WASM dependency or vendored asset path. The worker must:
 
 - Instantiate OpenSCAD in a Web Worker.
 - Write `/input.scad`.
@@ -759,9 +759,9 @@ Partial verification results:
 - `task check` passed.
 - `task test` passed.
 
-- [ ] **Step 6: Browser smoke**
+- [x] **Step 6: Close OpenSCAD browser smoke behind runtime gate**
 
-Create a temporary dev-only smoke page or a Playwright test fixture that compiles:
+The original OpenSCAD compile-success smoke is not runnable without a compatible runtime. The product path moved to LiteCAD feature DSL instead; Tasks 32-34 now provide the browser smoke for generated model save, reload, parameter edit, and preview refresh. If OpenSCAD browser compilation is reopened later, create a temporary dev-only smoke page or a Playwright test fixture that compiles:
 
 ```scad
 width = 20; // [5:1:80]
@@ -1094,9 +1094,9 @@ Use the existing project model storage path conventions. Store source code as `.
 <artifact-title-slug>-litecad.scad
 ```
 
-- [ ] **Step 4: Preview saved model**
+- [x] **Step 4: Close saved `.scad` preview behind runtime gate**
 
-For saved `scad` models, route preview through the OpenSCAD worker and existing mesh rendering path. The project list thumbnail snapshot can reuse the workbench-generated static snapshot path after the model renders.
+For saved `scad` models, preview through the OpenSCAD worker remains blocked on the OpenSCAD runtime decision. The project list thumbnail snapshot can reuse the workbench-generated static snapshot path after a future runtime-backed model renders.
 
 Deferred result on 2026-07-11: saved `.scad` models appear as source records and source download works, but mesh preview remains blocked on the OpenSCAD runtime decision recorded in Task 5.
 
@@ -1128,7 +1128,7 @@ Verification result on 2026-07-11:
 - `task test` passed with 42 frontend test files and 167 Vitest tests.
 - `task test-browser` passed.
 
-- [ ] **Step 6: Browser verification**
+- [x] **Step 6: Replace browser verification with LiteCAD DSL smoke**
 
 Run:
 
@@ -1150,14 +1150,16 @@ Expected:
 - Preview canvas remains nonblank.
 - No unexpected console or page errors.
 
-Deferred result on 2026-07-11: browser save verification remains blocked because normal generated artifacts cannot reach compile success without the OpenSCAD runtime. The browser smoke continues to verify that pending generated artifacts keep Save disabled while compile is unavailable.
+Deferred result on 2026-07-11: browser save verification for `.scad` remains blocked because normal OpenSCAD generated artifacts cannot reach compile success without the OpenSCAD runtime. The later LiteCAD DSL path now covers generated model browser save/reload in Task 32 and saved parameter edit/reload in Task 34.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/service internal/handler website/src/types/project.ts website/src/api/projects.ts website/src/views/project
 git commit -m "feat(projects): save generated parametric models"
 ```
+
+Committed on 2026-07-11 as `09d2fb1 feat(projects): save generated parametric models`.
 
 ---
 
@@ -3537,6 +3539,65 @@ Expected:
 
 Verification results on 2026-07-12:
 
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+
+---
+
+### Task 36: Deferred OpenSCAD checklist closure
+
+**Why this task exists:** The completion audit found old unchecked OpenSCAD runtime steps that were intentionally deferred by the license gate and later superseded by the LiteCAD feature DSL path. Leaving them as `[ ]` made the plan look incomplete even though the product goal is satisfied through DSL.
+
+**Files:**
+- Modify: `docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md`
+
+**Interfaces:**
+- Deferred OpenSCAD runtime items are marked closed as deferred or replaced by LiteCAD DSL smoke coverage.
+- The plan still does not claim successful OpenSCAD browser mesh compilation.
+- The historical commit for generated `.scad` save support is recorded.
+
+- [x] **Step 1: Find remaining open checklist items**
+
+Run:
+
+```bash
+rg -n "\\[ \\]|Deferred result|Future Phase|After the OpenSCAD MVP ships|first shippable path uses an OpenSCAD|Completion Criteria" docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md
+```
+
+Observed result on 2026-07-12:
+
+- Remaining `[ ]` items were OpenSCAD runtime loader/smoke or saved `.scad` preview/browser verification work blocked by the runtime decision.
+- LiteCAD DSL Tasks 32-34 now cover the product browser smoke path.
+
+- [x] **Step 2: Close deferred checklist entries**
+
+Convert the old OpenSCAD runtime items to closed deferred/replaced records and preserve the future runtime instructions as conditional guidance.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+git diff --check
+task check
+task test
+task test-browser
+git add docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md
+git commit -m "docs(cad): close deferred openscad checklist"
+git push
+```
+
+Expected:
+
+- No open `[ ]` checklist items remain in the implementation plan.
+- OpenSCAD browser compilation remains future work.
+- Existing full-repo and browser verification remain green.
+
+Verification results on 2026-07-12:
+
+- `rg -n "^- \\[ \\]" docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md` returned no open checklist items.
 - `git diff --check` passed.
 - `task check` passed.
 - `task test` passed.
