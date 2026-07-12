@@ -2848,6 +2848,100 @@ Remaining after this task:
 
 ---
 
+### Task 27: LiteCAD feature DSL rectangular sketch extrudes
+
+**Why this task exists:** The DSL can already create box primitives, but parameterized CAD models usually describe design intent as sketches/profiles plus operations. This task adds the first narrow sketch-style operation: a rectangular sketch extruded along +Z into a solid. It intentionally compiles to the same OCCT box shape as the primitive path, but gives the Assistant a more CAD-like modeling vocabulary without adding arbitrary profiles, constraints, or full sketch history.
+
+**Files:**
+- Modify: `website/src/cad/kernel-protocol.ts`
+- Test: `website/src/cad/kernel-protocol.test.ts`
+- Modify: `website/src/cad/opencascade-step.ts`
+- Test: `website/src/cad/opencascade-step.test.ts`
+- Modify: `internal/service/parametric_artifact.go`
+- Test: `internal/service/parametric_artifact_test.go`
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/ai_tools_test.go`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- Supported feature object:
+  - `{ "id": "...", "type": "extrude", "origin": [x, y, z]?, "sketch": { "type": "rectangle", "size": [sx, sy] }, "height": h }`
+- `extrude` is additive and can be the first feature or combine with prior solids through the existing compound path.
+- `origin`, `sketch.size`, and `height` support literal numbers or numeric parameter references.
+- `extrude` supports the existing bounded linear `repeat` pattern.
+- Backend validation rejects malformed `extrude` features before persisting generated artifacts.
+- Provider prompting tells the model to prefer `extrude` for rectangular sketched bases when that better describes design intent.
+- Arbitrary sketch constraints, non-rectangular profiles, cuts, tapers, revolve, and durable CAD document History integration remain future work.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsRectangularExtrude|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrude|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+cd website && npx tsc -b
+```
+
+Expected failures:
+
+- Worker protocol rejects `extrude`.
+- OCCT DSL compile/export throws `Unsupported feature DSL type: extrude`.
+- Backend validation rejects a valid rectangular `extrude` generated artifact.
+- TypeScript feature union does not include `extrude`.
+- Provider prompt tests fail until the Assistant mentions extrude.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` failed as expected: protocol validation returned `false` for valid `extrude`, and the compiler threw `Unsupported feature DSL type: extrude`.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsRectangularExtrude|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrude|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` failed as expected: valid `extrude` source returned `invalid project parametric artifact input`, and the provider context did not mention `extrude`.
+- `cd website && npx tsc -b` failed as expected because `extrude` was not assignable to the current feature union.
+
+- [x] **Step 2: Implement rectangular `extrude`**
+
+Extend the worker protocol type/guards, compile `extrude` by resolving the rectangular sketch size and height into an OCCT box shape at the feature origin, validate generated DSL source in the backend, and update provider prompt/tool descriptions.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsRectangularExtrude|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrude|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+cd website && npx tsc -b
+git diff --check
+task check
+task test
+task test-browser
+git add website/src/cad/kernel-protocol.ts website/src/cad/kernel-protocol.test.ts website/src/cad/opencascade-step.ts website/src/cad/opencascade-step.test.ts internal/service/parametric_artifact.go internal/service/parametric_artifact_test.go internal/service/ai_tools.go internal/service/ai_tools_test.go docs/ai-parametric-assistant.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(cad): add feature dsl rectangular extrudes"
+git push
+```
+
+Expected:
+
+- Generated LiteCAD DSL can represent a rectangular sketch extruded into a solid.
+- Saved `.lcad.json` preview/export paths compile `extrude` through the browser OCCT worker.
+- Existing box/box-cut/cylinder/cylinder-cut/repeat behavior remains unchanged.
+- Full sketch constraints, non-rectangular profiles, fillets/chamfers, and CAD document History integration remain future work.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` passed.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsRectangularExtrude|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrude|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` passed.
+- `cd website && npx tsc -b` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+
+Remaining after this task:
+
+- The LiteCAD feature DSL still lacks full sketch constraints, non-rectangular profiles, extrude cuts, revolve, fillets/chamfers, arbitrary expressions, conditional geometry, and CAD document History integration for generated DSL features.
+- Rectangular `extrude` intentionally compiles to an OCCT box shape for now; future sketch work should add explicit profile semantics rather than overloading the primitive box feature.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

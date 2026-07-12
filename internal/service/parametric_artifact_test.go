@@ -563,6 +563,94 @@ func TestCreateLiteCADFeatureDSLArtifactAcceptsBoxCut(t *testing.T) {
 	}
 }
 
+func TestCreateLiteCADFeatureDSLArtifactAcceptsRectangularExtrude(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-extrude@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Extruded generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Extruded bracket",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode: `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 80, "min": 20, "max": 200 },
+    "depth": { "type": "number", "default": 40, "min": 10, "max": 120 },
+    "thickness": { "type": "number", "default": 6, "min": 2, "max": 20 }
+  },
+  "features": [
+    { "id": "base", "type": "extrude", "origin": [0, 0, 0], "sketch": { "type": "rectangle", "size": ["width", "depth"] }, "height": "thickness" }
+  ]
+}`,
+		CompileStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	if artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", artifact)
+	}
+}
+
+func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrude(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-bad-extrude@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Reject bad extrude generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	for _, source := range []string{
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"extrude","origin":[0,0,0],"height":6}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"extrude","origin":[0,0,0],"sketch":{"type":"circle","size":[80,40]},"height":6}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"extrude","origin":[0,0,0],"sketch":{"type":"rectangle","size":[80]},"height":6}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"extrude","origin":[0,0],"sketch":{"type":"rectangle","size":[80,40]},"height":6}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"extrude","origin":[0,0,0],"sketch":{"type":"rectangle","size":[80,40]},"height":0}]}`,
+	} {
+		_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+			OwnerUserID:   user.ID,
+			ProjectID:     project.ID,
+			Title:         "Bad extrude bracket",
+			SourceKind:    "litecad-feature-dsl",
+			SourceCode:    source,
+			CompileStatus: "pending",
+		})
+		if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+			t.Fatalf("CreateProjectParametricArtifact(%s) error = %v, want ErrInvalidProjectParametricArtifactInput", source, err)
+		}
+	}
+}
+
 func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedBoxCut(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

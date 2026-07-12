@@ -84,9 +84,24 @@ export type CadKernelFeatureDSLCylinderCutFeature = {
   repeat?: CadKernelFeatureDSLRepeat
 }
 
+export type CadKernelFeatureDSLRectangleSketch = {
+  type: 'rectangle'
+  size: readonly CadKernelFeatureDSLExpression[]
+}
+
+export type CadKernelFeatureDSLExtrudeFeature = {
+  id: string
+  type: 'extrude'
+  origin?: readonly CadKernelFeatureDSLExpression[]
+  sketch: CadKernelFeatureDSLRectangleSketch
+  height: CadKernelFeatureDSLExpression
+  repeat?: CadKernelFeatureDSLRepeat
+}
+
 export type CadKernelFeatureDSLFeature =
   | CadKernelFeatureDSLBoxFeature
   | CadKernelFeatureDSLBoxCutFeature
+  | CadKernelFeatureDSLExtrudeFeature
   | CadKernelFeatureDSLCylinderFeature
   | CadKernelFeatureDSLCylinderCutFeature
 
@@ -319,6 +334,9 @@ function isFeatureDSLFeature(value: unknown): value is CadKernelFeatureDSLFeatur
   if (value.type === 'box' || value.type === 'box_cut') {
     return isFeatureDSLBoxLikeFeature(value)
   }
+  if (value.type === 'extrude') {
+    return isFeatureDSLExtrudeFeature(value)
+  }
   if (value.type === 'cylinder') {
     return isFeatureDSLCylinderLikeFeature(value, 'height')
   }
@@ -334,6 +352,19 @@ function isFeatureDSLBoxLikeFeature(value: Record<string, unknown>) {
     (value.origin === undefined || isFeatureDSLExpressionTuple(value.origin, 3)) &&
     (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
   )
+}
+
+function isFeatureDSLExtrudeFeature(value: Record<string, unknown>) {
+  return (
+    (value.origin === undefined || isFeatureDSLExpressionTuple(value.origin, 3)) &&
+    isFeatureDSLRectangleSketch(value.sketch) &&
+    isFeatureDSLExpression(value.height) &&
+    (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
+  )
+}
+
+function isFeatureDSLRectangleSketch(value: unknown): value is CadKernelFeatureDSLRectangleSketch {
+  return isRecord(value) && value.type === 'rectangle' && isFeatureDSLExpressionTuple(value.size, 2)
 }
 
 function isFeatureDSLCylinderLikeFeature(value: Record<string, unknown>, lengthKey: 'height' | 'depth') {

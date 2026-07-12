@@ -221,6 +221,37 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts LiteCAD feature DSL rectangular sketch extrudes', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-extrude-preview',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'extruded-bracket.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            parameters: {
+              width: { type: 'number', default: 80, min: 20, max: 200 },
+              depth: { type: 'number', default: 40, min: 10, max: 120 },
+              thickness: { type: 'number', default: 6, min: 2, max: 20 },
+            },
+            features: [
+              {
+                id: 'base',
+                type: 'extrude',
+                origin: [0, 0, 0],
+                sketch: { type: 'rectangle', size: ['width', 'depth'] },
+                height: 'thickness',
+              },
+            ],
+          },
+          parameterValues: { width: 96, depth: 48, thickness: 8 },
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('accepts LiteCAD feature DSL non-geometry parameter metadata', () => {
     expect(
       isCadKernelRequest({
