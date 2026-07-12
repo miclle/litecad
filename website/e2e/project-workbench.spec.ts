@@ -7,6 +7,8 @@ let smokeModels: unknown[] = []
 let smokeFeatureDSLSourceRequestCount = 0
 let smokeArtifactCompileStatus = 'pending'
 let smokeArtifactUpdateCount = 0
+let smokeModelParameterUpdateCount = 0
+let smokeSavedParameterValues: Record<string, unknown> = {}
 const smokeFeatureDSLSource = JSON.stringify({
   version: 1,
   unit: 'millimetre',
@@ -30,7 +32,7 @@ const smokeParametricArtifact = {
   created_at: now,
   updated_at: now,
 }
-const smokeSavedModel = {
+const baseSmokeSavedModel = {
   id: 'mdl_smoke_lcad',
   project_id: projectId,
   original_filename: 'smoke-bracket-litecad.lcad.json',
@@ -56,6 +58,16 @@ const smokeSavedModel = {
   },
   created_at: now,
   updated_at: now,
+}
+
+function smokeSavedModel() {
+  return {
+    ...baseSmokeSavedModel,
+    metadata: {
+      ...baseSmokeSavedModel.metadata,
+      parameter_values: smokeSavedParameterValues,
+    },
+  }
 }
 
 function smokeCADDocument() {
@@ -202,8 +214,8 @@ async function fulfillAPI(route: Route) {
       await route.fulfill({ json: { message: 'artifact was not compiled before save' }, status: 400 })
       return
     }
-    smokeModels = [smokeSavedModel]
-    await route.fulfill({ json: { model: smokeSavedModel } })
+    smokeModels = [smokeSavedModel()]
+    await route.fulfill({ json: { model: smokeSavedModel() } })
     return
   }
   if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/thumbnail`) {
@@ -221,7 +233,15 @@ async function fulfillAPI(route: Route) {
     })
     return
   }
-  if (request.method() === 'GET' && pathname === `/api/v1/projects/${projectId}/models/${smokeSavedModel.id}/source`) {
+  if (request.method() === 'PATCH' && pathname === `/api/v1/projects/${projectId}/models/${baseSmokeSavedModel.id}/parametric-parameters`) {
+    const requestBody = request.postDataJSON() as { parameter_values?: Record<string, unknown> }
+    smokeSavedParameterValues = requestBody.parameter_values ?? {}
+    smokeModelParameterUpdateCount += 1
+    smokeModels = [smokeSavedModel()]
+    await route.fulfill({ json: { model: smokeSavedModel() } })
+    return
+  }
+  if (request.method() === 'GET' && pathname === `/api/v1/projects/${projectId}/models/${baseSmokeSavedModel.id}/source`) {
     smokeFeatureDSLSourceRequestCount += 1
     await route.fulfill({
       body: smokeFeatureDSLSource,
@@ -249,6 +269,8 @@ test('opens the project workbench, History, and Assistant without browser errors
   smokeFeatureDSLSourceRequestCount = 0
   smokeArtifactCompileStatus = 'pending'
   smokeArtifactUpdateCount = 0
+  smokeModelParameterUpdateCount = 0
+  smokeSavedParameterValues = {}
   const browserErrors = captureBrowserErrors(page)
   await page.route('**/api/v1/**', fulfillAPI)
 
@@ -305,6 +327,19 @@ test('opens the project workbench, History, and Assistant without browser errors
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
   await expect(page.getByRole('option', { name: 'Smoke bracket' })).toBeVisible()
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+  await page.getByRole('option', { name: 'Smoke bracket' }).click()
+  await expect(page.getByLabel('width value')).toHaveValue('60')
+  await page.getByLabel('width value').fill('90')
+  const sourceRequestsBeforeParameterSave = smokeFeatureDSLSourceRequestCount
+  await page.getByRole('button', { name: 'Save parameters' }).click()
+  await expect(page.getByLabel('width value')).toHaveValue('90')
+  await expect.poll(() => smokeModelParameterUpdateCount).toBe(1)
+  await expect.poll(() => smokeFeatureDSLSourceRequestCount).toBeGreaterThan(sourceRequestsBeforeParameterSave)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await page.getByRole('option', { name: 'Smoke bracket' }).click()
+  await expect(page.getByLabel('width value')).toHaveValue('90')
   await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
 
   expect(browserErrors).toEqual([])

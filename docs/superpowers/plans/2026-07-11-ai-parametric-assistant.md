@@ -3423,6 +3423,66 @@ Verification results on 2026-07-12:
 
 ---
 
+### Task 34: Saved LiteCAD feature DSL parameter edit browser smoke
+
+**Why this task exists:** Task 33 compiles pending LiteCAD DSL drafts before save. The saved generated model path also needs browser-verified parameter editing, preview refresh, and reload persistence so LiteCAD's text-to-parameterized-model loop is not limited to first creation. The project is not launched yet, so this task does not add compatibility or data-migration work.
+
+**Files:**
+- Modify: `website/e2e/project-workbench.spec.ts`
+- Modify docs: `README.md`, `docs/ai-parametric-assistant.md`, `docs/browser-cad-kernel-roadmap.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- The browser smoke selects a saved `.lcad.json` generated model, edits `width` from `60` to `90`, and saves parameters through `PATCH /api/v1/projects/:projectID/models/:modelID/parametric-parameters`.
+- The mocked backend returns model metadata with the updated `parameter_values`.
+- The workbench refreshes the `.lcad.json` source/worker preview after the parameter change.
+- Reload keeps the saved parameter input at `90` and the generated model preview rendered.
+- This task does not claim source-code editing, full CAD feature history, durable B-rep mutation, or migration compatibility.
+
+- [x] **Step 1: Write failing browser smoke assertions**
+
+Run:
+
+```bash
+task test-browser
+```
+
+Observed RED result on 2026-07-12:
+
+- `task test-browser` failed because the smoke expected one saved-model parameter PATCH after clicking `Save parameters`, but the mock route/state did not yet record the parameter update.
+
+- [x] **Step 2: Implement smoke mock persistence**
+
+Add browser-smoke mock state for saved model parameter values, return those values from the saved `.lcad.json` model metadata, add the parameter update route, and assert that saving parameters triggers a new source/preview request before reload.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+task test-browser
+git diff --check
+task check
+task test
+git add website/e2e/project-workbench.spec.ts README.md docs/ai-parametric-assistant.md docs/browser-cad-kernel-roadmap.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "test(projects): smoke feature dsl parameter edits"
+git push
+```
+
+Expected:
+
+- Saved `.lcad.json` generated models can edit parameters in the browser, refresh preview, and survive reload.
+- Existing LiteCAD feature DSL save/preview/export boundaries remain unchanged.
+- OpenSCAD browser mesh compilation, source-code editing, full feature history, durable B-rep mutation, and migration compatibility remain out of scope.
+
+Verification results on 2026-07-12:
+
+- `task test-browser` passed with saved `.lcad.json` parameter edit, preview refresh, and reload persistence.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |
