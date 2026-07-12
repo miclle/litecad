@@ -3680,19 +3680,19 @@ In-app browser verification result on 2026-07-12:
 - Browser smoke should assert that generated-model source, source disclosure buttons, successful preview status text, and generated-source labels are absent in the default workbench state.
 - In the in-app browser, select a generated `.lcad.json` model and verify the Inspector shows the model title and parameters, not raw JSON, source controls, success badges, generation telemetry, or save buttons.
 
-### Task 38: Persist saved parameter edits immediately
+### Task 38: Persist saved parameter edits automatically
 
 **Why this task exists:** The saved parametric model Inspector still required a `Save parameters` click after every slider or numeric edit. That extra action made the AI-generated modeling flow feel heavier than necessary; ordinary users expect parameter changes to update and persist as they work.
 
 **Implementation summary:**
 
 - `ParametricArtifactEditor` removes the saved-model `Save parameters` button.
-- Saved-model parameter controls call `onSaveParameters` when the local parameter signature changes, but skip the initial render and reset their saved baseline when the selected model or server-provided parameter values change.
+- Saved-model parameter controls update locally as soon as the user edits a value, then automatically persist the changed parameter signature without a manual Save action.
 - New generated drafts keep the existing automatic save-as-model path, while non-auto-saved draft formats keep the manual `Save as model` action.
 
 **Tests and verification guidance:**
 
-- Component tests should assert that saved-model parameter edits call `onSaveParameters` after a field change without rendering or clicking `Save parameters`, and that initial render does not write.
+- Component tests should assert that saved-model parameter edits call `onSaveParameters` without rendering or clicking `Save parameters`, and that initial render does not write.
 - Browser smoke should assert that `Save parameters` is absent for saved models and that editing a saved parameter still sends the parameter PATCH and survives reload.
 - In the in-app browser, select a saved `.lcad.json` model, change a parameter, verify the button is gone, confirm the model updates in the main canvas, reload, and verify the changed value remains.
 
@@ -3711,6 +3711,25 @@ In-app browser verification result on 2026-07-12:
 - Unit tests should assert `viewCubeRendererOptions` keeps `alpha`, `antialias`, and `preserveDrawingBuffer` enabled.
 - Run `npm --prefix website test -- view-controller.test.ts`.
 - In the in-app browser, select a saved `.lcad.json` model, adjust a parameter, and verify the ViewCube remains visible rather than becoming an empty control shell.
+
+**Follow-up finding:** In-app rapid WIDTH editing still reproduced a blank ViewCube center and showed the numeric field reverting to an intermediate value. That means preserving the drawing buffer alone does not address the root cause; the saved-parameter path also needs to avoid emitting a PATCH and refetch for every transient slider/input value.
+
+### Task 40: Coalesce rapid saved parameter edits
+
+**Why this task exists:** Fast repeated WIDTH edits on a saved generated model triggered multiple overlapping parameter PATCH requests, model refetches, preview rebuilds, and scene repaints. Older responses could overwrite the latest local value, while the ViewCube canvas could become blank during the repaint churn. The intended UX is still simple: edit the parameter and see the model update, without a Save button or raw source details.
+
+**Implementation summary:**
+
+- `ParametricArtifactEditor` keeps parameter inputs locally immediate.
+- Saved-model parameter persistence is debounced and coalesces rapid edits into one final `onSaveParameters` call.
+- Pending saved-parameter timers are cleared when the selected artifact or server-provided baseline changes, and the current callback is read from a ref so parent rerenders do not strand the pending save.
+- The generated-draft auto-save-as-model path stays separate from saved-model parameter persistence.
+
+**Tests and verification guidance:**
+
+- Component tests should simulate rapid width edits and assert no save fires before the debounce window, then one save fires with the final value.
+- Browser smoke should rapidly fill WIDTH values for a saved `.lcad.json` model, assert only one parameter PATCH is emitted for the final value, and confirm reload persistence.
+- In the in-app browser, select a saved model, rapidly adjust WIDTH, and verify the Inspector keeps the final value, the main model remains visible, and the ViewCube center still renders.
 
 ---
 

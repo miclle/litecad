@@ -32,6 +32,8 @@ type ParameterEditorState = {
   values: Record<string, OpenSCADParameterValue>
 }
 
+const savedParameterAutoSaveDelayMS = 250
+
 export function ParametricArtifactEditor({
   artifact,
   autoSaveOnPreviewSuccess = false,
@@ -61,12 +63,22 @@ export function ParametricArtifactEditor({
   }))
   const autoSaveSignatureRef = useRef('')
   const savedParameterSignatureRef = useRef(`${artifact.id}:${editorInitialSignature}`)
+  const saveParametersTimeoutRef = useRef<number | undefined>(undefined)
+  const onSaveParametersRef = useRef(onSaveParameters)
   const parameterValues =
     parameterEditorState.artifactID === artifact.id && parameterEditorState.initialSignature === editorInitialSignature
       ? parameterEditorState.values
       : editorInitialValues
 
   useEffect(() => {
+    onSaveParametersRef.current = onSaveParameters
+  }, [onSaveParameters])
+
+  useEffect(() => {
+    if (saveParametersTimeoutRef.current !== undefined) {
+      window.clearTimeout(saveParametersTimeoutRef.current)
+      saveParametersTimeoutRef.current = undefined
+    }
     savedParameterSignatureRef.current = `${artifact.id}:${editorInitialSignature}`
     setParameterEditorState({
       artifactID: artifact.id,
@@ -75,9 +87,19 @@ export function ParametricArtifactEditor({
     })
   }, [artifact.id, editorInitialSignature, editorInitialValues])
 
+  useEffect(
+    () => () => {
+      if (saveParametersTimeoutRef.current !== undefined) {
+        window.clearTimeout(saveParametersTimeoutRef.current)
+      }
+    },
+    [],
+  )
+
   const preview = useParametricArtifactPreview({ artifact, compile, compileFeatureDSL, debounceMs, parameterValues })
   const canSave = preview.status === 'success' && Boolean(onSaveAsModel)
   const parameterSignature = useMemo(() => stableParameterValueSignature(parameterValues), [parameterValues])
+  const hasOnSaveParameters = Boolean(onSaveParameters)
   const shouldAutoSaveOnPreviewSuccess = autoSaveOnPreviewSuccess && artifact.source_kind === 'litecad-feature-dsl'
 
   const updateParameterValue = (name: string, value: OpenSCADParameterValue) => {
@@ -111,7 +133,11 @@ export function ParametricArtifactEditor({
   }, [artifact.id, onSaveAsModel, onSaveParameters, parameterSignature, parameterValues, preview.isCurrent, preview.status, shouldAutoSaveOnPreviewSuccess])
 
   useEffect(() => {
-    if (!onSaveParameters) {
+    if (!hasOnSaveParameters) {
+      if (saveParametersTimeoutRef.current !== undefined) {
+        window.clearTimeout(saveParametersTimeoutRef.current)
+        saveParametersTimeoutRef.current = undefined
+      }
       return
     }
 
@@ -120,9 +146,15 @@ export function ParametricArtifactEditor({
       return
     }
 
-    savedParameterSignatureRef.current = signature
-    onSaveParameters(parameterValues)
-  }, [artifact.id, onSaveParameters, parameterSignature, parameterValues])
+    if (saveParametersTimeoutRef.current !== undefined) {
+      window.clearTimeout(saveParametersTimeoutRef.current)
+    }
+    saveParametersTimeoutRef.current = window.setTimeout(() => {
+      savedParameterSignatureRef.current = signature
+      onSaveParametersRef.current?.(parameterValues)
+      saveParametersTimeoutRef.current = undefined
+    }, savedParameterAutoSaveDelayMS)
+  }, [artifact.id, hasOnSaveParameters, parameterSignature, parameterValues])
 
   return (
     <section aria-label="Parametric artifact" className="mt-4 min-w-0 overflow-hidden border-t border-[#e2e8f0] pt-4">

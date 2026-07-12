@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ProjectParametricArtifact } from 'src/types/project'
@@ -22,7 +22,10 @@ const artifact = {
   updated_at: '2026-07-11T00:00:00Z',
 } satisfies ProjectParametricArtifact
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 describe('ParametricArtifactEditor', () => {
   it('keeps persisted generation telemetry out of the normal inspector controls', async () => {
@@ -272,5 +275,35 @@ describe('ParametricArtifactEditor', () => {
 
     await waitFor(() => expect(onSaveParameters).toHaveBeenCalledWith({ width: 48, style: 'square', centered: false }))
     expect(onSaveParameters).toHaveBeenCalledTimes(1)
+  })
+
+  it('coalesces rapid saved-model parameter edits before persisting the final value', async () => {
+    vi.useFakeTimers()
+    const compile = vi.fn().mockRejectedValue(new Error('OpenSCAD runtime unavailable'))
+    const onSaveParameters = vi.fn()
+
+    render(
+      <ParametricArtifactEditor
+        artifact={artifact}
+        compile={compile}
+        debounceMs={0}
+        initialParameterValues={{ width: 30, style: 'square', centered: false }}
+        onSaveParameters={onSaveParameters}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('width value'), { target: { value: '48' } })
+    fireEvent.change(screen.getByLabelText('width value'), { target: { value: '64' } })
+    fireEvent.change(screen.getByLabelText('width value'), { target: { value: '72' } })
+
+    expect(screen.getByLabelText<HTMLInputElement>('width value').value).toBe('72')
+    expect(onSaveParameters).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+
+    expect(onSaveParameters).toHaveBeenCalledTimes(1)
+    expect(onSaveParameters).toHaveBeenCalledWith({ width: 72, style: 'square', centered: false })
   })
 })
