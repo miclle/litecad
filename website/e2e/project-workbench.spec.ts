@@ -355,6 +355,9 @@ test('opens the project workbench, History, and Assistant without browser errors
   await page.getByLabel('width value').fill('80')
   await page.getByLabel('width value').fill('90')
   await expect(page.getByLabel('width value')).toHaveValue('90')
+  await page.waitForTimeout(500)
+  expect(smokeModelParameterUpdateCount).toBe(modelParameterUpdatesBefore)
+  await page.getByLabel('width value').press('Tab')
   await expect.poll(() => smokeModelParameterUpdateCount).toBe(modelParameterUpdatesBefore + 1)
   await expect
     .poll(() => page.locator('[data-model-preview] canvas').first().evaluate((canvas) => canvas.getAttribute('data-litecad-stable-canvas')))

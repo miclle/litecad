@@ -256,6 +256,7 @@ describe('ParametricArtifactEditor', () => {
   })
 
   it('auto-saves parameter edits for an existing parametric model without a save button', async () => {
+    vi.useFakeTimers()
     const compile = vi.fn().mockRejectedValue(new Error('OpenSCAD runtime unavailable'))
     const onSaveParameters = vi.fn()
 
@@ -273,11 +274,15 @@ describe('ParametricArtifactEditor', () => {
     expect(onSaveParameters).not.toHaveBeenCalled()
     fireEvent.change(screen.getByLabelText('width value'), { target: { value: '48' } })
 
-    await waitFor(() => expect(onSaveParameters).toHaveBeenCalledWith({ width: 48, style: 'square', centered: false }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+
+    expect(onSaveParameters).toHaveBeenCalledWith({ width: 48, style: 'square', centered: false })
     expect(onSaveParameters).toHaveBeenCalledTimes(1)
   })
 
-  it('coalesces rapid saved-model parameter edits before persisting the final value', async () => {
+  it('waits for saved-model parameter editing to settle before persisting the final value', async () => {
     vi.useFakeTimers()
     const compile = vi.fn().mockRejectedValue(new Error('OpenSCAD runtime unavailable'))
     const onSaveParameters = vi.fn()
@@ -302,6 +307,9 @@ describe('ParametricArtifactEditor', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500)
     })
+
+    expect(onSaveParameters).not.toHaveBeenCalled()
+    fireEvent.blur(screen.getByLabelText('width value'))
 
     expect(onSaveParameters).toHaveBeenCalledTimes(1)
     expect(onSaveParameters).toHaveBeenCalledWith({ width: 72, style: 'square', centered: false })
@@ -331,7 +339,7 @@ describe('ParametricArtifactEditor', () => {
     expect(onSaveParameters).not.toHaveBeenCalled()
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(500)
+      await vi.advanceTimersByTimeAsync(1000)
     })
 
     expect(onSaveParameters).toHaveBeenCalledWith({ width: 48, style: 'square', centered: false })

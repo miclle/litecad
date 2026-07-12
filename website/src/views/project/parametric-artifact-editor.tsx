@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Box, Save } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,12 @@ type ParameterEditorState = {
   values: Record<string, OpenSCADParameterValue>
 }
 
-const savedParameterAutoSaveDelayMS = 250
+type PendingParameterSave = {
+  parameterValues: Record<string, OpenSCADParameterValue>
+  signature: string
+}
+
+const savedParameterAutoSaveDelayMS = 1000
 
 export function ParametricArtifactEditor({
   artifact,
@@ -64,6 +69,7 @@ export function ParametricArtifactEditor({
     values: editorInitialValues,
   }))
   const autoSaveSignatureRef = useRef('')
+  const pendingParameterSaveRef = useRef<PendingParameterSave | undefined>(undefined)
   const savedParameterSignatureRef = useRef(`${artifact.id}:${editorInitialSignature}`)
   const saveParametersTimeoutRef = useRef<number | undefined>(undefined)
   const onParameterValuesChangeRef = useRef(onParameterValuesChange)
@@ -72,6 +78,24 @@ export function ParametricArtifactEditor({
     parameterEditorState.artifactID === artifact.id && parameterEditorState.initialSignature === editorInitialSignature
       ? parameterEditorState.values
       : editorInitialValues
+
+  const clearScheduledParameterSave = useCallback(() => {
+    if (saveParametersTimeoutRef.current !== undefined) {
+      window.clearTimeout(saveParametersTimeoutRef.current)
+      saveParametersTimeoutRef.current = undefined
+    }
+  }, [])
+
+  const flushPendingParameterSave = useCallback(() => {
+    clearScheduledParameterSave()
+    const pendingParameterSave = pendingParameterSaveRef.current
+    if (!pendingParameterSave) {
+      return
+    }
+    pendingParameterSaveRef.current = undefined
+    savedParameterSignatureRef.current = pendingParameterSave.signature
+    onSaveParametersRef.current?.(pendingParameterSave.parameterValues)
+  }, [clearScheduledParameterSave])
 
   useEffect(() => {
     onParameterValuesChangeRef.current = onParameterValuesChange
@@ -82,25 +106,22 @@ export function ParametricArtifactEditor({
   }, [onSaveParameters])
 
   useEffect(() => {
-    if (saveParametersTimeoutRef.current !== undefined) {
-      window.clearTimeout(saveParametersTimeoutRef.current)
-      saveParametersTimeoutRef.current = undefined
-    }
+    clearScheduledParameterSave()
+    pendingParameterSaveRef.current = undefined
     savedParameterSignatureRef.current = `${artifact.id}:${editorInitialSignature}`
     setParameterEditorState({
       artifactID: artifact.id,
       initialSignature: editorInitialSignature,
       values: editorInitialValues,
     })
-  }, [artifact.id, editorInitialSignature, editorInitialValues])
+  }, [artifact.id, clearScheduledParameterSave, editorInitialSignature, editorInitialValues])
 
   useEffect(
     () => () => {
-      if (saveParametersTimeoutRef.current !== undefined) {
-        window.clearTimeout(saveParametersTimeoutRef.current)
-      }
+      clearScheduledParameterSave()
+      pendingParameterSaveRef.current = undefined
     },
-    [],
+    [clearScheduledParameterSave],
   )
 
   const preview = useParametricArtifactPreview({ artifact, compile, compileFeatureDSL, debounceMs, parameterValues })
@@ -145,10 +166,8 @@ export function ParametricArtifactEditor({
 
   useEffect(() => {
     if (!hasOnSaveParameters) {
-      if (saveParametersTimeoutRef.current !== undefined) {
-        window.clearTimeout(saveParametersTimeoutRef.current)
-        saveParametersTimeoutRef.current = undefined
-      }
+      clearScheduledParameterSave()
+      pendingParameterSaveRef.current = undefined
       return
     }
 
@@ -157,15 +176,10 @@ export function ParametricArtifactEditor({
       return
     }
 
-    if (saveParametersTimeoutRef.current !== undefined) {
-      window.clearTimeout(saveParametersTimeoutRef.current)
-    }
-    saveParametersTimeoutRef.current = window.setTimeout(() => {
-      savedParameterSignatureRef.current = signature
-      onSaveParametersRef.current?.(parameterValues)
-      saveParametersTimeoutRef.current = undefined
-    }, savedParameterAutoSaveDelayMS)
-  }, [artifact.id, hasOnSaveParameters, parameterSignature, parameterValues])
+    clearScheduledParameterSave()
+    pendingParameterSaveRef.current = { parameterValues, signature }
+    saveParametersTimeoutRef.current = window.setTimeout(flushPendingParameterSave, savedParameterAutoSaveDelayMS)
+  }, [artifact.id, clearScheduledParameterSave, flushPendingParameterSave, hasOnSaveParameters, parameterSignature, parameterValues])
 
   return (
     <section aria-label="Parametric artifact" className="mt-4 min-w-0 overflow-hidden border-t border-[#e2e8f0] pt-4">
@@ -192,7 +206,13 @@ export function ParametricArtifactEditor({
                           aria-label={`${parameter.name} value`}
                           className="h-7 w-20 rounded-md border-[#d6dbe3] px-2 text-right font-mono text-[11px]"
                           inputMode="decimal"
+                          onBlur={flushPendingParameterSave}
                           onChange={(event) => updateParameterValue(parameter.name, Number(event.target.value))}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              flushPendingParameterSave()
+                            }
+                          }}
                           type="number"
                           value={Number(value)}
                         />
@@ -203,6 +223,12 @@ export function ParametricArtifactEditor({
                         max={range.max}
                         min={range.min}
                         onChange={(event) => updateParameterValue(parameter.name, Number(event.target.value))}
+                        onKeyUp={(event) => {
+                          if (event.key === 'Enter') {
+                            flushPendingParameterSave()
+                          }
+                        }}
+                        onPointerUp={flushPendingParameterSave}
                         step={range.step}
                         type="range"
                         value={Number(value)}
@@ -218,6 +244,7 @@ export function ParametricArtifactEditor({
                         aria-label={`${parameter.name} parameter`}
                         checked={Boolean(value)}
                         className="size-4 accent-[#1d4ed8]"
+                        onBlur={flushPendingParameterSave}
                         onChange={(event) => updateParameterValue(parameter.name, event.target.checked)}
                         type="checkbox"
                       />
@@ -231,6 +258,7 @@ export function ParametricArtifactEditor({
                       <Input
                         aria-label={`${parameter.name} parameter`}
                         className="h-8 rounded-md border-[#d6dbe3] bg-white"
+                        onBlur={flushPendingParameterSave}
                         onChange={(event) => updateParameterValue(parameter.name, event.target.value)}
                         type="color"
                         value={String(value)}
@@ -245,6 +273,7 @@ export function ParametricArtifactEditor({
                       <select
                         aria-label={`${parameter.name} parameter`}
                         className="h-8 rounded-md border border-[#d6dbe3] bg-white px-2 text-xs text-[#0f172a] outline-none focus:border-[#94a3b8] focus:ring-2 focus:ring-[#bfdbfe]"
+                        onBlur={flushPendingParameterSave}
                         onChange={(event) => updateParameterValue(parameter.name, event.target.value)}
                         value={String(value)}
                       >
@@ -263,7 +292,13 @@ export function ParametricArtifactEditor({
                     <Input
                       aria-label={`${parameter.name} parameter`}
                       className="h-8 rounded-md border-[#d6dbe3] bg-white px-2 text-xs"
+                      onBlur={flushPendingParameterSave}
                       onChange={(event) => updateParameterValue(parameter.name, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          flushPendingParameterSave()
+                        }
+                      }}
                       type="text"
                       value={String(value)}
                     />

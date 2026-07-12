@@ -3773,6 +3773,33 @@ Verification result on 2026-07-12:
 - `task test-browser`: passed.
 - In-app browser project `prj_01kxa5xrv2acmwth74m3yzhs51`: selected `rectangular-block-litecad`, rapidly filled WIDTH `45 -> 85 -> 110`, confirmed WIDTH stayed at `110` after debounce, preview asset count stayed `2`, canvas stayed non-zero at `1611 x 1520`, and browser console errors were empty.
 
+### Task 43: Save saved-model parameters after editing settles
+
+**Why this task exists:** Task 42 made saved-model preview local-first, but persistence still used a short debounce. That was better than saving every intermediate value, but it could still send backend PATCH requests while the user was actively adjusting a slider or typing. The intended CAD interaction is: the main canvas reacts immediately, and the backend stores the final value after the interaction has settled.
+
+**Implementation summary:**
+
+- Saved parameter persistence now waits for a longer settle window before PATCHing the backend.
+- Number/text controls flush pending parameter saves on blur or Enter.
+- Range controls flush pending parameter saves on pointer release or Enter.
+- The local preview callback remains immediate, so model feedback is not delayed by backend persistence.
+
+**Tests and verification guidance:**
+
+- Component tests should assert that rapid saved-model edits update the input immediately, do not call `onSaveParameters` at 500 ms, and flush the final value on blur.
+- Component tests should keep the automatic settled-save path deterministic with fake timers.
+- Browser smoke should assert that rapid WIDTH edits do not PATCH within the first 500 ms, then blur the input and verify one final PATCH.
+- In the in-app browser, rapidly edit WIDTH on a saved `.lcad.json` model and verify the model stays responsive while the final value persists after editing ends.
+
+Verification result on 2026-07-12:
+
+- Initial red test: `npm --prefix website test -- parametric-artifact-editor.test.tsx` failed because the old 250 ms debounce saved during the first 500 ms window.
+- `npm --prefix website test -- parametric-artifact-editor.test.tsx project-preview-assets.test.ts use-model-preview-scene.test.ts`: passed, 3 files / 36 tests.
+- `task check`: passed.
+- `task test`: passed, 45 frontend test files / 219 frontend tests plus Go race/coverage suite.
+- `task test-browser`: passed.
+- In-app browser project `prj_01kxa5xrv2acmwth74m3yzhs51`: selected `rectangular-block-litecad`, rapidly filled WIDTH `60 -> 95 -> 118`, confirmed WIDTH stayed `118` after 500 ms with preview asset count `2` and a non-zero `1611 x 1520` canvas, then reloaded and confirmed WIDTH persisted as `118`; browser console errors were empty.
+
 ---
 
 ## Testing Matrix
