@@ -2333,6 +2333,82 @@ Remaining after this task:
 
 ---
 
+### Task 21: Parametric generation status and retry guidance
+
+**Why this task exists:** After generated DSL artifacts can preview/export useful geometry, the Assistant still needs clearer user feedback during model generation. This task adds a small run-status and retry loop for failed parametric generation prompts without introducing durable provider telemetry or a full job system.
+
+**Files:**
+- Modify: `website/src/views/project/project-assistant-panel.tsx`
+- Test: `website/src/views/project/project-assistant-panel.test.tsx`
+- Modify: `website/src/views/project/index.tsx`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- Ordinary Assistant chat keeps the existing `Thinking` pending label.
+- Parametric generation shows `Generating model` while the parametric mutation is pending.
+- If parametric generation fails, the Assistant input area shows `Generation failed` plus the provider-safe error and a `Retry generation` icon button.
+- Retry reuses the last failed parametric prompt in the active conversation.
+- Switching or creating Assistant conversations clears stale retry state.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+npm --prefix website test -- project-assistant-panel
+```
+
+Expected failure:
+
+- The Assistant panel does not render `Generating model`, `Generation failed`, or a `Retry generation` action.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- project-assistant-panel` failed as expected: the new test could not find `Generating model`.
+
+- [x] **Step 2: Implement status and retry guidance**
+
+Add Assistant panel props for pending kind, failed parametric prompt/error, and retry callback. Track the last parametric prompt in the project workbench container and reuse it for retry after failures.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- project-assistant-panel
+cd website && npx tsc -b
+git diff --check
+task check
+task test
+task test-browser
+git add website/src/views/project/project-assistant-panel.tsx website/src/views/project/project-assistant-panel.test.tsx website/src/views/project/index.tsx docs/ai-parametric-assistant.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(projects): add parametric retry guidance"
+git push
+```
+
+Expected:
+
+- Model generation pending state is visually distinct from normal Assistant chat.
+- Failed generation keeps a user-actionable retry entry point without requiring prompt re-entry.
+- Provider telemetry, durable job status, and deeper provider-specific progress details remain future work.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- project-assistant-panel` passed.
+- `cd website && npx tsc -b` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+- Code review found no blocking issues.
+
+Remaining after this task:
+
+- Provider telemetry, richer long-run progress details, and provider-specific tuning remain future work.
+- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, and CAD document History integration for generated DSL features.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

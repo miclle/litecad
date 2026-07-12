@@ -1,4 +1,4 @@
-import { BotMessageSquare, Box, Plus, Send, X } from 'lucide-react'
+import { BotMessageSquare, Box, Plus, RefreshCw, Send, X } from 'lucide-react'
 import type { FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -29,14 +29,39 @@ type ProjectAssistantPanelProps = {
   onDraftChange: (draft: string) => void
   onGenerateParametric: () => void
   onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
+  onRetryParametric?: () => void
   onSelectConversation: (conversationId: string) => void
   onSubmit: () => void
   open: boolean
+  parametricRunError?: string
+  pendingKind?: 'idle' | 'message' | 'parametric' | 'conversation'
+  retryParametricPrompt?: string
   sourceCount: number
   width: number
 }
 
 const assistantPanelMinWidth = 340
+
+function assistantStatusLabel({
+  hasActiveConversation,
+  isPending,
+  pendingKind,
+}: {
+  hasActiveConversation: boolean
+  isPending: boolean
+  pendingKind: ProjectAssistantPanelProps['pendingKind']
+}) {
+  if (isPending && pendingKind === 'parametric') {
+    return 'Generating model'
+  }
+  if (isPending && pendingKind === 'conversation') {
+    return 'Creating chat'
+  }
+  if (isPending) {
+    return 'Thinking'
+  }
+  return hasActiveConversation ? 'Project context' : 'New chat required'
+}
 
 export function ProjectAssistantPanel({
   activeConversationId = '',
@@ -50,15 +75,21 @@ export function ProjectAssistantPanel({
   onDraftChange,
   onGenerateParametric,
   onResizePointerDown,
+  onRetryParametric,
   onSelectConversation,
   onSubmit,
   open,
+  parametricRunError = '',
+  pendingKind = 'idle',
+  retryParametricPrompt = '',
   sourceCount,
   width,
 }: ProjectAssistantPanelProps) {
   const hasActiveConversation = activeConversationId !== ''
   const canSubmit = draft.trim() !== '' && !isPending && hasActiveConversation
   const canGenerate = canSubmit
+  const canRetryParametric = retryParametricPrompt.trim() !== '' && !isPending && hasActiveConversation && !!onRetryParametric
+  const statusLabel = assistantStatusLabel({ hasActiveConversation, isPending, pendingKind })
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (canSubmit) {
@@ -135,7 +166,15 @@ export function ProjectAssistantPanel({
             ))
           )}
         </select>
-        <Button aria-label="New chat" onClick={handleCreateConversation} size="icon-sm" title="New chat" type="button" variant="outline">
+        <Button
+          aria-label="New chat"
+          disabled={isPending}
+          onClick={handleCreateConversation}
+          size="icon-sm"
+          title="New chat"
+          type="button"
+          variant="outline"
+        >
           <Plus />
         </Button>
       </div>
@@ -159,6 +198,25 @@ export function ProjectAssistantPanel({
         className="m-4 rounded-xl border border-[#d6dbe3] bg-white/95 p-2 shadow-[0_6px_22px_rgba(15,23,42,0.08)] transition focus-within:border-[#94a3b8] focus-within:shadow-[0_8px_30px_rgba(15,23,42,0.12)]"
         onSubmit={submit}
       >
+        {parametricRunError && (
+          <div className="mb-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-[#fecaca] bg-[#fff7ed] px-3 py-2">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-[#991b1b]">Generation failed</div>
+              <div className="truncate text-[11px] leading-5 text-[#9a3412]">{parametricRunError}</div>
+            </div>
+            <Button
+              aria-label="Retry generation"
+              disabled={!canRetryParametric}
+              onClick={onRetryParametric}
+              size="icon-sm"
+              title="Retry generation"
+              type="button"
+              variant="outline"
+            >
+              <RefreshCw />
+            </Button>
+          </div>
+        )}
         <label className="sr-only" htmlFor="project-ai-chat-input">
           Message Assistant
         </label>
@@ -173,7 +231,7 @@ export function ProjectAssistantPanel({
         />
         <div className="flex items-center justify-between gap-2 px-1 pb-1">
           <div className="h-6 rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-2 font-mono text-[10px] uppercase leading-6 text-[#64748b]">
-            {isPending ? 'Thinking' : hasActiveConversation ? 'Project context' : 'New chat required'}
+            {statusLabel}
           </div>
           <div className="flex items-center gap-1">
             <Button

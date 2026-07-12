@@ -281,6 +281,8 @@ function ProjectView() {
   const [localAiChatMessages, setLocalAiChatMessages] = useState<AiChatMessage[]>([])
   const [selectedAgentConversationID, setSelectedAgentConversationID] = useState('')
   const [selectedParametricArtifact, setSelectedParametricArtifact] = useState<ProjectParametricArtifact | undefined>(undefined)
+  const [parametricRunError, setParametricRunError] = useState('')
+  const [retryParametricPrompt, setRetryParametricPrompt] = useState('')
   const [leftPanelWidth, setLeftPanelWidth] = useState(defaultLeftPanelWidth)
   const [aiChatPanelWidth, setAiChatPanelWidth] = useState(defaultAiChatPanelWidth)
   const [aiChatPanelMaxWidth, setAiChatPanelMaxWidth] = useState(getAiChatPanelMaxWidth)
@@ -413,6 +415,8 @@ function ProjectView() {
       return response.data
     },
     onSuccess: async ({ artifact, message }) => {
+      setParametricRunError('')
+      setRetryParametricPrompt('')
       setSelectedParametricArtifact(artifact)
       setSelectedModelID('')
       setSelectedDocumentNodeID('')
@@ -431,12 +435,14 @@ function ProjectView() {
       setLocalAiChatMessages([])
     },
     onError: (error) => {
+      const errorMessage = projectAgentErrorMessage(error)
+      setParametricRunError(errorMessage)
       setLocalAiChatMessages((currentMessages) => [
         ...currentMessages,
         {
           id: `assistant-parametric-error-${Date.now()}`,
           role: 'assistant',
-          body: projectAgentErrorMessage(error),
+          body: errorMessage,
         },
       ])
     },
@@ -477,6 +483,8 @@ function ProjectView() {
       setSelectedAgentConversationID(conversation.id)
       setAiChatDraft('')
       setLocalAiChatMessages([])
+      setParametricRunError('')
+      setRetryParametricPrompt('')
       await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })
     },
   })
@@ -1206,12 +1214,30 @@ function ProjectView() {
     if (!messageBody || projectAgentParametricMutation.isPending || activeAgentConversationID === '') {
       return
     }
+    runParametricGeneration(messageBody)
+    setAiChatDraft('')
+  }
+  const retryParametricGeneration = () => {
+    const messageBody = retryParametricPrompt.trim()
+    if (
+      !messageBody ||
+      projectAgentMutation.isPending ||
+      projectAgentParametricMutation.isPending ||
+      createProjectAgentConversationMutation.isPending ||
+      activeAgentConversationID === ''
+    ) {
+      return
+    }
+    runParametricGeneration(messageBody)
+  }
+  const runParametricGeneration = (messageBody: string) => {
+    setParametricRunError('')
+    setRetryParametricPrompt(messageBody)
     setLocalAiChatMessages((currentMessages) => [
       ...currentMessages,
       { id: `user-parametric-${Date.now()}`, role: 'user' as const, body: messageBody },
     ])
     projectAgentParametricMutation.mutate(messageBody)
-    setAiChatDraft('')
   }
   const createAiChatConversation = () => {
     if (createProjectAgentConversationMutation.isPending) {
@@ -1223,6 +1249,8 @@ function ProjectView() {
     setSelectedAgentConversationID(conversationID)
     setAiChatDraft('')
     setLocalAiChatMessages([])
+    setParametricRunError('')
+    setRetryParametricPrompt('')
   }
 
   return (
@@ -1688,9 +1716,21 @@ function ProjectView() {
           onDraftChange={setAiChatDraft}
           onGenerateParametric={generateParametricArtifact}
           onResizePointerDown={startAiChatPanelResize}
+          onRetryParametric={retryParametricGeneration}
           onSelectConversation={selectAiChatConversation}
           onSubmit={submitAiChat}
           open={isAiChatOpen}
+          parametricRunError={parametricRunError}
+          pendingKind={
+            projectAgentParametricMutation.isPending
+              ? 'parametric'
+              : createProjectAgentConversationMutation.isPending
+                ? 'conversation'
+                : projectAgentMutation.isPending
+                  ? 'message'
+                  : 'idle'
+          }
+          retryParametricPrompt={retryParametricPrompt}
           sourceCount={projectModels.length}
           width={aiChatPanelWidth}
         />

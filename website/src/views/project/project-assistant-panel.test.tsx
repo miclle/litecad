@@ -137,4 +137,65 @@ describe('ProjectAssistantPanel', () => {
 
     expect(onGenerateParametric).toHaveBeenCalledTimes(1)
   })
+
+  it('shows parametric run status and forwards retry guidance', async () => {
+    const user = userEvent.setup()
+    const onRetryParametric = vi.fn()
+    const { rerender } = render(
+      <ProjectAssistantPanel
+        activeConversationId="agc_one"
+        conversations={[{ id: 'agc_one', title: 'Design pass', updated_at: '2026-07-11T00:00:00Z' }]}
+        draft=""
+        isPending
+        maxWidth={680}
+        messages={[]}
+        onClose={vi.fn()}
+        onCreateConversation={vi.fn()}
+        onDraftChange={vi.fn()}
+        onGenerateParametric={vi.fn()}
+        onResizePointerDown={vi.fn()}
+        onRetryParametric={onRetryParametric}
+        onSelectConversation={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        pendingKind="parametric"
+        retryParametricPrompt="Make a mounting bracket"
+        sourceCount={0}
+        width={420}
+      />,
+    )
+
+    expect(screen.getByText('Generating model')).not.toBeNull()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'New chat' }).disabled).toBe(true)
+
+    rerender(
+      <ProjectAssistantPanel
+        activeConversationId="agc_one"
+        conversations={[{ id: 'agc_one', title: 'Design pass', updated_at: '2026-07-11T00:00:00Z' }]}
+        draft=""
+        isPending={false}
+        maxWidth={680}
+        messages={[]}
+        onClose={vi.fn()}
+        onCreateConversation={vi.fn()}
+        onDraftChange={vi.fn()}
+        onGenerateParametric={vi.fn()}
+        onResizePointerDown={vi.fn()}
+        onRetryParametric={onRetryParametric}
+        onSelectConversation={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        parametricRunError="Assistant could not answer right now."
+        pendingKind="idle"
+        retryParametricPrompt="Make a mounting bracket"
+        sourceCount={0}
+        width={420}
+      />,
+    )
+
+    expect(screen.getByText('Generation failed')).not.toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Retry generation' }))
+
+    expect(onRetryParametric).toHaveBeenCalledTimes(1)
+  })
 })
