@@ -264,7 +264,7 @@ describe('runFeatureDSLExportWithKernel', () => {
     expect(result.exportedStepText).toContain('END-ISO-10303-21')
   })
 
-  it('builds additive cylinder features before writing STEP', async () => {
+  it('builds additive cylinder features along a provided axis before writing STEP', async () => {
     const cylinderShape = { name: 'cylinder-shape' }
     const buildCylinder = vi.fn()
     const transfer = vi.fn()
@@ -323,16 +323,41 @@ describe('runFeatureDSLExportWithKernel', () => {
         parameters: {
           boss_radius: { type: 'number', default: 5 },
         },
-        features: [{ id: 'boss', type: 'cylinder', origin: [4, 5, 6], radius: 'boss_radius', height: 14 }],
+        features: [{ id: 'boss', type: 'cylinder', origin: [4, 5, 6], axis: [1, 0, 0], radius: 'boss_radius', height: 14 }],
       },
       parameterValues: { boss_radius: 6 },
     })
 
     expect(openCascade.gp_Pnt_3).toHaveBeenCalledWith(4, 5, 6)
-    expect(openCascade.gp_Dir_4).toHaveBeenCalledWith(0, 0, 1)
+    expect(openCascade.gp_Dir_4).toHaveBeenCalledWith(1, 0, 0)
     expect(buildCylinder).toHaveBeenCalledOnce()
     expect(transfer).toHaveBeenCalledWith(cylinderShape, 0, true, expect.anything())
     expect(result.exportedStepText).toContain('END-ISO-10303-21')
+  })
+
+  it('rejects cylinder axes that resolve to zero before building OCCT directions', async () => {
+    const openCascade = {
+      FS: {
+        readFile: vi.fn(),
+        unlink: vi.fn(),
+      },
+      gp_Dir_4: vi.fn(),
+    }
+
+    await expect(
+      runFeatureDSLExportWithKernel(openCascade, {
+        filename: 'bad-axis.step',
+        document: {
+          version: 1,
+          unit: 'millimetre',
+          parameters: {
+            axis_x: { type: 'number', default: 0 },
+          },
+          features: [{ id: 'boss', type: 'cylinder', origin: [0, 0, 0], axis: ['axis_x', 0, 0], radius: 4, height: 8 }],
+        },
+      }),
+    ).rejects.toThrow('Feature boss cylinder axis must be non-zero')
+    expect(openCascade.gp_Dir_4).not.toHaveBeenCalled()
   })
 
   it('subtracts cylinder-cut features from the accumulated shape before writing STEP', async () => {

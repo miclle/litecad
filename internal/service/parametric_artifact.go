@@ -478,6 +478,7 @@ type liteCADFeatureDSLValidationFeature struct {
 	ID       string `json:"id"`
 	Type     string `json:"type"`
 	Origin   []any  `json:"origin"`
+	Axis     []any  `json:"axis"`
 	Size     []any  `json:"size"`
 	Radius   any    `json:"radius"`
 	Diameter any    `json:"diameter"`
@@ -546,6 +547,11 @@ func validateLiteCADFeatureDSLCylinderLikeFeature(feature liteCADFeatureDSLValid
 	if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameterNames); err != nil {
 		return err
 	}
+	if feature.Axis != nil {
+		if err := validateLiteCADFeatureDSLAxisTuple(feature.Axis, parameterNames); err != nil {
+			return err
+		}
+	}
 	hasRadius := feature.Radius != nil
 	hasDiameter := feature.Diameter != nil
 	if hasRadius == hasDiameter {
@@ -562,6 +568,28 @@ func validateLiteCADFeatureDSLCylinderLikeFeature(feature liteCADFeatureDSLValid
 		return fmt.Errorf("%w: missing cylinder %s", ErrInvalidProjectParametricArtifactInput, lengthName)
 	}
 	return validateLiteCADFeatureDSLExpression(lengthValue, parameterNames)
+}
+
+func validateLiteCADFeatureDSLAxisTuple(values []any, parameterNames map[string]struct{}) error {
+	if err := validateLiteCADFeatureDSLExpressionTuple(values, 3, parameterNames); err != nil {
+		return err
+	}
+	hasNonZeroComponent := false
+	for _, value := range values {
+		if parameterName, ok := value.(string); ok {
+			if _, known := parameterNames[parameterName]; known {
+				hasNonZeroComponent = true
+			}
+			continue
+		}
+		if number, ok := value.(float64); ok && number != 0 {
+			hasNonZeroComponent = true
+		}
+	}
+	if !hasNonZeroComponent {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	return nil
 }
 
 func validateLiteCADFeatureDSLExpressionTuple(values []any, length int, parameterNames map[string]struct{}) error {

@@ -302,6 +302,85 @@ func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedSchema(t *testing.T) {
 	}
 }
 
+func TestCreateLiteCADFeatureDSLArtifactAcceptsCylinderAxis(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-axis@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Axis generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Axis hole bracket",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode: `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "hole_axis_x": { "type": "number", "default": 1 }
+  },
+  "features": [
+    { "id": "plate", "type": "box", "origin": [0, 0, 0], "size": [80, 40, 6] },
+    { "id": "side_hole", "type": "cylinder_cut", "origin": [0, 20, 3], "axis": ["hole_axis_x", 0, 0], "diameter": 8, "depth": 90 }
+  ]
+}`,
+		CompileStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	if artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", artifact)
+	}
+}
+
+func TestCreateLiteCADFeatureDSLArtifactRejectsZeroCylinderAxis(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-zero-axis@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Reject zero axis generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID:   user.ID,
+		ProjectID:     project.ID,
+		Title:         "Zero axis bracket",
+		SourceKind:    "litecad-feature-dsl",
+		SourceCode:    `{"version":1,"unit":"millimetre","features":[{"id":"boss","type":"cylinder","origin":[0,0,0],"axis":[0,0,0],"radius":4,"height":8}]}`,
+		CompileStatus: "pending",
+	})
+	if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+		t.Fatalf("CreateProjectParametricArtifact error = %v, want ErrInvalidProjectParametricArtifactInput", err)
+	}
+}
+
 func TestSaveParametricArtifactRejectsFailedCompile(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

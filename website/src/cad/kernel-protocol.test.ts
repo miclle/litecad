@@ -168,6 +168,7 @@ describe('CAD kernel worker protocol', () => {
           id: 'boss',
           type: 'cylinder',
           origin: [20, 20, 6],
+          axis: [0, 0, 1],
           radius: 'boss_radius',
           height: 10,
         },
@@ -175,6 +176,7 @@ describe('CAD kernel worker protocol', () => {
           id: 'mount_hole',
           type: 'cylinder_cut',
           origin: [40, 20, -1],
+          axis: [1, 0, 0],
           diameter: 'hole_diameter',
           depth: 8,
         },
@@ -192,6 +194,32 @@ describe('CAD kernel worker protocol', () => {
         },
       }),
     ).toBe(true)
+  })
+
+  test('rejects malformed LiteCAD feature DSL cylinder axes', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-bad-axis',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'bad-axis.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            features: [
+              {
+                id: 'zero-axis',
+                type: 'cylinder',
+                origin: [0, 0, 0],
+                axis: [0, 0, 0],
+                radius: 5,
+                height: 8,
+              },
+            ],
+          },
+        },
+      }),
+    ).toBe(false)
   })
 
   test('rejects malformed LiteCAD feature DSL cylinder features', () => {

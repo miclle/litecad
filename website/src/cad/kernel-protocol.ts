@@ -37,6 +37,7 @@ export type CadKernelFeatureDSLCylinderFeature = {
   id: string
   type: 'cylinder'
   origin: readonly CadKernelFeatureDSLExpression[]
+  axis?: readonly CadKernelFeatureDSLExpression[]
   radius?: CadKernelFeatureDSLExpression
   diameter?: CadKernelFeatureDSLExpression
   height: CadKernelFeatureDSLExpression
@@ -46,6 +47,7 @@ export type CadKernelFeatureDSLCylinderCutFeature = {
   id: string
   type: 'cylinder_cut'
   origin: readonly CadKernelFeatureDSLExpression[]
+  axis?: readonly CadKernelFeatureDSLExpression[]
   radius?: CadKernelFeatureDSLExpression
   diameter?: CadKernelFeatureDSLExpression
   depth: CadKernelFeatureDSLExpression
@@ -287,10 +289,18 @@ function isFeatureDSLCylinderLikeFeature(value: Record<string, unknown>, lengthK
   const hasDiameter = value.diameter !== undefined
   return (
     isFeatureDSLExpressionTuple(value.origin, 3) &&
+    (value.axis === undefined || isFeatureDSLAxisTuple(value.axis)) &&
     hasRadius !== hasDiameter &&
     (hasRadius ? isFeatureDSLExpression(value.radius) : isFeatureDSLExpression(value.diameter)) &&
     isFeatureDSLExpression(value[lengthKey])
   )
+}
+
+function isFeatureDSLAxisTuple(value: unknown): value is CadKernelFeatureDSLExpression[] {
+  if (!isFeatureDSLExpressionTuple(value, 3)) {
+    return false
+  }
+  return value.some((entry) => typeof entry === 'string' || entry !== 0)
 }
 
 function isFeatureDSLExpressionTuple(value: unknown, length: number): value is CadKernelFeatureDSLExpression[] {

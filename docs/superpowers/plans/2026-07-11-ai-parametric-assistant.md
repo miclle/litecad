@@ -2154,7 +2154,95 @@ Verification result on 2026-07-12:
 Remaining after this task:
 
 - Provider telemetry, richer run-status UI, retry guidance, and richer provider-specific options remain future work.
-- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, patterns, arbitrary-axis primitives, and CAD document History integration for generated DSL features.
+- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, patterns, and CAD document History integration for generated DSL features.
+
+---
+
+### Task 19: LiteCAD feature DSL cylinder axis vectors
+
+**Why this task exists:** Task 15 added useful cylinder and cylinder-cut primitives, but they were limited to the Z axis. Text-generated mechanical models need side holes and horizontal posts before the DSL can cover common brackets, clamps, and fixtures. This task adds a narrow optional `axis` vector to existing cylinder features without claiming sketch/extrude, fillet/chamfer, pattern, or durable B-rep feature-history support.
+
+**Files:**
+- Modify: `website/src/cad/kernel-protocol.ts`
+- Test: `website/src/cad/kernel-protocol.test.ts`
+- Modify: `website/src/cad/opencascade-step.ts`
+- Test: `website/src/cad/opencascade-step.test.ts`
+- Modify: `internal/service/parametric_artifact.go`
+- Test: `internal/service/parametric_artifact_test.go`
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/ai_tools_test.go`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- `cylinder` and `cylinder_cut` may include optional `axis: [x, y, z]`.
+- Omitted `axis` keeps the existing `[0, 0, 1]` default.
+- `axis` components may be numeric literals or declared numeric parameter references.
+- Literal zero axis vectors are rejected by protocol and backend validation.
+- Resolved zero axis vectors are rejected in the worker before OCCT direction construction.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsCylinderAxis|TestCreateLiteCADFeatureDSLArtifactRejectsZeroCylinderAxis'
+go test ./internal/service -run 'TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+```
+
+Expected failures:
+
+- Worker protocol accepts literal zero axes.
+- OCCT cylinder construction always calls `gp_Dir_4(0, 0, 1)`.
+- Backend validation accepts literal zero axes.
+- Provider prompt still describes the DSL as Z-axis only.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` failed as expected: zero-axis protocol validation returned `true`, and the cylinder test observed `gp_Dir_4(0, 0, 1)` instead of the requested `[1, 0, 0]` axis.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsCylinderAxis|TestCreateLiteCADFeatureDSLArtifactRejectsZeroCylinderAxis'` failed as expected: the zero-axis artifact was accepted.
+- `go test ./internal/service -run 'TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` failed as expected: provider context did not mention optional non-zero axes.
+
+- [x] **Step 2: Implement optional cylinder axes**
+
+Extend the protocol type guards, backend LiteCAD DSL validation, worker compiler, and provider prompt. Keep the implementation limited to cylinder/cylinder-cut axis vectors, with default Z-axis compatibility.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsCylinderAxis|TestCreateLiteCADFeatureDSLArtifactRejectsZeroCylinderAxis|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+git diff --check
+task check
+task test
+task test-browser
+git add website/src/cad/kernel-protocol.ts website/src/cad/kernel-protocol.test.ts website/src/cad/opencascade-step.ts website/src/cad/opencascade-step.test.ts internal/service/parametric_artifact.go internal/service/parametric_artifact_test.go internal/service/ai_tools.go internal/service/ai_tools_test.go docs/ai-parametric-assistant.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(cad): add feature dsl cylinder axes"
+git push
+```
+
+Expected:
+
+- Generated DSL can represent side holes and horizontal posts with `axis`.
+- Existing Z-axis cylinder/cut behavior remains unchanged when `axis` is omitted.
+- Strict validation rejects malformed or zero literal axes before persistence or worker dispatch.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` passed.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsCylinderAxis|TestCreateLiteCADFeatureDSLArtifactRejectsZeroCylinderAxis|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+- Code review found no blocking issues.
+
+Remaining after this task:
+
+- Provider telemetry, richer run-status UI, retry guidance, and richer provider-specific options remain future work.
+- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, patterns, and CAD document History integration for generated DSL features.
 
 ---
 

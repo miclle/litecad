@@ -196,7 +196,7 @@ func TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact(t *testing.T) {
 	}
 
 	joined := joinAIMessageBodies(svc.aiClient.(*recordingAIClient).messages)
-	for _, want := range []string{"litecad-feature-dsl", "box", "cylinder", "cylinder_cut", "holes", "Z-axis"} {
+	for _, want := range []string{"litecad-feature-dsl", "box", "cylinder", "cylinder_cut", "holes", "non-zero axis"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("provider context should mention %q, got:\n%s", want, joined)
 		}

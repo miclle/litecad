@@ -315,6 +315,7 @@ function buildFeatureDSLCylinderShape(
   feature: {
     id: string
     origin: readonly (number | string)[]
+    axis?: readonly (number | string)[]
     radius?: number | string
     diameter?: number | string
     height?: number | string
@@ -333,8 +334,12 @@ function buildFeatureDSLCylinderShape(
   if (radius <= 0 || length <= 0) {
     throw new Error(`Feature ${feature.id} cylinder dimensions must be positive`)
   }
+  const axisVector = resolveFeatureDSLVector(feature.axis ?? [0, 0, 1], parameters)
+  if (axisVector.every((value) => value === 0)) {
+    throw new Error(`Feature ${feature.id} cylinder axis must be non-zero`)
+  }
   const originPoint = new openCascade.gp_Pnt_3(origin[0] ?? 0, origin[1] ?? 0, origin[2] ?? 0)
-  const direction = new openCascade.gp_Dir_4(0, 0, 1)
+  const direction = new openCascade.gp_Dir_4(axisVector[0] ?? 0, axisVector[1] ?? 0, axisVector[2] ?? 1)
   const axis = new openCascade.gp_Ax2_3(originPoint, direction)
   const cylinderBuilder = new openCascade.BRepPrimAPI_MakeCylinder_3(axis, radius, length)
   cylinderBuilder.Build(new openCascade.Message_ProgressRange_1())
