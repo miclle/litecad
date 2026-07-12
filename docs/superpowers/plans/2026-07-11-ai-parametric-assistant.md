@@ -3653,14 +3653,14 @@ In-app browser verification result on 2026-07-12:
 **Implementation summary:**
 
 - `ParametricArtifactEditor` gained `autoSaveOnPreviewSuccess`, guarded by an artifact/parameter signature so a successful preview triggers `onSaveAsModel` only once for the current generated draft.
-- `ProjectView` enables `autoSaveOnPreviewSuccess` for newly generated Assistant artifacts only; saved-model parameter editing still uses explicit `Save parameters`.
+- `ProjectView` enables `autoSaveOnPreviewSuccess` for newly generated Assistant artifacts; saved-model parameter editing is now handled by immediate parameter persistence in Task 38.
 - The auto-save path still validates through the existing browser-kernel preview and then reuses the same `updateProjectParametricArtifact` plus `saveProjectParametricArtifactModel` mutation, preserving compile status, parameter values, and `.lcad.json` model metadata.
 - The generated-draft manual save button is hidden in auto-save mode so the normal flow is generate once, then inspect the model in the main canvas.
 
 **Tests and verification guidance:**
 
 - Add or keep a component regression test proving that a `litecad-feature-dsl` generated draft calls `onSaveAsModel` after preview success without a click.
-- Run `npm --prefix website test -- parametric-artifact-editor.test.tsx` to cover the auto-save trigger and existing manual-save/parameter-save behavior.
+- Run `npm --prefix website test -- parametric-artifact-editor.test.tsx` to cover the auto-save trigger, existing manual save-as-model behavior, and saved parameter persistence.
 - Run `task check`, `task test`, and `task test-browser` before committing.
 - In the in-app browser, repeat the real Assistant prompt submission and verify the final state has a saved project source/model selected and the canvas no longer shows `AWAITING IMPORT`.
 
@@ -3678,7 +3678,23 @@ In-app browser verification result on 2026-07-12:
 
 - Component tests should assert that source text, source disclosure buttons, generation telemetry, and `Generated source` labels are absent from the Inspector controls.
 - Browser smoke should assert that generated-model source, source disclosure buttons, successful preview status text, and generated-source labels are absent in the default workbench state.
-- In the in-app browser, select a generated `.lcad.json` model and verify the Inspector shows the model title, parameters, and `Save parameters`, not raw JSON, source controls, success badges, or generation telemetry.
+- In the in-app browser, select a generated `.lcad.json` model and verify the Inspector shows the model title and parameters, not raw JSON, source controls, success badges, generation telemetry, or save buttons.
+
+### Task 38: Persist saved parameter edits immediately
+
+**Why this task exists:** The saved parametric model Inspector still required a `Save parameters` click after every slider or numeric edit. That extra action made the AI-generated modeling flow feel heavier than necessary; ordinary users expect parameter changes to update and persist as they work.
+
+**Implementation summary:**
+
+- `ParametricArtifactEditor` removes the saved-model `Save parameters` button.
+- Saved-model parameter controls call `onSaveParameters` when the local parameter signature changes, but skip the initial render and reset their saved baseline when the selected model or server-provided parameter values change.
+- New generated drafts keep the existing automatic save-as-model path, while non-auto-saved draft formats keep the manual `Save as model` action.
+
+**Tests and verification guidance:**
+
+- Component tests should assert that saved-model parameter edits call `onSaveParameters` after a field change without rendering or clicking `Save parameters`, and that initial render does not write.
+- Browser smoke should assert that `Save parameters` is absent for saved models and that editing a saved parameter still sends the parameter PATCH and survives reload.
+- In the in-app browser, select a saved `.lcad.json` model, change a parameter, verify the button is gone, confirm the model updates in the main canvas, reload, and verify the changed value remains.
 
 ---
 

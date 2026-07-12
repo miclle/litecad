@@ -252,7 +252,7 @@ describe('ParametricArtifactEditor', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save as model' }).disabled).toBe(true)
   })
 
-  it('saves parameter edits for an existing parametric model without requiring compile success', async () => {
+  it('auto-saves parameter edits for an existing parametric model without a save button', async () => {
     const compile = vi.fn().mockRejectedValue(new Error('OpenSCAD runtime unavailable'))
     const onSaveParameters = vi.fn()
 
@@ -263,14 +263,14 @@ describe('ParametricArtifactEditor', () => {
         debounceMs={0}
         initialParameterValues={{ width: 30, style: 'square', centered: false }}
         onSaveParameters={onSaveParameters}
-        saveLabel="Save parameters"
       />,
     )
 
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save parameters' }).disabled).toBe(false)
+    expect(screen.queryByRole('button', { name: 'Save parameters' })).toBeNull()
+    expect(onSaveParameters).not.toHaveBeenCalled()
     fireEvent.change(screen.getByLabelText('width value'), { target: { value: '48' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save parameters' }))
 
-    expect(onSaveParameters).toHaveBeenCalledWith({ width: 48, style: 'square', centered: false })
+    await waitFor(() => expect(onSaveParameters).toHaveBeenCalledWith({ width: 48, style: 'square', centered: false }))
+    expect(onSaveParameters).toHaveBeenCalledTimes(1)
   })
 })

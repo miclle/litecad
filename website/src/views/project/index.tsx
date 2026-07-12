@@ -1706,7 +1706,6 @@ function ProjectView() {
                         parameterValues,
                       })
                     }
-                    saveLabel={updateProjectParametricModelParametersMutation.isPending ? 'Saving parameters' : 'Save parameters'}
                   />
                 ) : (
                   <ProjectInspector

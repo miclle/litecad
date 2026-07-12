@@ -26,6 +26,12 @@ type ParametricArtifactEditorProps = {
   saveLabel?: string
 }
 
+type ParameterEditorState = {
+  artifactID: string
+  initialSignature: string
+  values: Record<string, OpenSCADParameterValue>
+}
+
 export function ParametricArtifactEditor({
   artifact,
   autoSaveOnPreviewSuccess = false,
@@ -47,27 +53,46 @@ export function ParametricArtifactEditor({
     }),
     [artifact.parameter_values, defaultValues, initialParameterValues],
   )
-  const [parameterValues, setParameterValues] = useState<Record<string, OpenSCADParameterValue>>(() => editorInitialValues)
+  const editorInitialSignature = useMemo(() => stableParameterValueSignature(editorInitialValues), [editorInitialValues])
+  const [parameterEditorState, setParameterEditorState] = useState<ParameterEditorState>(() => ({
+    artifactID: artifact.id,
+    initialSignature: editorInitialSignature,
+    values: editorInitialValues,
+  }))
   const autoSaveSignatureRef = useRef('')
+  const savedParameterSignatureRef = useRef(`${artifact.id}:${editorInitialSignature}`)
+  const parameterValues =
+    parameterEditorState.artifactID === artifact.id && parameterEditorState.initialSignature === editorInitialSignature
+      ? parameterEditorState.values
+      : editorInitialValues
 
   useEffect(() => {
-    setParameterValues(editorInitialValues)
-  }, [artifact.id, editorInitialValues])
+    savedParameterSignatureRef.current = `${artifact.id}:${editorInitialSignature}`
+    setParameterEditorState({
+      artifactID: artifact.id,
+      initialSignature: editorInitialSignature,
+      values: editorInitialValues,
+    })
+  }, [artifact.id, editorInitialSignature, editorInitialValues])
 
   const preview = useParametricArtifactPreview({ artifact, compile, compileFeatureDSL, debounceMs, parameterValues })
-  const canSave = onSaveParameters ? true : preview.status === 'success' && Boolean(onSaveAsModel)
+  const canSave = preview.status === 'success' && Boolean(onSaveAsModel)
   const parameterSignature = useMemo(() => stableParameterValueSignature(parameterValues), [parameterValues])
   const shouldAutoSaveOnPreviewSuccess = autoSaveOnPreviewSuccess && artifact.source_kind === 'litecad-feature-dsl'
 
   const updateParameterValue = (name: string, value: OpenSCADParameterValue) => {
-    setParameterValues((currentValues) => ({ ...currentValues, [name]: value }))
+    setParameterEditorState((currentState) => {
+      const currentValues =
+        currentState.artifactID === artifact.id && currentState.initialSignature === editorInitialSignature ? currentState.values : editorInitialValues
+      return {
+        artifactID: artifact.id,
+        initialSignature: editorInitialSignature,
+        values: { ...currentValues, [name]: value },
+      }
+    })
   }
 
   const handleSave = () => {
-    if (onSaveParameters) {
-      onSaveParameters(parameterValues)
-      return
-    }
     onSaveAsModel?.(parameterValues)
   }
 
@@ -84,6 +109,20 @@ export function ParametricArtifactEditor({
     autoSaveSignatureRef.current = signature
     onSaveAsModel(parameterValues)
   }, [artifact.id, onSaveAsModel, onSaveParameters, parameterSignature, parameterValues, preview.isCurrent, preview.status, shouldAutoSaveOnPreviewSuccess])
+
+  useEffect(() => {
+    if (!onSaveParameters) {
+      return
+    }
+
+    const signature = `${artifact.id}:${parameterSignature}`
+    if (savedParameterSignatureRef.current === signature) {
+      return
+    }
+
+    savedParameterSignatureRef.current = signature
+    onSaveParameters(parameterValues)
+  }, [artifact.id, onSaveParameters, parameterSignature, parameterValues])
 
   return (
     <section aria-label="Parametric artifact" className="mt-4 min-w-0 overflow-hidden border-t border-[#e2e8f0] pt-4">
@@ -199,7 +238,7 @@ export function ParametricArtifactEditor({
           </FieldError>
         ) : null}
 
-        {shouldAutoSaveOnPreviewSuccess ? null : (
+        {shouldAutoSaveOnPreviewSuccess || onSaveParameters ? null : (
           <Button className="justify-center" disabled={!canSave} onClick={handleSave} size="sm" type="button">
             {canSave ? <Save data-icon="inline-start" /> : <Box data-icon="inline-start" />}
             {saveLabel}
