@@ -40,6 +40,7 @@ import {
   runProjectAgentParametric,
   saveProjectParametricArtifactModel,
   sendProjectAgentConversationMessage,
+  updateProjectParametricArtifact,
   updateProjectParametricModelParameters,
   uploadProjectThumbnailSnapshot,
   uploadProjectModel,
@@ -449,7 +450,23 @@ function ProjectView() {
     },
   })
   const saveProjectParametricArtifactMutation = useMutation({
-    mutationFn: async (artifact: ProjectParametricArtifact) => (await saveProjectParametricArtifactModel(projectId, artifact.id)).data.model,
+    mutationFn: async ({
+      artifact,
+      parameterValues,
+    }: {
+      artifact: ProjectParametricArtifact
+      parameterValues: Record<string, OpenSCADParameterValue>
+    }) => {
+      await updateProjectParametricArtifact(projectId, artifact.id, {
+        title: artifact.title,
+        source_kind: artifact.source_kind,
+        source_code: artifact.source_code,
+        parameter_values: parameterValues,
+        compile_status: 'success',
+        compile_error: '',
+      })
+      return (await saveProjectParametricArtifactModel(projectId, artifact.id)).data.model
+    },
     onSuccess: async (model) => {
       setSelectedParametricArtifact(undefined)
       setSelectedModelID(model.id)
@@ -1671,10 +1688,8 @@ function ProjectView() {
                 {selectedParametricArtifact ? (
                   <ParametricArtifactEditor
                     artifact={selectedParametricArtifact}
-                    onSaveAsModel={
-                      selectedParametricArtifact.compile_status === 'success'
-                        ? () => saveProjectParametricArtifactMutation.mutate(selectedParametricArtifact)
-                        : undefined
+                    onSaveAsModel={(parameterValues) =>
+                      saveProjectParametricArtifactMutation.mutate({ artifact: selectedParametricArtifact, parameterValues })
                     }
                   />
                 ) : selectedSavedParametricArtifact ? (

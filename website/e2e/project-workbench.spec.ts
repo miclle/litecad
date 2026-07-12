@@ -5,6 +5,8 @@ const now = '2026-07-10T00:00:00Z'
 let smokeMessages: unknown[] = []
 let smokeModels: unknown[] = []
 let smokeFeatureDSLSourceRequestCount = 0
+let smokeArtifactCompileStatus = 'pending'
+let smokeArtifactUpdateCount = 0
 const smokeFeatureDSLSource = JSON.stringify({
   version: 1,
   unit: 'millimetre',
@@ -22,7 +24,7 @@ const smokeParametricArtifact = {
   source_kind: 'litecad-feature-dsl',
   source_code: smokeFeatureDSLSource,
   parameter_values: {},
-  compile_status: 'success',
+  compile_status: 'pending',
   compile_error: '',
   preview_model_id: '',
   created_at: now,
@@ -183,12 +185,23 @@ async function fulfillAPI(route: Route) {
     await route.fulfill({
       json: {
         message: assistantMessage,
-        artifact: smokeParametricArtifact,
+        artifact: { ...smokeParametricArtifact, compile_status: smokeArtifactCompileStatus },
       },
     })
     return
   }
+  if (request.method() === 'PATCH' && pathname === `/api/v1/projects/${projectId}/parametric-artifacts/${smokeParametricArtifact.id}`) {
+    const requestBody = request.postDataJSON() as { compile_status?: string }
+    smokeArtifactCompileStatus = requestBody.compile_status ?? smokeArtifactCompileStatus
+    smokeArtifactUpdateCount += 1
+    await route.fulfill({ json: { artifact: { ...smokeParametricArtifact, compile_status: smokeArtifactCompileStatus } } })
+    return
+  }
   if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/parametric-artifacts/${smokeParametricArtifact.id}/save-model`) {
+    if (smokeArtifactCompileStatus !== 'success') {
+      await route.fulfill({ json: { message: 'artifact was not compiled before save' }, status: 400 })
+      return
+    }
     smokeModels = [smokeSavedModel]
     await route.fulfill({ json: { model: smokeSavedModel } })
     return
@@ -234,6 +247,8 @@ test('opens the project workbench, History, and Assistant without browser errors
   smokeMessages = []
   smokeModels = []
   smokeFeatureDSLSourceRequestCount = 0
+  smokeArtifactCompileStatus = 'pending'
+  smokeArtifactUpdateCount = 0
   const browserErrors = captureBrowserErrors(page)
   await page.route('**/api/v1/**', fulfillAPI)
 
@@ -283,6 +298,7 @@ test('opens the project workbench, History, and Assistant without browser errors
   await page.getByRole('button', { name: 'Save as model' }).click()
   await expect(page.getByRole('option', { name: 'Smoke bracket' })).toBeVisible()
   await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+  expect(smokeArtifactUpdateCount).toBe(1)
   expect(smokeFeatureDSLSourceRequestCount).toBeGreaterThan(0)
   await page.getByRole('button', { name: 'Close Assistant' }).click()
   await expect(page.locator('[aria-label="Assistant panel"]')).toHaveAttribute('aria-hidden', 'true')

@@ -11,15 +11,17 @@ import {
   defaultOpenSCADParameterValues,
   useParametricArtifactPreview,
   type ParametricArtifactCompile,
+  type ParametricFeatureDSLArtifactCompile,
 } from './use-parametric-artifact-preview'
 import { formatParametricArtifactGenerationSummary } from './project-parametric-run-telemetry'
 
 type ParametricArtifactEditorProps = {
   artifact: ProjectParametricArtifact
   compile?: ParametricArtifactCompile
+  compileFeatureDSL?: ParametricFeatureDSLArtifactCompile
   debounceMs?: number
   initialParameterValues?: Record<string, unknown>
-  onSaveAsModel?: () => void
+  onSaveAsModel?: (parameterValues: Record<string, OpenSCADParameterValue>) => void
   onSaveParameters?: (parameterValues: Record<string, OpenSCADParameterValue>) => void
   saveLabel?: string
 }
@@ -27,6 +29,7 @@ type ParametricArtifactEditorProps = {
 export function ParametricArtifactEditor({
   artifact,
   compile,
+  compileFeatureDSL,
   debounceMs,
   initialParameterValues,
   onSaveAsModel,
@@ -49,7 +52,7 @@ export function ParametricArtifactEditor({
     setParameterValues(editorInitialValues)
   }, [artifact.id, editorInitialValues])
 
-  const preview = useParametricArtifactPreview({ artifact, compile, debounceMs, parameterValues })
+  const preview = useParametricArtifactPreview({ artifact, compile, compileFeatureDSL, debounceMs, parameterValues })
   const canSave = onSaveParameters ? true : preview.status === 'success' && Boolean(onSaveAsModel)
   const generationSummary = formatParametricArtifactGenerationSummary(artifact)
 
@@ -62,7 +65,7 @@ export function ParametricArtifactEditor({
       onSaveParameters(parameterValues)
       return
     }
-    onSaveAsModel?.()
+    onSaveAsModel?.(parameterValues)
   }
 
   return (

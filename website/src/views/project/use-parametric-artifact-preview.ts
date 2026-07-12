@@ -1,24 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import type { CadKernelFeatureDSLInput } from 'src/cad/kernel-protocol'
+import { runFeatureDSLPreviewInWorker, type CadKernelWorkerFeatureDSLPreviewResult } from 'src/cad/kernel-worker-client'
 import { compileOpenSCADInWorker, type OpenSCADCompileInput } from 'src/cad/openscad-client'
 import type { OpenSCADCompileResult, OpenSCADParameterValue } from 'src/cad/openscad-protocol'
 import { parseOpenSCADParameters, type OpenSCADParameter } from 'src/cad/openscad-parameters'
 import type { ProjectParametricArtifact } from 'src/types/project'
+import { buildFeatureDSLKernelInput } from './project-feature-dsl-preview'
 
 export type ParametricArtifactCompileStatus = 'idle' | 'pending' | 'success' | 'error'
 
 export type ParametricArtifactCompile = (input: OpenSCADCompileInput) => Promise<OpenSCADCompileResult>
+export type ParametricFeatureDSLArtifactCompile = (input: CadKernelFeatureDSLInput) => Promise<CadKernelWorkerFeatureDSLPreviewResult>
 
 export type ParametricArtifactPreviewState = {
   error: string
   parameters: ReturnType<typeof parseOpenSCADParameters>
-  result?: OpenSCADCompileResult
+  result?: OpenSCADCompileResult | CadKernelWorkerFeatureDSLPreviewResult
   status: ParametricArtifactCompileStatus
 }
 
 type UseParametricArtifactPreviewOptions = {
   artifact?: ProjectParametricArtifact
   compile?: ParametricArtifactCompile
+  compileFeatureDSL?: ParametricFeatureDSLArtifactCompile
   debounceMs?: number
   parameterValues: Record<string, OpenSCADParameterValue>
 }
@@ -33,6 +38,7 @@ export function defaultOpenSCADParameterValues(parameters: ReturnType<typeof par
 export function useParametricArtifactPreview({
   artifact,
   compile = compileOpenSCADInWorker,
+  compileFeatureDSL = runFeatureDSLPreviewInWorker,
   debounceMs = 250,
   parameterValues,
 }: UseParametricArtifactPreviewOptions): ParametricArtifactPreviewState {
@@ -51,13 +57,48 @@ export function useParametricArtifactPreview({
       return
     }
     if (artifact.source_kind === 'litecad-feature-dsl') {
-      sequenceRef.current += 1
-      setState({
-        error: artifact.compile_status === 'error' ? artifact.compile_error || 'LiteCAD feature DSL preview failed' : '',
-        result: undefined,
-        status: artifact.compile_status,
-      })
-      return
+      const sequence = sequenceRef.current + 1
+      sequenceRef.current = sequence
+      if (artifact.compile_status === 'error') {
+        setState({
+          error: artifact.compile_error || 'LiteCAD feature DSL preview failed',
+          result: undefined,
+          status: 'error',
+        })
+        return
+      }
+      setState({ error: '', result: undefined, status: 'pending' })
+
+      const timer = window.setTimeout(() => {
+        Promise.resolve()
+          .then(() =>
+            compileFeatureDSL(
+              buildFeatureDSLKernelInput(
+                {
+                  filename: featureDSLArtifactFilename(artifact),
+                  parameterValues,
+                },
+                artifact.source_code,
+              ),
+            ),
+          )
+          .then((result) => {
+            if (sequenceRef.current !== sequence) {
+              return
+            }
+            setState({ error: '', result, status: 'success' })
+          })
+          .catch((error: unknown) => {
+            if (sequenceRef.current !== sequence) {
+              return
+            }
+            setState({ error: error instanceof Error ? error.message : String(error), result: undefined, status: 'error' })
+          })
+      }, Math.max(0, debounceMs))
+
+      return () => {
+        window.clearTimeout(timer)
+      }
     }
 
     const sequence = sequenceRef.current + 1
@@ -85,9 +126,29 @@ export function useParametricArtifactPreview({
     }
     // parameterSignature intentionally represents parameterValues for stable effect comparison.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [artifact?.id, artifact?.source_code, artifact?.source_kind, artifact?.compile_status, artifact?.compile_error, compile, debounceMs, parameterSignature])
+  }, [
+    artifact?.id,
+    artifact?.title,
+    artifact?.source_code,
+    artifact?.source_kind,
+    artifact?.compile_status,
+    artifact?.compile_error,
+    compile,
+    compileFeatureDSL,
+    debounceMs,
+    parameterSignature,
+  ])
 
   return { ...state, parameters }
+}
+
+function featureDSLArtifactFilename(artifact: ProjectParametricArtifact) {
+  const slug = artifact.title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return `${slug || artifact.id}.lcad.json`
 }
 
 function parseParametricArtifactParameters(artifact: ProjectParametricArtifact | undefined): OpenSCADParameter[] {

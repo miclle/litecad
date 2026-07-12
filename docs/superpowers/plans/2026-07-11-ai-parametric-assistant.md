@@ -3294,14 +3294,15 @@ Verification results on 2026-07-12:
 
 ### Task 32: LiteCAD-native generated model browser save/reload smoke
 
-**Why this task exists:** The early OpenSCAD browser save smoke in Task 8 remains blocked by the OpenSCAD runtime license gate, but the LiteCAD-native feature DSL path now has enough implementation to verify the actual product loop in a browser: Assistant parametric run returns a successful DSL artifact, the user saves it as a project model, the saved `.lcad.json` source triggers the browser kernel preview path, and reload keeps the generated model visible.
+**Why this task exists:** The early OpenSCAD browser save smoke in Task 8 remains blocked by the OpenSCAD runtime license gate, but the LiteCAD-native feature DSL path now has enough implementation to verify the actual product loop in a browser: Assistant parametric run returns a pending DSL artifact, the browser compiles it before save, the user saves it as a project model, the saved `.lcad.json` source triggers the browser kernel preview path, and reload keeps the generated model visible.
 
 **Files:**
 - Modify: `website/e2e/project-workbench.spec.ts`
 - Modify docs: this plan
 
 **Interfaces:**
-- The mocked Assistant parametric run returns `source_kind = "litecad-feature-dsl"` and `compile_status = "success"`.
+- The mocked Assistant parametric run returns `source_kind = "litecad-feature-dsl"` and `compile_status = "pending"`.
+- The browser save flow records `compile_status = "success"` before posting `save-model`.
 - The smoke mock backend persists the saved artifact as a parsed `.lcad.json` project model.
 - The saved model source route returns the DSL JSON so the workbench can run `feature-dsl-preview`.
 - The browser test asserts the model tree shows the generated model, the preview boundary reports one preview asset, and the same state survives page reload.
@@ -3346,6 +3347,76 @@ Expected:
 Verification results on 2026-07-12:
 
 - `task test-browser` passed with the saved `.lcad.json` generated model smoke.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+
+---
+
+### Task 33: LiteCAD feature DSL draft browser preview before save
+
+**Why this task exists:** AI parametric runs persist generated LiteCAD DSL artifacts as `pending` drafts. Saved `.lcad.json` models already preview/export through the browser kernel, but pending generated drafts also need a browser-worker compile before Save is enabled so the user can generate, inspect parameters, compile, and save without a second model call.
+
+**Files:**
+- Modify: `website/src/views/project/use-parametric-artifact-preview.ts`
+- Test: `website/src/views/project/use-parametric-artifact-preview.test.ts`
+- Modify: `website/src/views/project/parametric-artifact-editor.tsx`
+- Test: `website/src/views/project/parametric-artifact-editor.test.tsx`
+- Modify: `website/src/views/project/index.tsx`
+- Modify: `website/e2e/project-workbench.spec.ts`
+- Modify docs: `README.md`, `docs/ai-parametric-assistant.md`, `docs/browser-cad-kernel-roadmap.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- `useParametricArtifactPreview` accepts an injectable LiteCAD DSL compile function and routes `source_kind = "litecad-feature-dsl"` through `feature-dsl-preview`.
+- DSL preview passes only numeric parameter overrides into the CAD kernel while preserving boolean/string metadata in the editor.
+- `ParametricArtifactEditor` enables `Save as model` only after the draft preview succeeds and passes current parameter values to the save callback.
+- The project save flow patches the generated artifact with `compile_status = "success"` and current `parameter_values` before calling `save-model`.
+- OpenSCAD draft behavior remains unchanged: without a bundled OpenSCAD runtime, compile errors keep Save disabled.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+npm --prefix website test -- use-parametric-artifact-preview parametric-artifact-editor
+```
+
+Observed RED results on 2026-07-12:
+
+- `useParametricArtifactPreview` failed because LiteCAD DSL artifacts did not call a feature DSL worker compile function.
+- `ParametricArtifactEditor` failed because pending LiteCAD DSL drafts never reached preview success and therefore could not enable Save from browser compile results.
+
+- [x] **Step 2: Implement draft worker preview and save finalization**
+
+Route pending LiteCAD DSL drafts through `runFeatureDSLPreviewInWorker`, keep stale compile results from overwriting newer state, pass current parameter values from the editor to the parent save callback, and have the project page PATCH the artifact as successfully compiled before saving it as a durable project model.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- use-parametric-artifact-preview parametric-artifact-editor
+task test-browser
+git diff --check
+task check
+task test
+git add website/src/views/project/use-parametric-artifact-preview.ts website/src/views/project/use-parametric-artifact-preview.test.ts website/src/views/project/parametric-artifact-editor.tsx website/src/views/project/parametric-artifact-editor.test.tsx website/src/views/project/index.tsx website/e2e/project-workbench.spec.ts README.md docs/ai-parametric-assistant.md docs/browser-cad-kernel-roadmap.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(projects): preview feature dsl drafts before save"
+git push
+```
+
+Expected:
+
+- Generated LiteCAD DSL drafts compile in the browser worker before save.
+- Save remains disabled for failed draft compiles.
+- Saving a generated DSL draft records successful compile status and current parameters before creating the `.lcad.json` project model.
+- OpenSCAD browser mesh compilation remains future work behind the license decision.
+
+Verification results on 2026-07-12:
+
+- `npm --prefix website test -- use-parametric-artifact-preview parametric-artifact-editor` passed.
+- `task test-browser` passed with a pending generated DSL artifact that is patched to success before save.
+- `cd website && npx tsc -b` passed.
 - `git diff --check` passed.
 - `task check` passed.
 - `task test` passed.

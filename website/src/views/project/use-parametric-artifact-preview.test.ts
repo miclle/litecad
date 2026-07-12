@@ -27,9 +27,13 @@ afterEach(() => {
 })
 
 describe('useParametricArtifactPreview', () => {
-  it('reads LiteCAD feature DSL parameters without calling the OpenSCAD compiler', async () => {
+  it('previews LiteCAD feature DSL artifacts through the browser CAD kernel worker', async () => {
     vi.useFakeTimers()
     const compile = vi.fn()
+    const compileFeatureDSL = vi.fn().mockResolvedValue({
+      mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0] },
+      meshSummary: { vertexCount: 1, triangleCount: 0, hasNormals: true },
+    })
     const featureDSLArtifact = {
       ...artifact,
       id: 'pma_lcad',
@@ -38,13 +42,14 @@ describe('useParametricArtifactPreview', () => {
       source_code:
         '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80,"min":20,"max":200},"centered":{"type":"boolean","default":true}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
       parameter_values: { width: 96 },
-      compile_status: 'success',
+      compile_status: 'pending',
     } satisfies ProjectParametricArtifact
 
     const { result } = renderHook(() =>
       useParametricArtifactPreview({
         artifact: featureDSLArtifact,
         compile,
+        compileFeatureDSL,
         debounceMs: 20,
         parameterValues: { width: 96, centered: true },
       }),
@@ -55,7 +60,13 @@ describe('useParametricArtifactPreview', () => {
     })
 
     expect(compile).not.toHaveBeenCalled()
+    expect(compileFeatureDSL).toHaveBeenCalledWith({
+      filename: 'feature-dsl-bracket.lcad.json',
+      document: JSON.parse(featureDSLArtifact.source_code),
+      parameterValues: { width: 96 },
+    })
     expect(result.current.status).toBe('success')
+    expect(result.current.result).toMatchObject({ meshSummary: { vertexCount: 1, triangleCount: 0, hasNormals: true } })
     expect(result.current.parameters).toEqual([
       { name: 'width', type: 'number', value: 80, range: { min: 20, step: 1, max: 200 }, group: '' },
       { name: 'centered', type: 'boolean', value: true, group: '' },

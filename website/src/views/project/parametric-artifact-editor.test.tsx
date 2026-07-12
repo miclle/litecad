@@ -40,8 +40,13 @@ describe('ParametricArtifactEditor', () => {
     await waitFor(() => expect(compile).not.toHaveBeenCalled())
   })
 
-  it('renders LiteCAD feature DSL parameters without compiling as OpenSCAD', async () => {
+  it('enables saving LiteCAD feature DSL drafts after browser kernel preview succeeds', async () => {
     const compile = vi.fn()
+    const compileFeatureDSL = vi.fn().mockResolvedValue({
+      mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0] },
+      meshSummary: { vertexCount: 1, triangleCount: 0, hasNormals: true },
+    })
+    const onSaveAsModel = vi.fn()
     const featureDSLArtifact = {
       ...artifact,
       id: 'pma_lcad',
@@ -50,14 +55,26 @@ describe('ParametricArtifactEditor', () => {
       source_code:
         '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80,"min":20,"max":200}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
       parameter_values: { width: 96 },
-      compile_status: 'success',
+      compile_status: 'pending',
     } satisfies ProjectParametricArtifact
 
-    render(<ParametricArtifactEditor artifact={featureDSLArtifact} compile={compile} debounceMs={0} onSaveAsModel={vi.fn()} />)
+    render(
+      <ParametricArtifactEditor
+        artifact={featureDSLArtifact}
+        compile={compile}
+        compileFeatureDSL={compileFeatureDSL}
+        debounceMs={0}
+        onSaveAsModel={onSaveAsModel}
+      />,
+    )
 
     expect(screen.getByRole('heading', { name: 'Feature DSL bracket' })).not.toBeNull()
     expect(screen.getByLabelText('width parameter')).not.toBeNull()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save as model' }).disabled).toBe(true)
+    await waitFor(() => expect(compileFeatureDSL).toHaveBeenCalled())
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save as model' }).disabled).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Save as model' }))
+    expect(onSaveAsModel).toHaveBeenCalledWith({ width: 96 })
     await waitFor(() => expect(compile).not.toHaveBeenCalled())
   })
 
