@@ -2596,6 +2596,8 @@ Remaining after this task:
 
 **Why this task exists:** Task 23 persisted how an artifact was generated, but the Inspector-side artifact editor still looked the same after reload. This task surfaces the durable generation path inside the editor so users and debugging sessions can see whether a draft/model came from native tools or JSON fallback without opening network responses.
 
+**Current status note:** Task 37 supersedes the ordinary Inspector display from this task. Generation telemetry remains persisted for list/detail reads, but the normal modeling Inspector no longer shows the telemetry summary.
+
 **Files:**
 - Modify: `website/src/views/project/project-parametric-run-telemetry.ts`
 - Modify: `website/src/views/project/parametric-artifact-editor.tsx`
@@ -3662,21 +3664,21 @@ In-app browser verification result on 2026-07-12:
 - Run `task check`, `task test`, and `task test-browser` before committing.
 - In the in-app browser, repeat the real Assistant prompt submission and verify the final state has a saved project source/model selected and the canvas no longer shows `AWAITING IMPORT`.
 
-### Task 37: Hide raw generated source by default
+### Task 37: Remove raw generated source from the normal Inspector
 
-**Why this task exists:** The generated-source editor exposed raw LiteCAD Feature DSL JSON directly under the parameter controls. That source is useful for debugging and export semantics, but it confused the normal modeling flow because users primarily need editable parameters and the visible model.
+**Why this task exists:** The generated-source editor exposed raw LiteCAD Feature DSL JSON and generation/debug status details directly around the parameter controls. Those details are useful for internal preview/export semantics and debugging, but they confused the normal modeling flow because ordinary users primarily need editable parameters and the visible model.
 
 **Implementation summary:**
 
-- `ParametricArtifactEditor` keeps raw `source_code` hidden by default behind a `Show source` / `Hide source` control.
-- Switching to another generated artifact or saved parametric model collapses the source again.
-- Parameter controls, preview, auto-save, and saved parameter editing remain unchanged.
+- `ParametricArtifactEditor` no longer renders raw `source_code`, `Show source` / `Hide source` controls, the `Generated source` label, the successful preview status badge, or persisted generation telemetry in the normal Inspector.
+- Generated source remains persisted internal model data for browser-kernel preview, save, reload, and export flows.
+- Parameter controls, preview, auto-save, saved parameter editing, and error display remain unchanged.
 
 **Tests and verification guidance:**
 
-- Component tests should assert that source text is absent by default and appears only after clicking `Show source`.
-- Browser smoke should assert that generated-model source is hidden in the default workbench state and can still be expanded.
-- In the in-app browser, select a generated `.lcad.json` model and verify the Inspector shows parameters plus `Show source`, not raw JSON.
+- Component tests should assert that source text, source disclosure buttons, generation telemetry, and `Generated source` labels are absent from the Inspector controls.
+- Browser smoke should assert that generated-model source, source disclosure buttons, successful preview status text, and generated-source labels are absent in the default workbench state.
+- In the in-app browser, select a generated `.lcad.json` model and verify the Inspector shows the model title, parameters, and `Save parameters`, not raw JSON, source controls, success badges, or generation telemetry.
 
 ---
 

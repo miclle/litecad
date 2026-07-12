@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Box, Code2, Save } from 'lucide-react'
+import { AlertTriangle, Box, Save } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from '@/components/ui/field'
@@ -13,7 +13,6 @@ import {
   type ParametricArtifactCompile,
   type ParametricFeatureDSLArtifactCompile,
 } from './use-parametric-artifact-preview'
-import { formatParametricArtifactGenerationSummary } from './project-parametric-run-telemetry'
 
 type ParametricArtifactEditorProps = {
   artifact: ProjectParametricArtifact
@@ -49,20 +48,14 @@ export function ParametricArtifactEditor({
     [artifact.parameter_values, defaultValues, initialParameterValues],
   )
   const [parameterValues, setParameterValues] = useState<Record<string, OpenSCADParameterValue>>(() => editorInitialValues)
-  const [isSourceVisible, setIsSourceVisible] = useState(false)
   const autoSaveSignatureRef = useRef('')
 
   useEffect(() => {
     setParameterValues(editorInitialValues)
   }, [artifact.id, editorInitialValues])
 
-  useEffect(() => {
-    setIsSourceVisible(false)
-  }, [artifact.id])
-
   const preview = useParametricArtifactPreview({ artifact, compile, compileFeatureDSL, debounceMs, parameterValues })
   const canSave = onSaveParameters ? true : preview.status === 'success' && Boolean(onSaveAsModel)
-  const generationSummary = formatParametricArtifactGenerationSummary(artifact)
   const parameterSignature = useMemo(() => stableParameterValueSignature(parameterValues), [parameterValues])
   const shouldAutoSaveOnPreviewSuccess = autoSaveOnPreviewSuccess && artifact.source_kind === 'litecad-feature-dsl'
 
@@ -94,19 +87,10 @@ export function ParametricArtifactEditor({
 
   return (
     <section aria-label="Parametric artifact" className="mt-4 min-w-0 overflow-hidden border-t border-[#e2e8f0] pt-4">
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-mono text-[11px] uppercase text-[#64748b]">Generated source</p>
-          <h2 className="mt-1 truncate text-sm font-semibold text-[#0f172a]" title={artifact.title}>
-            {artifact.title}
-          </h2>
-          {generationSummary ? (
-            <p className="mt-1 text-[11px] leading-4 text-[#64748b]">{generationSummary}</p>
-          ) : null}
-        </div>
-        <span className="shrink-0 rounded border border-[#dbe3ec] bg-[#f8fafc] px-2 py-1 font-mono text-[10px] uppercase text-[#475569]">
-          {preview.status}
-        </span>
+      <div className="min-w-0">
+        <h2 className="truncate text-sm font-semibold text-[#0f172a]" title={artifact.title}>
+          {artifact.title}
+        </h2>
       </div>
 
       <FieldSet className="mt-3 min-w-0 gap-3">
@@ -213,17 +197,6 @@ export function ParametricArtifactEditor({
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <span>{preview.error}</span>
           </FieldError>
-        ) : null}
-
-        <Button className="justify-center" onClick={() => setIsSourceVisible((current) => !current)} size="sm" type="button" variant="outline">
-          <Code2 data-icon="inline-start" />
-          {isSourceVisible ? 'Hide source' : 'Show source'}
-        </Button>
-
-        {isSourceVisible ? (
-          <pre className="max-h-44 min-w-0 max-w-full overflow-auto rounded-md border border-[#e2e8f0] bg-[#f8fafc] p-2 font-mono text-[10px] leading-4 text-[#334155]">
-            {artifact.source_code}
-          </pre>
         ) : null}
 
         {shouldAutoSaveOnPreviewSuccess ? null : (

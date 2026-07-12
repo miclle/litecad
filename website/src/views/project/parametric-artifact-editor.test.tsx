@@ -25,7 +25,7 @@ const artifact = {
 afterEach(() => cleanup())
 
 describe('ParametricArtifactEditor', () => {
-  it('shows persisted generation telemetry when the artifact has it', async () => {
+  it('keeps persisted generation telemetry out of the normal inspector controls', async () => {
     const compile = vi.fn()
     const generatedArtifact = {
       ...artifact,
@@ -36,7 +36,9 @@ describe('ParametricArtifactEditor', () => {
 
     render(<ParametricArtifactEditor artifact={generatedArtifact} compile={compile} debounceMs={0} />)
 
-    expect(screen.getByText('Generated with native tool · litecad-feature-dsl · 240ms')).not.toBeNull()
+    expect(screen.queryByText('Generated with native tool · litecad-feature-dsl · 240ms')).toBeNull()
+    expect(screen.queryByText('Generated source')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Mounting bracket' })).not.toBeNull()
     await waitFor(() => expect(compile).not.toHaveBeenCalled())
   })
 
@@ -78,7 +80,7 @@ describe('ParametricArtifactEditor', () => {
     await waitFor(() => expect(compile).not.toHaveBeenCalled())
   })
 
-  it('keeps generated source hidden until the user asks for it', async () => {
+  it('keeps generated source out of the inspector controls', async () => {
     const compile = vi.fn()
     const compileFeatureDSL = vi.fn().mockResolvedValue({
       mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0] },
@@ -99,10 +101,8 @@ describe('ParametricArtifactEditor', () => {
     render(<ParametricArtifactEditor artifact={featureDSLArtifact} compile={compile} compileFeatureDSL={compileFeatureDSL} debounceMs={0} />)
 
     expect(screen.queryByText(sourceCode)).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Show source' }))
-
-    expect(screen.getByText(sourceCode)).not.toBeNull()
-    expect(screen.getByRole('button', { name: 'Hide source' })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Show source' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Hide source' })).toBeNull()
   })
 
   it('automatically saves generated LiteCAD feature DSL drafts after preview succeeds', async () => {
