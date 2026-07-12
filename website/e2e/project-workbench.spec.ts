@@ -3,20 +3,85 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 const projectId = 'project_smoke'
 const now = '2026-07-10T00:00:00Z'
 let smokeMessages: unknown[] = []
+let smokeModels: unknown[] = []
+let smokeFeatureDSLSourceRequestCount = 0
+const smokeFeatureDSLSource = JSON.stringify({
+  version: 1,
+  unit: 'millimetre',
+  parameters: {
+    width: { type: 'number', default: 60, min: 20, max: 120, step: 5 },
+  },
+  features: [{ id: 'base', type: 'box', origin: [0, 0, 0], size: ['width', 24, 8] }],
+})
 const smokeParametricArtifact = {
   id: 'pma_smoke',
   project_id: projectId,
   conversation_id: 'agc_smoke',
   message_id: 'agm_smoke_parametric',
   title: 'Smoke bracket',
-  source_kind: 'openscad',
-  source_code: 'width = 20; // [10:1:80]\ncube([width, 10, 5]);',
+  source_kind: 'litecad-feature-dsl',
+  source_code: smokeFeatureDSLSource,
   parameter_values: {},
-  compile_status: 'pending',
+  compile_status: 'success',
   compile_error: '',
   preview_model_id: '',
   created_at: now,
   updated_at: now,
+}
+const smokeSavedModel = {
+  id: 'mdl_smoke_lcad',
+  project_id: projectId,
+  original_filename: 'smoke-bracket-litecad.lcad.json',
+  format: 'lcad',
+  content_type: 'application/json',
+  byte_size: smokeFeatureDSLSource.length,
+  parse_status: 'parsed',
+  parse_error: '',
+  metadata: {
+    asset_type: 'lcad',
+    source_kind: 'litecad-feature-dsl',
+    version: '1',
+    schema: 'litecad-feature-dsl',
+    product_names: ['Smoke bracket'],
+    components: [],
+    length_unit: 'millimetre',
+    entity_count: 1,
+    parameter_count: 1,
+    parameter_values: {},
+    compile_summary: 'LiteCAD feature DSL source',
+    representation_count: 1,
+    triangle_count: 12,
+  },
+  created_at: now,
+  updated_at: now,
+}
+
+function smokeCADDocument() {
+  return {
+    id: 'cad_document_smoke',
+    project_id: projectId,
+    schema_version: 1,
+    revision: smokeModels.length > 0 ? 2 : 1,
+    unit: 'mm',
+    nodes:
+      smokeModels.length > 0
+        ? [
+            {
+              id: 'node_mdl_smoke_lcad',
+              model_id: 'mdl_smoke_lcad',
+              source_model_id: '',
+              parent_node_id: '',
+              name: 'Smoke bracket',
+              source_format: 'lcad',
+              transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+            },
+          ]
+        : [],
+    operations: [],
+    history: { head_id: '', can_undo: false, can_redo: false },
+    created_at: now,
+    updated_at: now,
+  }
 }
 
 async function fulfillAPI(route: Route) {
@@ -29,30 +94,18 @@ async function fulfillAPI(route: Route) {
         id: projectId,
         name: 'Workbench Smoke',
         description: 'Deterministic browser verification project.',
-        thumbnail: { model_count: 0, models: [] },
+        thumbnail: { model_count: smokeModels.length, models: smokeModels },
         created_at: now,
         updated_at: now,
       },
     },
-    [`/api/v1/projects/${projectId}/models`]: { models: [] },
+    [`/api/v1/projects/${projectId}/models`]: { models: smokeModels },
     [`/api/v1/projects/${projectId}/agent/conversations`]: {
       conversations: [{ id: 'agc_smoke', project_id: projectId, title: 'Smoke chat', created_at: now, updated_at: now }],
     },
     [`/api/v1/projects/${projectId}/agent/conversations/agc_smoke/messages`]: { messages: smokeMessages },
-    [`/api/v1/projects/${projectId}/cad-document`]: {
-      document: {
-        id: 'cad_document_smoke',
-        project_id: projectId,
-        schema_version: 1,
-        revision: 1,
-        unit: 'mm',
-        nodes: [],
-        operations: [],
-        history: { head_id: '', can_undo: false, can_redo: false },
-        created_at: now,
-        updated_at: now,
-      },
-    },
+    [`/api/v1/projects/${projectId}/parametric-artifacts`]: { artifacts: [] },
+    [`/api/v1/projects/${projectId}/cad-document`]: { document: smokeCADDocument() },
     [`/api/v1/projects/${projectId}/cad-document/history`]: { entries: [] },
   }
   if (request.method() === 'GET' && pathname in responses) {
@@ -101,7 +154,7 @@ async function fulfillAPI(route: Route) {
         input: {
           title: smokeParametricArtifact.title,
           version: 'v1',
-          source_kind: 'openscad',
+          source_kind: 'litecad-feature-dsl',
           code: smokeParametricArtifact.source_code,
         },
       }),
@@ -135,6 +188,34 @@ async function fulfillAPI(route: Route) {
     })
     return
   }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/parametric-artifacts/${smokeParametricArtifact.id}/save-model`) {
+    smokeModels = [smokeSavedModel]
+    await route.fulfill({ json: { model: smokeSavedModel } })
+    return
+  }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/thumbnail`) {
+    await route.fulfill({
+      json: {
+        snapshot: {
+          url: `/api/v1/projects/${projectId}/thumbnail/smoke.webp`,
+          status: 'ready',
+          revision: smokeModels.length > 0 ? 2 : 1,
+          width: 320,
+          height: 180,
+          updated_at: now,
+        },
+      },
+    })
+    return
+  }
+  if (request.method() === 'GET' && pathname === `/api/v1/projects/${projectId}/models/${smokeSavedModel.id}/source`) {
+    smokeFeatureDSLSourceRequestCount += 1
+    await route.fulfill({
+      body: smokeFeatureDSLSource,
+      contentType: 'application/json',
+    })
+    return
+  }
   await route.fulfill({ json: { message: `Unhandled smoke request: ${request.method()} ${pathname}` }, status: 500 })
 }
 
@@ -151,6 +232,8 @@ function captureBrowserErrors(page: Page) {
 
 test('opens the project workbench, History, and Assistant without browser errors', async ({ page }) => {
   smokeMessages = []
+  smokeModels = []
+  smokeFeatureDSLSourceRequestCount = 0
   const browserErrors = captureBrowserErrors(page)
   await page.route('**/api/v1/**', fulfillAPI)
 
@@ -196,10 +279,17 @@ test('opens the project workbench, History, and Assistant without browser errors
   await page.getByRole('button', { name: 'Generate parametric model' }).click()
   await expect(page.getByRole('heading', { name: 'Smoke bracket' })).toBeVisible()
   await expect(page.getByLabel('width parameter')).toBeVisible()
-  await expect(page.getByText('OpenSCAD runtime is not configured')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Save as model' })).toBeDisabled()
+  await expect(page.getByText('success')).toBeVisible()
+  await page.getByRole('button', { name: 'Save as model' }).click()
+  await expect(page.getByRole('option', { name: 'Smoke bracket' })).toBeVisible()
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+  expect(smokeFeatureDSLSourceRequestCount).toBeGreaterThan(0)
   await page.getByRole('button', { name: 'Close Assistant' }).click()
   await expect(page.locator('[aria-label="Assistant panel"]')).toHaveAttribute('aria-hidden', 'true')
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await expect(page.getByRole('option', { name: 'Smoke bracket' })).toBeVisible()
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
 
   expect(browserErrors).toEqual([])
 })

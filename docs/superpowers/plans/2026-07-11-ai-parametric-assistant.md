@@ -3292,6 +3292,66 @@ Verification results on 2026-07-12:
 
 ---
 
+### Task 32: LiteCAD-native generated model browser save/reload smoke
+
+**Why this task exists:** The early OpenSCAD browser save smoke in Task 8 remains blocked by the OpenSCAD runtime license gate, but the LiteCAD-native feature DSL path now has enough implementation to verify the actual product loop in a browser: Assistant parametric run returns a successful DSL artifact, the user saves it as a project model, the saved `.lcad.json` source triggers the browser kernel preview path, and reload keeps the generated model visible.
+
+**Files:**
+- Modify: `website/e2e/project-workbench.spec.ts`
+- Modify docs: this plan
+
+**Interfaces:**
+- The mocked Assistant parametric run returns `source_kind = "litecad-feature-dsl"` and `compile_status = "success"`.
+- The smoke mock backend persists the saved artifact as a parsed `.lcad.json` project model.
+- The saved model source route returns the DSL JSON so the workbench can run `feature-dsl-preview`.
+- The browser test asserts the model tree shows the generated model, the preview boundary reports one preview asset, and the same state survives page reload.
+- This does not unblock OpenSCAD mesh compilation or claim OpenSCAD browser runtime support.
+
+- [x] **Step 1: Write failing browser smoke**
+
+Run:
+
+```bash
+task test-browser
+```
+
+Observed RED result on 2026-07-12:
+
+- `task test-browser` failed after the new save/reload assertions because the old smoke script still tried to click `Close Assistant` after page reload, when the Assistant panel had already reset closed.
+
+- [x] **Step 2: Fix smoke flow without product-code changes**
+
+Move the Assistant close assertion before reload, keep the generated model save/reload assertions, and keep the preview asset count check tied to the saved `.lcad.json` browser-kernel preview path.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+task test-browser
+git diff --check
+task check
+task test
+git add website/e2e/project-workbench.spec.ts docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md
+git commit -m "test(projects): smoke saved feature dsl models"
+git push
+```
+
+Expected:
+
+- The workbench browser smoke covers the current LiteCAD-native text-to-parameterized-model path through generated artifact save, browser-kernel preview, and reload persistence.
+- No product code changes are required if existing LiteCAD feature DSL save/preview logic already satisfies the path.
+- OpenSCAD runtime compilation remains future work behind the license decision.
+
+Verification results on 2026-07-12:
+
+- `task test-browser` passed with the saved `.lcad.json` generated model smoke.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |
@@ -3303,7 +3363,7 @@ Verification results on 2026-07-12:
 | Parameter parsing | sliders, enums, booleans, colors, groups | `npm --prefix website test -- openscad-parameters` |
 | UI components | conversation selector, parametric editor, compile errors, save state | `npm --prefix website test -- project-assistant-panel parametric-artifact-editor` |
 | Preview integration | nonblank render, debounced compile, resource disposal | `npm --prefix website test -- use-parametric-artifact-preview model-preview` |
-| Browser smoke | end-to-end generated model workflow | `task test-browser` |
+| Browser smoke | end-to-end LiteCAD feature DSL generated model save/reload workflow | `task test-browser` |
 | Full repo | backend, frontend, module tidy | `task check` |
 | Behavior regression | non-trivial API/database/frontend behavior | `task test` |
 
