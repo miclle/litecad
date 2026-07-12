@@ -29,6 +29,12 @@ import {
   type ViewRotationStep,
 } from './view-orientation'
 
+export const viewCubeRendererOptions = {
+  alpha: true,
+  antialias: true,
+  preserveDrawingBuffer: true,
+} satisfies ConstructorParameters<typeof THREE.WebGLRenderer>[0]
+
 function ViewCube3D({
   animateOrientationChanges,
   onSetOrientation,
@@ -58,7 +64,7 @@ function ViewCube3D({
       return undefined
     }
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
+    const renderer = new THREE.WebGLRenderer(viewCubeRendererOptions)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setClearColor(0x000000, 0)
     renderer.outputColorSpace = THREE.SRGBColorSpace

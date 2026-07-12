@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
+import { viewCubeRendererOptions } from './view-controller'
 import { createChamferedCubeGeometry, viewCubeChamferHeight, viewCubeFaces, viewCubeSize } from './view-cube'
 
 describe('view controller definitions', () => {
@@ -16,5 +17,13 @@ describe('view controller definitions', () => {
     expect(surfaces.filter((surface) => surface.kind === 'corner')).toHaveLength(8)
     expect(geometry.getAttribute('position').count).toBeGreaterThan(0)
     expect(edgeGeometry.getAttribute('position').count).toBeGreaterThan(0)
+  })
+
+  test('keeps the view cube WebGL buffer available across workbench repaints', () => {
+    expect(viewCubeRendererOptions).toMatchObject({
+      alpha: true,
+      antialias: true,
+      preserveDrawingBuffer: true,
+    })
   })
 })

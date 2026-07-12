@@ -3696,6 +3696,22 @@ In-app browser verification result on 2026-07-12:
 - Browser smoke should assert that `Save parameters` is absent for saved models and that editing a saved parameter still sends the parameter PATCH and survives reload.
 - In the in-app browser, select a saved `.lcad.json` model, change a parameter, verify the button is gone, confirm the model updates in the main canvas, reload, and verify the changed value remains.
 
+### Task 39: Keep ViewCube visible during parameter repaint
+
+**Why this task exists:** Adjusting saved model parameters immediately updates project state and causes the workbench to repaint. The right-side ViewCube is a small WebGL canvas rendered on demand; without preserving its drawing buffer, browser compositing can leave the cube blank while the surrounding DOM arrows remain visible.
+
+**Implementation summary:**
+
+- `ViewCube3D` uses a shared `viewCubeRendererOptions` object with `preserveDrawingBuffer: true`.
+- The main model preview already preserves its drawing buffer; this applies the same repaint-safe policy to the small orientation canvas.
+- No ViewCube layout, orientation math, or click behavior changes.
+
+**Tests and verification guidance:**
+
+- Unit tests should assert `viewCubeRendererOptions` keeps `alpha`, `antialias`, and `preserveDrawingBuffer` enabled.
+- Run `npm --prefix website test -- view-controller.test.ts`.
+- In the in-app browser, select a saved `.lcad.json` model, adjust a parameter, and verify the ViewCube remains visible rather than becoming an empty control shell.
+
 ---
 
 ## Testing Matrix
