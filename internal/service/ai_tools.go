@@ -71,6 +71,19 @@ func ParseAIParametricToolCall(output string) (AIParametricToolCall, error) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &call); err != nil {
 		return AIParametricToolCall{}, ErrInvalidAIChatInput
 	}
+	return validateAIParametricToolCall(call)
+}
+
+// ParseAIParametricNativeToolCall validates a native provider function call.
+func ParseAIParametricNativeToolCall(nativeCall AIChatToolCall) (AIParametricToolCall, error) {
+	var input AIParametricArtifactInput
+	if len(nativeCall.Arguments) == 0 || json.Unmarshal(nativeCall.Arguments, &input) != nil {
+		return AIParametricToolCall{}, ErrInvalidAIChatInput
+	}
+	return validateAIParametricToolCall(AIParametricToolCall{Tool: nativeCall.Tool, Input: input})
+}
+
+func validateAIParametricToolCall(call AIParametricToolCall) (AIParametricToolCall, error) {
 	call.Tool = strings.TrimSpace(call.Tool)
 	call.Input.Title = strings.TrimSpace(call.Input.Title)
 	call.Input.Version = strings.TrimSpace(call.Input.Version)
@@ -88,6 +101,45 @@ func ParseAIParametricToolCall(output string) (AIParametricToolCall, error) {
 		return AIParametricToolCall{}, ErrInvalidAIChatInput
 	}
 	return call, nil
+}
+
+func buildParametricModelAITool() AIChatTool {
+	return AIChatTool{
+		Name:        aiParametricToolBuildModel,
+		Description: "Create or edit one parameterized CAD source artifact for LiteCAD.",
+		Parameters: map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"required":             []string{"title", "version", "source_kind", "code"},
+			"properties": map[string]any{
+				"title": map[string]any{
+					"type":        "string",
+					"description": "Short human-readable model title.",
+				},
+				"version": map[string]any{
+					"type":        "string",
+					"description": "Artifact version, currently v1.",
+				},
+				"source_kind": map[string]any{
+					"type":        "string",
+					"enum":        []string{projectParametricSourceKindLiteCADDSL, projectParametricSourceKindOpenSCAD},
+					"description": "Prefer litecad-feature-dsl unless the user explicitly asks for OpenSCAD.",
+				},
+				"code": map[string]any{
+					"type":        "string",
+					"description": "Complete source text. For litecad-feature-dsl, use version 1 JSON with box, cylinder, and cylinder_cut features.",
+				},
+			},
+		},
+	}
+}
+
+func marshalAIParametricToolCall(call AIParametricToolCall) string {
+	data, err := json.Marshal(call)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 // RunProjectAgentParametric asks the configured AI provider for a parametric artifact tool call and persists it.
@@ -126,13 +178,28 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 	}
 	providerMessages = append(providerMessages, userMessage)
 
-	reply, err := s.aiClient.Chat(ctx, providerMessages)
-	if err != nil {
-		return ProjectAgentParametricRun{}, fmt.Errorf("send ai parametric chat: %w", err)
-	}
-	call, err := ParseAIParametricToolCall(reply)
-	if err != nil {
-		return ProjectAgentParametricRun{}, err
+	var reply string
+	var call AIParametricToolCall
+	if toolClient, ok := s.aiClient.(AIChatToolClient); ok {
+		nativeCall, err := toolClient.ChatWithTools(ctx, providerMessages, []AIChatTool{buildParametricModelAITool()})
+		if err != nil {
+			return ProjectAgentParametricRun{}, fmt.Errorf("send ai parametric chat: %w", err)
+		}
+		call, err = ParseAIParametricNativeToolCall(nativeCall)
+		if err != nil {
+			return ProjectAgentParametricRun{}, err
+		}
+		reply = marshalAIParametricToolCall(call)
+	} else {
+		providerReply, err := s.aiClient.Chat(ctx, providerMessages)
+		if err != nil {
+			return ProjectAgentParametricRun{}, fmt.Errorf("send ai parametric chat: %w", err)
+		}
+		call, err = ParseAIParametricToolCall(providerReply)
+		if err != nil {
+			return ProjectAgentParametricRun{}, err
+		}
+		reply = strings.TrimSpace(providerReply)
 	}
 
 	var run ProjectAgentParametricRun

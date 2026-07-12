@@ -25,6 +25,7 @@ const (
 	cadAgentSystemPrompt                  = "You are CAD Agent inside LiteCAD. Help the user inspect CAD sources, metadata, design intent, and possible model changes. Be clear about the current product boundary: you can discuss and plan changes, but you cannot directly mutate persisted CAD geometry unless a dedicated tool is available."
 	defaultAITimeout                      = 30 * time.Second
 	defaultAITemperature                  = 0.2
+	defaultAIMaxOutputTokens              = 2048
 )
 
 var (
@@ -39,10 +40,28 @@ type AIClient interface {
 	Chat(ctx context.Context, messages []AIChatMessage) (string, error)
 }
 
+// AIChatToolClient is implemented by providers that support native function tools.
+type AIChatToolClient interface {
+	ChatWithTools(ctx context.Context, messages []AIChatMessage, tools []AIChatTool) (AIChatToolCall, error)
+}
+
 // AIChatMessage is a provider-neutral chat message.
 type AIChatMessage struct {
 	Role string `json:"role"`
 	Body string `json:"body"`
+}
+
+// AIChatTool is a provider-neutral function tool definition.
+type AIChatTool struct {
+	Name        string
+	Description string
+	Parameters  map[string]any
+}
+
+// AIChatToolCall is a provider-neutral function tool call.
+type AIChatToolCall struct {
+	Tool      string
+	Arguments json.RawMessage
 }
 
 // CreateProjectAgentConversationInput is the data required to start a CAD Agent thread.
@@ -404,10 +423,11 @@ func buildProjectAgentContext(project Project, models []ProjectModel) string {
 
 // OpenAICompatibleConfig configures an OpenAI-compatible chat completions client.
 type OpenAICompatibleConfig struct {
-	BaseURL        string
-	APIKey         string
-	Model          string
-	TimeoutSeconds int
+	BaseURL         string
+	APIKey          string
+	Model           string
+	TimeoutSeconds  int
+	MaxOutputTokens int
 }
 
 // NewOpenAICompatibleAIClient creates a chat client for providers that implement /chat/completions.
@@ -426,30 +446,68 @@ func NewOpenAICompatibleAIClient(config OpenAICompatibleConfig) (AIClient, error
 	if config.TimeoutSeconds > 0 {
 		timeout = time.Duration(config.TimeoutSeconds) * time.Second
 	}
+	maxOutputTokens := config.MaxOutputTokens
+	if maxOutputTokens <= 0 {
+		maxOutputTokens = defaultAIMaxOutputTokens
+	}
 	return &openAICompatibleAIClient{
-		baseURL: baseURL,
-		apiKey:  apiKey,
-		model:   model,
-		client:  &http.Client{Timeout: timeout},
+		baseURL:         baseURL,
+		apiKey:          apiKey,
+		model:           model,
+		maxOutputTokens: maxOutputTokens,
+		client:          &http.Client{Timeout: timeout},
 	}, nil
 }
 
 type openAICompatibleAIClient struct {
-	baseURL string
-	apiKey  string
-	model   string
-	client  *http.Client
+	baseURL         string
+	apiKey          string
+	model           string
+	maxOutputTokens int
+	client          *http.Client
 }
 
 type openAICompatibleChatRequest struct {
-	Model       string                        `json:"model"`
-	Messages    []openAICompatibleChatMessage `json:"messages"`
-	Temperature float64                       `json:"temperature"`
+	Model               string                        `json:"model"`
+	Messages            []openAICompatibleChatMessage `json:"messages"`
+	Temperature         float64                       `json:"temperature"`
+	MaxCompletionTokens int                           `json:"max_completion_tokens,omitempty"`
+	Tools               []openAICompatibleTool        `json:"tools,omitempty"`
+	ToolChoice          *openAICompatibleToolChoice   `json:"tool_choice,omitempty"`
 }
 
 type openAICompatibleChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role      string                         `json:"role"`
+	Content   string                         `json:"content,omitempty"`
+	ToolCalls []openAICompatibleToolCallItem `json:"tool_calls,omitempty"`
+}
+
+type openAICompatibleTool struct {
+	Type     string                       `json:"type"`
+	Function openAICompatibleToolFunction `json:"function"`
+}
+
+type openAICompatibleToolFunction struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Parameters  map[string]any `json:"parameters,omitempty"`
+	Strict      bool           `json:"strict,omitempty"`
+}
+
+type openAICompatibleToolChoice struct {
+	Type     string `json:"type"`
+	Function struct {
+		Name string `json:"name"`
+	} `json:"function"`
+}
+
+type openAICompatibleToolCallItem struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }
 
 type openAICompatibleChatResponse struct {
@@ -462,6 +520,53 @@ type openAICompatibleChatResponse struct {
 }
 
 func (c *openAICompatibleAIClient) Chat(ctx context.Context, messages []AIChatMessage) (string, error) {
+	payload := openAICompatibleChatRequest{
+		Model:               c.model,
+		Messages:            openAICompatibleMessages(messages),
+		Temperature:         defaultAITemperature,
+		MaxCompletionTokens: c.maxOutputTokens,
+	}
+	decoded, err := c.sendChatCompletion(ctx, payload)
+	if err != nil {
+		return "", err
+	}
+	if len(decoded.Choices) == 0 || strings.TrimSpace(decoded.Choices[0].Message.Content) == "" {
+		return "", fmt.Errorf("chat provider returned no message")
+	}
+	return decoded.Choices[0].Message.Content, nil
+}
+
+func (c *openAICompatibleAIClient) ChatWithTools(ctx context.Context, messages []AIChatMessage, tools []AIChatTool) (AIChatToolCall, error) {
+	if len(tools) == 0 {
+		return AIChatToolCall{}, ErrInvalidAIChatInput
+	}
+	payload := openAICompatibleChatRequest{
+		Model:               c.model,
+		Messages:            openAICompatibleMessages(messages),
+		Temperature:         defaultAITemperature,
+		MaxCompletionTokens: c.maxOutputTokens,
+		Tools:               openAICompatibleTools(tools),
+		ToolChoice:          openAICompatibleRequiredToolChoice(tools),
+	}
+	decoded, err := c.sendChatCompletion(ctx, payload)
+	if err != nil {
+		return AIChatToolCall{}, err
+	}
+	if len(decoded.Choices) == 0 {
+		return AIChatToolCall{}, fmt.Errorf("chat provider returned no message")
+	}
+	for _, toolCall := range decoded.Choices[0].Message.ToolCalls {
+		if toolCall.Type == "function" && strings.TrimSpace(toolCall.Function.Name) != "" {
+			return AIChatToolCall{
+				Tool:      strings.TrimSpace(toolCall.Function.Name),
+				Arguments: json.RawMessage(strings.TrimSpace(toolCall.Function.Arguments)),
+			}, nil
+		}
+	}
+	return AIChatToolCall{}, fmt.Errorf("chat provider returned no tool call")
+}
+
+func openAICompatibleMessages(messages []AIChatMessage) []openAICompatibleChatMessage {
 	providerMessages := make([]openAICompatibleChatMessage, 0, len(messages))
 	for _, message := range messages {
 		providerMessages = append(providerMessages, openAICompatibleChatMessage{
@@ -469,26 +574,49 @@ func (c *openAICompatibleAIClient) Chat(ctx context.Context, messages []AIChatMe
 			Content: message.Body,
 		})
 	}
-	payload := openAICompatibleChatRequest{
-		Model:       c.model,
-		Messages:    providerMessages,
-		Temperature: defaultAITemperature,
+	return providerMessages
+}
+
+func openAICompatibleTools(tools []AIChatTool) []openAICompatibleTool {
+	result := make([]openAICompatibleTool, 0, len(tools))
+	for _, tool := range tools {
+		result = append(result, openAICompatibleTool{
+			Type: "function",
+			Function: openAICompatibleToolFunction{
+				Name:        tool.Name,
+				Description: tool.Description,
+				Parameters:  tool.Parameters,
+			},
+		})
 	}
+	return result
+}
+
+func openAICompatibleRequiredToolChoice(tools []AIChatTool) *openAICompatibleToolChoice {
+	if len(tools) != 1 {
+		return nil
+	}
+	choice := &openAICompatibleToolChoice{Type: "function"}
+	choice.Function.Name = tools[0].Name
+	return choice
+}
+
+func (c *openAICompatibleAIClient) sendChatCompletion(ctx context.Context, payload openAICompatibleChatRequest) (openAICompatibleChatResponse, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("marshal chat request: %w", err)
+		return openAICompatibleChatResponse{}, fmt.Errorf("marshal chat request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("create chat request: %w", err)
+		return openAICompatibleChatResponse{}, fmt.Errorf("create chat request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("call chat provider: %w", err)
+		return openAICompatibleChatResponse{}, fmt.Errorf("call chat provider: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -496,7 +624,7 @@ func (c *openAICompatibleAIClient) Chat(ctx context.Context, messages []AIChatMe
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", fmt.Errorf("read chat response: %w", err)
+		return openAICompatibleChatResponse{}, fmt.Errorf("read chat response: %w", err)
 	}
 
 	var decoded openAICompatibleChatResponse
@@ -505,12 +633,9 @@ func (c *openAICompatibleAIClient) Chat(ctx context.Context, messages []AIChatMe
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		if decoded.Error != nil && strings.TrimSpace(decoded.Error.Message) != "" {
-			return "", fmt.Errorf("chat provider returned %d: %s", resp.StatusCode, strings.TrimSpace(decoded.Error.Message))
+			return openAICompatibleChatResponse{}, fmt.Errorf("chat provider returned %d: %s", resp.StatusCode, strings.TrimSpace(decoded.Error.Message))
 		}
-		return "", fmt.Errorf("chat provider returned %d", resp.StatusCode)
+		return openAICompatibleChatResponse{}, fmt.Errorf("chat provider returned %d", resp.StatusCode)
 	}
-	if len(decoded.Choices) == 0 || strings.TrimSpace(decoded.Choices[0].Message.Content) == "" {
-		return "", fmt.Errorf("chat provider returned no message")
-	}
-	return decoded.Choices[0].Message.Content, nil
+	return decoded, nil
 }

@@ -43,10 +43,11 @@ func main() {
 	}
 
 	aiClient, err := service.NewOpenAICompatibleAIClient(service.OpenAICompatibleConfig{
-		BaseURL:        cfg.AI.BaseURL,
-		APIKey:         cfg.AI.APIKey,
-		Model:          cfg.AI.Model,
-		TimeoutSeconds: cfg.AI.TimeoutSeconds,
+		BaseURL:         cfg.AI.BaseURL,
+		APIKey:          cfg.AI.APIKey,
+		Model:           cfg.AI.Model,
+		TimeoutSeconds:  cfg.AI.TimeoutSeconds,
+		MaxOutputTokens: cfg.AI.MaxOutputTokens,
 	})
 	if err != nil {
 		log.Fatalf("init ai client: %v", err)

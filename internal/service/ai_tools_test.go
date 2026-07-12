@@ -203,6 +203,64 @@ func TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact(t *testing.T) {
 	}
 }
 
+func TestAIParametricRunUsesNativeToolClient(t *testing.T) {
+	toolClient := &recordingAIToolClient{call: AIChatToolCall{
+		Tool: aiParametricToolBuildModel,
+		Arguments: []byte(`{
+		  "title": "Native tool bracket",
+		  "version": "v1",
+		  "source_kind": "litecad-feature-dsl",
+		  "code": "{\"version\":1,\"unit\":\"millimetre\",\"parameters\":{\"width\":{\"type\":\"number\",\"default\":80}},\"features\":[{\"id\":\"base\",\"type\":\"box\",\"origin\":[0,0,0],\"size\":[\"width\",40,6]}]}"
+		}`),
+	}}
+	svc := newTestService(t)
+	svc.aiClient = toolClient
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-run-native-tool@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{OwnerUserID: user.ID, Name: "Native tool run study"})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Native tool run",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	run, err := svc.RunProjectAgentParametric(ctx, ProjectAgentParametricRunInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
+		Message:        "Make a native LiteCAD feature DSL bracket",
+	})
+	if err != nil {
+		t.Fatalf("RunProjectAgentParametric returned error: %v", err)
+	}
+	if toolClient.chatCalled {
+		t.Fatal("RunProjectAgentParametric should use ChatWithTools when the provider supports it")
+	}
+	if len(toolClient.tools) != 1 || toolClient.tools[0].Name != aiParametricToolBuildModel {
+		t.Fatalf("tools = %+v", toolClient.tools)
+	}
+	if run.Artifact.Title != "Native tool bracket" || run.Artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", run.Artifact)
+	}
+	if run.Message.Body == "" || !strings.Contains(run.Message.Body, aiParametricToolBuildModel) {
+		t.Fatalf("assistant message body should contain the canonical tool call JSON, got %q", run.Message.Body)
+	}
+}
+
 func TestAIParametricRunRejectsInvalidToolOutput(t *testing.T) {
 	svc := newTestService(t)
 	svc.aiClient = &recordingAIClient{reply: "I created the model for you."}

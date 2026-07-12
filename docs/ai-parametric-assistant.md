@@ -4,7 +4,7 @@ LiteCAD's AI Assistant target is text-to-parameterized CAD: users can start a pr
 
 ## Current Status
 
-The current CAD Agent supports project-owned Assistant conversations, stores messages per conversation, can include project/source metadata in provider context, and has backend APIs for project-owned parametric artifact drafts. A dedicated parametric-run API asks the configured provider for strict `build_parametric_model` JSON output, validates it server-side, stores the user prompt and Assistant tool message, and creates a pending artifact draft. The accepted generated source kinds are `openscad` and `litecad-feature-dsl`; the provider prompt now prefers LiteCAD feature DSL JSON unless the user explicitly asks for OpenSCAD source, and backend validation rejects LiteCAD DSL JSON that does not match the shipped `box` / `cylinder` / `cylinder_cut` schema.
+The current CAD Agent supports project-owned Assistant conversations, stores messages per conversation, can include project/source metadata in provider context, and has backend APIs for project-owned parametric artifact drafts. A dedicated parametric-run API asks the configured provider to call `build_parametric_model`, validates the returned tool input server-side, stores the user prompt and Assistant tool message, and creates a pending artifact draft. OpenAI-compatible providers use native function tools when available, with strict JSON message output retained as a fallback for simpler providers. The accepted generated source kinds are `openscad` and `litecad-feature-dsl`; the provider prompt now prefers LiteCAD feature DSL JSON unless the user explicitly asks for OpenSCAD source, and backend validation rejects LiteCAD DSL JSON that does not match the shipped `box` / `cylinder` / `cylinder_cut` schema.
 
 The workbench can open OpenSCAD drafts in an Inspector-side editor, parse top-level OpenSCAD-style parameters, request browser-worker compilation, and keep compile errors visible with Save disabled. Successfully compiled OpenSCAD artifacts can be saved as durable `.scad` project model sources. Saved `.scad` source models can be selected later, edited through the same parameter controls, and persisted with separate parameter revision records. LiteCAD does not yet bundle an OpenSCAD runtime or produce mesh previews from generated OpenSCAD source.
 
@@ -30,7 +30,7 @@ Each project can own multiple Assistant conversations. New conversations start w
 
 1. Create or select an Assistant conversation.
 2. Send a text prompt to the parametric-run endpoint.
-3. The model must return strict `build_parametric_model` JSON.
+3. The model calls `build_parametric_model` through native tools when supported, or returns the strict fallback JSON shape.
 4. LiteCAD stores a project-owned parametric artifact draft and opens it in the Inspector.
 5. The Inspector parses OpenSCAD top-level parameters or LiteCAD DSL parameter defaults.
 6. A successfully compiled artifact can be saved as a durable `.scad` or `.lcad.json` source model.
@@ -49,3 +49,7 @@ Each project can own multiple Assistant conversations. New conversations start w
 ## Implementation Plan
 
 The phase-by-phase implementation plan lives in [docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md](superpowers/plans/2026-07-11-ai-parametric-assistant.md).
+
+## Provider Controls
+
+Server-side OpenAI-compatible configuration supports `max_output_tokens`, which LiteCAD sends as `max_completion_tokens` to cap generated output for chat and parametric tool calls. The default cap is `2048`.

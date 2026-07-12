@@ -83,6 +83,7 @@ ai:
   base_url: "${LITECAD_TEST_AI_BASE_URL:-https://example.test/v1/}"
   api_key: "${LITECAD_TEST_AI_KEY:-}"
   model: "cad-model"
+  max_output_tokens: 768
 `)
 
 	cfg, err := Load(path)
@@ -100,6 +101,9 @@ ai:
 	}
 	if cfg.AI.TimeoutSeconds != 30 {
 		t.Fatalf("AI.TimeoutSeconds = %d, want default 30", cfg.AI.TimeoutSeconds)
+	}
+	if cfg.AI.MaxOutputTokens != 768 {
+		t.Fatalf("AI.MaxOutputTokens = %d, want 768", cfg.AI.MaxOutputTokens)
 	}
 }
 

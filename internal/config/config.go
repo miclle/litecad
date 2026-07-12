@@ -20,11 +20,12 @@ type Config struct {
 
 // AI represents optional AI provider configuration.
 type AI struct {
-	Provider       string `mapstructure:"provider"`        // provider name, currently "openai_compatible"
-	BaseURL        string `mapstructure:"base_url"`        // OpenAI-compatible API base URL
-	APIKey         string `mapstructure:"api_key"`         // bearer token for the provider
-	Model          string `mapstructure:"model"`           // chat completion model
-	TimeoutSeconds int    `mapstructure:"timeout_seconds"` // request timeout in seconds
+	Provider        string `mapstructure:"provider"`          // provider name, currently "openai_compatible"
+	BaseURL         string `mapstructure:"base_url"`          // OpenAI-compatible API base URL
+	APIKey          string `mapstructure:"api_key"`           // bearer token for the provider
+	Model           string `mapstructure:"model"`             // chat completion model
+	TimeoutSeconds  int    `mapstructure:"timeout_seconds"`   // request timeout in seconds
+	MaxOutputTokens int    `mapstructure:"max_output_tokens"` // generated-token cap for provider calls
 }
 
 // Load reads configuration from the given file path.
@@ -79,6 +80,9 @@ func normalizeAIConfig(ai AI) AI {
 	}
 	if ai.TimeoutSeconds == 0 {
 		ai.TimeoutSeconds = 30
+	}
+	if ai.MaxOutputTokens <= 0 {
+		ai.MaxOutputTokens = 2048
 	}
 	return ai
 }

@@ -1990,8 +1990,95 @@ Verification result on 2026-07-11:
 
 Remaining after this task:
 
-- The Assistant still depends on the configured model returning strict JSON; provider-native tool APIs and cost controls remain future work.
 - The DSL still lacks sketches, extrudes, fillets/chamfers, patterns, arbitrary-axis primitives, and CAD document History integration for generated DSL features.
+
+---
+
+### Task 17: OpenAI-compatible native tool calls and output token cap
+
+**Why this task exists:** Task 16 made generated LiteCAD DSL JSON safer, but the parametric run still depended on models placing the whole tool call into assistant message text. OpenAI-compatible chat completions support native function tools through `tools`, `tool_choice`, and `tool_calls`, and the provider request should include a generated-token cap before longer generation workflows are exposed.
+
+**Files:**
+- Modify: `internal/service/ai.go`
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/ai_provider_test.go`
+- Test: `internal/service/ai_tools_test.go`
+- Test: `internal/service/ai_test.go`
+- Modify: `internal/config/config.go`
+- Test: `internal/config/config_test.go`
+- Modify: `cmd/litecad/main.go`
+- Modify: `cmd/litecad/config.example.yaml`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- `AIChatToolClient` lets providers implement native function-tool calls.
+- `RunProjectAgentParametric(...)` uses native `build_parametric_model` tools when available and keeps strict JSON message fallback for providers that only implement `Chat(...)`.
+- The OpenAI-compatible client sends a function tool definition, forced `tool_choice`, and `max_completion_tokens`.
+- Config accepts `ai.max_output_tokens`, defaulting to `2048`.
+
+- [x] **Step 1: Write failing service/provider/config tests**
+
+Run:
+
+```bash
+go test ./internal/service -run 'TestAIParametricRunUsesNativeToolClient|TestOpenAICompatibleChatWithToolsSendsToolSchemaAndParsesToolCall'
+go test ./internal/config -run TestLoadAIConfig
+```
+
+Expected failures:
+
+- `AIChatToolClient`, `AIChatTool`, and `AIChatToolCall` do not exist.
+- OpenAI-compatible requests do not include `tools`, `tool_choice`, or `max_completion_tokens`.
+- `ai.max_output_tokens` is not loaded from config.
+
+Verification result on 2026-07-12:
+
+- Both commands failed as expected with missing tool-client types, missing request fields, and missing config field errors.
+
+- [x] **Step 2: Implement native tool-call path**
+
+Add provider-neutral tool definitions and calls, expose the `build_parametric_model` JSON schema as a native function tool, parse standard function `tool_calls`, and persist a canonical tool-call JSON body for Assistant history.
+
+- [x] **Step 3: Add output token cap config**
+
+Add `ai.max_output_tokens`, pass it into the OpenAI-compatible client, and send it as `max_completion_tokens`. Default non-positive values to `2048`.
+
+- [x] **Step 4: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+go test ./internal/service -run 'TestAIParametric|TestOpenAICompatible|TestSendProjectAgent'
+go test ./internal/config -run TestLoadAIConfig
+git diff --check
+task check
+task test
+task test-browser
+git add cmd/litecad internal docs TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(agent): use native parametric tool calls"
+git push
+```
+
+Expected:
+
+- Providers with native tool support no longer need to return the full tool call as message text.
+- Existing strict JSON fallback remains covered for provider clients without native tools.
+- AI provider requests include an explicit generated-token cap.
+
+Verification result on 2026-07-12:
+
+- `go test ./internal/service -run 'TestAIParametric|TestOpenAICompatible|TestSendProjectAgent'` passed.
+- `go test ./internal/config -run TestLoadAIConfig` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+- Code review found no blocking issues. The OpenAI-compatible request sends the function tool schema and forced tool choice, but does not force provider-specific strict schema mode because LiteCAD validates tool inputs server-side.
+
+Remaining after this task:
+
+- Assistant run failure states, provider telemetry, and richer provider-specific options remain future work.
+- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, patterns, arbitrary-axis primitives, and CAD document History integration for generated DSL features.
 
 ---
 
