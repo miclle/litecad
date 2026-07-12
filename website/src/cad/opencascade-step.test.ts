@@ -710,6 +710,66 @@ describe('runFeatureDSLExportWithKernel', () => {
     expect(result.exportedStepText).toContain('END-ISO-10303-21')
   })
 
+  it('builds additive sphere features before writing STEP', async () => {
+    const sphereShape = { name: 'sphere-shape' }
+    const buildSphere = vi.fn()
+    const transfer = vi.fn()
+    const write = vi.fn()
+    const openCascade = {
+      FS: {
+        readFile: vi.fn(() => 'ISO-10303-21;\nEND-ISO-10303-21;'),
+        unlink: vi.fn(),
+      },
+      IFSelect_ReturnStatus: {
+        IFSelect_RetDone: 1,
+      },
+      STEPControl_StepModelType: {
+        STEPControl_AsIs: 0,
+      },
+      STEPControl_Writer_1: vi.fn(function writer(this: {
+        Transfer: typeof transfer
+        Write: typeof write
+      }) {
+        this.Transfer = transfer.mockReturnValue(1)
+        this.Write = write.mockReturnValue(1)
+      }),
+      gp_Pnt_3: vi.fn(function point(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      BRepPrimAPI_MakeSphere_5: vi.fn(function makeSphere(
+        this: { Build: typeof buildSphere; Shape: () => unknown },
+        center: unknown,
+        radius: number,
+      ) {
+        expect(center).toBeDefined()
+        expect(radius).toBe(17)
+        this.Build = buildSphere
+        this.Shape = () => sphereShape
+      }),
+      Message_ProgressRange_1: vi.fn(function progressRange() {}),
+    }
+
+    const result = await runFeatureDSLExportWithKernel(openCascade, {
+      filename: 'ball.step',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        parameters: {
+          ball_diameter: { type: 'number', default: 30 },
+        },
+        features: [{ id: 'ball', type: 'sphere', origin: [4, 5, 6], diameter: 'ball_diameter' }],
+      },
+      parameterValues: { ball_diameter: 34 },
+    })
+
+    expect(openCascade.gp_Pnt_3).toHaveBeenCalledWith(4, 5, 6)
+    expect(buildSphere).toHaveBeenCalledOnce()
+    expect(transfer).toHaveBeenCalledWith(sphereShape, 0, true, expect.anything())
+    expect(result.exportedStepText).toContain('END-ISO-10303-21')
+  })
+
   it('rejects cylinder axes that resolve to zero before building OCCT directions', async () => {
     const openCascade = {
       FS: {

@@ -197,6 +197,36 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts LiteCAD feature DSL sphere features', () => {
+    const document = {
+      version: 1,
+      unit: 'millimetre',
+      parameters: {
+        ball_diameter: { type: 'number', default: 30, min: 1, max: 120 },
+      },
+      features: [
+        {
+          id: 'ball',
+          type: 'sphere',
+          origin: [0, 0, 0],
+          diameter: 'ball_diameter',
+        },
+      ],
+    }
+
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-sphere-preview',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'sphere.lcad.json',
+          document,
+          parameterValues: { ball_diameter: 34 },
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('accepts LiteCAD feature DSL box-cut features for rectangular pockets and slots', () => {
     expect(
       isCadKernelRequest({

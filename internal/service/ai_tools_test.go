@@ -26,6 +26,22 @@ func TestAIParametricToolCallParser(t *testing.T) {
 	if call.Input.Title != "Mounting bracket" || call.Input.Version != "v1" || call.Input.SourceKind != "openscad" || call.Input.Code == "" {
 		t.Fatalf("call input = %+v", call.Input)
 	}
+
+	call, err = ParseAIParametricToolCall("```json\n" + `{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Fenced sphere",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"body\",\"type\":\"sphere\",\"origin\":[0,0,0],\"diameter\":30}]}"
+  }
+}` + "\n```")
+	if err != nil {
+		t.Fatalf("ParseAIParametricToolCall fenced JSON returned error: %v", err)
+	}
+	if call.Input.Title != "Fenced sphere" || !strings.Contains(call.Input.Code, `"sphere"`) {
+		t.Fatalf("parsed fenced call = %+v", call)
+	}
 }
 
 func TestAIParametricToolCallParserAcceptsLiteCADFeatureDSL(t *testing.T) {
@@ -167,7 +183,7 @@ func TestAIParametricToolCallParserNormalizesProviderLiteCADDSLShorthand(t *test
 
 func TestAIParametricToolCallParserRejectsMalformedLiteCADFeatureDSL(t *testing.T) {
 	for _, output := range []string{
-		`{"tool":"build_parametric_model","input":{"title":"Unknown feature","version":"v1","source_kind":"litecad-feature-dsl","code":"{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"base\",\"type\":\"sphere\",\"radius\":4}]}"}}`,
+		`{"tool":"build_parametric_model","input":{"title":"Unknown feature","version":"v1","source_kind":"litecad-feature-dsl","code":"{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"base\",\"type\":\"cone\",\"radius\":4}]}"}}`,
 		`{"tool":"build_parametric_model","input":{"title":"Ambiguous cylinder","version":"v1","source_kind":"litecad-feature-dsl","code":"{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"boss\",\"type\":\"cylinder\",\"origin\":[0,0,0],\"radius\":4,\"diameter\":8,\"height\":10}]}"}}`,
 		`{"tool":"build_parametric_model","input":{"title":"Undeclared parameter","version":"v1","source_kind":"litecad-feature-dsl","code":"{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"base\",\"type\":\"box\",\"size\":[\"width\",40,6]}]}"}}`,
 		`{"tool":"build_parametric_model","input":{"title":"Inverted range","version":"v1","source_kind":"litecad-feature-dsl","code":"{\"version\":1,\"unit\":\"millimetre\",\"parameters\":{\"width\":{\"type\":\"number\",\"default\":8,\"min\":10,\"max\":6}},\"features\":[{\"id\":\"base\",\"type\":\"box\",\"size\":[\"width\",40,6]}]}"}}`,

@@ -580,7 +580,7 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 
 func isLiteCADFeatureDSLSolidFeature(featureType string) bool {
 	switch featureType {
-	case "box", "extrude", "cylinder", "box_cut", "extrude_cut", "cylinder_cut":
+	case "box", "extrude", "cylinder", "sphere", "box_cut", "extrude_cut", "cylinder_cut":
 		return true
 	default:
 		return false
@@ -663,6 +663,8 @@ func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature
 		return validateLiteCADFeatureDSLExtrudeCutFeature(feature, parameters.numeric)
 	case "cylinder":
 		return validateLiteCADFeatureDSLCylinderLikeFeature(feature, "height", feature.Height, parameters.numeric)
+	case "sphere":
+		return validateLiteCADFeatureDSLSphereFeature(feature, parameters.numeric)
 	case "cylinder_cut":
 		if !hasPriorSolid {
 			return ErrInvalidProjectParametricArtifactInput
@@ -781,6 +783,24 @@ func validateLiteCADFeatureDSLCylinderLikeFeature(feature liteCADFeatureDSLValid
 		return fmt.Errorf("%w: missing cylinder %s", ErrInvalidProjectParametricArtifactInput, lengthName)
 	}
 	return validateLiteCADFeatureDSLExpression(lengthValue, parameterNames)
+}
+
+func validateLiteCADFeatureDSLSphereFeature(feature liteCADFeatureDSLValidationFeature, parameterNames map[string]struct{}) error {
+	if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameterNames); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLRepeat(feature.Repeat, parameterNames); err != nil {
+		return err
+	}
+	hasRadius := feature.Radius != nil
+	hasDiameter := feature.Diameter != nil
+	if hasRadius == hasDiameter {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	if hasRadius {
+		return validateLiteCADFeatureDSLPositiveExpression(feature.Radius, parameterNames)
+	}
+	return validateLiteCADFeatureDSLPositiveExpression(feature.Diameter, parameterNames)
 }
 
 func validateLiteCADFeatureDSLRepeat(repeat *liteCADFeatureDSLValidationRepeat, parameterNames map[string]struct{}) error {

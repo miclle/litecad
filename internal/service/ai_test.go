@@ -95,7 +95,7 @@ func TestSendProjectAgentMessageUsesProjectContext(t *testing.T) {
 		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
 	}
 
-	reply, err := svc.SendProjectAgentMessage(ctx, ProjectAgentMessageInput{
+	result, err := svc.SendProjectAgentMessage(ctx, ProjectAgentMessageInput{
 		OwnerUserID:    user.ID,
 		ProjectID:      project.ID,
 		ConversationID: conversation.ID,
@@ -106,8 +106,8 @@ func TestSendProjectAgentMessageUsesProjectContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendProjectAgentMessage returned error: %v", err)
 	}
-	if reply.Role != "assistant" || reply.Body != "The bracket source is ready to inspect." {
-		t.Fatalf("reply = %+v", reply)
+	if result.Message.Role != "assistant" || result.Message.Body != "The bracket source is ready to inspect." || result.Artifact != nil {
+		t.Fatalf("result = %+v", result)
 	}
 
 	joined := joinAIMessageBodies(aiClient.messages)
@@ -292,6 +292,144 @@ func TestNewProjectAgentConversationStartsWithoutOldMessages(t *testing.T) {
 	}
 	if !strings.Contains(joined, "Fresh prompt only.") {
 		t.Fatalf("new conversation provider context should include fresh prompt, got:\n%s", joined)
+	}
+}
+
+func TestSendProjectAgentMessagePersistsJSONToolReplyAsArtifact(t *testing.T) {
+	svc := newTestService(t)
+	svc.aiClient = &recordingAIClient{reply: `{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Sphere 50 mm",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":1,\"unit\":\"millimetre\",\"parameters\":{\"diameter\":{\"type\":\"number\",\"default\":50,\"min\":1,\"max\":200}},\"features\":[{\"id\":\"body\",\"type\":\"sphere\",\"origin\":[0,0,0],\"diameter\":\"diameter\"}]}"
+  }
+}`}
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "agent-json-tool-artifact@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Sphere study",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Direct sphere",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	result, err := svc.SendProjectAgentMessage(ctx, ProjectAgentMessageInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
+		Messages: []AIChatMessage{
+			{Role: "user", Body: "添加一个直径 50 的球"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SendProjectAgentMessage returned error: %v", err)
+	}
+	if result.Message.Role != "assistant" || !strings.Contains(result.Message.Body, "build_parametric_model") {
+		t.Fatalf("result = %+v", result)
+	}
+	if result.Artifact == nil || result.Artifact.Title != "Sphere 50 mm" {
+		t.Fatalf("result artifact = %+v", result.Artifact)
+	}
+
+	artifacts, err := svc.ListProjectParametricArtifacts(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("ListProjectParametricArtifacts returned error: %v", err)
+	}
+	if len(artifacts) != 1 || artifacts[0].Title != "Sphere 50 mm" || artifacts[0].GenerationToolMode != "json_fallback" || artifacts[0].MessageID != result.Message.ID {
+		t.Fatalf("artifacts = %+v", artifacts)
+	}
+}
+
+func TestSendProjectAgentMessagePersistsToolFailureForInvalidJSONToolReply(t *testing.T) {
+	svc := newTestService(t)
+	svc.aiClient = &recordingAIClient{reply: `{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Impossible Cone",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"body\",\"type\":\"cone\",\"origin\":[0,0,0],\"diameter\":30,\"height\":20}]}"
+  }
+}`}
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "agent-json-tool-failure@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Invalid tool study",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Invalid JSON tool reply",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	result, err := svc.SendProjectAgentMessage(ctx, ProjectAgentMessageInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
+		Messages: []AIChatMessage{
+			{Role: "user", Body: "Create a cone"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SendProjectAgentMessage returned error: %v", err)
+	}
+	if result.Artifact != nil {
+		t.Fatalf("result artifact = %+v, want nil", result.Artifact)
+	}
+	if result.Message.Body != aiParametricInvalidToolFailureMessage {
+		t.Fatalf("result message body = %q", result.Message.Body)
+	}
+
+	artifacts, err := svc.ListProjectParametricArtifacts(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("ListProjectParametricArtifacts returned error: %v", err)
+	}
+	if len(artifacts) != 0 {
+		t.Fatalf("artifacts = %+v, want none", artifacts)
+	}
+	messages, err := svc.ListProjectAgentMessages(ctx, user.ID, project.ID, conversation.ID)
+	if err != nil {
+		t.Fatalf("ListProjectAgentMessages returned error: %v", err)
+	}
+	if len(messages) != 2 || messages[1].Body != aiParametricInvalidToolFailureMessage {
+		t.Fatalf("messages = %+v", messages)
+	}
+	if strings.Contains(messages[1].Body, "Impossible Cone") || strings.Contains(messages[1].Body, "build_parametric_model") {
+		t.Fatalf("assistant failure body should not store raw invalid provider output: %q", messages[1].Body)
 	}
 }
 

@@ -272,6 +272,7 @@ export interface ProjectAgentConversationsResponse {
 
 export interface ProjectAgentMessageResponse {
   message: ProjectAgentMessage
+  artifact?: ProjectParametricArtifact
 }
 
 export interface ProjectAgentParametricRunResponse {

@@ -3,6 +3,8 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"strings"
+
 	"github.com/miclle/litecad/internal/service"
 	"net/http"
 	"testing"
@@ -184,6 +186,96 @@ func TestProjectAgentRouteRequiresAIConfiguration(t *testing.T) {
 	}, sessionCookie)
 	if agent.Code != http.StatusServiceUnavailable {
 		t.Fatalf("agent status = %d, want %d, body = %s", agent.Code, http.StatusServiceUnavailable, agent.Body.String())
+	}
+}
+
+func TestProjectAgentRouteCreatesArtifactFromJSONToolMessage(t *testing.T) {
+	router := newTestRouterWithAI(t, testAIClient{reply: `{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Sphere 50 mm",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":1,\"unit\":\"millimetre\",\"parameters\":{\"diameter\":{\"type\":\"number\",\"default\":50,\"min\":1,\"max\":200}},\"features\":[{\"id\":\"body\",\"type\":\"sphere\",\"origin\":[0,0,0],\"diameter\":\"diameter\"}]}"
+  }
+}`})
+
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name":     "Ada Lovelace",
+		"email":    "agent-message-json-tool-route@example.com",
+		"password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+	create := postJSONWithCookie(t, router, "/api/v1/projects", map[string]string{
+		"name": "Agent JSON tool message project",
+	}, sessionCookie)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", create.Code, create.Body.String())
+	}
+	var createResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	conversation := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations", map[string]string{
+		"title": "JSON tool message",
+	}, sessionCookie)
+	if conversation.Code != http.StatusOK {
+		t.Fatalf("conversation status = %d, body = %s", conversation.Code, conversation.Body.String())
+	}
+	var conversationResponse struct {
+		Conversation struct {
+			ID string `json:"id"`
+		} `json:"conversation"`
+	}
+	if err := json.Unmarshal(conversation.Body.Bytes(), &conversationResponse); err != nil {
+		t.Fatalf("decode conversation response: %v", err)
+	}
+
+	agent := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations/"+conversationResponse.Conversation.ID+"/messages", map[string]any{
+		"messages": []map[string]string{
+			{"role": "user", "body": "添加一个直径 50 的球"},
+		},
+	}, sessionCookie)
+	if agent.Code != http.StatusOK {
+		t.Fatalf("agent status = %d, body = %s", agent.Code, agent.Body.String())
+	}
+	var agentResponse projectAgentMessageResponse
+	if err := json.Unmarshal(agent.Body.Bytes(), &agentResponse); err != nil {
+		t.Fatalf("decode agent response: %v", err)
+	}
+	if agentResponse.Message.Role != "assistant" || !strings.Contains(agentResponse.Message.Body, "build_parametric_model") {
+		t.Fatalf("agent response = %+v", agentResponse.Message)
+	}
+	if agentResponse.Artifact == nil || agentResponse.Artifact.Title != "Sphere 50 mm" || agentResponse.Artifact.MessageID != agentResponse.Message.ID {
+		t.Fatalf("agent artifact = %+v", agentResponse.Artifact)
+	}
+
+	artifacts := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/parametric-artifacts", sessionCookie)
+	if artifacts.Code != http.StatusOK {
+		t.Fatalf("artifacts status = %d, body = %s", artifacts.Code, artifacts.Body.String())
+	}
+	var artifactsResponse struct {
+		Artifacts []struct {
+			Title              string `json:"title"`
+			SourceKind         string `json:"source_kind"`
+			GenerationToolMode string `json:"generation_tool_mode"`
+		} `json:"artifacts"`
+	}
+	if err := json.Unmarshal(artifacts.Body.Bytes(), &artifactsResponse); err != nil {
+		t.Fatalf("decode artifacts response: %v", err)
+	}
+	if len(artifactsResponse.Artifacts) != 1 ||
+		artifactsResponse.Artifacts[0].Title != "Sphere 50 mm" ||
+		artifactsResponse.Artifacts[0].SourceKind != "litecad-feature-dsl" ||
+		artifactsResponse.Artifacts[0].GenerationToolMode != "json_fallback" {
+		t.Fatalf("artifacts response = %+v", artifactsResponse.Artifacts)
 	}
 }
 

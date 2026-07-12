@@ -33,7 +33,8 @@ type projectAgentConversationsResponse struct {
 }
 
 type projectAgentMessageResponse struct {
-	Message service.ProjectAgentMessage `json:"message"`
+	Message  service.ProjectAgentMessage        `json:"message"`
+	Artifact *service.ProjectParametricArtifact `json:"artifact,omitempty"`
 }
 
 type projectAgentMessagesResponse struct {
@@ -87,13 +88,13 @@ func (ctrl *Ctrl) SendProjectAgentMessage(c *fox.Context, req *projectAgentMessa
 	if err != nil {
 		return projectAgentMessageResponse{}, err
 	}
-	message, err := ctrl.service.SendProjectAgentMessage(c.Request.Context(), service.ProjectAgentMessageInput{
+	result, err := ctrl.service.SendProjectAgentMessage(c.Request.Context(), service.ProjectAgentMessageInput{
 		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), ConversationID: c.Param("conversationID"), Messages: req.Messages,
 	})
 	if err != nil {
 		return projectAgentMessageResponse{}, projectError(err)
 	}
-	return projectAgentMessageResponse{Message: message}, nil
+	return projectAgentMessageResponse{Message: result.Message, Artifact: result.Artifact}, nil
 }
 
 // RunProjectAgentParametric asks the Assistant to create a project-owned parametric artifact draft.

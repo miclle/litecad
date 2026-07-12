@@ -16,7 +16,10 @@ export function formatParametricArtifactGenerationSummary(artifact: ProjectParam
 }
 
 function formatToolMode(toolMode: ProjectAgentParametricTelemetry['tool_mode']) {
-  return toolMode === 'native_tool' ? 'native tool' : 'JSON fallback'
+  if (toolMode === 'native_tool') {
+    return 'native tool'
+  }
+  return 'JSON fallback'
 }
 
 function formatDuration(durationMS: number) {

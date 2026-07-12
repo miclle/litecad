@@ -22,7 +22,7 @@ const (
 	maxAIChatMessageRunes                 = 4000
 	maxProjectAgentConversationTitleRunes = 120
 	defaultProjectAgentConversationTitle  = "Project chat"
-	cadAgentSystemPrompt                  = "You are CAD Agent inside LiteCAD. Help the user inspect CAD sources, metadata, design intent, and possible model changes. Be clear about the current product boundary: you can discuss and plan changes, but you cannot directly mutate persisted CAD geometry unless a dedicated tool is available."
+	cadAgentSystemPrompt                  = "You are CAD Agent inside LiteCAD. Help the user inspect CAD sources, metadata, design intent, and possible model changes. When a dedicated model-generation tool or JSON contract is available, use it to create project-owned parametric source artifacts instead of only describing manual steps."
 	defaultAITimeout                      = 90 * time.Second
 	defaultAITemperature                  = 0.2
 	defaultAIMaxOutputTokens              = 2048
@@ -78,6 +78,13 @@ type ProjectAgentMessageInput struct {
 	ProjectID      string
 	ConversationID string
 	Messages       []AIChatMessage
+}
+
+// ProjectAgentMessageResult is the CAD Agent reply plus any generated artifact
+// created from a model-building tool response.
+type ProjectAgentMessageResult struct {
+	Message  ProjectAgentMessage
+	Artifact *ProjectParametricArtifact
 }
 
 // ProjectAgentConversation is a persisted CAD Agent thread returned to the browser.
@@ -188,40 +195,42 @@ func (s *Service) ListProjectAgentMessages(ctx context.Context, ownerUserID, pro
 }
 
 // SendProjectAgentMessage sends the current conversation plus project context to the configured AI provider.
-func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgentMessageInput) (ProjectAgentMessage, error) {
-	if s.aiClient == nil {
-		return ProjectAgentMessage{}, ErrAIUnavailable
-	}
-
+func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgentMessageInput) (ProjectAgentMessageResult, error) {
 	ownerUserID := strings.TrimSpace(input.OwnerUserID)
 	projectID := strings.TrimSpace(input.ProjectID)
 	if ownerUserID == "" || projectID == "" {
-		return ProjectAgentMessage{}, ErrProjectNotFound
+		return ProjectAgentMessageResult{}, ErrProjectNotFound
 	}
 
 	messages, err := normalizeAIChatMessages(input.Messages)
 	if err != nil {
-		return ProjectAgentMessage{}, err
+		return ProjectAgentMessageResult{}, err
 	}
 	userMessage := messages[len(messages)-1]
 
+	if s.aiClient == nil {
+		return ProjectAgentMessageResult{}, ErrAIUnavailable
+	}
+
 	projectEntity, conversation, err := s.loadOwnedProjectAgentConversation(ctx, ownerUserID, projectID, input.ConversationID)
 	if err != nil {
-		return ProjectAgentMessage{}, err
+		return ProjectAgentMessageResult{}, err
 	}
 	project := publicProject(projectEntity)
 	models, err := s.ListProjectModels(ctx, ownerUserID, projectID)
 	if err != nil {
-		return ProjectAgentMessage{}, err
+		return ProjectAgentMessageResult{}, err
 	}
 	persistedMessages, err := s.listRecentProjectAgentMessages(ctx, project.ID, conversation.ID, maxAIChatMessages)
 	if err != nil {
-		return ProjectAgentMessage{}, err
+		return ProjectAgentMessageResult{}, err
 	}
 
-	providerMessages := make([]AIChatMessage, 0, len(persistedMessages)+2)
+	providerMessages := make([]AIChatMessage, 0, len(persistedMessages)+4)
 	providerMessages = append(providerMessages,
 		AIChatMessage{Role: "system", Body: cadAgentSystemPrompt},
+		AIChatMessage{Role: "system", Body: aiParametricSystemPrompt},
+		AIChatMessage{Role: "system", Body: aiParametricConversationPrompt},
 		AIChatMessage{Role: "system", Body: buildProjectAgentContext(project, models)},
 	)
 	for _, message := range persistedMessages {
@@ -231,11 +240,39 @@ func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgen
 
 	reply, err := s.aiClient.Chat(ctx, providerMessages)
 	if err != nil {
-		return ProjectAgentMessage{}, fmt.Errorf("send ai chat: %w", err)
+		return ProjectAgentMessageResult{}, fmt.Errorf("send ai chat: %w", err)
 	}
 	reply = strings.TrimSpace(reply)
 	if reply == "" {
-		return ProjectAgentMessage{}, fmt.Errorf("send ai chat: empty provider response")
+		return ProjectAgentMessageResult{}, fmt.Errorf("send ai chat: empty provider response")
+	}
+	call, err := ParseAIParametricToolCall(reply)
+	if err != nil && isAIParametricToolOutputAttempt(reply) {
+		message, persistErr := s.persistProjectAgentParametricFailureMessage(ctx, project.ID, conversation.ID, userMessage)
+		if persistErr != nil {
+			return ProjectAgentMessageResult{}, persistErr
+		}
+		return ProjectAgentMessageResult{Message: message}, nil
+	}
+	if err == nil {
+		run, err := s.persistProjectAgentParametricRun(ctx, project.ID, conversation.ID, userMessage, call, reply, ProjectAgentParametricTelemetry{
+			ToolMode:   aiParametricToolModeJSONFallback,
+			SourceKind: call.Input.SourceKind,
+			DurationMS: 0,
+		})
+		if err != nil {
+			return ProjectAgentMessageResult{}, err
+		}
+		message := ProjectAgentMessage{
+			ID:             run.Message.ID,
+			ProjectID:      run.Message.ProjectID,
+			ConversationID: run.Message.ConversationID,
+			Role:           run.Message.Role,
+			Body:           run.Message.Body,
+			CreatedAt:      run.Message.CreatedAt,
+			UpdatedAt:      run.Message.UpdatedAt,
+		}
+		return ProjectAgentMessageResult{Message: message, Artifact: &run.Artifact}, nil
 	}
 
 	var assistantMessage ProjectAgentMessage
@@ -251,9 +288,9 @@ func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgen
 		return nil
 	})
 	if err != nil {
-		return ProjectAgentMessage{}, err
+		return ProjectAgentMessageResult{}, err
 	}
-	return assistantMessage, nil
+	return ProjectAgentMessageResult{Message: assistantMessage}, nil
 }
 
 func (s *Service) loadOwnedProject(ctx context.Context, ownerUserID, projectID string) (entity.Project, error) {

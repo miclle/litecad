@@ -37,6 +37,7 @@ import {
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
   fetchProjectModels,
+  fetchProjectParametricArtifacts,
   runProjectAgentParametric,
   saveProjectParametricArtifactModel,
   sendProjectAgentConversationMessage,
@@ -86,6 +87,7 @@ import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
 import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
+import { displayAiChatBody, generatedArtifactTitleFromAIChatBody } from './project-agent-tool-message'
 import { ProjectAssistantPanel, type AiChatMessage } from './project-assistant-panel'
 import { buildFeatureDSLPreviewInput } from './project-feature-dsl-preview'
 import { ProjectHistoryPopover } from './project-history-popover'
@@ -178,18 +180,6 @@ function projectAgentErrorMessage(error: unknown) {
     return message
   }
   return 'Assistant could not answer right now. Check the AI provider configuration and try again.'
-}
-
-function displayAiChatBody(body: string) {
-  try {
-    const parsed = JSON.parse(body) as { tool?: string; input?: { title?: string } }
-    if (parsed.tool === 'build_parametric_model' && parsed.input?.title) {
-      return `Generated source draft: ${parsed.input.title}`
-    }
-  } catch {
-    return body
-  }
-  return body
 }
 
 function transformDraftFromTranslation(translation: CADTranslation): TransformDraft {
@@ -388,19 +378,44 @@ function ProjectView() {
       const response = await sendProjectAgentConversationMessage(projectId, activeAgentConversationID, {
         messages: [{ role: 'user', body: messageBody }],
       })
-      return response.data.message
+      return response.data
     },
-    onSuccess: async (message) => {
+    onSuccess: async ({ artifact, message }) => {
       setLocalAiChatMessages((currentMessages) => [
         ...currentMessages,
         {
-          id: message.id || `assistant-${Date.now()}`,
+          id: `local-assistant-${message.id || Date.now()}`,
           role: 'assistant',
           body: message.body,
         },
       ])
       await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })
       await queryClient.invalidateQueries({ queryKey: ['project-agent-messages', projectId, message.conversation_id] })
+      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
+      if (artifact) {
+        setParametricRunError('')
+        setRetryParametricPrompt('')
+        setSelectedParametricArtifact(artifact)
+        setSelectedModelID('')
+        setSelectedDocumentNodeID('')
+        setActiveCADTool('inspect')
+      } else {
+        const generatedTitle = generatedArtifactTitleFromAIChatBody(message.body)
+        if (generatedTitle) {
+          const artifacts = (await fetchProjectParametricArtifacts(projectId)).data.artifacts
+          const generatedArtifact =
+            artifacts.find((artifact) => artifact.message_id === message.id) ??
+            artifacts.find((artifact) => artifact.title === generatedTitle && artifact.conversation_id === message.conversation_id)
+          if (generatedArtifact) {
+            setParametricRunError('')
+            setRetryParametricPrompt('')
+            setSelectedParametricArtifact(generatedArtifact)
+            setSelectedModelID('')
+            setSelectedDocumentNodeID('')
+            setActiveCADTool('inspect')
+          }
+        }
+      }
       setLocalAiChatMessages([])
     },
     onError: (error) => {
@@ -429,7 +444,7 @@ function ProjectView() {
       setLocalAiChatMessages((currentMessages) => [
         ...currentMessages,
         {
-          id: message.id || `assistant-parametric-${Date.now()}`,
+          id: `local-assistant-parametric-${message.id || Date.now()}`,
           role: 'assistant',
           body: formatParametricRunSummary(artifact.title, telemetry),
         },
@@ -1276,7 +1291,12 @@ function ProjectView() {
   }
   const submitAiChat = () => {
     const messageBody = aiChatDraft.trim()
-    if (!messageBody || projectAgentMutation.isPending || activeAgentConversationID === '') {
+    if (
+      !messageBody ||
+      projectAgentMutation.isPending ||
+      projectAgentParametricMutation.isPending ||
+      activeAgentConversationID === ''
+    ) {
       return
     }
     setLocalAiChatMessages((currentMessages) => [
@@ -1288,7 +1308,11 @@ function ProjectView() {
   }
   const generateParametricArtifact = () => {
     const messageBody = aiChatDraft.trim()
-    if (!messageBody || projectAgentParametricMutation.isPending || activeAgentConversationID === '') {
+    if (
+      !messageBody ||
+      projectAgentParametricMutation.isPending ||
+      activeAgentConversationID === ''
+    ) {
       return
     }
     runParametricGeneration(messageBody)
@@ -1786,7 +1810,11 @@ function ProjectView() {
           activeConversationId={activeAgentConversationID}
           conversations={projectAgentConversations}
           draft={aiChatDraft}
-          isPending={projectAgentMutation.isPending || projectAgentParametricMutation.isPending || createProjectAgentConversationMutation.isPending}
+          isPending={
+            projectAgentMutation.isPending ||
+            projectAgentParametricMutation.isPending ||
+            createProjectAgentConversationMutation.isPending
+          }
           maxWidth={aiChatPanelMaxWidth}
           messages={aiChatMessages}
           onClose={closeAiChat}

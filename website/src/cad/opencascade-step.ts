@@ -310,6 +310,10 @@ function compileFeatureDSLShape(
         accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'height', origin))
         continue
       }
+      if (feature.type === 'sphere') {
+        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLSphereShape(openCascade, feature, parameters, origin))
+        continue
+      }
       if (feature.type === 'cylinder_cut') {
         if (!accumulatedShape) {
           throw new Error(`Feature ${feature.id} cylinder_cut requires a prior solid feature`)
@@ -477,6 +481,28 @@ function buildFeatureDSLCylinderShape(
   return cylinderBuilder.Shape()
 }
 
+function buildFeatureDSLSphereShape(
+  openCascade: OpenCascadeModule,
+  feature: {
+    id: string
+    origin: readonly CadKernelFeatureDSLExpression[]
+    radius?: CadKernelFeatureDSLExpression
+    diameter?: CadKernelFeatureDSLExpression
+  },
+  parameters: Record<string, number>,
+  repeatedOrigin?: readonly number[],
+) {
+  const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin, parameters)
+  const radius = resolveFeatureDSLRadius(feature, parameters, 'sphere')
+  if (radius <= 0) {
+    throw new Error(`Feature ${feature.id} sphere dimensions must be positive`)
+  }
+  const center = new openCascade.gp_Pnt_3(origin[0] ?? 0, origin[1] ?? 0, origin[2] ?? 0)
+  const sphereBuilder = new openCascade.BRepPrimAPI_MakeSphere_5(center, radius)
+  sphereBuilder.Build(new openCascade.Message_ProgressRange_1())
+  return sphereBuilder.Shape()
+}
+
 function resolveFeatureDSLRepeatedOrigins(
   feature: { id: string; origin?: readonly CadKernelFeatureDSLExpression[]; repeat?: { count: number; step: readonly CadKernelFeatureDSLExpression[] } },
   parameters: Record<string, number>,
@@ -496,11 +522,12 @@ function resolveFeatureDSLRepeatedOrigins(
 function resolveFeatureDSLRadius(
   feature: { id: string; radius?: CadKernelFeatureDSLExpression; diameter?: CadKernelFeatureDSLExpression },
   parameters: Record<string, number>,
+  label = 'cylinder',
 ) {
   const hasRadius = feature.radius !== undefined
   const hasDiameter = feature.diameter !== undefined
   if (hasRadius === hasDiameter) {
-    throw new Error(`Feature ${feature.id} cylinder requires exactly one of radius or diameter`)
+    throw new Error(`Feature ${feature.id} ${label} requires exactly one of radius or diameter`)
   }
   if (hasRadius) {
     return resolveFeatureDSLScalar(feature.radius ?? 0, parameters)
