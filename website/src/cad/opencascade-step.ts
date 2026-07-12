@@ -2,6 +2,7 @@ import type {
   CadKernelFeatureDSLArithmeticExpression,
   CadKernelFeatureDSLCircleSketch,
   CadKernelFeatureDSLDocument,
+  CadKernelFeatureDSLExtrudeDirection,
   CadKernelFeatureDSLExpression,
   CadKernelFeatureDSLInput,
   CadKernelFeatureDSLSketch,
@@ -381,17 +382,19 @@ function buildFeatureDSLExtrudeShape(
     origin?: readonly CadKernelFeatureDSLExpression[]
     sketch: CadKernelFeatureDSLSketch
     height: CadKernelFeatureDSLExpression
+    direction?: CadKernelFeatureDSLExtrudeDirection
   },
   parameters: Record<string, number>,
   repeatedOrigin?: readonly number[],
 ) {
   const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin ?? [0, 0, 0], parameters)
   const height = resolveFeatureDSLScalar(feature.height, parameters)
+  const directedOrigin = resolveFeatureDSLDirectedOrigin(feature.id, origin, height, feature.direction)
   if (feature.sketch.type === 'circle') {
-    return buildFeatureDSLCirclePrismShape(openCascade, feature.id, origin, feature.sketch, parameters, height, 'extrude')
+    return buildFeatureDSLCirclePrismShape(openCascade, feature.id, directedOrigin, feature.sketch, parameters, height, 'extrude')
   }
   const sketchSize = resolveFeatureDSLVector(feature.sketch.size, parameters)
-  return buildFeatureDSLRectanglePrismShape(openCascade, feature.id, origin, sketchSize, height, 'extrude')
+  return buildFeatureDSLRectanglePrismShape(openCascade, feature.id, directedOrigin, sketchSize, height, 'extrude')
 }
 
 function buildFeatureDSLExtrudeCutShape(
@@ -401,17 +404,19 @@ function buildFeatureDSLExtrudeCutShape(
     origin: readonly CadKernelFeatureDSLExpression[]
     sketch: CadKernelFeatureDSLSketch
     depth: CadKernelFeatureDSLExpression
+    direction?: CadKernelFeatureDSLExtrudeDirection
   },
   parameters: Record<string, number>,
   repeatedOrigin?: readonly number[],
 ) {
   const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin, parameters)
   const depth = resolveFeatureDSLScalar(feature.depth, parameters)
+  const directedOrigin = resolveFeatureDSLDirectedOrigin(feature.id, origin, depth, feature.direction)
   if (feature.sketch.type === 'circle') {
-    return buildFeatureDSLCirclePrismShape(openCascade, feature.id, origin, feature.sketch, parameters, depth, 'extrude_cut')
+    return buildFeatureDSLCirclePrismShape(openCascade, feature.id, directedOrigin, feature.sketch, parameters, depth, 'extrude_cut')
   }
   const sketchSize = resolveFeatureDSLVector(feature.sketch.size, parameters)
-  return buildFeatureDSLRectanglePrismShape(openCascade, feature.id, origin, sketchSize, depth, 'extrude_cut')
+  return buildFeatureDSLRectanglePrismShape(openCascade, feature.id, directedOrigin, sketchSize, depth, 'extrude_cut')
 }
 
 function buildFeatureDSLCirclePrismShape(
@@ -513,6 +518,24 @@ function resolveFeatureDSLCircleRadius(featureID: string, sketch: CadKernelFeatu
     return resolveFeatureDSLScalar(sketch.radius ?? 0, parameters)
   }
   return resolveFeatureDSLScalar(sketch.diameter ?? 0, parameters) / 2
+}
+
+function resolveFeatureDSLDirectedOrigin(
+  featureID: string,
+  origin: readonly number[],
+  length: number,
+  direction: CadKernelFeatureDSLExtrudeDirection = 'positive',
+) {
+  if (direction === 'positive') {
+    return origin
+  }
+  if (direction === 'negative') {
+    return [origin[0] ?? 0, origin[1] ?? 0, (origin[2] ?? 0) - length]
+  }
+  if (direction === 'symmetric') {
+    return [origin[0] ?? 0, origin[1] ?? 0, (origin[2] ?? 0) - length / 2]
+  }
+  throw new Error(`Feature ${featureID} extrude direction is invalid`)
 }
 
 function resolveFeatureDSLParameters(document: CadKernelFeatureDSLDocument, parameterValues: Record<string, number>) {

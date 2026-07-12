@@ -102,12 +102,15 @@ export type CadKernelFeatureDSLCircleSketch = {
 
 export type CadKernelFeatureDSLSketch = CadKernelFeatureDSLRectangleSketch | CadKernelFeatureDSLCircleSketch
 
+export type CadKernelFeatureDSLExtrudeDirection = 'positive' | 'negative' | 'symmetric'
+
 export type CadKernelFeatureDSLExtrudeFeature = {
   id: string
   type: 'extrude'
   origin?: readonly CadKernelFeatureDSLExpression[]
   sketch: CadKernelFeatureDSLSketch
   height: CadKernelFeatureDSLExpression
+  direction?: CadKernelFeatureDSLExtrudeDirection
   repeat?: CadKernelFeatureDSLRepeat
 }
 
@@ -117,6 +120,7 @@ export type CadKernelFeatureDSLExtrudeCutFeature = {
   origin: readonly CadKernelFeatureDSLExpression[]
   sketch: CadKernelFeatureDSLSketch
   depth: CadKernelFeatureDSLExpression
+  direction?: CadKernelFeatureDSLExtrudeDirection
   repeat?: CadKernelFeatureDSLRepeat
 }
 
@@ -385,6 +389,7 @@ function isFeatureDSLExtrudeFeature(value: Record<string, unknown>) {
     (value.origin === undefined || isFeatureDSLExpressionTuple(value.origin, 3)) &&
     isFeatureDSLSketch(value.sketch) &&
     isFeatureDSLExpression(value.height) &&
+    (value.direction === undefined || isFeatureDSLExtrudeDirection(value.direction)) &&
     (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
   )
 }
@@ -394,8 +399,13 @@ function isFeatureDSLExtrudeCutFeature(value: Record<string, unknown>) {
     isFeatureDSLExpressionTuple(value.origin, 3) &&
     isFeatureDSLSketch(value.sketch) &&
     isFeatureDSLExpression(value.depth) &&
+    (value.direction === undefined || isFeatureDSLExtrudeDirection(value.direction)) &&
     (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
   )
+}
+
+function isFeatureDSLExtrudeDirection(value: unknown): value is CadKernelFeatureDSLExtrudeDirection {
+  return value === 'positive' || value === 'negative' || value === 'symmetric'
 }
 
 function isFeatureDSLSketch(value: unknown): value is CadKernelFeatureDSLSketch {

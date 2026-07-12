@@ -283,6 +283,40 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts LiteCAD feature DSL sketch extrusion directions', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-directed-extrude-preview',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'directed-extrudes.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            features: [
+              {
+                id: 'base',
+                type: 'extrude',
+                origin: [0, 0, 6],
+                sketch: { type: 'rectangle', size: [80, 40] },
+                height: 6,
+                direction: 'negative',
+              },
+              {
+                id: 'slot',
+                type: 'extrude_cut',
+                origin: [30, 14, 3],
+                sketch: { type: 'rectangle', size: [20, 10] },
+                depth: 8,
+                direction: 'symmetric',
+              },
+            ],
+          },
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('accepts LiteCAD feature DSL circular sketch extrudes', () => {
     expect(
       isCadKernelRequest({

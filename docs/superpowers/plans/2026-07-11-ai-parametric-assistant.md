@@ -3210,6 +3210,88 @@ Verification results on 2026-07-12:
 
 ---
 
+### Task 31: LiteCAD feature DSL sketch extrusion directions
+
+**Why this task exists:** Rectangular and circular sketch extrudes currently default to positive Z only. Generated mechanical parts often need downward pockets and through-cuts centered on a sketch plane. This task adds a small direction enum for sketch extrusion placement without adding arbitrary-axis sketch extrudes, taper, revolve, or a full sketch constraint system.
+
+**Files:**
+- Modify: `website/src/cad/kernel-protocol.ts`
+- Test: `website/src/cad/kernel-protocol.test.ts`
+- Modify: `website/src/cad/opencascade-step.ts`
+- Test: `website/src/cad/opencascade-step.test.ts`
+- Modify: `internal/service/parametric_artifact.go`
+- Test: `internal/service/parametric_artifact_test.go`
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/ai_tools_test.go`
+- Modify docs: `README.md`, `docs/ai-parametric-assistant.md`, `docs/browser-cad-kernel-roadmap.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- `extrude` and `extrude_cut` accept optional `direction`.
+- Supported values:
+  - omitted or `"positive"`: existing +Z behavior from the sketch plane.
+  - `"negative"`: place the prism/cylinder below the sketch plane by subtracting height/depth from origin Z.
+  - `"symmetric"`: center the prism/cylinder on the sketch plane by subtracting half height/depth from origin Z.
+- Direction applies to rectangular and circular sketch profiles, including repeated origins.
+- Direction does not add arbitrary-axis sketch extrudes, taper, revolve, bidirectional cylinder axes beyond existing cylinder primitives, or durable CAD document History integration.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsSketchExtrudeDirections|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedSketchExtrudeDirections|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+cd website && npx tsc -b
+```
+
+Observed RED results on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` failed because the worker still built negative extrudes from the original Z origin instead of moving the prism below the sketch plane.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsSketchExtrudeDirections|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedSketchExtrudeDirections|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` failed because backend validation accepted malformed directions and provider context did not mention direction/symmetric extrusion.
+- `cd website && npx tsc -b` failed because `direction` was not part of the current extrude feature type.
+
+- [x] **Step 2: Implement sketch extrusion directions**
+
+Extend the worker protocol type/guards, adjust the worker build origin for `negative` and `symmetric` sketch extrudes/cuts, validate the optional direction enum server-side, and update provider prompt/tool descriptions.
+
+Implemented on 2026-07-12 with protocol support, backend validation, worker origin adjustment, and Assistant guidance.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsSketchExtrudeDirections|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedSketchExtrudeDirections|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+cd website && npx tsc -b
+git diff --check
+task check
+task test
+task test-browser
+git add website/src/cad/kernel-protocol.ts website/src/cad/kernel-protocol.test.ts website/src/cad/opencascade-step.ts website/src/cad/opencascade-step.test.ts internal/service/parametric_artifact.go internal/service/parametric_artifact_test.go internal/service/ai_tools.go internal/service/ai_tools_test.go README.md docs/ai-parametric-assistant.md docs/browser-cad-kernel-roadmap.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(cad): add feature dsl extrude directions"
+git push
+```
+
+Expected:
+
+- Generated LiteCAD DSL can describe upward, downward, and sketch-plane-centered rectangular/circular extrudes and cuts.
+- Existing default positive-Z sketch extrudes remain unchanged.
+- Saved `.lcad.json` preview/export paths compile directed sketch extrudes through the browser OCCT worker.
+- Arbitrary-axis sketch extrudes, tapers, revolve, fillets/chamfers, freeform profiles, and durable CAD feature history remain future work.
+
+Verification results on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` passed.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsSketchExtrudeDirections|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedSketchExtrudeDirections|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` passed.
+- `cd website && npx tsc -b` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |
