@@ -2499,6 +2499,97 @@ Remaining after this task:
 
 ---
 
+### Task 23: Durable artifact generation telemetry
+
+**Why this task exists:** Task 22 returned run telemetry with the successful parametric response, but artifact list/detail reloads still lost the generation path. This task persists minimal generation telemetry on each generated artifact so later views can inspect how it was created without introducing a full provider analytics system.
+
+**Files:**
+- Modify: `internal/entity/entity.go`
+- Modify: `internal/service/parametric_artifact.go`
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/ai_tools_test.go`
+- Test: `internal/handler/project_agent_test.go`
+- Modify: `website/src/types/project.ts`
+- Test: `website/src/types/project-parametric-artifact.test.ts`
+- Update existing frontend fixtures: `website/src/views/project/index.tsx`, `website/src/views/project/parametric-artifact-editor.test.tsx`, `website/src/views/project/use-parametric-artifact-preview.test.ts`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- `ProjectParametricArtifact` includes `generation_tool_mode` and `generation_duration_ms`.
+- AI-created artifacts persist the same tool mode and duration from the successful parametric run.
+- Manually created or saved-model-derived temporary artifacts can keep empty/zero generation telemetry.
+- This is artifact-level generation metadata, not provider analytics, token accounting, or a durable run-history table.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+go test ./internal/service -run 'TestAIParametricRunCreatesPendingArtifact|TestAIParametricRunUsesNativeToolClient'
+go test ./internal/handler -run TestProjectAgentParametricRunRouteCreatesArtifact
+npm --prefix website test -- project-parametric-artifact
+cd website && npx tsc -b
+```
+
+Expected failures:
+
+- `ProjectParametricArtifact` has no generation telemetry fields.
+- Handler JSON artifact has empty generation telemetry.
+- TypeScript fixtures that satisfy `ProjectParametricArtifact` need the new fields.
+
+Verification result on 2026-07-12:
+
+- `go test ./internal/service -run 'TestAIParametricRunCreatesPendingArtifact|TestAIParametricRunUsesNativeToolClient'` failed as expected: `GenerationToolMode` and `GenerationDurationMS` were undefined.
+- `go test ./internal/handler -run TestProjectAgentParametricRunRouteCreatesArtifact` failed as expected: artifact generation telemetry was empty.
+- `cd website && npx tsc -b` failed as expected: frontend `ProjectParametricArtifact` fixtures and derived saved-model artifact objects were missing `generation_tool_mode` and `generation_duration_ms`.
+
+- [x] **Step 2: Persist telemetry on generated artifacts**
+
+Add entity/service/public/API fields, write telemetry from `RunProjectAgentParametric`, and keep non-AI artifact creation paths defaulting to empty/zero telemetry.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+go test ./internal/service -run 'TestAIParametricRunCreatesPendingArtifact|TestAIParametricRunUsesNativeToolClient'
+go test ./internal/handler -run TestProjectAgentParametricRunRouteCreatesArtifact
+npm --prefix website test -- project-parametric-artifact parametric-artifact-editor use-parametric-artifact-preview
+cd website && npx tsc -b
+git diff --check
+task check
+task test
+task test-browser
+git add internal/entity/entity.go internal/service/parametric_artifact.go internal/service/ai_tools.go internal/service/ai_tools_test.go internal/handler/project_agent_test.go website/src/types/project.ts website/src/types/project-parametric-artifact.test.ts website/src/views/project/index.tsx website/src/views/project/parametric-artifact-editor.test.tsx website/src/views/project/use-parametric-artifact-preview.test.ts docs/ai-parametric-assistant.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(agent): persist parametric artifact telemetry"
+git push
+```
+
+Expected:
+
+- Generated artifacts retain tool mode and duration after list/detail reloads.
+- Existing manual artifact flows and saved-model-derived editor flows keep valid default telemetry fields.
+- Full provider analytics, token accounting, streaming progress, and provider-specific tuning remain future work.
+
+Verification result on 2026-07-12:
+
+- `go test ./internal/service -run 'TestAIParametricRunCreatesPendingArtifact|TestAIParametricRunUsesNativeToolClient'` passed.
+- `go test ./internal/handler -run TestProjectAgentParametricRunRouteCreatesArtifact` passed.
+- `npm --prefix website test -- project-parametric-artifact parametric-artifact-editor use-parametric-artifact-preview` passed.
+- `cd website && npx tsc -b` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+- Code review found no blocking issues.
+
+Remaining after this task:
+
+- Full provider analytics, richer long-run progress details, and provider-specific tuning remain future work.
+- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, and CAD document History integration for generated DSL features.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

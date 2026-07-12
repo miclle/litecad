@@ -584,6 +584,8 @@ function ProjectView() {
       compile_status: 'success',
       compile_error: '',
       preview_model_id: selectedSourceModel.id,
+      generation_tool_mode: '',
+      generation_duration_ms: 0,
       created_at: selectedSourceModel.created_at,
       updated_at: selectedSourceModel.updated_at,
     }

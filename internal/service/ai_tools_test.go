@@ -141,6 +141,9 @@ func TestAIParametricRunCreatesPendingArtifact(t *testing.T) {
 	if run.Telemetry.ToolMode != "json_fallback" || run.Telemetry.SourceKind != "openscad" || run.Telemetry.DurationMS < 0 {
 		t.Fatalf("telemetry = %+v", run.Telemetry)
 	}
+	if run.Artifact.GenerationToolMode != "json_fallback" || run.Artifact.GenerationDurationMS < 0 {
+		t.Fatalf("artifact generation telemetry = %+v", run.Artifact)
+	}
 
 	messages, err := svc.ListProjectAgentMessages(ctx, user.ID, project.ID, conversation.ID)
 	if err != nil {
@@ -148,6 +151,13 @@ func TestAIParametricRunCreatesPendingArtifact(t *testing.T) {
 	}
 	if len(messages) != 2 || messages[0].Role != "user" || messages[1].Role != "assistant" {
 		t.Fatalf("messages = %+v", messages)
+	}
+	artifacts, err := svc.ListProjectParametricArtifacts(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("ListProjectParametricArtifacts returned error: %v", err)
+	}
+	if len(artifacts) != 1 || artifacts[0].GenerationToolMode != "json_fallback" || artifacts[0].GenerationDurationMS < 0 {
+		t.Fatalf("persisted artifact telemetry = %+v", artifacts)
 	}
 }
 
@@ -264,6 +274,9 @@ func TestAIParametricRunUsesNativeToolClient(t *testing.T) {
 	}
 	if run.Telemetry.ToolMode != "native_tool" || run.Telemetry.SourceKind != "litecad-feature-dsl" || run.Telemetry.DurationMS < 0 {
 		t.Fatalf("telemetry = %+v", run.Telemetry)
+	}
+	if run.Artifact.GenerationToolMode != "native_tool" || run.Artifact.GenerationDurationMS < 0 {
+		t.Fatalf("artifact generation telemetry = %+v", run.Artifact)
 	}
 }
 

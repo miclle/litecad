@@ -296,6 +296,8 @@ export interface ProjectParametricArtifact {
   compile_status: 'pending' | 'success' | 'error'
   compile_error: string
   preview_model_id: string
+  generation_tool_mode: '' | 'json_fallback' | 'native_tool'
+  generation_duration_ms: number
   created_at: string
   updated_at: string
 }

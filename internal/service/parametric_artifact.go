@@ -35,17 +35,19 @@ var (
 
 // CreateProjectParametricArtifactInput is the data required to persist generated parametric CAD source.
 type CreateProjectParametricArtifactInput struct {
-	OwnerUserID     string
-	ProjectID       string
-	ConversationID  string
-	MessageID       string
-	Title           string
-	SourceKind      string
-	SourceCode      string
-	ParameterValues map[string]any
-	CompileStatus   string
-	CompileError    string
-	PreviewModelID  string
+	OwnerUserID          string
+	ProjectID            string
+	ConversationID       string
+	MessageID            string
+	Title                string
+	SourceKind           string
+	SourceCode           string
+	ParameterValues      map[string]any
+	CompileStatus        string
+	CompileError         string
+	PreviewModelID       string
+	GenerationToolMode   string
+	GenerationDurationMS int64
 }
 
 // UpdateProjectParametricArtifactInput is the data required to replace editable parametric artifact fields.
@@ -79,19 +81,21 @@ type UpdateParametricModelParametersInput struct {
 
 // ProjectParametricArtifact is a project-owned generated CAD source artifact.
 type ProjectParametricArtifact struct {
-	ID              string         `json:"id"`
-	ProjectID       string         `json:"project_id"`
-	ConversationID  string         `json:"conversation_id"`
-	MessageID       string         `json:"message_id"`
-	Title           string         `json:"title"`
-	SourceKind      string         `json:"source_kind"`
-	SourceCode      string         `json:"source_code"`
-	ParameterValues map[string]any `json:"parameter_values"`
-	CompileStatus   string         `json:"compile_status"`
-	CompileError    string         `json:"compile_error"`
-	PreviewModelID  string         `json:"preview_model_id"`
-	CreatedAt       string         `json:"created_at"`
-	UpdatedAt       string         `json:"updated_at"`
+	ID                   string         `json:"id"`
+	ProjectID            string         `json:"project_id"`
+	ConversationID       string         `json:"conversation_id"`
+	MessageID            string         `json:"message_id"`
+	Title                string         `json:"title"`
+	SourceKind           string         `json:"source_kind"`
+	SourceCode           string         `json:"source_code"`
+	ParameterValues      map[string]any `json:"parameter_values"`
+	CompileStatus        string         `json:"compile_status"`
+	CompileError         string         `json:"compile_error"`
+	PreviewModelID       string         `json:"preview_model_id"`
+	GenerationToolMode   string         `json:"generation_tool_mode"`
+	GenerationDurationMS int64          `json:"generation_duration_ms"`
+	CreatedAt            string         `json:"created_at"`
+	UpdatedAt            string         `json:"updated_at"`
 }
 
 // CreateProjectParametricArtifact persists generated parametric CAD source for a project.
@@ -118,17 +122,19 @@ func (s *Service) CreateProjectParametricArtifact(ctx context.Context, input Cre
 		return ProjectParametricArtifact{}, err
 	}
 	artifact := entity.ProjectParametricArtifact{
-		ID:                  artifactID,
-		ProjectID:           project.ID,
-		ConversationID:      strings.TrimSpace(input.ConversationID),
-		MessageID:           strings.TrimSpace(input.MessageID),
-		Title:               normalized.title,
-		SourceKind:          normalized.sourceKind,
-		SourceCode:          normalized.sourceCode,
-		ParameterValuesJSON: normalized.parameterValuesJSON,
-		CompileStatus:       normalized.compileStatus,
-		CompileError:        normalized.compileError,
-		PreviewModelID:      normalized.previewModelID,
+		ID:                   artifactID,
+		ProjectID:            project.ID,
+		ConversationID:       strings.TrimSpace(input.ConversationID),
+		MessageID:            strings.TrimSpace(input.MessageID),
+		Title:                normalized.title,
+		SourceKind:           normalized.sourceKind,
+		SourceCode:           normalized.sourceCode,
+		ParameterValuesJSON:  normalized.parameterValuesJSON,
+		CompileStatus:        normalized.compileStatus,
+		CompileError:         normalized.compileError,
+		PreviewModelID:       normalized.previewModelID,
+		GenerationToolMode:   strings.TrimSpace(input.GenerationToolMode),
+		GenerationDurationMS: max(input.GenerationDurationMS, 0),
 	}
 	if err := s.db.WithContext(ctx).Create(&artifact).Error; err != nil {
 		return ProjectParametricArtifact{}, fmt.Errorf("create project parametric artifact: %w", err)
@@ -684,19 +690,21 @@ func mergeParametricArtifactValuesIntoModelMetadata(model *entity.ProjectModel, 
 
 func publicProjectParametricArtifact(artifact entity.ProjectParametricArtifact) ProjectParametricArtifact {
 	return ProjectParametricArtifact{
-		ID:              artifact.ID,
-		ProjectID:       artifact.ProjectID,
-		ConversationID:  artifact.ConversationID,
-		MessageID:       artifact.MessageID,
-		Title:           artifact.Title,
-		SourceKind:      artifact.SourceKind,
-		SourceCode:      artifact.SourceCode,
-		ParameterValues: projectParametricArtifactParameters(artifact.ParameterValuesJSON),
-		CompileStatus:   artifact.CompileStatus,
-		CompileError:    artifact.CompileError,
-		PreviewModelID:  artifact.PreviewModelID,
-		CreatedAt:       artifact.CreatedAt.Format(timeFormatRFC3339),
-		UpdatedAt:       artifact.UpdatedAt.Format(timeFormatRFC3339),
+		ID:                   artifact.ID,
+		ProjectID:            artifact.ProjectID,
+		ConversationID:       artifact.ConversationID,
+		MessageID:            artifact.MessageID,
+		Title:                artifact.Title,
+		SourceKind:           artifact.SourceKind,
+		SourceCode:           artifact.SourceCode,
+		ParameterValues:      projectParametricArtifactParameters(artifact.ParameterValuesJSON),
+		CompileStatus:        artifact.CompileStatus,
+		CompileError:         artifact.CompileError,
+		PreviewModelID:       artifact.PreviewModelID,
+		GenerationToolMode:   artifact.GenerationToolMode,
+		GenerationDurationMS: artifact.GenerationDurationMS,
+		CreatedAt:            artifact.CreatedAt.Format(timeFormatRFC3339),
+		UpdatedAt:            artifact.UpdatedAt.Format(timeFormatRFC3339),
 	}
 }
 

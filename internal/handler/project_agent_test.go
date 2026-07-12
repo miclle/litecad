@@ -251,10 +251,12 @@ func TestProjectAgentParametricRunRouteCreatesArtifact(t *testing.T) {
 			} `json:"parts"`
 		} `json:"message"`
 		Artifact struct {
-			ID            string `json:"id"`
-			Title         string `json:"title"`
-			SourceKind    string `json:"source_kind"`
-			CompileStatus string `json:"compile_status"`
+			ID                   string `json:"id"`
+			Title                string `json:"title"`
+			SourceKind           string `json:"source_kind"`
+			CompileStatus        string `json:"compile_status"`
+			GenerationToolMode   string `json:"generation_tool_mode"`
+			GenerationDurationMS int64  `json:"generation_duration_ms"`
 		} `json:"artifact"`
 		Telemetry struct {
 			ToolMode   string `json:"tool_mode"`
@@ -270,6 +272,9 @@ func TestProjectAgentParametricRunRouteCreatesArtifact(t *testing.T) {
 	}
 	if runResponse.Artifact.ID == "" || runResponse.Artifact.Title != "Mounting bracket" || runResponse.Artifact.SourceKind != "openscad" || runResponse.Artifact.CompileStatus != "pending" {
 		t.Fatalf("run artifact = %+v", runResponse.Artifact)
+	}
+	if runResponse.Artifact.GenerationToolMode != "json_fallback" || runResponse.Artifact.GenerationDurationMS < 0 {
+		t.Fatalf("run artifact generation telemetry = %+v", runResponse.Artifact)
 	}
 	if runResponse.Telemetry.ToolMode != "json_fallback" || runResponse.Telemetry.SourceKind != "openscad" || runResponse.Telemetry.DurationMS < 0 {
 		t.Fatalf("run telemetry = %+v", runResponse.Telemetry)

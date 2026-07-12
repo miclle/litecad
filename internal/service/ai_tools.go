@@ -238,12 +238,14 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 			return err
 		}
 		artifact, err := createProjectParametricArtifactInDB(ctx, tx, project.ID, CreateProjectParametricArtifactInput{
-			ConversationID: conversation.ID,
-			MessageID:      assistantMessage.ID,
-			Title:          call.Input.Title,
-			SourceKind:     call.Input.SourceKind,
-			SourceCode:     call.Input.Code,
-			CompileStatus:  projectParametricCompileStatusPending,
+			ConversationID:       conversation.ID,
+			MessageID:            assistantMessage.ID,
+			Title:                call.Input.Title,
+			SourceKind:           call.Input.SourceKind,
+			SourceCode:           call.Input.Code,
+			CompileStatus:        projectParametricCompileStatusPending,
+			GenerationToolMode:   telemetry.ToolMode,
+			GenerationDurationMS: telemetry.DurationMS,
 		})
 		if err != nil {
 			return err
@@ -304,17 +306,19 @@ func createProjectParametricArtifactInDB(ctx context.Context, db *gorm.DB, proje
 		return ProjectParametricArtifact{}, err
 	}
 	artifact := entity.ProjectParametricArtifact{
-		ID:                  artifactID,
-		ProjectID:           projectID,
-		ConversationID:      strings.TrimSpace(input.ConversationID),
-		MessageID:           strings.TrimSpace(input.MessageID),
-		Title:               normalized.title,
-		SourceKind:          normalized.sourceKind,
-		SourceCode:          normalized.sourceCode,
-		ParameterValuesJSON: normalized.parameterValuesJSON,
-		CompileStatus:       normalized.compileStatus,
-		CompileError:        normalized.compileError,
-		PreviewModelID:      normalized.previewModelID,
+		ID:                   artifactID,
+		ProjectID:            projectID,
+		ConversationID:       strings.TrimSpace(input.ConversationID),
+		MessageID:            strings.TrimSpace(input.MessageID),
+		Title:                normalized.title,
+		SourceKind:           normalized.sourceKind,
+		SourceCode:           normalized.sourceCode,
+		ParameterValuesJSON:  normalized.parameterValuesJSON,
+		CompileStatus:        normalized.compileStatus,
+		CompileError:         normalized.compileError,
+		PreviewModelID:       normalized.previewModelID,
+		GenerationToolMode:   strings.TrimSpace(input.GenerationToolMode),
+		GenerationDurationMS: max(input.GenerationDurationMS, 0),
 	}
 	if err := db.WithContext(ctx).Create(&artifact).Error; err != nil {
 		return ProjectParametricArtifact{}, fmt.Errorf("create project parametric artifact: %w", err)
