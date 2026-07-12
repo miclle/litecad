@@ -197,6 +197,30 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts LiteCAD feature DSL box-cut features for rectangular pockets and slots', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-box-cut-preview',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'plate-with-slot.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            parameters: {
+              slot_width: { type: 'number', default: 12, min: 4, max: 30 },
+            },
+            features: [
+              { id: 'plate', type: 'box', origin: [0, 0, 0], size: [80, 40, 6] },
+              { id: 'slot', type: 'box_cut', origin: [30, 14, -1], size: [20, 'slot_width', 8] },
+            ],
+          },
+          parameterValues: { slot_width: 10 },
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('rejects malformed LiteCAD feature DSL repeat patterns', () => {
     expect(
       isCadKernelRequest({
@@ -288,6 +312,29 @@ describe('CAD kernel worker protocol', () => {
                 type: 'cylinder_cut',
                 origin: [0, 0, 0],
                 radius: 5,
+              },
+            ],
+          },
+        },
+      }),
+    ).toBe(false)
+  })
+
+  test('rejects malformed LiteCAD feature DSL box-cut features', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-bad-box-cut',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'bad-box-cut.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            features: [
+              {
+                id: 'missing-size',
+                type: 'box_cut',
+                origin: [0, 0, 0],
               },
             ],
           },

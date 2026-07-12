@@ -2664,6 +2664,96 @@ Remaining after this task:
 
 ---
 
+### Task 25: LiteCAD feature DSL rectangular box cuts
+
+**Why this task exists:** The LiteCAD-native DSL can add boxes/cylinders and subtract round holes, but generated mechanical parts often need rectangular slots, pockets, and edge notches. This task adds a narrow `box_cut` primitive to the existing OCCT worker path without introducing sketches, extrudes, fillets, or a full B-rep feature graph.
+
+**Files:**
+- Modify: `website/src/cad/kernel-protocol.ts`
+- Test: `website/src/cad/kernel-protocol.test.ts`
+- Modify: `website/src/cad/opencascade-step.ts`
+- Test: `website/src/cad/opencascade-step.test.ts`
+- Modify: `internal/service/parametric_artifact.go`
+- Test: `internal/service/parametric_artifact_test.go`
+- Modify: `internal/service/ai_tools.go`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- Supported feature object:
+  - `{ "id": "...", "type": "box_cut", "origin": [x, y, z], "size": [sx, sy, sz] }`
+- `box_cut` subtracts a rectangular box from the accumulated prior shape and must not be the first feature.
+- `box_cut` supports parameter references in `origin` and `size`, and supports the existing bounded linear `repeat` pattern.
+- Backend validation rejects malformed `box_cut` features before persisting generated artifacts.
+- Provider prompting tells the model to use `box_cut` for rectangular slots, pockets, and notches.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsBoxCut|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedBoxCut'
+cd website && npx tsc -b
+```
+
+Expected failures:
+
+- Worker protocol rejects `box_cut`.
+- OCCT DSL compile/export throws `Unsupported feature DSL type: box_cut`.
+- Backend validation rejects a valid `box_cut` generated artifact.
+- TypeScript feature union does not include `box_cut`.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` failed as expected: protocol validation returned `false` for valid `box_cut`, and the compiler threw `Unsupported feature DSL type: box_cut`.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsBoxCut|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedBoxCut'` failed as expected: valid `box_cut` source returned `invalid project parametric artifact input`.
+- `cd website && npx tsc -b` failed as expected: `box_cut` was not assignable to the current feature union.
+
+- [x] **Step 2: Implement `box_cut`**
+
+Extend the worker protocol type/guards, compile `box_cut` by building a box cutter and applying `BRepAlgoAPI_Cut_3`, validate generated DSL source in the backend, and update provider prompt/tool descriptions.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+npm --prefix website test -- kernel-protocol opencascade-step
+go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsBoxCut|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedBoxCut|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'
+cd website && npx tsc -b
+git diff --check
+task check
+task test
+task test-browser
+git add website/src/cad/kernel-protocol.ts website/src/cad/kernel-protocol.test.ts website/src/cad/opencascade-step.ts website/src/cad/opencascade-step.test.ts internal/service/parametric_artifact.go internal/service/parametric_artifact_test.go internal/service/ai_tools.go docs/ai-parametric-assistant.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(cad): add feature dsl box cuts"
+git push
+```
+
+Expected:
+
+- Generated LiteCAD DSL can represent rectangular slots, pockets, and edge notches.
+- Saved `.lcad.json` preview/export paths compile `box_cut` through the browser OCCT worker.
+- Existing box/cylinder/cylinder-cut/repeat behavior remains unchanged.
+- Sketches, extrudes, fillets/chamfers, and CAD document History integration remain future work.
+
+Verification result on 2026-07-12:
+
+- `npm --prefix website test -- kernel-protocol opencascade-step` passed.
+- `go test ./internal/service -run 'TestCreateLiteCADFeatureDSLArtifactAcceptsBoxCut|TestCreateLiteCADFeatureDSLArtifactRejectsMalformedBoxCut|TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact'` passed.
+- `cd website && npx tsc -b` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+
+Remaining after this task:
+
+- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, and CAD document History integration for generated DSL features.
+- Full provider analytics, token accounting, richer long-run progress details, and provider-specific tuning remain future work.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

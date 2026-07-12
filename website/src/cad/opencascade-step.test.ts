@@ -451,6 +451,90 @@ describe('runFeatureDSLExportWithKernel', () => {
     expect(result.exportedStepText).toContain('END-ISO-10303-21')
   })
 
+  it('subtracts box-cut features from the accumulated shape before writing STEP', async () => {
+    const plateShape = { name: 'plate-shape' }
+    const cutterShape = { name: 'slot-cutter-shape' }
+    const cutShape = { name: 'slot-cut-shape' }
+    const buildPlate = vi.fn()
+    const buildCutter = vi.fn()
+    const transfer = vi.fn()
+    const write = vi.fn()
+    const openCascade = {
+      FS: {
+        readFile: vi.fn(() => 'ISO-10303-21;\nEND-ISO-10303-21;'),
+        unlink: vi.fn(),
+      },
+      IFSelect_ReturnStatus: {
+        IFSelect_RetDone: 1,
+      },
+      STEPControl_StepModelType: {
+        STEPControl_AsIs: 0,
+      },
+      STEPControl_Writer_1: vi.fn(function writer(this: {
+        Transfer: typeof transfer
+        Write: typeof write
+      }) {
+        this.Transfer = transfer.mockReturnValue(1)
+        this.Write = write.mockReturnValue(1)
+      }),
+      BRepPrimAPI_MakeBox_2: vi.fn(function makeBox(
+        this: { Build: () => void; Shape: () => unknown },
+        sizeX: number,
+        sizeY: number,
+        sizeZ: number,
+      ) {
+        expect([sizeX, sizeY, sizeZ]).toEqual([80, 40, 6])
+        this.Build = buildPlate
+        this.Shape = () => plateShape
+      }),
+      gp_Pnt_3: vi.fn(function point(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      BRepPrimAPI_MakeBox_3: vi.fn(function makeBoxAtOrigin(
+        this: { Build: () => void; Shape: () => unknown },
+        origin: unknown,
+        sizeX: number,
+        sizeY: number,
+        sizeZ: number,
+      ) {
+        expect(origin).toBeDefined()
+        expect([sizeX, sizeY, sizeZ]).toEqual([20, 10, 8])
+        this.Build = buildCutter
+        this.Shape = () => cutterShape
+      }),
+      BRepAlgoAPI_Cut_3: vi.fn(function cut(this: { Shape: () => unknown }, base: unknown, cutter: unknown) {
+        expect(base).toBe(plateShape)
+        expect(cutter).toBe(cutterShape)
+        this.Shape = () => cutShape
+      }),
+      Message_ProgressRange_1: vi.fn(function progressRange() {}),
+    }
+
+    const result = await runFeatureDSLExportWithKernel(openCascade, {
+      filename: 'plate-with-slot.step',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        parameters: {
+          slot_width: { type: 'number', default: 10 },
+        },
+        features: [
+          { id: 'plate', type: 'box', size: [80, 40, 6] },
+          { id: 'slot', type: 'box_cut', origin: [30, 15, -1], size: [20, 'slot_width', 8] },
+        ],
+      },
+    })
+
+    expect(openCascade.gp_Pnt_3).toHaveBeenCalledWith(30, 15, -1)
+    expect(buildPlate).toHaveBeenCalledOnce()
+    expect(buildCutter).toHaveBeenCalledOnce()
+    expect(openCascade.BRepAlgoAPI_Cut_3).toHaveBeenCalledWith(plateShape, cutterShape, expect.anything())
+    expect(transfer).toHaveBeenCalledWith(cutShape, 0, true, expect.anything())
+    expect(result.exportedStepText).toContain('END-ISO-10303-21')
+  })
+
   it('expands repeated cylinder-cut features before writing STEP', async () => {
     const boxShape = { name: 'box-shape' }
     const cutterShapes = [{ name: 'cutter-a' }, { name: 'cutter-b' }]

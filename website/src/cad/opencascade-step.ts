@@ -266,6 +266,19 @@ function compileFeatureDSLShape(
         accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLBoxShape(openCascade, feature, parameters, origin))
         continue
       }
+      if (feature.type === 'box_cut') {
+        if (!accumulatedShape) {
+          throw new Error(`Feature ${feature.id} box_cut requires a prior solid feature`)
+        }
+        const cutterShape = buildFeatureDSLBoxShape(openCascade, feature, parameters, origin)
+        const cutBuilder = new openCascade.BRepAlgoAPI_Cut_3(
+          accumulatedShape,
+          cutterShape,
+          new openCascade.Message_ProgressRange_1(),
+        )
+        accumulatedShape = cutBuilder.Shape()
+        continue
+      }
       if (feature.type === 'cylinder') {
         accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'height', origin))
         continue

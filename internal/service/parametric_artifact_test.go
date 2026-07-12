@@ -427,6 +427,91 @@ func TestCreateLiteCADFeatureDSLArtifactAcceptsRepeatPattern(t *testing.T) {
 	}
 }
 
+func TestCreateLiteCADFeatureDSLArtifactAcceptsBoxCut(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-box-cut@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Box cut generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Slotted bracket",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode: `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "slot_width": { "type": "number", "default": 12, "min": 4, "max": 30 }
+  },
+  "features": [
+    { "id": "plate", "type": "box", "origin": [0, 0, 0], "size": [80, 40, 6] },
+    { "id": "slot", "type": "box_cut", "origin": [30, 14, -1], "size": [20, "slot_width", 8] }
+  ]
+}`,
+		CompileStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	if artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", artifact)
+	}
+}
+
+func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedBoxCut(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-bad-box-cut@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Reject bad box cut generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	for _, source := range []string{
+		`{"version":1,"unit":"millimetre","features":[{"id":"slot","type":"box_cut","origin":[0,0,0]}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"slot","type":"box_cut","origin":[0,0,0],"size":[10,0,8]}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"slot","type":"box_cut","origin":[0,0],"size":[10,4,8]}]}`,
+	} {
+		_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+			OwnerUserID:   user.ID,
+			ProjectID:     project.ID,
+			Title:         "Bad box cut bracket",
+			SourceKind:    "litecad-feature-dsl",
+			SourceCode:    source,
+			CompileStatus: "pending",
+		})
+		if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+			t.Fatalf("CreateProjectParametricArtifact(%s) error = %v, want ErrInvalidProjectParametricArtifactInput", source, err)
+		}
+	}
+}
+
 func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedRepeatPattern(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
