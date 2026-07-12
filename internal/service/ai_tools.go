@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/miclle/litecad/internal/entity"
@@ -16,6 +17,8 @@ const (
 	aiParametricToolBuildModel            = "build_parametric_model"
 	aiParametricSystemPrompt              = "You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Prefer source_kind litecad-feature-dsl with a valid JSON document using version, unit, parameters, and features. Use box features for plates and bodies, cylinder features for bosses or posts, and cylinder_cut features for holes. In LiteCAD feature DSL, box uses origin and size; cylinder uses origin, optional non-zero axis, radius or diameter, and height; cylinder_cut uses origin, optional non-zero axis, radius or diameter, and depth. Omit axis for default Z-axis cylinders, and use axis such as [1,0,0] or [0,1,0] for side holes or horizontal posts. Use repeat with integer count from 1 to 128 and a step vector for linear patterns such as repeated holes or posts; keep count literal and make step spacing parameterized when useful. Use openscad only when the user explicitly asks for OpenSCAD source. Declare editable numeric parameters in the artifact so LiteCAD can preview and save them."
 	aiParametricInvalidToolFailureMessage = "I could not create a valid parametric model from that response. Please try again with a more specific request."
+	aiParametricToolModeJSONFallback      = "json_fallback"
+	aiParametricToolModeNativeTool        = "native_tool"
 )
 
 // AIParametricArtifactInput is the validated tool input for generated CAD source.
@@ -62,8 +65,16 @@ type ProjectAgentParametricRunInput struct {
 
 // ProjectAgentParametricRun is the generated artifact and structured Assistant message.
 type ProjectAgentParametricRun struct {
-	Message  ProjectAgentStructuredMessage `json:"message"`
-	Artifact ProjectParametricArtifact     `json:"artifact"`
+	Message   ProjectAgentStructuredMessage   `json:"message"`
+	Artifact  ProjectParametricArtifact       `json:"artifact"`
+	Telemetry ProjectAgentParametricTelemetry `json:"telemetry"`
+}
+
+// ProjectAgentParametricTelemetry describes one non-durable Assistant generation run.
+type ProjectAgentParametricTelemetry struct {
+	ToolMode   string `json:"tool_mode"`
+	SourceKind string `json:"source_kind"`
+	DurationMS int64  `json:"duration_ms"`
 }
 
 // ParseAIParametricToolCall validates strict JSON tool output from an AI provider.
@@ -181,7 +192,10 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 
 	var reply string
 	var call AIParametricToolCall
+	toolMode := aiParametricToolModeJSONFallback
+	startedAt := time.Now()
 	if toolClient, ok := s.aiClient.(AIChatToolClient); ok {
+		toolMode = aiParametricToolModeNativeTool
 		nativeCall, err := toolClient.ChatWithTools(ctx, providerMessages, []AIChatTool{buildParametricModelAITool()})
 		if err != nil {
 			return ProjectAgentParametricRun{}, fmt.Errorf("send ai parametric chat: %w", err)
@@ -207,6 +221,11 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 			return ProjectAgentParametricRun{}, err
 		}
 		reply = strings.TrimSpace(providerReply)
+	}
+	telemetry := ProjectAgentParametricTelemetry{
+		ToolMode:   toolMode,
+		SourceKind: call.Input.SourceKind,
+		DurationMS: time.Since(startedAt).Milliseconds(),
 	}
 
 	var run ProjectAgentParametricRun
@@ -243,7 +262,8 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 				CreatedAt: assistantMessage.CreatedAt,
 				UpdatedAt: assistantMessage.UpdatedAt,
 			},
-			Artifact: artifact,
+			Artifact:  artifact,
+			Telemetry: telemetry,
 		}
 		return nil
 	})

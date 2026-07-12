@@ -90,6 +90,7 @@ import { buildFeatureDSLPreviewInput } from './project-feature-dsl-preview'
 import { ProjectHistoryPopover } from './project-history-popover'
 import { ProjectInspector, type ProjectInspectorSelection, type TransformDraft } from './project-inspector'
 import { ProjectModelTree } from './project-model-tree'
+import { formatParametricRunSummary } from './project-parametric-run-telemetry'
 import { ProjectStepExportPopover } from './project-step-export-popover'
 import { exportMergedStepTargets, exportStepTarget } from './project-step-export-action'
 import {
@@ -414,7 +415,7 @@ function ProjectView() {
       const response = await runProjectAgentParametric(projectId, activeAgentConversationID, { message: messageBody })
       return response.data
     },
-    onSuccess: async ({ artifact, message }) => {
+    onSuccess: async ({ artifact, message, telemetry }) => {
       setParametricRunError('')
       setRetryParametricPrompt('')
       setSelectedParametricArtifact(artifact)
@@ -426,7 +427,7 @@ function ProjectView() {
         {
           id: message.id || `assistant-parametric-${Date.now()}`,
           role: 'assistant',
-          body: `Generated source draft: ${artifact.title}`,
+          body: formatParametricRunSummary(artifact.title, telemetry),
         },
       ])
       await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })

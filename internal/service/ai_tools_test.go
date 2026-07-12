@@ -138,6 +138,9 @@ func TestAIParametricRunCreatesPendingArtifact(t *testing.T) {
 	if run.Message.Role != "assistant" || len(run.Message.Parts) == 0 {
 		t.Fatalf("message = %+v", run.Message)
 	}
+	if run.Telemetry.ToolMode != "json_fallback" || run.Telemetry.SourceKind != "openscad" || run.Telemetry.DurationMS < 0 {
+		t.Fatalf("telemetry = %+v", run.Telemetry)
+	}
 
 	messages, err := svc.ListProjectAgentMessages(ctx, user.ID, project.ID, conversation.ID)
 	if err != nil {
@@ -258,6 +261,9 @@ func TestAIParametricRunUsesNativeToolClient(t *testing.T) {
 	}
 	if run.Message.Body == "" || !strings.Contains(run.Message.Body, aiParametricToolBuildModel) {
 		t.Fatalf("assistant message body should contain the canonical tool call JSON, got %q", run.Message.Body)
+	}
+	if run.Telemetry.ToolMode != "native_tool" || run.Telemetry.SourceKind != "litecad-feature-dsl" || run.Telemetry.DurationMS < 0 {
+		t.Fatalf("telemetry = %+v", run.Telemetry)
 	}
 }
 

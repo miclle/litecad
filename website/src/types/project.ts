@@ -256,6 +256,12 @@ export interface ProjectAgentParametricRunPayload {
   message: string
 }
 
+export interface ProjectAgentParametricTelemetry {
+  tool_mode: 'json_fallback' | 'native_tool'
+  source_kind: 'openscad' | 'litecad-feature-dsl'
+  duration_ms: number
+}
+
 export interface ProjectAgentConversationResponse {
   conversation: ProjectAgentConversation
 }
@@ -271,6 +277,7 @@ export interface ProjectAgentMessageResponse {
 export interface ProjectAgentParametricRunResponse {
   message: ProjectAgentStructuredMessage
   artifact: ProjectParametricArtifact
+  telemetry: ProjectAgentParametricTelemetry
 }
 
 export interface ProjectAgentMessagesResponse {

@@ -2409,6 +2409,96 @@ Remaining after this task:
 
 ---
 
+### Task 22: Parametric run response telemetry
+
+**Why this task exists:** Task 21 added visible generation state and retry guidance, but successful generations still gave no detail about how the provider completed the run. This task adds minimal, non-durable response telemetry so users and later debugging work can see whether a run used native tools or JSON fallback, which source kind was produced, and how long the run took.
+
+**Files:**
+- Modify: `internal/service/ai_tools.go`
+- Test: `internal/service/ai_tools_test.go`
+- Modify: `internal/handler/project_agent.go`
+- Test: `internal/handler/project_agent_test.go`
+- Modify: `website/src/types/project.ts`
+- Add: `website/src/views/project/project-parametric-run-telemetry.ts`
+- Test: `website/src/views/project/project-parametric-run-telemetry.test.ts`
+- Modify: `website/src/views/project/index.tsx`
+- Modify docs: `docs/ai-parametric-assistant.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, this plan
+
+**Interfaces:**
+- `POST /projects/:projectID/agent/conversations/:conversationID/parametric-runs` returns `telemetry`.
+- Telemetry fields are `tool_mode`, `source_kind`, and `duration_ms`.
+- `tool_mode` is `native_tool` for `AIChatToolClient` providers and `json_fallback` otherwise.
+- Telemetry is returned with the successful run response and shown in the generated-draft Assistant summary; it is not persisted as durable run history.
+
+- [x] **Step 1: Write failing tests**
+
+Run:
+
+```bash
+go test ./internal/service -run 'TestAIParametricRunCreatesPendingArtifact|TestAIParametricRunUsesNativeToolClient'
+go test ./internal/handler -run TestProjectAgentParametricRunRouteCreatesArtifact
+npm --prefix website test -- project-parametric-run-telemetry
+```
+
+Expected failures:
+
+- `ProjectAgentParametricRun` has no telemetry field.
+- The handler response includes empty telemetry.
+- The frontend telemetry formatter module does not exist.
+
+Verification result on 2026-07-12:
+
+- `go test ./internal/service -run 'TestAIParametricRunCreatesPendingArtifact|TestAIParametricRunUsesNativeToolClient'` failed as expected: `run.Telemetry` was undefined.
+- `go test ./internal/handler -run TestProjectAgentParametricRunRouteCreatesArtifact` failed as expected: response telemetry fields were empty.
+- `npm --prefix website test -- project-parametric-run-telemetry` failed as expected: `project-parametric-run-telemetry` could not be imported.
+
+- [x] **Step 2: Implement response telemetry**
+
+Add a service-level telemetry DTO, measure elapsed duration around the provider/tool-call path, expose telemetry through the handler response, add frontend API types, and show telemetry in successful generated-draft summaries.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+go test ./internal/service -run 'TestAIParametricRunCreatesPendingArtifact|TestAIParametricRunUsesNativeToolClient'
+go test ./internal/handler -run TestProjectAgentParametricRunRouteCreatesArtifact
+npm --prefix website test -- project-parametric-run-telemetry
+cd website && npx tsc -b
+git diff --check
+task check
+task test
+task test-browser
+git add internal/service/ai_tools.go internal/service/ai_tools_test.go internal/handler/project_agent.go internal/handler/project_agent_test.go website/src/types/project.ts website/src/views/project/project-parametric-run-telemetry.ts website/src/views/project/project-parametric-run-telemetry.test.ts website/src/views/project/index.tsx docs/ai-parametric-assistant.md docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+git commit -m "feat(agent): add parametric run telemetry"
+git push
+```
+
+Expected:
+
+- Successful parametric runs report native-tool vs JSON-fallback mode, generated source kind, and elapsed duration.
+- The Assistant generated-draft summary shows telemetry when available and keeps the previous summary when it is not.
+- Durable provider analytics, persisted run history, streaming status, and richer provider-specific tuning remain future work.
+
+Verification result on 2026-07-12:
+
+- `go test ./internal/service -run 'TestAIParametricRunCreatesPendingArtifact|TestAIParametricRunUsesNativeToolClient'` passed.
+- `go test ./internal/handler -run TestProjectAgentParametricRunRouteCreatesArtifact` passed.
+- `npm --prefix website test -- project-parametric-run-telemetry` passed.
+- `cd website && npx tsc -b` passed.
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+- Code review found no blocking issues.
+
+Remaining after this task:
+
+- Durable provider telemetry, richer long-run progress details, and provider-specific tuning remain future work.
+- The LiteCAD feature DSL still lacks sketches, extrudes, fillets/chamfers, and CAD document History integration for generated DSL features.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |

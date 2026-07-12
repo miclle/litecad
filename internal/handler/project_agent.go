@@ -14,8 +14,9 @@ type projectAgentParametricRunRequest struct {
 }
 
 type projectAgentParametricRunResponse struct {
-	Message  service.ProjectAgentStructuredMessage `json:"message"`
-	Artifact service.ProjectParametricArtifact     `json:"artifact"`
+	Message   service.ProjectAgentStructuredMessage   `json:"message"`
+	Artifact  service.ProjectParametricArtifact       `json:"artifact"`
+	Telemetry service.ProjectAgentParametricTelemetry `json:"telemetry"`
 }
 
 type projectAgentConversationRequest struct {
@@ -110,5 +111,5 @@ func (ctrl *Ctrl) RunProjectAgentParametric(c *fox.Context, req *projectAgentPar
 	if err != nil {
 		return projectAgentParametricRunResponse{}, projectError(err)
 	}
-	return projectAgentParametricRunResponse{Message: run.Message, Artifact: run.Artifact}, nil
+	return projectAgentParametricRunResponse{Message: run.Message, Artifact: run.Artifact, Telemetry: run.Telemetry}, nil
 }
