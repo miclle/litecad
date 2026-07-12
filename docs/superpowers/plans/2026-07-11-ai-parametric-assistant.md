@@ -4,7 +4,7 @@
 
 **Goal:** Build LiteCAD's AI Assistant into a project-scoped, multi-session text-to-CAD workflow that can generate, preview, save, and edit parameterized models, with imported STEP remaining one supported source path rather than the only way to create geometry.
 
-**Architecture:** Add parameterized model sources as first-class project assets beside uploaded STEP/GLB/GLTF/STL sources. The first shippable path uses an OpenSCAD-style artifact because it gives LiteCAD a fast text-to-parametric-CAD loop: Assistant tool call -> source code artifact -> browser worker compile -> mesh preview -> parameter extraction -> saved project model. Keep the later OCCT/B-rep feature-DSL path explicit, but do not block the OpenSCAD MVP on durable kernel shape state.
+**Architecture:** Add parameterized model sources as first-class project assets beside uploaded STEP/GLB/GLTF/STL sources. The initial plan explored OpenSCAD-style artifacts for a fast text-to-parametric-CAD loop, but Task 5 found the available browser runtimes blocked by GPL licensing for the current product direction. The shipped path is therefore LiteCAD's native feature DSL: Assistant tool call -> generated DSL source artifact -> browser OCCT worker compile -> mesh preview -> parameter extraction -> saved `.lcad.json` project model -> later parameter edits and STEP export. Keep OpenSCAD source support as a saved source format, but do not describe OpenSCAD browser mesh compilation as shipped until a compatible runtime decision is made.
 
 **Tech Stack:** Go 1.26, fox, GORM, PostgreSQL/MySQL, React 19, TypeScript 6, Vite 8, React Query 5, Three.js, shadcn/ui, Lucide React, AI provider via OpenAI-compatible chat completions first, browser Web Workers for CAD compilation and preview, Vitest, Go tests, Playwright smoke tests.
 
@@ -3483,6 +3483,67 @@ Verification results on 2026-07-12:
 
 ---
 
+### Task 35: Plan closure and LiteCAD DSL status cleanup
+
+**Why this task exists:** The implementation has moved beyond the original OpenSCAD-first architecture because the OpenSCAD runtime decision stayed blocked by licensing. Tasks 11-34 made LiteCAD feature DSL the shipped text-to-parameterized-model path, but the top architecture note and tail "Future Phase" section still described LiteCAD DSL as later work. This task closes that documentation gap without changing runtime behavior.
+
+**Files:**
+- Modify: `docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md`
+
+**Interfaces:**
+- The plan architecture summary names the shipped LiteCAD feature DSL path as the current browser-compiled path.
+- The testing matrix names the browser smoke as covering generated DSL save, reload, parameter edit, and preview refresh.
+- The old future-phase section becomes a current status section that separates shipped LiteCAD DSL behavior from future richer CAD semantics.
+- Completion criteria include direct evidence pointers so future work can audit whether the plan is still complete.
+- OpenSCAD browser mesh compilation remains explicitly future work behind a compatible runtime decision.
+
+- [x] **Step 1: Audit stale completion language**
+
+Run:
+
+```bash
+rg -n "Future Phase|After the OpenSCAD MVP ships|OpenSCAD MVP|Completion Criteria|Browser smoke|save/reload" docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md README.md docs/ai-parametric-assistant.md TODO.md AGENTS.md .agents/rules/litecad-architecture.md
+```
+
+Observed result on 2026-07-12:
+
+- The plan still said the first shippable path uses OpenSCAD-style artifacts.
+- The tail section still said LiteCAD feature DSL should be designed after the OpenSCAD MVP ships.
+- The current README/TODO/AGENTS/docs surfaces already describe the shipped LiteCAD DSL path and OpenSCAD runtime boundary correctly.
+
+- [x] **Step 2: Update plan closure text**
+
+Rewrite only the plan summary, testing matrix, LiteCAD DSL status, and completion criteria evidence. Do not change product code or claim full B-rep feature history.
+
+- [x] **Step 3: Verify, review, docs, commit, and push**
+
+Run:
+
+```bash
+git diff --check
+task check
+task test
+task test-browser
+git add docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md
+git commit -m "docs(cad): close ai parametric assistant plan"
+git push
+```
+
+Expected:
+
+- The plan matches the current implementation state.
+- No runtime behavior changes are introduced.
+- Existing full-repo and browser verification remain green.
+
+Verification results on 2026-07-12:
+
+- `git diff --check` passed.
+- `task check` passed.
+- `task test` passed.
+- `task test-browser` passed.
+
+---
+
 ## Testing Matrix
 
 | Layer | Coverage | Command |
@@ -3494,7 +3555,7 @@ Verification results on 2026-07-12:
 | Parameter parsing | sliders, enums, booleans, colors, groups | `npm --prefix website test -- openscad-parameters` |
 | UI components | conversation selector, parametric editor, compile errors, save state | `npm --prefix website test -- project-assistant-panel parametric-artifact-editor` |
 | Preview integration | nonblank render, debounced compile, resource disposal | `npm --prefix website test -- use-parametric-artifact-preview model-preview` |
-| Browser smoke | end-to-end LiteCAD feature DSL generated model save/reload workflow | `task test-browser` |
+| Browser smoke | end-to-end LiteCAD feature DSL generated model save, reload, parameter edit, preview refresh workflow | `task test-browser` |
 | Full repo | backend, frontend, module tidy | `task check` |
 | Behavior regression | non-trivial API/database/frontend behavior | `task test` |
 
@@ -3512,9 +3573,9 @@ Use this section to interpret failures without guessing.
 - `task test-browser fails on layout overlap`: preserve the existing main-level two-column Assistant layout and rerun the narrower desktop viewport check that previously caught Assistant/CAD panel overlap.
 - `License review blocks OpenSCAD bundling`: pause the OpenSCAD implementation path and switch Task 5 onward to a LiteCAD-native feature DSL compiled by the existing OCCT worker.
 
-## Future Phase: LiteCAD-Native Feature DSL
+## LiteCAD-Native Feature DSL Status
 
-After the OpenSCAD MVP ships, design a compact LiteCAD feature DSL for models that need durable STEP/B-rep editing:
+LiteCAD feature DSL is now the shipped browser-compiled path for AI-generated parameterized models. The current compact source shape is:
 
 ```json
 {
@@ -3530,18 +3591,20 @@ After the OpenSCAD MVP ships, design a compact LiteCAD feature DSL for models th
 }
 ```
 
-This future DSL should compile to OCCT operations, export STEP through the existing browser kernel path, and eventually share History with CAD document operations. It should not replace the faster OpenSCAD MVP until it can generate useful models, expose parameters, preview reliably, and export current geometry.
+The implemented DSL compiles through the existing browser OCCT worker for preview and STEP export, supports generated artifact drafts, exposes parameters in the Inspector, saves successful artifacts as `.lcad.json` project models, reloads saved generated models, and persists later parameter edits. It supports a bounded primitive and sketch-operation set: rectangular/circular `extrude`, rectangular/circular `extrude_cut`, `box`, `box_cut`, `cylinder`, `cylinder_cut`, optional sketch extrusion direction, optional non-zero cylinder axes, bounded repeat patterns, and structured `add`/`sub`/`mul`/`div` numeric expressions.
+
+Remaining future DSL work is richer CAD semantics, not the first text-to-parameterized-model path: full sketch constraints, freeform profiles, fillets/chamfers, durable kernel shape state, CAD document History integration for generated DSL features, backend export artifact history, and full editable B-rep feature graphs.
 
 ## Completion Criteria
 
-This plan is complete only when:
+This plan is complete when the LiteCAD feature DSL path satisfies the original text-to-parameterized-model goal:
 
-- A project can own multiple Assistant conversations.
-- New chat starts without old transcript context.
-- A user can generate a parameterized model from text.
-- The generated source compiles in a browser worker.
-- The workbench shows a nonblank preview.
-- Parameters are editable without another model call.
-- The user can save the generated model as a project asset.
-- The saved generated model survives reload.
-- The README/TODO/AGENTS/docs surfaces describe exactly what shipped and what remains future work.
+- A project can own multiple Assistant conversations. Evidence: Task 2 service/handler tests and `website/src/views/project/project-assistant-panel.tsx`.
+- New chat starts without old transcript context. Evidence: Task 2 conversation isolation tests and the `New chat` workbench UI.
+- A user can generate a parameterized model from text. Evidence: Task 6 and Task 17 parametric-run tests for `build_parametric_model` tool output.
+- The generated source compiles in a browser worker. Evidence: Tasks 11, 15, and 27-31 worker protocol/browser checks plus Task 33 pending draft preview.
+- The workbench shows a nonblank preview. Evidence: Task 32 and Task 34 `task test-browser` assertions against `[data-model-preview]`.
+- Parameters are editable without another model call. Evidence: Task 9 saved parameter route tests and Task 34 browser parameter edit smoke.
+- The user can save the generated model as a project asset. Evidence: Task 8 save-as-model route tests and Task 32 browser save/reload smoke.
+- The saved generated model survives reload. Evidence: Task 32 browser save/reload smoke.
+- README/TODO/AGENTS/docs describe shipped behavior and future work without claiming OpenSCAD browser mesh compilation, AI-driven CAD document mutation, durable editable B-rep geometry, or full feature history.
