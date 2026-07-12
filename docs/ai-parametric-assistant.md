@@ -8,7 +8,7 @@ The current CAD Agent supports project-owned Assistant conversations, stores mes
 
 The workbench can open OpenSCAD drafts in an Inspector-side editor, parse top-level OpenSCAD-style parameters, request browser-worker compilation, and keep compile errors visible with Save disabled. Successfully compiled OpenSCAD artifacts can be saved as durable `.scad` project model sources. Saved `.scad` source models can be selected later, edited through the same parameter controls, and persisted with separate parameter revision records. LiteCAD does not yet bundle an OpenSCAD runtime or produce mesh previews from generated OpenSCAD source.
 
-The LiteCAD-native feature DSL path is now connected to Assistant tool validation, generated artifact persistence, browser-kernel draft preview, save-as-project-model persistence, saved parameter revision editing, project preview, and STEP export. Pending `litecad-feature-dsl` drafts are compiled through the existing `feature-dsl-preview` worker before Save is enabled; on save, LiteCAD records the successful compile status and current parameter values before storing the artifact as a durable `.lcad.json` project model with `format = "lcad"` and metadata for schema, unit, parameter values, and feature count. The Inspector can read the DSL parameter defaults, edit saved parameter values, recompile the browser-kernel preview from those values, and reload with the edits preserved. Saved `.lcad.json` models are routed through the same `feature-dsl-preview` worker path for browser-kernel mesh preview, and through `feature-dsl-export` for separate or merged STEP downloads from the project export UI.
+The LiteCAD-native feature DSL path is now connected to Assistant tool validation, generated artifact persistence, browser-kernel draft preview, automatic save-as-project-model persistence, saved parameter revision editing, project preview, and STEP export. Pending `litecad-feature-dsl` drafts are compiled through the existing `feature-dsl-preview` worker; when preview succeeds, the workbench records the successful compile status and current parameter values, stores the artifact as a durable `.lcad.json` project model with `format = "lcad"` and metadata for schema, unit, parameter values, and feature count, and selects the saved model so it appears in the main canvas without an extra Save step. The Inspector can read the DSL parameter defaults, edit saved parameter values, recompile the browser-kernel preview from those values, and reload with the edits preserved. Saved `.lcad.json` models are routed through the same `feature-dsl-preview` worker path for browser-kernel mesh preview, and through `feature-dsl-export` for separate or merged STEP downloads from the project export UI.
 
 ## Source Model Direction
 
@@ -34,7 +34,7 @@ Each project can own multiple Assistant conversations. New conversations start w
 4. The Assistant panel shows model-generation progress and successful run telemetry; if generation fails, it keeps the failed prompt available for retry.
 5. LiteCAD stores a project-owned parametric artifact draft and opens it in the Inspector with durable generation telemetry when available.
 6. The Inspector parses OpenSCAD top-level parameters or LiteCAD DSL parameter defaults.
-7. A successfully compiled artifact can be saved as a durable `.scad` or `.lcad.json` source model.
+7. A successfully compiled LiteCAD DSL artifact is automatically saved as a durable `.lcad.json` source model and selected in the main canvas.
 8. Saved `.scad` and `.lcad.json` model parameters can be edited later and persisted with revision records.
 
 ## Target MVP Workflow
@@ -44,7 +44,7 @@ Each project can own multiple Assistant conversations. New conversations start w
 3. The model calls `build_parametric_model`.
 4. The browser compiles the returned source in a worker.
 5. LiteCAD shows preview, compile status, and parameters.
-6. The user saves the artifact as a project model.
+6. LiteCAD automatically saves a successful generated model into the project and displays it in the main canvas.
 7. Parameter edits recompile locally and persist without another model call.
 
 ## Implementation Plan

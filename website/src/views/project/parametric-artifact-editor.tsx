@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Box, Save } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ import { formatParametricArtifactGenerationSummary } from './project-parametric-
 
 type ParametricArtifactEditorProps = {
   artifact: ProjectParametricArtifact
+  autoSaveOnPreviewSuccess?: boolean
   compile?: ParametricArtifactCompile
   compileFeatureDSL?: ParametricFeatureDSLArtifactCompile
   debounceMs?: number
@@ -28,6 +29,7 @@ type ParametricArtifactEditorProps = {
 
 export function ParametricArtifactEditor({
   artifact,
+  autoSaveOnPreviewSuccess = false,
   compile,
   compileFeatureDSL,
   debounceMs,
@@ -47,6 +49,7 @@ export function ParametricArtifactEditor({
     [artifact.parameter_values, defaultValues, initialParameterValues],
   )
   const [parameterValues, setParameterValues] = useState<Record<string, OpenSCADParameterValue>>(() => editorInitialValues)
+  const autoSaveSignatureRef = useRef('')
 
   useEffect(() => {
     setParameterValues(editorInitialValues)
@@ -55,6 +58,8 @@ export function ParametricArtifactEditor({
   const preview = useParametricArtifactPreview({ artifact, compile, compileFeatureDSL, debounceMs, parameterValues })
   const canSave = onSaveParameters ? true : preview.status === 'success' && Boolean(onSaveAsModel)
   const generationSummary = formatParametricArtifactGenerationSummary(artifact)
+  const parameterSignature = useMemo(() => stableParameterValueSignature(parameterValues), [parameterValues])
+  const shouldAutoSaveOnPreviewSuccess = autoSaveOnPreviewSuccess && artifact.source_kind === 'litecad-feature-dsl'
 
   const updateParameterValue = (name: string, value: OpenSCADParameterValue) => {
     setParameterValues((currentValues) => ({ ...currentValues, [name]: value }))
@@ -67,6 +72,20 @@ export function ParametricArtifactEditor({
     }
     onSaveAsModel?.(parameterValues)
   }
+
+  useEffect(() => {
+    if (!shouldAutoSaveOnPreviewSuccess || onSaveParameters || preview.status !== 'success' || !preview.isCurrent || !onSaveAsModel) {
+      return
+    }
+
+    const signature = `${artifact.id}:${parameterSignature}`
+    if (autoSaveSignatureRef.current === signature) {
+      return
+    }
+
+    autoSaveSignatureRef.current = signature
+    onSaveAsModel(parameterValues)
+  }, [artifact.id, onSaveAsModel, onSaveParameters, parameterSignature, parameterValues, preview.isCurrent, preview.status, shouldAutoSaveOnPreviewSuccess])
 
   return (
     <section aria-label="Parametric artifact" className="mt-4 border-t border-[#e2e8f0] pt-4">
@@ -195,13 +214,23 @@ export function ParametricArtifactEditor({
           {artifact.source_code}
         </pre>
 
-        <Button className="justify-center" disabled={!canSave} onClick={handleSave} size="sm" type="button">
-          {canSave ? <Save data-icon="inline-start" /> : <Box data-icon="inline-start" />}
-          {saveLabel}
-        </Button>
+        {shouldAutoSaveOnPreviewSuccess ? null : (
+          <Button className="justify-center" disabled={!canSave} onClick={handleSave} size="sm" type="button">
+            {canSave ? <Save data-icon="inline-start" /> : <Box data-icon="inline-start" />}
+            {saveLabel}
+          </Button>
+        )}
       </FieldSet>
     </section>
   )
+}
+
+function stableParameterValueSignature(parameterValues: Record<string, OpenSCADParameterValue>) {
+  const ordered: Record<string, OpenSCADParameterValue> = {}
+  for (const key of Object.keys(parameterValues).sort()) {
+    ordered[key] = parameterValues[key]
+  }
+  return JSON.stringify(ordered)
 }
 
 function openSCADParameterValuesFromUnknown(values: Record<string, unknown> | undefined) {

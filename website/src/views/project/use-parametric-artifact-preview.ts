@@ -15,6 +15,8 @@ export type ParametricFeatureDSLArtifactCompile = (input: CadKernelFeatureDSLInp
 
 export type ParametricArtifactPreviewState = {
   error: string
+  inputSignature: string
+  isCurrent: boolean
   parameters: ReturnType<typeof parseOpenSCADParameters>
   result?: OpenSCADCompileResult | CadKernelWorkerFeatureDSLPreviewResult
   status: ParametricArtifactCompileStatus
@@ -44,16 +46,20 @@ export function useParametricArtifactPreview({
 }: UseParametricArtifactPreviewOptions): ParametricArtifactPreviewState {
   const parameters = useMemo(() => parseParametricArtifactParameters(artifact), [artifact])
   const parameterSignature = useMemo(() => stableJSONStringify(parameterValues), [parameterValues])
+  const inputSignature = artifact
+    ? `${artifact.id}:${artifact.source_kind}:${artifact.source_code}:${artifact.compile_status}:${artifact.compile_error}:${parameterSignature}`
+    : ''
   const sequenceRef = useRef(0)
-  const [state, setState] = useState<Pick<ParametricArtifactPreviewState, 'error' | 'result' | 'status'>>({
+  const [state, setState] = useState<Pick<ParametricArtifactPreviewState, 'error' | 'inputSignature' | 'result' | 'status'>>({
     error: '',
+    inputSignature: '',
     status: artifact ? 'pending' : 'idle',
   })
 
   useEffect(() => {
     if (!artifact) {
       sequenceRef.current += 1
-      setState({ error: '', result: undefined, status: 'idle' })
+      setState({ error: '', inputSignature, result: undefined, status: 'idle' })
       return
     }
     if (artifact.source_kind === 'litecad-feature-dsl') {
@@ -62,12 +68,13 @@ export function useParametricArtifactPreview({
       if (artifact.compile_status === 'error') {
         setState({
           error: artifact.compile_error || 'LiteCAD feature DSL preview failed',
+          inputSignature,
           result: undefined,
           status: 'error',
         })
         return
       }
-      setState({ error: '', result: undefined, status: 'pending' })
+      setState({ error: '', inputSignature, result: undefined, status: 'pending' })
 
       const timer = window.setTimeout(() => {
         Promise.resolve()
@@ -86,13 +93,13 @@ export function useParametricArtifactPreview({
             if (sequenceRef.current !== sequence) {
               return
             }
-            setState({ error: '', result, status: 'success' })
+            setState({ error: '', inputSignature, result, status: 'success' })
           })
           .catch((error: unknown) => {
             if (sequenceRef.current !== sequence) {
               return
             }
-            setState({ error: error instanceof Error ? error.message : String(error), result: undefined, status: 'error' })
+            setState({ error: error instanceof Error ? error.message : String(error), inputSignature, result: undefined, status: 'error' })
           })
       }, Math.max(0, debounceMs))
 
@@ -103,7 +110,7 @@ export function useParametricArtifactPreview({
 
     const sequence = sequenceRef.current + 1
     sequenceRef.current = sequence
-    setState({ error: '', result: undefined, status: 'pending' })
+    setState({ error: '', inputSignature, result: undefined, status: 'pending' })
 
     const timer = window.setTimeout(() => {
       compile({ code: artifact.source_code, parameterValues })
@@ -111,13 +118,13 @@ export function useParametricArtifactPreview({
           if (sequenceRef.current !== sequence) {
             return
           }
-          setState({ error: '', result, status: 'success' })
+          setState({ error: '', inputSignature, result, status: 'success' })
         })
         .catch((error: unknown) => {
           if (sequenceRef.current !== sequence) {
             return
           }
-          setState({ error: error instanceof Error ? error.message : String(error), result: undefined, status: 'error' })
+          setState({ error: error instanceof Error ? error.message : String(error), inputSignature, result: undefined, status: 'error' })
         })
     }, Math.max(0, debounceMs))
 
@@ -136,10 +143,11 @@ export function useParametricArtifactPreview({
     compile,
     compileFeatureDSL,
     debounceMs,
+    inputSignature,
     parameterSignature,
   ])
 
-  return { ...state, parameters }
+  return { ...state, isCurrent: state.inputSignature === inputSignature, parameters }
 }
 
 function featureDSLArtifactFilename(artifact: ProjectParametricArtifact) {

@@ -476,6 +476,9 @@ function ProjectView() {
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
     },
+    onError: () => {
+      setParametricRunError('Generated source could not be added to the canvas. Try generating it again.')
+    },
   })
   const updateProjectParametricModelParametersMutation = useMutation({
     mutationFn: async ({
@@ -1688,6 +1691,7 @@ function ProjectView() {
                 {selectedParametricArtifact ? (
                   <ParametricArtifactEditor
                     artifact={selectedParametricArtifact}
+                    autoSaveOnPreviewSuccess={selectedParametricArtifact.source_kind === 'litecad-feature-dsl'}
                     onSaveAsModel={(parameterValues) =>
                       saveProjectParametricArtifactMutation.mutate({ artifact: selectedParametricArtifact, parameterValues })
                     }

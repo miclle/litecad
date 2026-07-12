@@ -78,6 +78,125 @@ describe('ParametricArtifactEditor', () => {
     await waitFor(() => expect(compile).not.toHaveBeenCalled())
   })
 
+  it('automatically saves generated LiteCAD feature DSL drafts after preview succeeds', async () => {
+    const compile = vi.fn()
+    const compileFeatureDSL = vi.fn().mockResolvedValue({
+      mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0] },
+      meshSummary: { vertexCount: 1, triangleCount: 0, hasNormals: true },
+    })
+    const onSaveAsModel = vi.fn()
+    const featureDSLArtifact = {
+      ...artifact,
+      id: 'pma_auto_lcad',
+      title: 'Auto saved block',
+      source_kind: 'litecad-feature-dsl',
+      source_code:
+        '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
+      parameter_values: { width: 88 },
+      compile_status: 'pending',
+    } satisfies ProjectParametricArtifact
+
+    render(
+      <ParametricArtifactEditor
+        artifact={featureDSLArtifact}
+        autoSaveOnPreviewSuccess
+        compile={compile}
+        compileFeatureDSL={compileFeatureDSL}
+        debounceMs={0}
+        onSaveAsModel={onSaveAsModel}
+      />,
+    )
+
+    await waitFor(() => expect(onSaveAsModel).toHaveBeenCalledWith({ width: 88 }))
+    expect(onSaveAsModel).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(compile).not.toHaveBeenCalled())
+  })
+
+  it('does not auto-save a new artifact from a stale preview success', async () => {
+    const compile = vi.fn()
+    let resolveSecondPreview: ((result: unknown) => void) | undefined
+    const compileFeatureDSL = vi
+      .fn()
+      .mockResolvedValueOnce({
+        mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0] },
+        meshSummary: { vertexCount: 1, triangleCount: 0, hasNormals: true },
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecondPreview = resolve
+          }),
+      )
+    const onSaveAsModel = vi.fn()
+    const firstArtifact = {
+      ...artifact,
+      id: 'pma_first_lcad',
+      title: 'First block',
+      source_kind: 'litecad-feature-dsl',
+      source_code:
+        '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
+      parameter_values: { width: 80 },
+      compile_status: 'pending',
+    } satisfies ProjectParametricArtifact
+    const secondArtifact = {
+      ...firstArtifact,
+      id: 'pma_second_lcad',
+      title: 'Second block',
+      parameter_values: { width: 120 },
+    } satisfies ProjectParametricArtifact
+
+    const { rerender } = render(
+      <ParametricArtifactEditor
+        artifact={firstArtifact}
+        autoSaveOnPreviewSuccess
+        compile={compile}
+        compileFeatureDSL={compileFeatureDSL}
+        debounceMs={0}
+        onSaveAsModel={onSaveAsModel}
+      />,
+    )
+
+    await waitFor(() => expect(onSaveAsModel).toHaveBeenCalledWith({ width: 80 }))
+    rerender(
+      <ParametricArtifactEditor
+        artifact={secondArtifact}
+        autoSaveOnPreviewSuccess
+        compile={compile}
+        compileFeatureDSL={compileFeatureDSL}
+        debounceMs={0}
+        onSaveAsModel={onSaveAsModel}
+      />,
+    )
+
+    await waitFor(() => expect(compileFeatureDSL).toHaveBeenCalledTimes(2))
+    expect(onSaveAsModel).toHaveBeenCalledTimes(1)
+
+    resolveSecondPreview?.({
+      mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0] },
+      meshSummary: { vertexCount: 1, triangleCount: 0, hasNormals: true },
+    })
+    await waitFor(() => expect(onSaveAsModel).toHaveBeenCalledWith({ width: 120 }))
+    expect(onSaveAsModel).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(compile).not.toHaveBeenCalled())
+  })
+
+  it('keeps OpenSCAD drafts on the manual save flow even when auto-save is requested', async () => {
+    const compile = vi.fn().mockResolvedValue({
+      output: 'preview',
+      bytes: new Uint8Array([1, 2, 3]),
+      stdout: '',
+      stderr: '',
+      durationMs: 4,
+    })
+    const onSaveAsModel = vi.fn()
+
+    render(<ParametricArtifactEditor artifact={artifact} autoSaveOnPreviewSuccess compile={compile} debounceMs={0} onSaveAsModel={onSaveAsModel} />)
+
+    await waitFor(() => expect(compile).toHaveBeenCalled())
+    expect(onSaveAsModel).not.toHaveBeenCalled()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save as model' }).disabled).toBe(false)
+  })
+
   it('renders parsed parameters and recompiles when a slider changes', async () => {
     const compile = vi.fn().mockResolvedValue({
       output: 'preview',

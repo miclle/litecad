@@ -3371,7 +3371,8 @@ Verification results on 2026-07-12:
 **Interfaces:**
 - `useParametricArtifactPreview` accepts an injectable LiteCAD DSL compile function and routes `source_kind = "litecad-feature-dsl"` through `feature-dsl-preview`.
 - DSL preview passes only numeric parameter overrides into the CAD kernel while preserving boolean/string metadata in the editor.
-- `ParametricArtifactEditor` enables `Save as model` only after the draft preview succeeds and passes current parameter values to the save callback.
+- `ParametricArtifactEditor` enables manual save only after the draft preview succeeds and passes current parameter values to the save callback.
+- AI-generated LiteCAD DSL drafts can opt into automatic save after preview succeeds so the normal Assistant flow lands directly in the main canvas.
 - The project save flow patches the generated artifact with `compile_status = "success"` and current `parameter_values` before calling `save-model`.
 - OpenSCAD draft behavior remains unchanged: without a bundled OpenSCAD runtime, compile errors keep Save disabled.
 
@@ -3642,6 +3643,24 @@ In-app browser verification result on 2026-07-12:
 - Claimed the already-open in-app browser project tab and performed the UI flow through real controls: toggle Assistant into the clickable panel layout, click New chat, click the Assistant prompt textbox, type the model-generation prompt, click Generate parametric model, and wait for the provider response.
 - The workbench produced a generated-source draft titled `Simple Rectangular Box`.
 - The Inspector showed `Generated with JSON fallback · litecad-feature-dsl · 5.48s`, editable `DEPTH` / `THICKNESS` / `WIDTH` parameters, normalized LiteCAD DSL source, and the `Save as model` action.
+
+### Task 36: Auto-save generated LiteCAD DSL into the canvas
+
+**Why this task exists:** The generated-source draft path worked, but the product interaction was still too indirect: after a successful AI response, the user had to notice an Inspector-side `Save as model` button before the model appeared in the main canvas. The target experience is one conversation action that creates the model in the visible workspace.
+
+**Implementation summary:**
+
+- `ParametricArtifactEditor` gained `autoSaveOnPreviewSuccess`, guarded by an artifact/parameter signature so a successful preview triggers `onSaveAsModel` only once for the current generated draft.
+- `ProjectView` enables `autoSaveOnPreviewSuccess` for newly generated Assistant artifacts only; saved-model parameter editing still uses explicit `Save parameters`.
+- The auto-save path still validates through the existing browser-kernel preview and then reuses the same `updateProjectParametricArtifact` plus `saveProjectParametricArtifactModel` mutation, preserving compile status, parameter values, and `.lcad.json` model metadata.
+- The generated-draft manual save button is hidden in auto-save mode so the normal flow is generate once, then inspect the model in the main canvas.
+
+**Tests and verification guidance:**
+
+- Add or keep a component regression test proving that a `litecad-feature-dsl` generated draft calls `onSaveAsModel` after preview success without a click.
+- Run `npm --prefix website test -- parametric-artifact-editor.test.tsx` to cover the auto-save trigger and existing manual-save/parameter-save behavior.
+- Run `task check`, `task test`, and `task test-browser` before committing.
+- In the in-app browser, repeat the real Assistant prompt submission and verify the final state has a saved project source/model selected and the canvas no longer shows `AWAITING IMPORT`.
 
 ---
 
