@@ -99,6 +99,7 @@ import { ViewController } from './view-controller'
 import { useCADDocumentCommands } from './use-cad-document-commands'
 import { useProjectAssistantController } from './use-project-assistant-controller'
 import { useProjectParametricModels } from './use-project-parametric-models'
+import { useProjectSelectionController } from './use-project-selection-controller'
 import { useProjectStepExportController } from './use-project-step-export-controller'
 import {
   aiChatPanelMinWidth,
@@ -118,7 +119,6 @@ import type { ProjectParametricArtifact } from 'src/types/project'
 
 const aiChatPanelMaxWidthRatio = 0.5
 const aiChatPanelTransitionMs = 220
-type CADTool = 'inspect' | 'fuse-box'
 
 function TopbarTooltip({
   label,
@@ -243,42 +243,17 @@ function ProjectView() {
   const [isProjectInfoOpen, setIsProjectInfoOpen] = useState(false)
   const [isStepExportOpen, setIsStepExportOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
-  const [selectedParametricArtifact, setSelectedParametricArtifact] = useState<ProjectParametricArtifact | undefined>(undefined)
   const [aiChatPanelMaxWidth, setAiChatPanelMaxWidth] = useState(getAiChatPanelMaxWidth)
   const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
   const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
   const [uploadError, setUploadError] = useState('')
   const [previewUrlsByModelID, setPreviewUrlsByModelID] = useState<Record<string, string>>({})
   const [hiddenModelIDs, setHiddenModelIDs] = useState<Set<string>>(() => new Set())
-  const [selectedModelID, setSelectedModelID] = useState('')
-  const [selectedDocumentNodeID, setSelectedDocumentNodeID] = useState('')
-  const [activeCADTool, setActiveCADTool] = useState<CADTool>('inspect')
   const [transformDraftsByModelID, setTransformDraftsByModelID] = useState<Record<string, TransformDraft>>({})
   const [boxFeatureDraftsByModelID, setBoxFeatureDraftsByModelID] = useState<Record<string, BoxFeatureDraft>>({})
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
   const lastRequestedThumbnailSignatureRef = useRef('')
-  const handleAssistantArtifactSelected = useCallback((artifact: ProjectParametricArtifact) => {
-    setSelectedParametricArtifact(artifact)
-    setSelectedModelID('')
-    setSelectedDocumentNodeID('')
-    setActiveCADTool('inspect')
-  }, [])
-  const projectAssistant = useProjectAssistantController({
-    enabled: projectId !== '' && isAiChatOpen,
-    onArtifactSelected: handleAssistantArtifactSelected,
-    projectId,
-  })
   const handleCADDocumentConflict = useCallback(() => setIsHistoryOpen(true), [])
-  const handleCADDocumentNodeDeleted = useCallback((nodeId: string) => {
-    setTransformDraftsByModelID((currentDrafts) => {
-      const nextDrafts = { ...currentDrafts }
-      delete nextDrafts[nodeId]
-      return nextDrafts
-    })
-    setSelectedModelID('')
-    setSelectedDocumentNodeID('')
-    setActiveCADTool('inspect')
-  }, [])
   const handleTransformSynchronized = useCallback((nodeId: string) => {
     setTransformDraftsByModelID((currentDrafts) => {
       const nextDrafts = { ...currentDrafts }
@@ -286,18 +261,6 @@ function ProjectView() {
       return nextDrafts
     })
   }, [])
-  const cadDocumentCommands = useCADDocumentCommands({
-    projectId,
-    onConflict: handleCADDocumentConflict,
-    onNodeDeleted: handleCADDocumentNodeDeleted,
-    onTransformSynchronized: handleTransformSynchronized,
-  })
-  const {
-    changeHistory,
-    clearDeleteError,
-    deleteNode,
-    isPending: isCADDocumentCommandPending,
-  } = cadDocumentCommands
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: async () => (await fetchProject(projectId)).data.project,
@@ -338,10 +301,7 @@ function ProjectView() {
       return (await saveProjectParametricArtifactModel(projectId, artifact.id)).data.model
     },
     onSuccess: async (model) => {
-      setSelectedParametricArtifact(undefined)
-      setSelectedModelID(model.id)
-      setSelectedDocumentNodeID(sourceNodeIDByModelID.get(model.id) ?? `node_${model.id}`)
-      setActiveCADTool('inspect')
+      projectSelection.selectModel(model.id)
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
@@ -364,7 +324,7 @@ function ProjectView() {
         })
       ).data.model,
     onSuccess: async (model) => {
-      setSelectedModelID(model.id)
+      projectSelection.selectModel(model.id)
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
@@ -391,10 +351,6 @@ function ProjectView() {
   })
   const project = projectQuery.data
   const projectModels = useMemo(() => projectModelsQuery.data ?? [], [projectModelsQuery.data])
-  const selectedModel = useMemo(
-    () => projectModels.find((model) => model.id === selectedModelID),
-    [projectModels, selectedModelID],
-  )
   const projectCADDocumentQuery = useQuery({
     queryKey: ['projects', projectId, 'cad-document'],
     queryFn: async () => (await fetchProjectCADDocument(projectId)).data.document,
@@ -422,16 +378,54 @@ function ProjectView() {
   })
   const cadDocumentNodes = projectCADDocument?.nodes
   const cadNodeByID = useMemo(() => new Map((cadDocumentNodes ?? []).map((node) => [node.id, node])), [cadDocumentNodes])
-  const sourceNodeIDByModelID = new Map(
-    (cadDocumentNodes ?? []).flatMap((node) => (node.model_id ? [[node.model_id, node.id] as const] : [])),
+  const sourceNodeIDByModelID = useMemo(
+    () => new Map((cadDocumentNodes ?? []).flatMap((node) => (node.model_id ? [[node.model_id, node.id] as const] : []))),
+    [cadDocumentNodes],
   )
-  const effectiveSelectedModelID = selectedModel?.id ?? ''
-  const effectiveSelectedDocumentNodeID = cadNodeByID.has(selectedDocumentNodeID)
-    ? selectedDocumentNodeID
-    : sourceNodeIDByModelID.get(effectiveSelectedModelID) ?? ''
-  const selectedDocumentNode = effectiveSelectedDocumentNodeID ? cadNodeByID.get(effectiveSelectedDocumentNodeID) : undefined
-  const selectedSourceModelID = selectedDocumentNode?.source_model_id || selectedDocumentNode?.model_id || effectiveSelectedModelID
-  const selectedSourceModel = selectedSourceModelID ? projectModels.find((model) => model.id === selectedSourceModelID) : undefined
+  const projectSelection = useProjectSelectionController({
+    cadNodeByID,
+    projectModels,
+    sourceNodeIDByModelID,
+  })
+  const projectAssistant = useProjectAssistantController({
+    enabled: projectId !== '' && isAiChatOpen,
+    onArtifactSelected: projectSelection.selectArtifact,
+    projectId,
+  })
+  const {
+    activeCADTool,
+    effectiveSelectedDocumentNodeID,
+    effectiveSelectedModelID,
+    clearSelection,
+    selectModel,
+    selectedArtifact: selectedParametricArtifact,
+    selectedDocumentNode,
+    selectedSourceModel,
+    setActiveCADTool,
+  } = projectSelection
+  const handleCADDocumentNodeDeleted = useCallback(
+    (nodeId: string) => {
+      setTransformDraftsByModelID((currentDrafts) => {
+        const nextDrafts = { ...currentDrafts }
+        delete nextDrafts[nodeId]
+        return nextDrafts
+      })
+      clearSelection()
+    },
+    [clearSelection],
+  )
+  const cadDocumentCommands = useCADDocumentCommands({
+    projectId,
+    onConflict: handleCADDocumentConflict,
+    onNodeDeleted: handleCADDocumentNodeDeleted,
+    onTransformSynchronized: handleTransformSynchronized,
+  })
+  const {
+    changeHistory,
+    clearDeleteError,
+    deleteNode,
+    isPending: isCADDocumentCommandPending,
+  } = cadDocumentCommands
   const keyboardDeleteNode = effectiveSelectedDocumentNodeID ? cadNodeByID.get(effectiveSelectedDocumentNodeID) : undefined
   const canDeleteNodeFromKeyboard = isCADDocumentNodeDeletable(keyboardDeleteNode)
   const parametricModels = useProjectParametricModels({
@@ -1135,18 +1129,12 @@ function ProjectView() {
               key={project.id}
               modelTranslations={modelTranslationsByID}
               onClearSelection={() => {
-                setSelectedModelID('')
-                setSelectedDocumentNodeID('')
-                setSelectedParametricArtifact(undefined)
-                setActiveCADTool('inspect')
+                clearSelection()
                 cadDocumentCommands.clearDeleteError()
               }}
               onModelTranslationChange={updateTransformDraftFromTranslation}
               onSelectModel={(modelID, nodeID) => {
-                setSelectedModelID(modelID)
-                setSelectedDocumentNodeID(nodeID ?? sourceNodeIDByModelID.get(modelID) ?? `node_${modelID}`)
-                setSelectedParametricArtifact(undefined)
-                setActiveCADTool('inspect')
+                selectModel(modelID, nodeID)
                 cadDocumentCommands.clearDeleteError()
               }}
               onSnapshotCapture={handlePreviewSnapshotCapture}
@@ -1373,10 +1361,7 @@ function ProjectView() {
                   isLoading={projectModelsQuery.isLoading}
                   isUploading={uploadModelMutation.isPending}
                   onSelect={(modelId, nodeId) => {
-                    setSelectedModelID(modelId)
-                    setSelectedDocumentNodeID(nodeId)
-                    setSelectedParametricArtifact(undefined)
-                    setActiveCADTool('inspect')
+                    selectModel(modelId, nodeId)
                     cadDocumentCommands.clearDeleteError()
                   }}
                   onToggleVisibility={toggleModelVisibility}
