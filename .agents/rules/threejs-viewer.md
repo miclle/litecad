@@ -15,7 +15,7 @@ These rules apply to Three.js code under `website/src/views/project/`.
 
 ## Lifecycle
 
-- Keep `model-preview.tsx` as a thin render surface. `useModelPreviewScene(...)` owns renderer/camera/controls/listener lifecycle, `useModelPreviewResources()` owns object maps and stale async-loader rejection, and `useModelPreviewSelection(...)` owns live callback, selection, visibility, and transform refs.
+- Keep `model-preview.tsx` as a thin render surface. `useModelPreviewScene(...)` owns renderer/camera/controls/listener lifecycle, `useModelPreviewResources()` owns object maps and stale async-loader rejection, `useModelPreviewSelection(...)` owns live callback, selection, visibility, and transform refs, and `model-preview-grid.ts` owns pure CAD grid/axis geometry helpers.
 - Every `WebGLRenderer` created by a React effect must be disposed in that effect cleanup and its canvas removed from the container.
 - Start a new resource generation whenever preview assets rebuild the scene. Objects returned by an older OBJ/GLTF loader generation must be disposed instead of attached to the current scene.
 - Dispose scene resources through `disposeObject3DResources()` or extend that helper when adding new disposable Three.js resource types.

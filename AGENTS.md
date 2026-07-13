@@ -133,6 +133,8 @@ For feature work that changes the browser experience, combine the relevant front
 - Prefer existing Tailwind styles, shadcn/ui component conventions, Lucide icons, and local layout patterns.
 - Do not hard-code backend origins in components; use `/api/v1` through the shared client and Vite proxy.
 - Keep project workspace presentation preferences in the versioned `useProjectWorkspacePreferences` browser-local boundary. They are non-sensitive local UI state, not React Query server state or project data; validate stored values and preserve runtime width clamps.
+- Keep `ProjectView` as a thin route shell for route params, project detail loading, and loading/error states. Route-level workbench controller assembly belongs in `useProjectWorkbenchRouteControllers(...)`, while top-level workbench slot composition and cross-controller UI callback wiring belong in `ProjectWorkbenchComposition`.
+- Keep `ModelPreview` as a thin render surface. Three.js renderer/camera/control/listener lifecycle belongs in `useModelPreviewScene(...)`; object maps and stale async-loader rejection belong in `useModelPreviewResources()`; live callback, selection, visibility, and transform refs belong in `useModelPreviewSelection(...)`; pure world grid/axis geometry belongs in `model-preview-grid.ts`.
 
 ### Product Boundaries
 

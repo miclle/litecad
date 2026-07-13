@@ -21,7 +21,7 @@ import type { useProjectWorkbenchShellState } from './use-project-workbench-shel
 import type { useProjectWorkbenchViewControls } from './use-project-workbench-view-controls'
 import type { useProjectWorkbenchVisibilityState } from './use-project-workbench-visibility-state'
 
-type ProjectCADHistoryState = {
+export type ProjectCADHistoryState = {
   entries: CADHistoryEntry[]
   fetchNextPage: () => void
   hasNextPage: boolean
@@ -30,7 +30,7 @@ type ProjectCADHistoryState = {
   isPending: boolean
 }
 
-type ProjectWorkbenchCompositionProps = {
+export type ProjectWorkbenchCompositionProps = {
   cadDocumentCommands: ReturnType<typeof useCADDocumentCommands>
   draftCommands: ReturnType<typeof useProjectWorkbenchDraftCommands>
   fileInputRef: RefObject<HTMLInputElement | null>

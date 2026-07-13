@@ -22,10 +22,6 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 - Add session lifecycle hardening such as explicit expiry tests around stale cookies and optional session pruning.
 - Keep new project HTTP behavior inside the established `project.go`, `project_models.go`, `project_cad.go`, `project_agent.go`, and `project_errors.go` domain boundaries instead of rebuilding a single project handler hotspot.
 
-## Frontend
-
-- Continue shrinking the remaining project workbench route root in `website/src/views/project/index.tsx` after moving route commands, Assistant conversation/generation orchestration, saved parametric source/preview orchestration, STEP export orchestration, project selection state, thumbnail publication, model upload, route-level model/CAD/preview data assembly, Inspector/selected-model detail derivation, transform/box draft command wiring, route-level shell state, view controls, document keyboard shortcuts, hidden-model visibility state, generated-artifact/model-parameter mutation glue, top-level workbench slot composition, the route-level workbench layout shell, the controlled topbar, the controlled canvas, the controlled sidebar, and other controlled surfaces out of that file and splitting `ModelPreview` into a thin component plus scene, resource-generation, and live selection/transform hooks. The remaining route root is primarily query/controller assembly plus small selection/error callback glue that coordinates multiple extracted controllers; preserve the extracted controller, model-state, inspector-state, draft-command, shell-state, view-control, keyboard-command, visibility-state, parametric-command, composition, layout, topbar, canvas, sidebar, renderer cleanup, stale-loader disposal, view-event, and resource ownership boundaries during later work.
-
 ## Documentation And Operations
 
 - Keep [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md) current as browser-kernel feasibility results, package choices, limitations, and phase completions become known.
