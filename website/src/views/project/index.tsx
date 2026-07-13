@@ -10,11 +10,7 @@ import {
   fetchProject,
   fetchProjectCADHistory,
 } from 'src/api/projects'
-import { ProjectCanvas } from './project-canvas'
-import { ProjectAssistantPanel } from './project-assistant-panel'
-import { ProjectTopbar } from './project-topbar'
-import { ProjectWorkbenchSidebar } from './project-workbench-sidebar'
-import { ProjectWorkbenchLayout } from './project-workbench-layout'
+import { ProjectWorkbenchComposition } from './project-workbench-composition'
 import {
   buildStepExportTargets,
   stepAssemblyExportFilename,
@@ -32,43 +28,13 @@ import { useProjectWorkbenchParametricModelCommands } from './use-project-workbe
 import { useProjectWorkbenchShellState } from './use-project-workbench-shell-state'
 import { useProjectWorkbenchViewControls } from './use-project-workbench-view-controls'
 import { useProjectWorkbenchVisibilityState } from './use-project-workbench-visibility-state'
-import { initialViewOrientation } from './view-orientation'
 
 function ProjectView() {
   const { projectId = '' } = useParams()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const {
-    aiChatPanelMaxWidth,
-    aiChatPanelWidth,
-    canvasRightOffset,
-    canvasStatusLeftOffset,
-    closeAiChat,
-    handleCADDocumentConflict,
-    isAiChatOpen,
-    isAiChatPanelResizing,
-    isAiChatTransitioning,
-    isHistoryOpen,
-    isLeftPanelCollapsed,
-    isProjectInfoOpen,
-    isStepExportOpen,
-    leftPanelWidth,
-    setIsHistoryOpen,
-    setIsLeftPanelCollapsed,
-    setIsProjectInfoOpen,
-    setIsStepExportOpen,
-    startAiChatPanelResize,
-    startLeftPanelResize,
-    toggleAiChat,
-    workspaceGridStyle,
-  } = useProjectWorkbenchShellState()
-  const {
-    animateViewCubeOrientation,
-    applyCanvasOrientation,
-    flipCanvasOrientation,
-    stepCanvasOrientation,
-    viewOrientation,
-  } = useProjectWorkbenchViewControls()
-  const { hiddenModelIDs, toggleModelVisibility } = useProjectWorkbenchVisibilityState()
+  const shellState = useProjectWorkbenchShellState()
+  const viewControls = useProjectWorkbenchViewControls()
+  const visibilityState = useProjectWorkbenchVisibilityState()
   const cadDocumentCommandAdapterRef = useRef<ProjectWorkbenchDraftCommandAdapter | null>(null)
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -79,36 +45,29 @@ function ProjectView() {
     projectId,
   })
   const project = projectQuery.data
-  const {
-    cadNodeByID,
-    canvasStatusBody,
-    canvasStatusLabel,
-    latestModel,
-    latestTriangleCount,
-    modelTranslationsByID,
-    parametricModels,
-    previewAssetModelIDs,
-    previewAssets,
-    previewSummary,
-    projectCADDocument,
-    projectModelTree,
-    projectModels,
-    projectModelsQuery,
-    projectSelection,
-    shouldShowCanvasStatus,
-    sourceNodeIDByModelID,
-    visibleModelIds,
-  } = useProjectWorkbenchModelState({
-    hiddenModelIds: hiddenModelIDs,
+  const projectWorkbenchModelState = useProjectWorkbenchModelState({
+    hiddenModelIds: visibilityState.hiddenModelIDs,
     isProjectLoaded: projectQuery.isSuccess,
     projectId,
   })
+  const {
+    cadNodeByID,
+    latestModel,
+    latestTriangleCount,
+    previewAssets,
+    previewSummary,
+    projectCADDocument,
+    projectModels,
+    projectSelection,
+    sourceNodeIDByModelID,
+    visibleModelIds,
+  } = projectWorkbenchModelState
   const projectCADHistoryQuery = useInfiniteQuery({
     queryKey: ['projects', projectId, 'cad-document', 'history'],
     queryFn: async ({ pageParam }) => (await fetchProjectCADHistory(projectId, pageParam)).data,
     initialPageParam: undefined as number | undefined,
     getNextPageParam: (lastPage) => lastPage.next_before_sequence,
-    enabled: projectId !== '' && Boolean(projectCADDocument) && isHistoryOpen,
+    enabled: projectId !== '' && Boolean(projectCADDocument) && shellState.isHistoryOpen,
   })
   const projectCADHistory = projectCADHistoryQuery.data?.pages.flatMap((page) => page.entries) ?? []
   const stepExportTargets = useMemo(
@@ -122,20 +81,15 @@ function ProjectView() {
     targets: stepExportTargets,
   })
   const projectAssistant = useProjectAssistantController({
-    enabled: projectId !== '' && isAiChatOpen,
+    enabled: projectId !== '' && shellState.isAiChatOpen,
     onArtifactSelected: projectSelection.selectArtifact,
     projectId,
   })
   const {
-    activeCADTool,
     effectiveSelectedDocumentNodeID,
-    effectiveSelectedModelID,
     clearSelection,
-    selectModel,
-    selectedArtifact: selectedParametricArtifact,
     selectedDocumentNode,
     selectedSourceModel,
-    setActiveCADTool,
   } = projectSelection
   const projectDraftCommands = useProjectWorkbenchDraftCommands({
     cadNodeByID,
@@ -146,7 +100,7 @@ function ProjectView() {
   })
   const cadDocumentCommands = useCADDocumentCommands({
     projectId,
-    onConflict: handleCADDocumentConflict,
+    onConflict: shellState.handleCADDocumentConflict,
     onNodeDeleted: projectDraftCommands.handleCADDocumentNodeDeleted,
     onTransformSynchronized: projectDraftCommands.handleTransformSynchronized,
   })
@@ -155,7 +109,6 @@ function ProjectView() {
     isPending: isCADDocumentCommandPending,
   } = cadDocumentCommands
   const keyboardDeleteNode = effectiveSelectedDocumentNodeID ? cadNodeByID.get(effectiveSelectedDocumentNodeID) : undefined
-  const selectedSavedParametricArtifact = parametricModels.selectedSavedArtifact
   const projectParametricModelCommands = useProjectWorkbenchParametricModelCommands({
     onArtifactSaveError: () => {
       projectAssistant.setParametricRunError('Generated source could not be added to the canvas. Try generating it again.')
@@ -188,17 +141,7 @@ function ProjectView() {
     projectCADDocument,
   })
 
-  const {
-    documentDetails,
-    documentUnitLabel,
-    inspectorSelection,
-    isSelectedModelBoxFeatureUpdating,
-    projectDescription,
-    selectedModelBoxFeatureDraft,
-    selectedModelBoxFeatureError,
-    selectedModelDisplayName,
-    selectedModelSupportsFuseBox,
-  } = useProjectWorkbenchInspectorState({
+  const projectInspectorState = useProjectWorkbenchInspectorState({
     boxErrorsByModelId: cadDocumentCommands.boxErrorsByModelId,
     boxFeatureDraftsByModelId: projectDraftCommands.boxFeatureDraftsByModelID,
     deleteError: cadDocumentCommands.deleteError,
@@ -246,150 +189,30 @@ function ProjectView() {
     )
   }
   return (
-    <ProjectWorkbenchLayout
-      assistantPanel={
-        <ProjectAssistantPanel
-          activeConversationId={projectAssistant.activeConversationID}
-          conversations={projectAssistant.conversations}
-          draft={projectAssistant.draft}
-          isPending={projectAssistant.isPending}
-          maxWidth={aiChatPanelMaxWidth}
-          messages={projectAssistant.messages}
-          onClose={closeAiChat}
-          onCreateConversation={projectAssistant.createConversation}
-          onDraftChange={projectAssistant.setDraft}
-          onGenerateParametric={projectAssistant.generateParametricArtifact}
-          onResizePointerDown={startAiChatPanelResize}
-          onRetryParametric={projectAssistant.retryParametricGeneration}
-          onSelectConversation={projectAssistant.selectConversation}
-          onSubmit={projectAssistant.submitMessage}
-          open={isAiChatOpen}
-          parametricRunError={projectAssistant.parametricRunError}
-          pendingKind={projectAssistant.pendingKind}
-          retryParametricPrompt={projectAssistant.retryParametricPrompt}
-          sourceCount={projectModels.length}
-          width={aiChatPanelWidth}
-        />
-      }
-      canvas={
-        <ProjectCanvas
-          activeCADTool={activeCADTool}
-          animateViewCubeOrientation={animateViewCubeOrientation}
-          canvasRightOffset={canvasRightOffset}
-          canvasStatusBody={canvasStatusBody}
-          canvasStatusLabel={canvasStatusLabel}
-          canvasStatusLeftOffset={canvasStatusLeftOffset}
-          deferResize={isAiChatTransitioning}
-          draftModelTranslations={projectDraftCommands.draftModelTranslationsByID}
-          isSelectedModelBoxFeatureUpdating={isSelectedModelBoxFeatureUpdating}
-          modelTranslations={modelTranslationsByID}
-          onApplyBoxFeatureDraft={projectDraftCommands.addBoxFeatureDraft}
-          onClearSelection={() => {
-            clearSelection()
-            cadDocumentCommands.clearDeleteError()
-          }}
-          onCloseCADTool={() => setActiveCADTool('inspect')}
-          onFlipOrientation={flipCanvasOrientation}
-          onModelTranslationChange={projectDraftCommands.updateTransformDraftFromTranslation}
-          onResetIsometric={() => applyCanvasOrientation(initialViewOrientation)}
-          onSelectModel={(modelID, nodeID) => {
-            selectModel(modelID, nodeID)
-            cadDocumentCommands.clearDeleteError()
-          }}
-          onSetOrientation={applyCanvasOrientation}
-          onSnapshotCapture={projectThumbnailSnapshot.onSnapshotCapture}
-          onStepOrientation={stepCanvasOrientation}
-          onToggleFuseBoxTool={() => setActiveCADTool((currentTool) => (currentTool === 'fuse-box' ? 'inspect' : 'fuse-box'))}
-          onUpdateBoxFeatureDraft={projectDraftCommands.updateBoxFeatureDraft}
-          previewAssets={previewAssets}
-          projectCADDocument={projectCADDocument}
-          projectId={project.id}
-          selectedDocumentNode={selectedDocumentNode}
-          selectedModelBoxFeatureDraft={selectedModelBoxFeatureDraft}
-          selectedModelBoxFeatureError={selectedModelBoxFeatureError}
-          selectedModelDisplayName={selectedModelDisplayName}
-          selectedModelId={effectiveSelectedModelID}
-          selectedModelSupportsFuseBox={selectedModelSupportsFuseBox}
-          selectedNodeId={effectiveSelectedDocumentNodeID}
-          selectedSourceModel={selectedSourceModel}
-          shouldShowCanvasStatus={shouldShowCanvasStatus}
-          unitLabel={documentUnitLabel}
-          viewOrientation={viewOrientation}
-          visibleModelIds={visibleModelIds}
-        />
-      }
-      isAiChatPanelResizing={isAiChatPanelResizing}
-      leftPanel={
-        <ProjectWorkbenchSidebar
-          documentDetails={documentDetails}
-          hiddenModelIds={hiddenModelIDs}
-          inspectorSelection={inspectorSelection}
-          isLeftPanelCollapsed={isLeftPanelCollapsed}
-          isModelTreeLoading={projectModelsQuery.isLoading}
-          isUploading={projectModelUpload.isUploading}
-          leftPanelWidth={leftPanelWidth}
-          modelCount={projectModels.length}
-          onCollapseChange={setIsLeftPanelCollapsed}
-          onModelSelect={(modelId, nodeId) => {
-            selectModel(modelId, nodeId)
-            cadDocumentCommands.clearDeleteError()
-          }}
-          onParameterValuesChange={parametricModels.updatePreviewParameters}
-          onResizePointerDown={startLeftPanelResize}
-          onSaveGeneratedArtifactAsModel={(artifact, parameterValues) =>
-            projectParametricModelCommands.saveGeneratedArtifactAsModel({ artifact, parameterValues })
-          }
-          onSaveModelParameters={(modelID, parameterValues) =>
-            projectParametricModelCommands.saveModelParameters({ modelID, parameterValues })
-          }
-          onToggleModelVisibility={toggleModelVisibility}
-          onTransformChange={projectDraftCommands.updateTransformDraftField}
-          previewAssetModelIds={previewAssetModelIDs}
-          projectModelTree={projectModelTree}
-          selectedGeneratedArtifact={selectedParametricArtifact}
-          selectedNodeId={effectiveSelectedDocumentNodeID}
-          selectedSavedArtifact={selectedSavedParametricArtifact}
-          unitLabel={documentUnitLabel}
-          uploadError={projectModelUpload.uploadError}
-        />
-      }
-      topbar={
-        <ProjectTopbar
-          canRedo={Boolean(projectCADDocument?.history.can_redo)}
-          canUndo={Boolean(projectCADDocument?.history.can_undo)}
-          documentDetails={documentDetails}
-          fileInputRef={fileInputRef}
-          hasNextHistoryPage={Boolean(projectCADHistoryQuery.hasNextPage)}
-          historyEntries={projectCADHistory}
-          historyError={cadDocumentCommands.historyError}
-          isAiChatOpen={isAiChatOpen}
-          isHistoryFetchingNextPage={projectCADHistoryQuery.isFetchingNextPage}
-          isHistoryLoading={projectCADHistoryQuery.isPending}
-          isHistoryLoadError={projectCADHistoryQuery.isError}
-          isHistoryMutationPending={cadDocumentCommands.isPending}
-          isHistoryOpen={isHistoryOpen}
-          isProjectInfoOpen={isProjectInfoOpen}
-          isStepExportOpen={isStepExportOpen}
-          isUploading={projectModelUpload.isUploading}
-          onFetchNextHistoryPage={() => projectCADHistoryQuery.fetchNextPage()}
-          onHistoryAction={cadDocumentCommands.changeHistory}
-          onHistoryOpenChange={setIsHistoryOpen}
-          onModelFileChange={projectModelUpload.handleModelFileChange}
-          onProjectInfoOpenChange={setIsProjectInfoOpen}
-          onStepExport={projectStepExport.exportSelection}
-          onStepExportOpenChange={setIsStepExportOpen}
-          onStepExportSelectAll={projectStepExport.selectAllTargets}
-          onStepExportToggleTarget={projectStepExport.toggleTarget}
-          onToggleAiChat={toggleAiChat}
-          previewSummary={previewSummary}
-          project={project}
-          projectDescription={projectDescription}
-          selectedStepExportTargetIds={projectStepExport.selectedTargetIDs}
-          stepExportDisabled={stepExportTargets.length === 0 || !projectCADDocument}
-          stepExportTargets={stepExportTargets}
-        />
-      }
-      workspaceGridStyle={workspaceGridStyle}
+    <ProjectWorkbenchComposition
+      cadDocumentCommands={cadDocumentCommands}
+      draftCommands={projectDraftCommands}
+      fileInputRef={fileInputRef}
+      inspectorState={projectInspectorState}
+      modelState={projectWorkbenchModelState}
+      parametricModelCommands={projectParametricModelCommands}
+      project={project}
+      projectAssistant={projectAssistant}
+      projectCADHistory={{
+        entries: projectCADHistory,
+        fetchNextPage: () => projectCADHistoryQuery.fetchNextPage(),
+        hasNextPage: Boolean(projectCADHistoryQuery.hasNextPage),
+        isError: projectCADHistoryQuery.isError,
+        isFetchingNextPage: projectCADHistoryQuery.isFetchingNextPage,
+        isPending: projectCADHistoryQuery.isPending,
+      }}
+      projectModelUpload={projectModelUpload}
+      projectStepExport={projectStepExport}
+      projectThumbnailSnapshot={projectThumbnailSnapshot}
+      shellState={shellState}
+      stepExportTargets={stepExportTargets}
+      viewControls={viewControls}
+      visibilityState={visibilityState}
     />
   )
 }
