@@ -59,22 +59,14 @@ export function useParametricArtifactPreview({
   useEffect(() => {
     if (!artifact) {
       sequenceRef.current += 1
-      setState({ error: '', inputSignature, result: undefined, status: 'idle' })
       return
     }
     if (artifact.source_kind === 'litecad-feature-dsl') {
       const sequence = sequenceRef.current + 1
       sequenceRef.current = sequence
       if (artifact.compile_status === 'error') {
-        setState({
-          error: artifact.compile_error || 'LiteCAD feature DSL preview failed',
-          inputSignature,
-          result: undefined,
-          status: 'error',
-        })
         return
       }
-      setState({ error: '', inputSignature, result: undefined, status: 'pending' })
 
       const timer = window.setTimeout(() => {
         Promise.resolve()
@@ -110,7 +102,6 @@ export function useParametricArtifactPreview({
 
     const sequence = sequenceRef.current + 1
     sequenceRef.current = sequence
-    setState({ error: '', inputSignature, result: undefined, status: 'pending' })
 
     const timer = window.setTimeout(() => {
       compile({ code: artifact.source_code, parameterValues })
@@ -147,7 +138,23 @@ export function useParametricArtifactPreview({
     parameterSignature,
   ])
 
-  return { ...state, isCurrent: state.inputSignature === inputSignature, parameters }
+  if (!artifact) {
+    return { error: '', inputSignature, isCurrent: true, parameters, result: undefined, status: 'idle' }
+  }
+  if (artifact.source_kind === 'litecad-feature-dsl' && artifact.compile_status === 'error') {
+    return {
+      error: artifact.compile_error || 'LiteCAD feature DSL preview failed',
+      inputSignature,
+      isCurrent: true,
+      parameters,
+      result: undefined,
+      status: 'error',
+    }
+  }
+  if (state.inputSignature !== inputSignature) {
+    return { error: '', inputSignature, isCurrent: false, parameters, result: undefined, status: 'pending' }
+  }
+  return { ...state, isCurrent: true, parameters }
 }
 
 function featureDSLArtifactFilename(artifact: ProjectParametricArtifact) {

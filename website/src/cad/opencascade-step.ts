@@ -168,7 +168,7 @@ export async function runFeatureDSLPreviewWithKernel(
     return { mesh: tessellateShape(openCascade, shape) }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
-    throw new Error(`Feature DSL tessellation failed: ${reason}`)
+    throw new Error(`Feature DSL tessellation failed: ${reason}`, { cause: error })
   }
 }
 
@@ -410,7 +410,7 @@ function compileFeatureDSLShape(
       throw new Error(`Unsupported feature DSL type: ${(feature as { type?: string }).type}`)
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error)
-        throw new Error(`Feature ${feature.id} (${feature.type}) failed: ${reason}`)
+        throw new Error(`Feature ${feature.id} (${feature.type}) failed: ${reason}`, { cause: error })
       }
     }
   }

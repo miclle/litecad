@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { disposeObject3DResources } from './three-object-resources'
 import { viewAxisDefinitions } from './view-axis'
 import { createCanvasLabelTexture, createViewCubeFaceTexture } from './view-cube-textures'
+import { viewCubeRendererOptions } from './view-controller-options'
 import {
   createChamferedCubeGeometry,
   createSurfaceGeometry,
@@ -28,12 +29,6 @@ import {
   type ViewOrientation,
   type ViewRotationStep,
 } from './view-orientation'
-
-export const viewCubeRendererOptions = {
-  alpha: true,
-  antialias: true,
-  preserveDrawingBuffer: true,
-} satisfies ConstructorParameters<typeof THREE.WebGLRenderer>[0]
 
 function ViewCube3D({
   animateOrientationChanges,

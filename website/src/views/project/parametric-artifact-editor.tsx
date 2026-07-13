@@ -109,11 +109,16 @@ export function ParametricArtifactEditor({
     clearScheduledParameterSave()
     pendingParameterSaveRef.current = undefined
     savedParameterSignatureRef.current = `${artifact.id}:${editorInitialSignature}`
-    setParameterEditorState({
-      artifactID: artifact.id,
-      initialSignature: editorInitialSignature,
-      values: editorInitialValues,
-    })
+    const resetEditorStateTimeout = window.setTimeout(() => {
+      setParameterEditorState({
+        artifactID: artifact.id,
+        initialSignature: editorInitialSignature,
+        values: editorInitialValues,
+      })
+    }, 0)
+    return () => {
+      window.clearTimeout(resetEditorStateTimeout)
+    }
   }, [artifact.id, clearScheduledParameterSave, editorInitialSignature, editorInitialValues])
 
   useEffect(

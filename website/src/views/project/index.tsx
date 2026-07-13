@@ -343,25 +343,14 @@ function ProjectView() {
     enabled: projectId !== '' && projectQuery.isSuccess && isAiChatOpen,
   })
   const projectAgentConversations = useMemo(() => projectAgentConversationsQuery.data ?? [], [projectAgentConversationsQuery.data])
-  const activeAgentConversationID = selectedAgentConversationID || projectAgentConversations[0]?.id || ''
+  const activeAgentConversationID = projectAgentConversations.some((conversation) => conversation.id === selectedAgentConversationID)
+    ? selectedAgentConversationID
+    : projectAgentConversations[0]?.id || ''
   const projectAgentMessagesQuery = useQuery({
     queryKey: ['project-agent-messages', projectId, activeAgentConversationID],
     queryFn: async () => (await fetchProjectAgentConversationMessages(projectId, activeAgentConversationID)).data.messages,
     enabled: projectId !== '' && isAiChatOpen && activeAgentConversationID !== '',
   })
-  useEffect(() => {
-    if (!projectAgentConversationsQuery.data) {
-      return
-    }
-    if (projectAgentConversations.length === 0) {
-      setSelectedAgentConversationID('')
-      return
-    }
-    if (selectedAgentConversationID !== '' && projectAgentConversations.some((conversation) => conversation.id === selectedAgentConversationID)) {
-      return
-    }
-    setSelectedAgentConversationID(projectAgentConversations[0].id)
-  }, [projectAgentConversations, projectAgentConversationsQuery.data, selectedAgentConversationID])
   const uploadModelMutation = useMutation({
     mutationFn: (file: File) => uploadProjectModel(projectId, file),
     onSuccess: async () => {
@@ -589,10 +578,10 @@ function ProjectView() {
     [selectedStepExportTargetIDs, stepExportTargets],
   )
   const stepAssemblyDownloadFilename = stepAssemblyExportFilename(project?.name ?? 'assembly', projectCADDocument?.revision ?? 0)
-  const cadNodeByID = useMemo(() => new Map((projectCADDocument?.nodes ?? []).map((node) => [node.id, node])), [projectCADDocument])
-  const sourceNodeIDByModelID = useMemo(
-    () => new Map((projectCADDocument?.nodes ?? []).flatMap((node) => (node.model_id ? [[node.model_id, node.id] as const] : []))),
-    [projectCADDocument],
+  const cadDocumentNodes = projectCADDocument?.nodes
+  const cadNodeByID = useMemo(() => new Map((cadDocumentNodes ?? []).map((node) => [node.id, node])), [cadDocumentNodes])
+  const sourceNodeIDByModelID = new Map(
+    (cadDocumentNodes ?? []).flatMap((node) => (node.model_id ? [[node.model_id, node.id] as const] : [])),
   )
   const effectiveSelectedModelID = selectedModel?.id ?? ''
   const effectiveSelectedDocumentNodeID = cadNodeByID.has(selectedDocumentNodeID)
@@ -608,7 +597,7 @@ function ProjectView() {
     queryFn: async () => (await fetchProjectModelSource(projectId, selectedSourceModelID)).data.text(),
     enabled: projectId !== '' && isParametricProjectModelFormat(selectedSourceModel?.format) && !selectedParametricArtifact,
   })
-  const selectedSavedParametricArtifact = useMemo<ProjectParametricArtifact | undefined>(() => {
+  const selectedSavedParametricArtifact: ProjectParametricArtifact | undefined = (() => {
     if (!selectedSourceModel || !isParametricProjectModelFormat(selectedSourceModel.format) || !selectedParametricModelSourceQuery.data) {
       return undefined
     }
@@ -629,7 +618,7 @@ function ProjectView() {
       created_at: selectedSourceModel.created_at,
       updated_at: selectedSourceModel.updated_at,
     }
-  }, [projectId, selectedParametricModelSourceQuery.data, selectedSourceModel])
+  })()
   const projectModelTree = useMemo(() => buildProjectModelTree(projectModels, projectCADDocument), [projectModels, projectCADDocument])
   const modelTranslationsByID = useMemo(() => {
     const translations: Record<string, CADTranslation> = {}
@@ -717,7 +706,32 @@ function ProjectView() {
       retry: false,
     })),
   })
-  const featureDSLKernelMeshesByModelIDRef = useRef<Record<string, CadKernelWorkerPreviewResult>>({})
+  const [featureDSLKernelMeshesByModelID, setFeatureDSLKernelMeshesByModelID] = useState<Record<string, CadKernelWorkerPreviewResult>>({})
+  useEffect(() => {
+    const updateFeatureDSLMeshCacheTimeout = window.setTimeout(() => {
+      setFeatureDSLKernelMeshesByModelID((currentMeshes) => {
+        const nextMeshes: Record<string, CadKernelWorkerPreviewResult> = {}
+        browserKernelFeatureDSLPreviewModels.forEach((model, index) => {
+          const previewMesh = browserKernelFeatureDSLPreviewQueries[index]?.data ?? currentMeshes[model.id]
+          if (previewMesh) {
+            nextMeshes[model.id] = previewMesh
+          }
+        })
+        const currentModelIDs = Object.keys(currentMeshes)
+        const nextModelIDs = Object.keys(nextMeshes)
+        if (
+          currentModelIDs.length === nextModelIDs.length &&
+          nextModelIDs.every((modelID) => currentMeshes[modelID] === nextMeshes[modelID])
+        ) {
+          return currentMeshes
+        }
+        return nextMeshes
+      })
+    }, 0)
+    return () => {
+      window.clearTimeout(updateFeatureDSLMeshCacheTimeout)
+    }
+  }, [browserKernelFeatureDSLPreviewModels, browserKernelFeatureDSLPreviewQueries])
   const kernelMeshesByModelID = browserKernelPreviewQueries.reduce<Record<string, CadKernelWorkerPreviewResult>>(
     (meshByModelID, query, index) => {
       const modelID = browserKernelStepPreviewModels[index]?.id
@@ -728,22 +742,10 @@ function ProjectView() {
     },
     {},
   )
-  const activeFeatureDSLModelIDs = new Set(browserKernelFeatureDSLPreviewModels.map((model) => model.id))
-  for (const cachedModelID of Object.keys(featureDSLKernelMeshesByModelIDRef.current)) {
-    if (!activeFeatureDSLModelIDs.has(cachedModelID)) {
-      delete featureDSLKernelMeshesByModelIDRef.current[cachedModelID]
-    }
-  }
   browserKernelFeatureDSLPreviewQueries.forEach((query, index) => {
     const modelID = browserKernelFeatureDSLPreviewModels[index]?.id
-    if (!modelID) {
-      return
-    }
-    if (query.data) {
-      featureDSLKernelMeshesByModelIDRef.current[modelID] = query.data
-    }
-    const previewMesh = query.data ?? featureDSLKernelMeshesByModelIDRef.current[modelID]
-    if (previewMesh) {
+    const previewMesh = query.data ?? (modelID ? featureDSLKernelMeshesByModelID[modelID] : undefined)
+    if (modelID && previewMesh) {
       kernelMeshesByModelID[modelID] = previewMesh
     }
   })

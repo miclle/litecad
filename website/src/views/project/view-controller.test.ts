@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { viewCubeRendererOptions } from './view-controller'
+import { viewCubeRendererOptions } from './view-controller-options'
 import { createChamferedCubeGeometry, viewCubeChamferHeight, viewCubeFaces, viewCubeSize } from './view-cube'
 
 describe('view controller definitions', () => {
