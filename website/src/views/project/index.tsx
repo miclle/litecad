@@ -12,10 +12,8 @@ import {
   ArrowLeft,
   Box,
   FileText,
-  HardDrive,
   PanelLeftClose,
   PanelLeftOpen,
-  X,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
@@ -36,11 +34,6 @@ import {
   type CadKernelWorkerPreviewResult,
 } from 'src/cad/kernel-worker-client'
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
-import { Button } from '@/components/ui/button'
-import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
 import {
   dispatchModelPreviewSetViewEvent,
   normalizeViewOrientation,
@@ -55,9 +48,9 @@ import {
 } from './cad-document-box-features'
 import { cadHistoryActionForKey } from './cad-document-history'
 import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
-import { ModelPreview } from './model-preview'
 import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
+import { ProjectCanvas } from './project-canvas'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
 import { ProjectAssistantPanel } from './project-assistant-panel'
 import { ProjectInspector, type ProjectInspectorSelection, type TransformDraft } from './project-inspector'
@@ -76,7 +69,6 @@ import {
   buildStepExportTargets,
   stepAssemblyExportFilename,
 } from './project-step-export'
-import { ViewController } from './view-controller'
 import { useCADDocumentCommands } from './use-cad-document-commands'
 import { useProjectAssistantController } from './use-project-assistant-controller'
 import { useProjectModelUploadController } from './use-project-model-upload-controller'
@@ -156,37 +148,6 @@ function cadUnitLabel(unit: string | undefined) {
 
 function translationsEqual(left: CADTranslation | undefined, right: CADTranslation | undefined) {
   return !!left && !!right && left.x === right.x && left.y === right.y && left.z === right.z
-}
-
-function NumericCADField({
-  ariaLabel,
-  label,
-  onChange,
-  unitLabel,
-  value,
-}: {
-  ariaLabel: string
-  label: string
-  onChange: (value: string) => void
-  unitLabel: string
-  value: string
-}) {
-  return (
-    <Field className="gap-1" orientation="vertical">
-      <FieldLabel className="text-[10px] font-medium uppercase tracking-normal text-[#64748b]">{label}</FieldLabel>
-      <div className="relative">
-        <Input
-          aria-label={ariaLabel}
-          className="h-8 rounded-md border-[#dbe3ec] bg-white pr-8 text-right font-mono text-[11px] text-[#334155] focus-visible:border-[#64748b] focus-visible:ring-[#cbd5e1]"
-          inputMode="decimal"
-          onChange={(event) => onChange(event.target.value)}
-          type="text"
-          value={value}
-        />
-        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[#94a3b8]">{unitLabel}</span>
-      </div>
-    </Field>
-  )
 }
 
 function ProjectView() {
@@ -340,17 +301,14 @@ function ProjectView() {
     selectedSourceModel,
     setActiveCADTool,
   } = projectSelection
-  const handleCADDocumentNodeDeleted = useCallback(
-    (nodeId: string) => {
-      setTransformDraftsByModelID((currentDrafts) => {
-        const nextDrafts = { ...currentDrafts }
-        delete nextDrafts[nodeId]
-        return nextDrafts
-      })
-      clearSelection()
-    },
-    [clearSelection],
-  )
+  const handleCADDocumentNodeDeleted = (nodeId: string) => {
+    setTransformDraftsByModelID((currentDrafts) => {
+      const nextDrafts = { ...currentDrafts }
+      delete nextDrafts[nodeId]
+      return nextDrafts
+    })
+    clearSelection()
+  }
   const cadDocumentCommands = useCADDocumentCommands({
     projectId,
     onConflict: handleCADDocumentConflict,
@@ -912,186 +870,51 @@ function ProjectView() {
         />
       }
       canvas={
-        <section className="absolute inset-0 overflow-hidden">
-          <ModelPreview
-            deferResize={isAiChatTransitioning}
-            draftModelTranslations={draftModelTranslationsByID}
-            key={project.id}
-            modelTranslations={modelTranslationsByID}
-            onClearSelection={() => {
-              clearSelection()
-              cadDocumentCommands.clearDeleteError()
-            }}
-            onModelTranslationChange={updateTransformDraftFromTranslation}
-            onSelectModel={(modelID, nodeID) => {
-              selectModel(modelID, nodeID)
-              cadDocumentCommands.clearDeleteError()
-            }}
-            onSnapshotCapture={projectThumbnailSnapshot.onSnapshotCapture}
-            previewAssets={previewAssets}
-            selectedModelId={effectiveSelectedModelID}
-            selectedNodeId={effectiveSelectedDocumentNodeID}
-            visibleModelIds={visibleModelIds}
-          />
-          {shouldShowCanvasStatus && (
-            <div
-              className="pointer-events-none absolute bottom-4 left-4 max-w-sm rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 p-4 shadow-xl backdrop-blur lg:left-[var(--canvas-status-left)]"
-              style={{ '--canvas-status-left': `${canvasStatusLeftOffset}px` } as CSSProperties}
-            >
-              <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#64748b]">
-                <HardDrive className="size-4 text-[#475569]" />
-                {canvasStatusLabel}
-              </div>
-              <p className="mt-2 text-sm leading-6 text-[#1f2937]">
-                {canvasStatusBody}
-              </p>
-            </div>
-          )}
-
-          <div
-            aria-label="CAD tools"
-            className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-md border border-[#dbe3ec] bg-white/94 p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur"
-            role="toolbar"
-          >
-            <span className="px-1.5 font-mono text-[10px] font-semibold uppercase text-[#64748b]">CAD tools</span>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    aria-pressed={activeCADTool === 'fuse-box' && selectedModelSupportsFuseBox}
-                    className={cn(
-                      'min-w-[96px] justify-center',
-                      activeCADTool === 'fuse-box' && selectedModelSupportsFuseBox && 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8] hover:bg-[#dbeafe]',
-                    )}
-                    disabled={!selectedModelSupportsFuseBox}
-                    onClick={() => setActiveCADTool((currentTool) => (currentTool === 'fuse-box' ? 'inspect' : 'fuse-box'))}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  />
-                }
-              >
-                <Box data-icon="inline-start" />
-                <span className="truncate">Fuse box</span>
-              </TooltipTrigger>
-              {!selectedDocumentNode ? (
-                <TooltipContent sideOffset={8}>Select a model first</TooltipContent>
-              ) : !selectedModelSupportsFuseBox ? (
-                <TooltipContent sideOffset={8}>STEP models only</TooltipContent>
-              ) : null}
-            </Tooltip>
-          </div>
-
-          {activeCADTool === 'fuse-box' && selectedModelSupportsFuseBox && selectedModelBoxFeatureDraft && selectedSourceModel && (
-            <aside
-              aria-label="Fuse box tool"
-              className="absolute right-4 top-40 z-20 w-[min(320px,calc(100vw-32px))] rounded-md border border-[#dbe3ec] bg-white/94 p-3 shadow-[0_14px_36px_rgba(15,23,42,0.12)] backdrop-blur"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-mono text-[11px] uppercase text-[#64748b]">Tool</p>
-                  <h2 className="mt-1 text-sm font-semibold text-[#0f172a]">Fuse box</h2>
-                  <p className="mt-1 text-xs leading-5 text-[#64748b]">
-                    Add a rectangular union to the selected STEP model for preview and export.
-                  </p>
-                </div>
-                <Button
-                  aria-label="Close Fuse box tool"
-                  className="shrink-0"
-                  onClick={() => setActiveCADTool('inspect')}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <X />
-                </Button>
-              </div>
-
-              <div className="mt-3 flex min-w-0 items-center gap-2 rounded border border-[#e2e8f0] bg-[#f8fafc] px-2 py-1.5">
-                <Box className="size-3.5 shrink-0 text-[#1d4ed8]" />
-                <span className="min-w-0 flex-1 truncate text-xs font-medium text-[#334155]" title={selectedModelDisplayName}>
-                  {selectedModelDisplayName}
-                </span>
-                <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">{documentUnitLabel}</span>
-              </div>
-
-              <FieldSet className="mt-3 gap-3">
-                <FieldGroup className="gap-2">
-                  <FieldTitle className="text-xs text-[#334155]">Origin</FieldTitle>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {(
-                      [
-                        ['originX', 'Origin X'],
-                        ['originY', 'Origin Y'],
-                        ['originZ', 'Origin Z'],
-                      ] as const
-                    ).map(([field, label]) => (
-                      <NumericCADField
-                        ariaLabel={`${label} for ${selectedModelDisplayName}`}
-                        key={field}
-                        label={label.replace('Origin ', '')}
-                        onChange={(value) => updateBoxFeatureDraft(selectedSourceModel.id, field, value)}
-                        unitLabel={documentUnitLabel}
-                        value={selectedModelBoxFeatureDraft[field]}
-                      />
-                    ))}
-                  </div>
-                </FieldGroup>
-
-                <FieldGroup className="gap-2">
-                  <FieldTitle className="text-xs text-[#334155]">Size</FieldTitle>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {(
-                      [
-                        ['sizeX', 'Size X'],
-                        ['sizeY', 'Size Y'],
-                        ['sizeZ', 'Size Z'],
-                      ] as const
-                    ).map(([field, label]) => (
-                      <NumericCADField
-                        ariaLabel={`${label} for ${selectedModelDisplayName}`}
-                        key={field}
-                        label={label.replace('Size ', '')}
-                        onChange={(value) => updateBoxFeatureDraft(selectedSourceModel.id, field, value)}
-                        unitLabel={documentUnitLabel}
-                        value={selectedModelBoxFeatureDraft[field]}
-                      />
-                    ))}
-                  </div>
-                </FieldGroup>
-
-                {selectedModelBoxFeatureError && <FieldError className="text-[11px] leading-4">{selectedModelBoxFeatureError}</FieldError>}
-
-                <div className="grid grid-cols-[1fr_auto] gap-1.5">
-                  <Button
-                    className="justify-center"
-                    disabled={isSelectedModelBoxFeatureUpdating || !projectCADDocument}
-                    onClick={() => addBoxFeatureDraft(selectedSourceModel.id)}
-                    size="sm"
-                    type="button"
-                  >
-                    <Box data-icon="inline-start" />
-                    {isSelectedModelBoxFeatureUpdating ? 'Applying' : 'Apply fuse'}
-                  </Button>
-                  <Button onClick={() => setActiveCADTool('inspect')} size="sm" type="button" variant="outline">
-                    Cancel
-                  </Button>
-                </div>
-              </FieldSet>
-            </aside>
-          )}
-
-          <ViewController
-            animateViewCubeOrientation={animateViewCubeOrientation}
-            className="xl:right-[var(--view-controller-right)]"
-            onFlip={flipCanvasOrientation}
-            onResetIsometric={() => applyCanvasOrientation(initialViewOrientation)}
-            onSetOrientation={applyCanvasOrientation}
-            onStep={stepCanvasOrientation}
-            orientation={viewOrientation}
-            style={{ '--view-controller-right': `${canvasRightOffset}px` } as CSSProperties}
-          />
-        </section>
+        <ProjectCanvas
+          activeCADTool={activeCADTool}
+          animateViewCubeOrientation={animateViewCubeOrientation}
+          canvasRightOffset={canvasRightOffset}
+          canvasStatusBody={canvasStatusBody}
+          canvasStatusLabel={canvasStatusLabel}
+          canvasStatusLeftOffset={canvasStatusLeftOffset}
+          deferResize={isAiChatTransitioning}
+          draftModelTranslations={draftModelTranslationsByID}
+          isSelectedModelBoxFeatureUpdating={isSelectedModelBoxFeatureUpdating}
+          modelTranslations={modelTranslationsByID}
+          onApplyBoxFeatureDraft={addBoxFeatureDraft}
+          onClearSelection={() => {
+            clearSelection()
+            cadDocumentCommands.clearDeleteError()
+          }}
+          onCloseCADTool={() => setActiveCADTool('inspect')}
+          onFlipOrientation={flipCanvasOrientation}
+          onModelTranslationChange={updateTransformDraftFromTranslation}
+          onResetIsometric={() => applyCanvasOrientation(initialViewOrientation)}
+          onSelectModel={(modelID, nodeID) => {
+            selectModel(modelID, nodeID)
+            cadDocumentCommands.clearDeleteError()
+          }}
+          onSetOrientation={applyCanvasOrientation}
+          onSnapshotCapture={projectThumbnailSnapshot.onSnapshotCapture}
+          onStepOrientation={stepCanvasOrientation}
+          onToggleFuseBoxTool={() => setActiveCADTool((currentTool) => (currentTool === 'fuse-box' ? 'inspect' : 'fuse-box'))}
+          onUpdateBoxFeatureDraft={updateBoxFeatureDraft}
+          previewAssets={previewAssets}
+          projectCADDocument={projectCADDocument}
+          projectId={project.id}
+          selectedDocumentNode={selectedDocumentNode}
+          selectedModelBoxFeatureDraft={selectedModelBoxFeatureDraft}
+          selectedModelBoxFeatureError={selectedModelBoxFeatureError}
+          selectedModelDisplayName={selectedModelDisplayName}
+          selectedModelId={effectiveSelectedModelID}
+          selectedModelSupportsFuseBox={selectedModelSupportsFuseBox}
+          selectedNodeId={effectiveSelectedDocumentNodeID}
+          selectedSourceModel={selectedSourceModel}
+          shouldShowCanvasStatus={shouldShowCanvasStatus}
+          unitLabel={documentUnitLabel}
+          viewOrientation={viewOrientation}
+          visibleModelIds={visibleModelIds}
+        />
       }
       isAiChatPanelResizing={isAiChatPanelResizing}
       leftPanel={
