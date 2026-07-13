@@ -63,6 +63,7 @@ export type ModelPreviewProps = {
   deferResize?: boolean
   displayOptions?: ModelPreviewDisplayOptions
   draftModelTranslations?: Record<string, CADTranslation>
+  measurementOverlayClassName?: string
   modelTranslations?: Record<string, CADTranslation>
   onClearSelection?: () => void
   onModelTranslationChange?: (modelID: string, translation: CADTranslation, nodeID?: string) => void

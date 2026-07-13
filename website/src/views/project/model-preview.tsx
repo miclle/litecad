@@ -1,5 +1,6 @@
 import type { ModelPreviewProps } from './use-model-preview-scene'
 import { formatModelPreviewMeasurementValue, useModelPreviewScene } from './use-model-preview-scene'
+import { cn } from '@/lib/utils'
 
 export type { ModelPreviewSnapshotCapture } from './use-model-preview-scene'
 
@@ -27,7 +28,13 @@ export function ModelPreview(props: ModelPreviewProps) {
         </div>
       ) : null}
       {variant === 'workspace' && measurement ? (
-        <div className="pointer-events-none absolute right-4 top-4 z-20 w-[min(280px,calc(100vw-32px))] rounded-md border border-[#cbd5e1] bg-white/92 p-3 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur">
+        <div
+          aria-label="Measurement summary"
+          className={cn(
+            'pointer-events-none absolute right-4 top-4 z-20 w-[min(280px,calc(100vw-32px))] rounded-md border border-[#cbd5e1] bg-white/92 p-3 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur',
+            props.measurementOverlayClassName,
+          )}
+        >
           <div className="flex items-center justify-between gap-3">
             <p className="font-mono text-[10px] font-semibold uppercase text-[#64748b]">Measurement</p>
             <span className="font-mono text-[10px] uppercase text-[#94a3b8]">

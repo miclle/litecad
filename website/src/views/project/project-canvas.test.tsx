@@ -14,12 +14,14 @@ vi.mock('./model-preview', () => ({
   ModelPreview: vi.fn(
     (props: {
       displayOptions: { measurement: boolean; section: boolean; showEdges: boolean }
+      measurementOverlayClassName?: string
       selectedModelId: string
       selectedNodeId: string
     }) => (
       <div
         data-edges={String(props.displayOptions.showEdges)}
         data-measurement={String(props.displayOptions.measurement)}
+        data-measurement-overlay-class={props.measurementOverlayClassName}
         data-model-preview
         data-section={String(props.displayOptions.section)}
         data-selected-model={props.selectedModelId}
@@ -47,6 +49,12 @@ describe('ProjectCanvas', () => {
     expect(document.querySelector('[data-model-preview]')?.getAttribute('data-selected-model')).toBe('')
     expect(document.querySelector('[aria-label="View orientation controls"]')).toBeTruthy()
     expect((document.querySelector('button[aria-pressed="false"]') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  test('keeps the measurement HUD below desktop view orientation controls', () => {
+    renderCanvas()
+
+    expect(document.querySelector('[data-model-preview]')?.getAttribute('data-measurement-overlay-class')).toContain('sm:top-[168px]')
   })
 
   test('toggles preview analysis tools for loaded preview assets', async () => {

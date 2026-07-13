@@ -152,6 +152,7 @@ export function ProjectCanvas({
         displayOptions={displayOptions}
         draftModelTranslations={draftModelTranslations}
         key={projectId}
+        measurementOverlayClassName="sm:top-[168px]"
         modelTranslations={modelTranslations}
         onClearSelection={onClearSelection}
         onModelTranslationChange={onModelTranslationChange}

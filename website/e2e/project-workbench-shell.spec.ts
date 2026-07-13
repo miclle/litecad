@@ -41,3 +41,22 @@ test('opens the project workbench shell and History without browser errors', asy
   expect(browserErrors).toEqual([])
 })
 
+test('keeps the measurement panel clear of view orientation controls', async ({ page }) => {
+  const browserErrors = captureBrowserErrors(page)
+  const fixture = await installProjectAPIFixture(page)
+  fixture.seedSavedModel()
+
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+  await page.getByRole('button', { name: 'Measure' }).click()
+  await expect(page.getByLabel('Measurement summary')).toBeVisible()
+
+  const orientationBounds = await page.getByLabel('View orientation controls').boundingBox()
+  const measurementBounds = await page.getByLabel('Measurement summary').boundingBox()
+  expect(orientationBounds).not.toBeNull()
+  expect(measurementBounds).not.toBeNull()
+  expect(measurementBounds!.y).toBeGreaterThanOrEqual(orientationBounds!.y + orientationBounds!.height)
+
+  expect(browserErrors).toEqual([])
+})
