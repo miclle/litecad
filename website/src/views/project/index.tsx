@@ -79,6 +79,7 @@ import { ProjectHistoryPopover } from './project-history-popover'
 import { ProjectInspector, type ProjectInspectorSelection, type TransformDraft } from './project-inspector'
 import { ProjectModelTree } from './project-model-tree'
 import { ProjectStepExportPopover } from './project-step-export-popover'
+import { ProjectWorkbenchLayout } from './project-workbench-layout'
 import {
   buildProjectPreviewAssets,
   buildProjectModelTree,
@@ -918,195 +919,67 @@ function ProjectView() {
     cadDocumentCommands.addBoxUnion(modelID, box)
   }
   return (
-    <div
-      className={`grid min-h-screen overflow-x-auto overflow-y-hidden bg-[#f8fafc] text-[#0f172a] motion-reduce:transition-none ${
-        isAiChatPanelResizing ? '' : 'transition-[grid-template-columns] duration-[220ms] ease-out'
-      }`}
-      style={workspaceGridStyle}
-    >
-      <div className="grid min-h-screen min-w-0 grid-rows-[56px_minmax(0,1fr)] bg-[#f8fafc]">
-        <header className="relative z-50 flex items-center justify-between border-b border-[#e2e8f0] bg-[#f8fafc]/92 px-3 backdrop-blur">
-        <div className="flex min-w-0 items-center gap-3">
-          <TopbarTooltip
-            label="All projects"
-            render={
-              <Link
-                aria-label="All projects"
-                className="grid size-9 shrink-0 place-items-center rounded-md text-[#64748b] no-underline transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
-                to="/projects"
-              />
-            }
-          >
-            <ArrowLeft className="size-4" />
-          </TopbarTooltip>
-          <div className="relative flex min-w-0 items-center gap-1.5">
-            <h1 className="truncate text-sm font-semibold leading-tight text-[#0f172a]">{project.name}</h1>
-            <Popover onOpenChange={setIsProjectInfoOpen} open={isProjectInfoOpen}>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <PopoverTrigger
-                      render={
-                        <Button
-                          aria-label="Project info"
-                          className="shrink-0"
-                          size="icon-sm"
-                          type="button"
-                          variant="ghost"
-                        />
-                      }
-                    >
-                      <Info />
-                    </PopoverTrigger>
-                  }
-                />
-                <TooltipContent sideOffset={8}>Project info</TooltipContent>
-              </Tooltip>
-              <PopoverContent
-                align="center"
-                aria-label="Project info"
-                className="relative w-[min(360px,calc(100vw-24px))] gap-0 rounded-md border-[#e2e8f0] bg-white/96 p-4 text-left shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur"
-                sideOffset={10}
-              >
-                <PopoverArrow className="border-[#e2e8f0] bg-white/96" />
-                <PopoverHeader className="flex-row items-center justify-between gap-3">
-                  <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">Project</PopoverTitle>
-                  <PopoverDescription className="truncate text-sm font-semibold text-[#0f172a]">
-                    {project.name}
-                  </PopoverDescription>
-                </PopoverHeader>
-
-                <section className="mt-4">
-                  <p className="font-mono text-[11px] uppercase text-[#64748b]">Description</p>
-                  <p className="mt-2 text-sm leading-6 text-[#1f2937]">{projectDescription}</p>
-                </section>
-
-                <section className="mt-4 rounded-md border border-[#e2e8f0] bg-[#f8fafc] p-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
-                    <CheckCircle2 className="size-4 text-[#475569]" />
-                    {previewSummary.sourceLabel}
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-[#64748b]">{previewSummary.sourceBody}</p>
-                </section>
-
-                <section className="mt-4">
-                  <p className="font-mono text-[11px] uppercase text-[#64748b]">Document</p>
-                  <dl className="mt-3 grid gap-2 text-sm">
-                    {documentDetails.map((detail) => (
-                      <div className="flex items-center justify-between gap-4 border-b border-[#e2e8f0] pb-2" key={detail.label}>
-                        <dt className="text-[#64748b]">{detail.label}</dt>
-                        <dd className="truncate text-[#1f2937]">{detail.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </section>
-              </PopoverContent>
-            </Popover>
-          </div>
-        </div>
-
-        <div className="hidden items-center justify-end gap-1.5 lg:flex">
-          <ProjectHistoryPopover
-            canRedo={Boolean(projectCADDocument?.history.can_redo)}
-            canUndo={Boolean(projectCADDocument?.history.can_undo)}
-            entries={projectCADHistory}
-            error={cadDocumentCommands.historyError}
-            hasNextPage={Boolean(projectCADHistoryQuery.hasNextPage)}
-            isFetchingNextPage={projectCADHistoryQuery.isFetchingNextPage}
-            isLoading={projectCADHistoryQuery.isPending}
-            isMutationPending={cadDocumentCommands.isPending}
-            loadError={projectCADHistoryQuery.isError}
-            onFetchNextPage={() => projectCADHistoryQuery.fetchNextPage()}
-            onHistoryAction={cadDocumentCommands.changeHistory}
-            onOpenChange={setIsHistoryOpen}
-            open={isHistoryOpen}
+    <ProjectWorkbenchLayout
+      assistantPanel={
+        <ProjectAssistantPanel
+          activeConversationId={projectAssistant.activeConversationID}
+          conversations={projectAssistant.conversations}
+          draft={projectAssistant.draft}
+          isPending={projectAssistant.isPending}
+          maxWidth={aiChatPanelMaxWidth}
+          messages={projectAssistant.messages}
+          onClose={closeAiChat}
+          onCreateConversation={projectAssistant.createConversation}
+          onDraftChange={projectAssistant.setDraft}
+          onGenerateParametric={projectAssistant.generateParametricArtifact}
+          onResizePointerDown={startAiChatPanelResize}
+          onRetryParametric={projectAssistant.retryParametricGeneration}
+          onSelectConversation={projectAssistant.selectConversation}
+          onSubmit={projectAssistant.submitMessage}
+          open={isAiChatOpen}
+          parametricRunError={projectAssistant.parametricRunError}
+          pendingKind={projectAssistant.pendingKind}
+          retryParametricPrompt={projectAssistant.retryParametricPrompt}
+          sourceCount={projectModels.length}
+          width={aiChatPanelWidth}
+        />
+      }
+      canvas={
+        <section className="absolute inset-0 overflow-hidden">
+          <ModelPreview
+            deferResize={isAiChatTransitioning}
+            draftModelTranslations={draftModelTranslationsByID}
+            key={project.id}
+            modelTranslations={modelTranslationsByID}
+            onClearSelection={() => {
+              clearSelection()
+              cadDocumentCommands.clearDeleteError()
+            }}
+            onModelTranslationChange={updateTransformDraftFromTranslation}
+            onSelectModel={(modelID, nodeID) => {
+              selectModel(modelID, nodeID)
+              cadDocumentCommands.clearDeleteError()
+            }}
+            onSnapshotCapture={projectThumbnailSnapshot.onSnapshotCapture}
+            previewAssets={previewAssets}
+            selectedModelId={effectiveSelectedModelID}
+            selectedNodeId={effectiveSelectedDocumentNodeID}
+            visibleModelIds={visibleModelIds}
           />
-          <ProjectStepExportPopover
-            disabled={stepExportTargets.length === 0 || !projectCADDocument}
-            onExport={projectStepExport.exportSelection}
-            onOpenChange={setIsStepExportOpen}
-            onSelectAll={projectStepExport.selectAllTargets}
-            onToggleTarget={projectStepExport.toggleTarget}
-            open={isStepExportOpen}
-            selectedTargetIds={projectStepExport.selectedTargetIDs}
-            targets={stepExportTargets}
-          />
-          <TopbarTooltip
-            label="Import model"
-            render={
-              <button
-                aria-label="Import model"
-                className="grid size-9 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={projectModelUpload.isUploading}
-                onClick={() => fileInputRef.current?.click()}
-                type="button"
-              />
-            }
-          >
-            <Upload className="size-4" />
-          </TopbarTooltip>
-          <button
-            aria-label="Toggle Assistant"
-            aria-pressed={isAiChatOpen}
-            className={`flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
-              isAiChatOpen
-                ? 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]'
-                : 'border-transparent text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]'
-            }`}
-            onClick={toggleAiChat}
-            title={isAiChatOpen ? 'Close Assistant' : 'Open Assistant'}
-            type="button"
-          >
-            <BotMessageSquare className="size-4" />
-            Assistant
-          </button>
-          <input
-            accept=".step,.stp,.gltf,.glb,.stl"
-            className="hidden"
-            onChange={projectModelUpload.handleModelFileChange}
-            ref={fileInputRef}
-            type="file"
-          />
-        </div>
-        </header>
-
-        <main className="min-h-0 overflow-x-auto overflow-y-hidden bg-[#f8fafc]">
-        <div className="relative h-full min-h-0 overflow-hidden bg-[#f8fafc]">
-          <section className="absolute inset-0 overflow-hidden">
-            <ModelPreview
-              deferResize={isAiChatTransitioning}
-              draftModelTranslations={draftModelTranslationsByID}
-              key={project.id}
-              modelTranslations={modelTranslationsByID}
-              onClearSelection={() => {
-                clearSelection()
-                cadDocumentCommands.clearDeleteError()
-              }}
-              onModelTranslationChange={updateTransformDraftFromTranslation}
-              onSelectModel={(modelID, nodeID) => {
-                selectModel(modelID, nodeID)
-                cadDocumentCommands.clearDeleteError()
-              }}
-              onSnapshotCapture={projectThumbnailSnapshot.onSnapshotCapture}
-              previewAssets={previewAssets}
-              selectedModelId={effectiveSelectedModelID}
-              selectedNodeId={effectiveSelectedDocumentNodeID}
-              visibleModelIds={visibleModelIds}
-            />
-            {shouldShowCanvasStatus && (
-              <div
-                className="pointer-events-none absolute bottom-4 left-4 max-w-sm rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 p-4 shadow-xl backdrop-blur lg:left-[var(--canvas-status-left)]"
-                style={{ '--canvas-status-left': `${canvasStatusLeftOffset}px` } as CSSProperties}
-              >
-                <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#64748b]">
-                  <HardDrive className="size-4 text-[#475569]" />
-                  {canvasStatusLabel}
-                </div>
-                <p className="mt-2 text-sm leading-6 text-[#1f2937]">
-                  {canvasStatusBody}
-                </p>
+          {shouldShowCanvasStatus && (
+            <div
+              className="pointer-events-none absolute bottom-4 left-4 max-w-sm rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 p-4 shadow-xl backdrop-blur lg:left-[var(--canvas-status-left)]"
+              style={{ '--canvas-status-left': `${canvasStatusLeftOffset}px` } as CSSProperties}
+            >
+              <div className="flex items-center gap-2 font-mono text-[11px] uppercase text-[#64748b]">
+                <HardDrive className="size-4 text-[#475569]" />
+                {canvasStatusLabel}
               </div>
-            )}
+              <p className="mt-2 text-sm leading-6 text-[#1f2937]">
+                {canvasStatusBody}
+              </p>
+            </div>
+          )}
 
           <div
             aria-label="CAD tools"
@@ -1252,7 +1125,9 @@ function ProjectView() {
             style={{ '--view-controller-right': `${canvasRightOffset}px` } as CSSProperties}
           />
         </section>
-
+      }
+      isAiChatPanelResizing={isAiChatPanelResizing}
+      leftPanel={
         <aside
           className={`absolute left-4 top-4 z-30 hidden border border-[#e2e8f0] bg-[#ffffff]/92 shadow-[0_10px_28px_rgba(15,23,42,0.06)] backdrop-blur lg:block ${
             isLeftPanelCollapsed
@@ -1355,35 +1230,155 @@ function ProjectView() {
             </>
           )}
         </aside>
-        </div>
-        </main>
-      </div>
+      }
+      topbar={
+        <>
+          <div className="flex min-w-0 items-center gap-3">
+            <TopbarTooltip
+              label="All projects"
+              render={
+                <Link
+                  aria-label="All projects"
+                  className="grid size-9 shrink-0 place-items-center rounded-md text-[#64748b] no-underline transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
+                  to="/projects"
+                />
+              }
+            >
+              <ArrowLeft className="size-4" />
+            </TopbarTooltip>
+            <div className="relative flex min-w-0 items-center gap-1.5">
+              <h1 className="truncate text-sm font-semibold leading-tight text-[#0f172a]">{project.name}</h1>
+              <Popover onOpenChange={setIsProjectInfoOpen} open={isProjectInfoOpen}>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <PopoverTrigger
+                        render={
+                          <Button
+                            aria-label="Project info"
+                            className="shrink-0"
+                            size="icon-sm"
+                            type="button"
+                            variant="ghost"
+                          />
+                        }
+                      >
+                        <Info />
+                      </PopoverTrigger>
+                    }
+                  />
+                  <TooltipContent sideOffset={8}>Project info</TooltipContent>
+                </Tooltip>
+                <PopoverContent
+                  align="center"
+                  aria-label="Project info"
+                  className="relative w-[min(360px,calc(100vw-24px))] gap-0 rounded-md border-[#e2e8f0] bg-white/96 p-4 text-left shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur"
+                  sideOffset={10}
+                >
+                  <PopoverArrow className="border-[#e2e8f0] bg-white/96" />
+                  <PopoverHeader className="flex-row items-center justify-between gap-3">
+                    <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">Project</PopoverTitle>
+                    <PopoverDescription className="truncate text-sm font-semibold text-[#0f172a]">
+                      {project.name}
+                    </PopoverDescription>
+                  </PopoverHeader>
 
-      <div className="h-screen min-w-0 overflow-hidden">
-        <ProjectAssistantPanel
-          activeConversationId={projectAssistant.activeConversationID}
-          conversations={projectAssistant.conversations}
-          draft={projectAssistant.draft}
-          isPending={projectAssistant.isPending}
-          maxWidth={aiChatPanelMaxWidth}
-          messages={projectAssistant.messages}
-          onClose={closeAiChat}
-          onCreateConversation={projectAssistant.createConversation}
-          onDraftChange={projectAssistant.setDraft}
-          onGenerateParametric={projectAssistant.generateParametricArtifact}
-          onResizePointerDown={startAiChatPanelResize}
-          onRetryParametric={projectAssistant.retryParametricGeneration}
-          onSelectConversation={projectAssistant.selectConversation}
-          onSubmit={projectAssistant.submitMessage}
-          open={isAiChatOpen}
-          parametricRunError={projectAssistant.parametricRunError}
-          pendingKind={projectAssistant.pendingKind}
-          retryParametricPrompt={projectAssistant.retryParametricPrompt}
-          sourceCount={projectModels.length}
-          width={aiChatPanelWidth}
-        />
-      </div>
-    </div>
+                  <section className="mt-4">
+                    <p className="font-mono text-[11px] uppercase text-[#64748b]">Description</p>
+                    <p className="mt-2 text-sm leading-6 text-[#1f2937]">{projectDescription}</p>
+                  </section>
+
+                  <section className="mt-4 rounded-md border border-[#e2e8f0] bg-[#f8fafc] p-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
+                      <CheckCircle2 className="size-4 text-[#475569]" />
+                      {previewSummary.sourceLabel}
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-[#64748b]">{previewSummary.sourceBody}</p>
+                  </section>
+
+                  <section className="mt-4">
+                    <p className="font-mono text-[11px] uppercase text-[#64748b]">Document</p>
+                    <dl className="mt-3 grid gap-2 text-sm">
+                      {documentDetails.map((detail) => (
+                        <div className="flex items-center justify-between gap-4 border-b border-[#e2e8f0] pb-2" key={detail.label}>
+                          <dt className="text-[#64748b]">{detail.label}</dt>
+                          <dd className="truncate text-[#1f2937]">{detail.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </section>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          <div className="hidden items-center justify-end gap-1.5 lg:flex">
+            <ProjectHistoryPopover
+              canRedo={Boolean(projectCADDocument?.history.can_redo)}
+              canUndo={Boolean(projectCADDocument?.history.can_undo)}
+              entries={projectCADHistory}
+              error={cadDocumentCommands.historyError}
+              hasNextPage={Boolean(projectCADHistoryQuery.hasNextPage)}
+              isFetchingNextPage={projectCADHistoryQuery.isFetchingNextPage}
+              isLoading={projectCADHistoryQuery.isPending}
+              isMutationPending={cadDocumentCommands.isPending}
+              loadError={projectCADHistoryQuery.isError}
+              onFetchNextPage={() => projectCADHistoryQuery.fetchNextPage()}
+              onHistoryAction={cadDocumentCommands.changeHistory}
+              onOpenChange={setIsHistoryOpen}
+              open={isHistoryOpen}
+            />
+            <ProjectStepExportPopover
+              disabled={stepExportTargets.length === 0 || !projectCADDocument}
+              onExport={projectStepExport.exportSelection}
+              onOpenChange={setIsStepExportOpen}
+              onSelectAll={projectStepExport.selectAllTargets}
+              onToggleTarget={projectStepExport.toggleTarget}
+              open={isStepExportOpen}
+              selectedTargetIds={projectStepExport.selectedTargetIDs}
+              targets={stepExportTargets}
+            />
+            <TopbarTooltip
+              label="Import model"
+              render={
+                <button
+                  aria-label="Import model"
+                  className="grid size-9 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={projectModelUpload.isUploading}
+                  onClick={() => fileInputRef.current?.click()}
+                  type="button"
+                />
+              }
+            >
+              <Upload className="size-4" />
+            </TopbarTooltip>
+            <button
+              aria-label="Toggle Assistant"
+              aria-pressed={isAiChatOpen}
+              className={`flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
+                isAiChatOpen
+                  ? 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]'
+                  : 'border-transparent text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]'
+              }`}
+              onClick={toggleAiChat}
+              title={isAiChatOpen ? 'Close Assistant' : 'Open Assistant'}
+              type="button"
+            >
+              <BotMessageSquare className="size-4" />
+              Assistant
+            </button>
+            <input
+              accept=".step,.stp,.gltf,.glb,.stl"
+              className="hidden"
+              onChange={projectModelUpload.handleModelFileChange}
+              ref={fileInputRef}
+              type="file"
+            />
+          </div>
+        </>
+      }
+      workspaceGridStyle={workspaceGridStyle}
+    />
   )
 }
 
