@@ -32,11 +32,12 @@ export function syncModelPreviewEdgeOverlays(root: THREE.Object3D, enabled: bool
       return
     }
     const overlay = new THREE.LineSegments(
-      new THREE.EdgesGeometry(object.geometry, 32),
+      new THREE.WireframeGeometry(object.geometry),
       new THREE.LineBasicMaterial({
-        color: 0x1f2937,
-        depthTest: true,
-        opacity: 0.34,
+        color: 0x0f172a,
+        depthTest: false,
+        depthWrite: false,
+        opacity: 0.56,
         transparent: true,
       }),
     )

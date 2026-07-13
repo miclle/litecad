@@ -17,6 +17,7 @@ describe('model preview tools', () => {
 
     expect(mesh.children).toHaveLength(1)
     expect(mesh.children[0]).toBeInstanceOf(THREE.LineSegments)
+    expect((mesh.children[0] as THREE.LineSegments).geometry).toBeInstanceOf(THREE.WireframeGeometry)
     expect(mesh.children[0].userData.litecadEdgeOverlay).toBe(true)
 
     syncModelPreviewEdgeOverlays(mesh, true)
@@ -32,6 +33,10 @@ describe('model preview tools', () => {
     syncModelPreviewEdgeOverlays(mesh, true)
     const overlayMaterial = (mesh.children[0] as THREE.LineSegments).material as THREE.LineBasicMaterial
     const plane = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0)
+
+    expect(overlayMaterial.depthTest).toBe(false)
+    expect(overlayMaterial.depthWrite).toBe(false)
+    expect(overlayMaterial.opacity).toBeGreaterThan(0.5)
 
     applyModelPreviewClipping(mesh, plane)
 

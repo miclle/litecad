@@ -60,3 +60,25 @@ test('keeps the measurement panel clear of view orientation controls', async ({ 
 
   expect(browserErrors).toEqual([])
 })
+
+test('renders edge overlays when Edges is enabled', async ({ page }) => {
+  const browserErrors = captureBrowserErrors(page)
+  const fixture = await installProjectAPIFixture(page)
+  fixture.seedSavedModel()
+
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+  const previewCanvas = page.locator('[data-model-preview] canvas').first()
+  await expect(previewCanvas).toBeVisible()
+  await page.waitForTimeout(250)
+  const beforeEdges = await previewCanvas.screenshot()
+
+  await page.getByRole('button', { name: 'Edges' }).click()
+  await expect(page.getByRole('button', { name: 'Edges' })).toHaveAttribute('aria-pressed', 'true')
+  await page.waitForTimeout(250)
+  const afterEdges = await previewCanvas.screenshot()
+
+  expect(afterEdges.equals(beforeEdges)).toBe(false)
+  expect(browserErrors).toEqual([])
+})
