@@ -32,7 +32,6 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 - Continue shrinking the remaining project workbench composition hotspot in `website/src/views/project/index.tsx` after moving route commands, Assistant conversation/generation orchestration, saved parametric source/preview orchestration, and controlled surfaces out of that file and splitting `ModelPreview` into a thin component plus scene, resource-generation, and live selection/transform hooks. The remaining route hotspot is primarily upload, selection, STEP export, thumbnail publication, and workbench layout composition; preserve the extracted controller, renderer cleanup, stale-loader disposal, view-event, and resource ownership boundaries during later work.
 - Add route protection UX for `/projects` and `/projects/:projectId` so signed-out users get a deliberate sign-in flow instead of only relying on the Axios 401 redirect.
 - Add focused tests for project creation UI behavior and project detail loading/error states.
-- Expand the supported deterministic Playwright workbench smoke beyond route/History/Assistant coverage to real import, selection, transform, conflict, Undo/Redo, and export fixtures before making browser installation part of `task install` or CI.
 
 ## Documentation And Operations
 

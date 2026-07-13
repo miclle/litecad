@@ -44,7 +44,7 @@ task run            # Run in production mode
 task lint           # Auto-fix code style and run checks
 task check          # Full checks (backend + frontend types + mod tidy)
 task test           # Run tests (race detection + coverage)
-task test-browser   # Run deterministic Playwright workbench smoke
+task test-browser   # Run deterministic isolated Playwright workbench workflows
 task clean          # Remove build artifacts
 task update-tools   # Install/update dev tools
 ```
@@ -164,7 +164,7 @@ For feature work that changes the browser experience, combine the relevant front
 - Respect the existing layering and directory structure; do not reshape architecture for local changes.
 - Run `task check` before committing.
 - Run `task test` when changing behavior, API contracts, database models, or non-trivial frontend interactions.
-- Run `task test-browser` when changing project routing, workbench panels, or browser-visible CAD interactions. Install Chromium once with `npx --prefix website playwright install chromium`.
+- Run `task test-browser` when changing project routing, workbench panels, or browser-visible CAD interactions. The suite uses per-test API fixture state and independently covers shell, import, transform conflict/Undo/Redo, Assistant parameter persistence, and export. Install Chromium once with `npx --prefix website playwright install chromium`.
 
 ## Pre-commit Checklist
 

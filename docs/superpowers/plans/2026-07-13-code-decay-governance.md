@@ -354,14 +354,14 @@ git commit -m "refactor(cad): split feature dsl compiler"
 - Modify: `README.md`
 - Modify: `TODO.md`
 - Modify: `AGENTS.md`
-- Modify: `.agents/rules/testing-and-verification.md`
+- Modify: `.agents/rules/testing.md`
 - Modify: `docs/superpowers/plans/2026-07-13-code-decay-governance.md`
 
 **Interfaces:**
 - `installProjectAPIFixture(page, scenario)` installs deterministic project, conversation, CAD document, history, source, preview, parameter-update, and export routes with isolated per-test mutable state.
 - Each spec owns one workflow and uses fresh fixture state; no test depends on execution order.
 
-- [ ] **Step 1: Write a failing fixture-isolation test**
+- [x] **Step 1: Write a failing fixture-isolation test**
 
 Add two tests that mutate model parameters/history independently and assert the second test starts from defaults.
 
@@ -373,11 +373,11 @@ npm --prefix website exec playwright test website/e2e/project-workbench-parametr
 
 Expected: FAIL until the shared mutable globals are replaced by per-test scenario state.
 
-- [ ] **Step 2: Extract the deterministic API fixture**
+- [x] **Step 2: Extract the deterministic API fixture**
 
 Move route fulfillment and mutable counters into a scenario object returned to each test. Preserve response payloads and existing assertions.
 
-- [ ] **Step 3: Split browser workflows**
+- [x] **Step 3: Split browser workflows**
 
 Create separate tests for:
 
@@ -388,15 +388,15 @@ Create separate tests for:
 
 Run each spec individually, then run `task test-browser`; expected: PASS with no order dependency.
 
-- [ ] **Step 4: Complete the final in-app Browser acceptance**
+- [x] **Step 4: Complete the final in-app Browser acceptance**
 
 Use the in-app Browser against the running application and verify the same four workflows at desktop size, then repeat shell/panel and Inspector behavior at a narrow viewport. Capture console errors and screenshots for the execution record; do not commit generated screenshots.
 
-- [ ] **Step 5: Update documentation and close completed risks**
+- [x] **Step 5: Update documentation and close completed risks**
 
 Update testing commands and fixture ownership in README, AGENTS, and testing rules. Remove the completed E2E-expansion and workbench-controller items from `TODO.md`, leaving only genuinely unfinished product work. Check off all completed steps in this plan.
 
-- [ ] **Step 6: Run the final repository gate**
+- [x] **Step 6: Run the final repository gate**
 
 ```bash
 task check
@@ -409,7 +409,7 @@ git status --short
 
 Expected: all commands exit 0 and the status contains only Task 4 files.
 
-- [ ] **Step 7: Re-run the code-decay measurements**
+- [x] **Step 7: Re-run the code-decay measurements**
 
 ```bash
 find internal website/src -type f \( -name '*.go' -o -name '*.ts' -o -name '*.tsx' \) -not -path '*/node_modules/*' -print0 | xargs -0 wc -l | sort -nr | head -20
@@ -424,10 +424,10 @@ Acceptance:
 - Workbench E2E failures identify the affected workflow without reading one monolithic test.
 - No public behavior or documented product boundary regresses.
 
-- [ ] **Step 8: Commit the final phase**
+- [x] **Step 8: Commit the final phase**
 
 ```bash
-git add website/e2e README.md TODO.md AGENTS.md .agents/rules/testing-and-verification.md docs/superpowers/plans/2026-07-13-code-decay-governance.md
+git add website/e2e README.md TODO.md AGENTS.md .agents/rules/testing.md docs/superpowers/plans/2026-07-13-code-decay-governance.md
 git commit -m "test(project): expand workbench browser coverage"
 ```
 
@@ -435,9 +435,11 @@ git commit -m "test(project): expand workbench browser coverage"
 
 ## Completion Review
 
-- [ ] Every phase has a fresh `task check` and `task test` result.
-- [ ] UI/kernel phases have fresh `task test-browser` and in-app Browser evidence.
-- [ ] Every phase updates the relevant ownership or testing documentation.
-- [ ] Every phase is represented by one scoped commit.
-- [ ] `git status --short --branch` is clean after the final commit.
-- [ ] The final code-decay review classifies the former hotspots using current evidence rather than line count alone.
+- [x] Every phase has a fresh `task check` and `task test` result.
+- [x] UI/kernel phases have fresh `task test-browser` and in-app Browser evidence.
+- [x] Every phase updates the relevant ownership or testing documentation.
+- [x] Every phase is represented by one scoped commit.
+- [x] `git status --short --branch` is clean after the final commit.
+- [x] The final code-decay review classifies the former hotspots using current evidence rather than line count alone.
+
+Final review on 2026-07-13: the repository-wide risk remains low-to-medium rather than systemically decayed. `ProjectView` fell from 1,870 to 1,535 lines and no longer owns Assistant or saved-parametric orchestration; remaining upload, selection, export, thumbnail, and layout composition is explicit follow-up work. `opencascade-step.ts` fell from 1,505 to 396 lines and is now a focused STEP adapter; the 1,070-line `compile-runtime.ts` remains large but cohesive around sequential Feature DSL compilation, with capability/family drift protected by focused tests. Browser coverage now has seven isolated tests spanning fixture isolation, shell, import, conflict/Undo/Redo, Assistant parameter persistence, and export.

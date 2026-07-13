@@ -171,7 +171,7 @@ Run the browser-level workbench smoke after changing project routing, panels, or
 task test-browser
 ```
 
-The smoke suite starts an isolated Vite server, intercepts owner-scoped API responses with deterministic fixtures, opens the real project route, exercises History and Assistant, and fails on unexpected browser console or page errors. It does not require a local database.
+The browser suite starts an isolated Vite server and uses a fresh closure-scoped API fixture for every test, so workflows do not share mutable models, messages, history, or counters. Independent specs cover shell/panel rendering, source import, transform conflict recovery with Undo/Redo, Assistant draft/save/parameter reload, and LiteCAD DSL STEP export; they fail on unexpected browser console or page errors and do not require a local database.
 
 CI also runs Go tests, frontend lint/type/test/build, actionlint, dependency review on pull requests, and golangci-lint.
 

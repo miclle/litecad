@@ -1,0 +1,71 @@
+import { expect, test } from '@playwright/test'
+
+import { captureBrowserErrors, installProjectAPIFixture, projectId, smokeFeatureDSLSource } from './fixtures/project-api'
+
+test('runs the Assistant draft, save, parameter edit, and reload workflow', async ({ page }) => {
+  test.slow()
+  const browserErrors = captureBrowserErrors(page)
+  const fixture = await installProjectAPIFixture(page)
+
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Toggle Assistant' }).click()
+  await expect(page.getByRole('complementary', { name: 'Assistant panel' })).toHaveAttribute('aria-hidden', 'false')
+  await expect(page.getByText('0 project sources attached')).toBeVisible()
+  await expect(page.getByLabel('Assistant conversation')).toHaveValue('agc_smoke')
+  await page.getByLabel('Message Assistant').fill('Inspect smoke project')
+  await page.getByRole('button', { name: 'Send Assistant message' }).click()
+  await expect(page.getByText('Smoke reply ready.')).toBeVisible()
+  await page.getByLabel('Message Assistant').fill('Make a smoke bracket')
+  await page.getByRole('button', { name: 'Generate parametric model' }).click()
+  await expect(page.getByRole('heading', { name: 'Smoke bracket' })).toBeVisible()
+  const generatedInspector = page.getByRole('region', { name: 'Parametric artifact' })
+  await expect(page.getByLabel('width parameter')).toBeVisible()
+  await expect(generatedInspector.getByText('success')).toBeHidden()
+  await expect(generatedInspector.getByText('Generated source')).toBeHidden()
+  await expect(generatedInspector.getByText(smokeFeatureDSLSource)).toBeHidden()
+  await expect(generatedInspector.getByRole('button', { name: 'Show source' })).toBeHidden()
+  await expect(generatedInspector.getByRole('button', { name: 'Hide source' })).toBeHidden()
+  const generatedParameterBounds = await page.getByLabel('width parameter').boundingBox()
+  const generatedInspectorBounds = await generatedInspector.boundingBox()
+  expect(generatedParameterBounds).not.toBeNull()
+  expect(generatedInspectorBounds).not.toBeNull()
+  expect(generatedParameterBounds!.x + generatedParameterBounds!.width).toBeLessThanOrEqual(
+    generatedInspectorBounds!.x + generatedInspectorBounds!.width + 1,
+  )
+  await expect(page.getByRole('option', { name: 'Smoke bracket' })).toBeVisible()
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+  expect(fixture.state.artifactUpdateCount).toBe(1)
+  expect(fixture.state.featureDSLSourceRequestCount).toBeGreaterThan(0)
+  await page.getByRole('button', { name: 'Close Assistant' }).click()
+  await expect(page.locator('[aria-label="Assistant panel"]')).toHaveAttribute('aria-hidden', 'true')
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await expect(page.getByRole('option', { name: 'Smoke bracket' })).toBeVisible()
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+  await page.getByRole('option', { name: 'Smoke bracket' }).click()
+  await expect(page.getByLabel('width value')).toHaveValue('60')
+  const savedModelInspector = page.getByRole('region', { name: 'Parametric artifact' })
+  await expect(savedModelInspector.getByRole('button', { name: 'Save parameters' })).toBeHidden()
+  const modelParameterUpdatesBefore = fixture.state.modelParameterUpdateCount
+  await page.locator('[data-model-preview] canvas').first().evaluate((canvas) => {
+    canvas.setAttribute('data-litecad-stable-canvas', 'saved-parameter-edit')
+  })
+  await page.getByLabel('width value').fill('90')
+  await expect(page.getByLabel('width value')).toHaveValue('90')
+  await expect.poll(() => fixture.state.modelParameterUpdateCount).toBe(modelParameterUpdatesBefore + 1)
+  expect(fixture.state.savedParameterValues).toEqual({ width: 90 })
+  await page.getByRole('button', { name: 'Operation history' }).click()
+  await expect(page.getByText('Update parameters for smoke-bracket-litecad.lcad.json')).toBeVisible()
+  await expect
+    .poll(() => page.locator('[data-model-preview] canvas').first().evaluate((canvas) => canvas.getAttribute('data-litecad-stable-canvas')))
+    .toBe('saved-parameter-edit')
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await page.getByRole('option', { name: 'Smoke bracket' }).click()
+  await expect(page.getByLabel('width value')).toHaveValue('90')
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+
+  expect(browserErrors).toEqual([])
+})

@@ -1,0 +1,416 @@
+import type { Page, Route } from '@playwright/test'
+
+export const projectId = 'project_smoke'
+const now = '2026-07-10T00:00:00Z'
+
+export type ProjectAPIFixtureState = {
+  messages: unknown[]
+  models: unknown[]
+  featureDSLSourceRequestCount: number
+  artifactCompileStatus: string
+  artifactUpdateCount: number
+  historyEntries: unknown[]
+  modelParameterUpdateCount: number
+  savedParameterValues: Record<string, unknown>
+  cadRevision: number
+  translationX: number
+  conflictNextTransform: boolean
+  transformUpdateCount: number
+  undoCount: number
+  redoCount: number
+  canUndo: boolean
+  canRedo: boolean
+  uploadCount: number
+}
+
+export function createProjectFixtureState(): ProjectAPIFixtureState {
+  return {
+    messages: [],
+    models: [],
+    featureDSLSourceRequestCount: 0,
+    artifactCompileStatus: 'pending',
+    artifactUpdateCount: 0,
+    historyEntries: [],
+    modelParameterUpdateCount: 0,
+    savedParameterValues: {},
+    cadRevision: 2,
+    translationX: 0,
+    conflictNextTransform: false,
+    transformUpdateCount: 0,
+    undoCount: 0,
+    redoCount: 0,
+    canUndo: false,
+    canRedo: false,
+    uploadCount: 0,
+  }
+}
+export const smokeFeatureDSLSource = JSON.stringify({
+  version: 1,
+  unit: 'millimetre',
+  parameters: {
+    width: { type: 'number', default: 60, min: 20, max: 120, step: 5 },
+  },
+  features: [{ id: 'base', type: 'box', origin: [0, 0, 0], size: ['width', 24, 8] }],
+})
+const smokeParametricArtifact = {
+  id: 'pma_smoke',
+  project_id: projectId,
+  conversation_id: 'agc_smoke',
+  message_id: 'agm_smoke_parametric',
+  title: 'Smoke bracket',
+  source_kind: 'litecad-feature-dsl',
+  source_code: smokeFeatureDSLSource,
+  parameter_values: {},
+  compile_status: 'pending',
+  compile_error: '',
+  preview_model_id: '',
+  created_at: now,
+  updated_at: now,
+}
+const baseSmokeSavedModel = {
+  id: 'mdl_smoke_lcad',
+  project_id: projectId,
+  original_filename: 'smoke-bracket-litecad.lcad.json',
+  format: 'lcad',
+  content_type: 'application/json',
+  byte_size: smokeFeatureDSLSource.length,
+  parse_status: 'parsed',
+  parse_error: '',
+  metadata: {
+    asset_type: 'lcad',
+    source_kind: 'litecad-feature-dsl',
+    version: '1',
+    schema: 'litecad-feature-dsl',
+    product_names: ['Smoke bracket'],
+    components: [],
+    length_unit: 'millimetre',
+    entity_count: 1,
+    parameter_count: 1,
+    parameter_values: {},
+    compile_summary: 'LiteCAD feature DSL source',
+    representation_count: 1,
+    triangle_count: 12,
+  },
+  created_at: now,
+  updated_at: now,
+}
+
+function smokeSavedModel(state: ProjectAPIFixtureState) {
+  return {
+    ...baseSmokeSavedModel,
+    metadata: {
+      ...baseSmokeSavedModel.metadata,
+      parameter_values: state.savedParameterValues,
+    },
+  }
+}
+
+function smokeCADDocument(state: ProjectAPIFixtureState) {
+  const modelID = (state.models[0] as { id?: string } | undefined)?.id ?? ''
+  return {
+    id: 'cad_document_smoke',
+    project_id: projectId,
+    schema_version: 1,
+    revision: state.models.length > 0 ? state.cadRevision : 1,
+    unit: 'mm',
+    nodes:
+      state.models.length > 0
+        ? [
+            {
+              id: `node_${modelID}`,
+              model_id: modelID,
+              source_model_id: '',
+              parent_node_id: '',
+              name: 'Smoke bracket',
+              source_format: (state.models[0] as { format?: string }).format ?? 'lcad',
+              transform: { matrix: [1, 0, 0, state.translationX, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+            },
+          ]
+        : [],
+    operations: [],
+    history: {
+      head_id: state.historyEntries.length > 0 ? 'hist_smoke_parameter_change' : '',
+      can_undo: state.canUndo || state.historyEntries.length > 0,
+      can_redo: state.canRedo,
+    },
+    created_at: now,
+    updated_at: now,
+  }
+}
+
+async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
+  const request = route.request()
+  const pathname = new URL(request.url()).pathname
+  const responses: Record<string, unknown> = {
+    '/api/v1/auth/me': { user: { id: 'user_smoke', name: 'Smoke User', email: 'smoke@example.com' } },
+    [`/api/v1/projects/${projectId}`]: {
+      project: {
+        id: projectId,
+        name: 'Workbench Smoke',
+        description: 'Deterministic browser verification project.',
+        thumbnail: { model_count: state.models.length, models: state.models },
+        created_at: now,
+        updated_at: now,
+      },
+    },
+    [`/api/v1/projects/${projectId}/models`]: { models: state.models },
+    [`/api/v1/projects/${projectId}/agent/conversations`]: {
+      conversations: [{ id: 'agc_smoke', project_id: projectId, title: 'Smoke chat', created_at: now, updated_at: now }],
+    },
+    [`/api/v1/projects/${projectId}/agent/conversations/agc_smoke/messages`]: { messages: state.messages },
+    [`/api/v1/projects/${projectId}/parametric-artifacts`]: { artifacts: [] },
+    [`/api/v1/projects/${projectId}/cad-document`]: { document: smokeCADDocument(state) },
+    [`/api/v1/projects/${projectId}/cad-document/history`]: { entries: state.historyEntries },
+  }
+  if (request.method() === 'GET' && pathname in responses) {
+    await route.fulfill({ json: responses[pathname] })
+    return
+  }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/agent/conversations/agc_smoke/messages`) {
+    const requestBody = request.postDataJSON() as { messages?: Array<{ role: 'assistant' | 'user'; body: string }> }
+    const userMessageBody = requestBody.messages?.at(-1)?.body ?? 'Inspect smoke project'
+    state.messages = [
+      {
+        id: 'agm_smoke_user',
+        project_id: projectId,
+        conversation_id: 'agc_smoke',
+        role: 'user',
+        body: userMessageBody,
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: 'agm_smoke',
+        project_id: projectId,
+        conversation_id: 'agc_smoke',
+        role: 'assistant',
+        body: 'Smoke reply ready.',
+        created_at: now,
+        updated_at: now,
+      },
+    ]
+    await route.fulfill({
+      json: {
+        message: state.messages[1],
+      },
+    })
+    return
+  }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/agent/conversations/agc_smoke/parametric-runs`) {
+    const requestBody = request.postDataJSON() as { message?: string }
+    const assistantMessage = {
+      id: 'agm_smoke_parametric',
+      project_id: projectId,
+      conversation_id: 'agc_smoke',
+      role: 'assistant',
+      body: JSON.stringify({
+        tool: 'build_parametric_model',
+        input: {
+          title: smokeParametricArtifact.title,
+          version: 'v1',
+          source_kind: 'litecad-feature-dsl',
+          code: smokeParametricArtifact.source_code,
+        },
+      }),
+      parts: [
+        {
+          type: 'artifact',
+          artifact_id: smokeParametricArtifact.id,
+        },
+      ],
+      created_at: now,
+      updated_at: now,
+    }
+    state.messages = [
+      ...state.messages,
+      {
+        id: 'agm_smoke_parametric_user',
+        project_id: projectId,
+        conversation_id: 'agc_smoke',
+        role: 'user',
+        body: requestBody.message ?? 'Make a smoke bracket',
+        created_at: now,
+        updated_at: now,
+      },
+      assistantMessage,
+    ]
+    await route.fulfill({
+      json: {
+        message: assistantMessage,
+        artifact: { ...smokeParametricArtifact, compile_status: state.artifactCompileStatus },
+      },
+    })
+    return
+  }
+  if (request.method() === 'PATCH' && pathname === `/api/v1/projects/${projectId}/parametric-artifacts/${smokeParametricArtifact.id}`) {
+    const requestBody = request.postDataJSON() as { compile_status?: string }
+    state.artifactCompileStatus = requestBody.compile_status ?? state.artifactCompileStatus
+    state.artifactUpdateCount += 1
+    await route.fulfill({ json: { artifact: { ...smokeParametricArtifact, compile_status: state.artifactCompileStatus } } })
+    return
+  }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/parametric-artifacts/${smokeParametricArtifact.id}/save-model`) {
+    if (state.artifactCompileStatus !== 'success') {
+      await route.fulfill({ json: { message: 'artifact was not compiled before save' }, status: 400 })
+      return
+    }
+    state.models = [smokeSavedModel(state)]
+    await route.fulfill({ json: { model: smokeSavedModel(state) } })
+    return
+  }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/thumbnail`) {
+    await route.fulfill({
+      json: {
+        snapshot: {
+          url: `/api/v1/projects/${projectId}/thumbnail/smoke.webp`,
+          status: 'ready',
+          revision: state.models.length > 0 ? 2 : 1,
+          width: 320,
+          height: 180,
+          updated_at: now,
+        },
+      },
+    })
+    return
+  }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/models`) {
+    state.uploadCount += 1
+    const uploadedModel = {
+      ...smokeSavedModel(state),
+      id: 'mdl_smoke_uploaded',
+      original_filename: 'uploaded-smoke.stl',
+      format: 'stl',
+      content_type: 'model/stl',
+      parse_status: 'error',
+      parse_error: 'preview intentionally unavailable in import fixture',
+      metadata: {
+        ...smokeSavedModel(state).metadata,
+        asset_type: 'model',
+        source_kind: '',
+        schema: '',
+        product_names: ['Uploaded smoke'],
+        parameter_count: 0,
+        parameter_values: {},
+      },
+    }
+    state.models = [uploadedModel]
+    await route.fulfill({ json: { model: uploadedModel } })
+    return
+  }
+  if (
+    request.method() === 'PATCH' &&
+    pathname === `/api/v1/projects/${projectId}/cad-document/nodes/node_mdl_smoke_lcad/transform`
+  ) {
+    if (state.conflictNextTransform) {
+      state.conflictNextTransform = false
+      await route.fulfill({ json: { message: 'document revision conflict' }, status: 409 })
+      return
+    }
+    const requestBody = request.postDataJSON() as { transform?: { matrix?: number[] } }
+    state.translationX = requestBody.transform?.matrix?.[3] ?? 0
+    state.transformUpdateCount += 1
+    state.cadRevision += 1
+    state.canUndo = true
+    state.canRedo = false
+    state.historyEntries = [
+      {
+        id: 'hist_smoke_transform',
+        sequence: state.transformUpdateCount,
+        status: 'applied',
+        command_type: 'transform',
+        target_id: 'node_mdl_smoke_lcad',
+        summary: 'Move Smoke bracket',
+        created_at: now,
+      },
+    ]
+    await route.fulfill({ json: { document: smokeCADDocument(state) } })
+    return
+  }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/cad-document/history/undo`) {
+    state.undoCount += 1
+    state.translationX = 0
+    state.cadRevision += 1
+    state.canUndo = false
+    state.canRedo = true
+    await route.fulfill({ json: { document: smokeCADDocument(state) } })
+    return
+  }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/cad-document/history/redo`) {
+    state.redoCount += 1
+    state.translationX = 12
+    state.cadRevision += 1
+    state.canUndo = true
+    state.canRedo = false
+    await route.fulfill({ json: { document: smokeCADDocument(state) } })
+    return
+  }
+  if (request.method() === 'PATCH' && pathname === `/api/v1/projects/${projectId}/models/${baseSmokeSavedModel.id}/parametric-parameters`) {
+    const requestBody = request.postDataJSON() as { parameter_values?: Record<string, unknown> }
+    state.savedParameterValues = requestBody.parameter_values ?? {}
+    state.modelParameterUpdateCount += 1
+    state.historyEntries = [
+      {
+        id: 'hist_smoke_parameter_change',
+        sequence: 1,
+        status: 'applied',
+        command_type: 'parameter-change',
+        target_id: baseSmokeSavedModel.id,
+        summary: 'Update parameters for smoke-bracket-litecad.lcad.json',
+        created_at: now,
+      },
+    ]
+    state.models = [smokeSavedModel(state)]
+    await route.fulfill({ json: { model: smokeSavedModel(state) } })
+    return
+  }
+  if (request.method() === 'GET' && pathname === `/api/v1/projects/${projectId}/models/${baseSmokeSavedModel.id}/source`) {
+    state.featureDSLSourceRequestCount += 1
+    await route.fulfill({
+      body: smokeFeatureDSLSource,
+      contentType: 'application/json',
+    })
+    return
+  }
+  await route.fulfill({ json: { message: `Unhandled smoke request: ${request.method()} ${pathname}` }, status: 500 })
+}
+
+export function captureBrowserErrors(page: Page) {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(`page: ${error.message}`))
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      errors.push(`console: ${message.text()}`)
+    }
+  })
+  return errors
+}
+
+export async function installProjectAPIFixture(page: Page, state = createProjectFixtureState()) {
+  await page.route('**/api/v1/**', (route) => fulfillAPI(route, state))
+  return {
+    state,
+    seedSavedModel() {
+      state.models = [smokeSavedModel(state)]
+    },
+    seedTransformModel() {
+      state.models = [
+        {
+          ...smokeSavedModel(state),
+          original_filename: 'smoke-bracket.glb',
+          format: 'glb',
+          content_type: 'model/gltf-binary',
+          parse_status: 'error',
+          parse_error: 'preview intentionally unavailable in transform fixture',
+          metadata: {
+            ...smokeSavedModel(state).metadata,
+            asset_type: 'model',
+            source_kind: '',
+            schema: '',
+            parameter_count: 0,
+            parameter_values: {},
+          },
+        },
+      ]
+    },
+  }
+}

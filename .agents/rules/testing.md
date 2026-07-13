@@ -22,9 +22,17 @@ These rules apply to Go tests, frontend tests, and verification commands.
 - Test API clients, hooks, route helpers, and state derivation before pure layout details.
 - Mock network calls through the API boundary rather than hard-coding backend URLs.
 
+## Browser Tests
+
+- Keep deterministic workbench API state in `website/e2e/fixtures/project-api.ts`; create a fresh fixture closure per test instead of module-level mutable state.
+- Keep shell, import, transform conflict/Undo/Redo, Assistant/parameter persistence, and export workflows in independent specs so failures identify the affected product path.
+- Use condition-based assertions for worker compilation, autosave, and downloads. Do not assert that an unrelated request count or arbitrary timeout remains unchanged while React Query refreshes in the background.
+- Capture page and console errors in every browser-visible workflow. Expected conflict responses may assert their one known browser resource error, but must reject additional errors.
+
 ## Verification
 
 - Run `task check` before committing.
 - Run `task test` for behavior, API, database, or UI interaction changes.
+- Run `task test-browser` for route, workbench panel, browser CAD worker, and visible interaction changes.
 - `task lint` may modify files through `go mod tidy` and `gofmt`; inspect the diff afterward.
 - If a command cannot run locally, report the command, the reason, and the remaining risk.
