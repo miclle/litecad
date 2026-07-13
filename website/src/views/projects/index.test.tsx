@@ -7,11 +7,13 @@ import userEvent from '@testing-library/user-event'
 
 import { ProjectCoverPreview } from './index'
 import ProjectsView from './index'
-import { createProject, fetchProjects } from 'src/api/projects'
+import { createProject, deleteProject, fetchProjects, updateProject } from 'src/api/projects'
 
 vi.mock('src/api/projects', () => ({
   createProject: vi.fn(),
+  deleteProject: vi.fn(),
   fetchProjects: vi.fn(),
+  updateProject: vi.fn(),
 }))
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -89,6 +91,90 @@ describe('ProjectsView', () => {
     expect(createProject).toHaveBeenCalledWith({ name: 'Bracket study', description: '' })
   })
 
+  test('renames a project from its project card', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchProjects).mockResolvedValue({
+      data: {
+        projects: [
+          {
+            id: 'prj_existing',
+            name: 'Bracket study',
+            description: 'Original note',
+            thumbnail: { model_count: 0, models: [] },
+            created_at: '2026-07-13T00:00:00Z',
+            updated_at: '2026-07-13T00:00:00Z',
+          },
+        ],
+      },
+    } as unknown as Awaited<ReturnType<typeof fetchProjects>>)
+    vi.mocked(updateProject).mockResolvedValue({
+      data: {
+        project: {
+          id: 'prj_existing',
+          name: 'Wall bracket v2',
+          description: 'Updated note',
+          thumbnail: { model_count: 0, models: [] },
+          created_at: '2026-07-13T00:00:00Z',
+          updated_at: '2026-07-13T00:05:00Z',
+        },
+      },
+    } as unknown as Awaited<ReturnType<typeof updateProject>>)
+
+    const router = createProjectsRouter()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+
+    await act(async () => {
+      createRoot(host).render(router.element)
+    })
+
+    expect(await screenText('Bracket study')).toBeTruthy()
+    await user.click(document.querySelector('button[aria-label="Rename Bracket study"]') as HTMLButtonElement)
+    await user.clear(document.querySelector('input[required]') as HTMLInputElement)
+    await user.type(document.querySelector('input[required]') as HTMLInputElement, 'Wall bracket v2')
+    await user.clear(document.querySelector('textarea') as HTMLTextAreaElement)
+    await user.type(document.querySelector('textarea') as HTMLTextAreaElement, 'Updated note')
+    await user.click(buttonByText('Save changes'))
+
+    expect(updateProject).toHaveBeenCalledWith('prj_existing', {
+      name: 'Wall bracket v2',
+      description: 'Updated note',
+    })
+  })
+
+  test('deletes a project from its project card', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchProjects).mockResolvedValue({
+      data: {
+        projects: [
+          {
+            id: 'prj_existing',
+            name: 'Bracket study',
+            description: '',
+            thumbnail: { model_count: 0, models: [] },
+            created_at: '2026-07-13T00:00:00Z',
+            updated_at: '2026-07-13T00:00:00Z',
+          },
+        ],
+      },
+    } as unknown as Awaited<ReturnType<typeof fetchProjects>>)
+    vi.mocked(deleteProject).mockResolvedValue({} as Awaited<ReturnType<typeof deleteProject>>)
+
+    const router = createProjectsRouter()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+
+    await act(async () => {
+      createRoot(host).render(router.element)
+    })
+
+    expect(await screenText('Bracket study')).toBeTruthy()
+    await user.click(document.querySelector('button[aria-label="Delete Bracket study"]') as HTMLButtonElement)
+    await user.click(buttonByText('Delete'))
+
+    expect(deleteProject).toHaveBeenCalledWith('prj_existing')
+  })
+
   test('shows a deliberate error state when projects fail to load', async () => {
     vi.mocked(fetchProjects).mockRejectedValue(new Error('network down'))
 
@@ -153,4 +239,12 @@ async function screenText(text: string) {
     })
   }
   return false
+}
+
+function buttonByText(text: string) {
+  const button = Array.from(document.querySelectorAll('button')).find((candidate) => candidate.textContent?.includes(text))
+  if (!button) {
+    throw new Error(`button not found: ${text}`)
+  }
+  return button as HTMLButtonElement
 }

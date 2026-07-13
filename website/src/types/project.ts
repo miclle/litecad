@@ -331,3 +331,8 @@ export interface CreateProjectPayload {
   name: string
   description: string
 }
+
+export interface UpdateProjectPayload {
+  name: string
+  description: string
+}

@@ -38,6 +38,8 @@ func (ctrl *Ctrl) RegisterRoutes(r *fox.Engine) {
 	api.GET("/projects", ctrl.ListProjects)
 	api.POST("/projects", ctrl.CreateProject)
 	api.GET("/projects/:projectID", ctrl.GetProject)
+	api.PATCH("/projects/:projectID", ctrl.UpdateProject)
+	api.DELETE("/projects/:projectID", ctrl.DeleteProject)
 	api.GET("/projects/:projectID/thumbnail", ctrl.GetProjectThumbnailSnapshot)
 	api.POST("/projects/:projectID/thumbnail", ctrl.SaveProjectThumbnailSnapshot)
 	api.GET("/projects/:projectID/agent/conversations", ctrl.ListProjectAgentConversations)

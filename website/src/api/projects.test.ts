@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 import client from './client'
 import {
+  deleteProject,
   deleteProjectCADNode,
   fetchProjectCADDocument,
   fetchProjectCADHistory,
@@ -23,6 +24,7 @@ import {
   undoProjectCADDocument,
   updateProjectCADNodeTransform,
   updateProjectCADModelTransform,
+  updateProject,
   updateProjectParametricArtifact,
   updateProjectParametricModelParameters,
   uploadProjectThumbnailSnapshot,
@@ -39,6 +41,17 @@ vi.mock('./client', () => ({
 }))
 
 describe('project API', () => {
+  test('updates and deletes project metadata', () => {
+    updateProject('prj_01test', { name: 'Wall bracket v2', description: 'Updated note' })
+    deleteProject('prj_01test')
+
+    expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test', {
+      name: 'Wall bracket v2',
+      description: 'Updated note',
+    })
+    expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test')
+  })
+
   test('uploads a project model as multipart form data', () => {
     const file = new File(['ISO-10303-21;'], 'macintosh_ipad_lcd_case.step', { type: 'application/step' })
 

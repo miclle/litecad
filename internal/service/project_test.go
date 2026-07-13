@@ -64,6 +64,151 @@ func TestCreateProjectStoresOwnerScopedProject(t *testing.T) {
 	}
 }
 
+func TestUpdateProjectRenamesOwnerScopedProject(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	owner, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada",
+		Email:    "rename-owner@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser owner returned error: %v", err)
+	}
+	other, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Grace",
+		Email:    "rename-other@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser other returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: owner.ID,
+		Name:        "Bracket study",
+		Description: "Original note",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	updated, err := svc.UpdateProject(ctx, UpdateProjectInput{
+		OwnerUserID: owner.ID,
+		ProjectID:   project.ID,
+		Name:        "  Wall bracket v2  ",
+		Description: "  Updated note  ",
+	})
+	if err != nil {
+		t.Fatalf("UpdateProject returned error: %v", err)
+	}
+	if updated.Name != "Wall bracket v2" || updated.Description != "Updated note" {
+		t.Fatalf("updated project = %+v", updated)
+	}
+
+	loaded, err := svc.GetProject(ctx, owner.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProject returned error: %v", err)
+	}
+	if loaded.Name != "Wall bracket v2" || loaded.Description != "Updated note" {
+		t.Fatalf("loaded project = %+v", loaded)
+	}
+
+	_, err = svc.UpdateProject(ctx, UpdateProjectInput{
+		OwnerUserID: other.ID,
+		ProjectID:   project.ID,
+		Name:        "Private rename",
+	})
+	if !errors.Is(err, ErrProjectNotFound) {
+		t.Fatalf("cross-owner UpdateProject error = %v, want ErrProjectNotFound", err)
+	}
+
+	_, err = svc.UpdateProject(ctx, UpdateProjectInput{
+		OwnerUserID: owner.ID,
+		ProjectID:   project.ID,
+		Name:        " ",
+	})
+	if !errors.Is(err, ErrInvalidProjectInput) {
+		t.Fatalf("empty-name UpdateProject error = %v, want ErrInvalidProjectInput", err)
+	}
+}
+
+func TestDeleteProjectSoftDeletesOwnerScopedProject(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	owner, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada",
+		Email:    "delete-owner@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser owner returned error: %v", err)
+	}
+	other, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Grace",
+		Email:    "delete-other@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser other returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: owner.ID,
+		Name:        "Cleanup case",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	model, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+		OwnerUserID: owner.ID,
+		ProjectID:   project.ID,
+		Filename:    "case.step",
+		ContentType: "application/step",
+		Data:        []byte("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('CONFIG_CONTROL_DESIGN'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"),
+	})
+	if err != nil {
+		t.Fatalf("UploadProjectModel returned error: %v", err)
+	}
+	if err := svc.db.Create(&entity.ProjectThumbnailSnapshot{
+		ID:          "pth_delete_scope",
+		ProjectID:   project.ID,
+		ContentType: "image/webp",
+		ByteSize:    9,
+		Width:       320,
+		Height:      180,
+		Revision:    1,
+		Status:      "ready",
+		Data:        []byte("snapshot"),
+	}).Error; err != nil {
+		t.Fatalf("store thumbnail snapshot: %v", err)
+	}
+
+	if err := svc.DeleteProject(ctx, other.ID, project.ID); !errors.Is(err, ErrProjectNotFound) {
+		t.Fatalf("cross-owner DeleteProject error = %v, want ErrProjectNotFound", err)
+	}
+	if err := svc.DeleteProject(ctx, owner.ID, project.ID); err != nil {
+		t.Fatalf("DeleteProject returned error: %v", err)
+	}
+
+	if _, err := svc.GetProject(ctx, owner.ID, project.ID); !errors.Is(err, ErrProjectNotFound) {
+		t.Fatalf("GetProject after delete error = %v, want ErrProjectNotFound", err)
+	}
+	projects, err := svc.ListProjects(ctx, owner.ID)
+	if err != nil {
+		t.Fatalf("ListProjects returned error: %v", err)
+	}
+	if len(projects) != 0 {
+		t.Fatalf("project count after delete = %d, want 0", len(projects))
+	}
+	if _, err := svc.GetProjectModelSource(ctx, owner.ID, project.ID, model.ID); !errors.Is(err, ErrProjectNotFound) {
+		t.Fatalf("GetProjectModelSource after delete error = %v, want ErrProjectNotFound", err)
+	}
+	if _, err := svc.GetProjectThumbnailSnapshot(ctx, owner.ID, project.ID); !errors.Is(err, ErrProjectNotFound) {
+		t.Fatalf("GetProjectThumbnailSnapshot after delete error = %v, want ErrProjectNotFound", err)
+	}
+}
+
 func TestListProjectsIncludesModelThumbnailSummaries(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

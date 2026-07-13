@@ -18,7 +18,6 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 
 ## Backend And Data
 
-- Add update/delete APIs for projects if the product needs project renaming, archival, or cleanup.
 - Decide whether product-facing URLs should keep exposing prefixed entity IDs such as `project_...`, or introduce project slugs / slug-plus-short-id routes while preserving prefixed IDs as internal canonical identifiers.
 - Add session lifecycle hardening such as explicit expiry tests around stale cookies and optional session pruning.
 - Keep new project HTTP behavior inside the established `project.go`, `project_models.go`, `project_cad.go`, `project_agent.go`, and `project_errors.go` domain boundaries instead of rebuilding a single project handler hotspot.

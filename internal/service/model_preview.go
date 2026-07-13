@@ -60,7 +60,7 @@ func (s *Service) GetOrCreateProjectModelPreview(ctx context.Context, ownerUserI
 	var model entity.ProjectModel
 	err := s.db.WithContext(ctx).
 		Joins("JOIN projects ON projects.id = project_models.project_id").
-		First(&model, "project_models.id = ? AND project_models.project_id = ? AND projects.owner_user_id = ?", modelID, projectID, ownerUserID).
+		First(&model, "project_models.id = ? AND project_models.project_id = ? AND projects.owner_user_id = ? AND projects.deleted_at IS NULL", modelID, projectID, ownerUserID).
 		Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

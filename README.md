@@ -9,7 +9,7 @@ It is built for an early but concrete product loop: sign in, create a project, u
 LiteCAD currently supports:
 
 - Account registration, login, current-user lookup, logout with an `HttpOnly` session cookie, and deliberate sign-in prompts for protected project routes.
-- User-owned projects with names, descriptions, project-list cards, and static thumbnail snapshots generated from the workbench.
+- User-owned projects with names, descriptions, owner-scoped rename/delete, project-list cards, and static thumbnail snapshots generated from the workbench.
 - Uploads for `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files.
 - Lightweight CAD source metadata, including STEP schema/product/component/unit/entity summaries and STL triangle counts where available.
 - A project workbench with a Three.js viewer, source list, document inspector, ViewCube/orientation controls, model visibility toggles, multi-model preview composition, and locally restored left-panel/Assistant visibility and widths.

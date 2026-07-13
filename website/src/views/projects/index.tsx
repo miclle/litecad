@@ -1,13 +1,15 @@
 import { FormEvent, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock3, FileBox, Grid2X2, Loader2, Plus, Sparkles, UserRound, X } from 'lucide-react'
+import { Clock3, FileBox, Grid2X2, Loader2, Pencil, Plus, Sparkles, Trash2, UserRound, X } from 'lucide-react'
 import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import axios from 'axios'
 
 import {
   createProject,
+  deleteProject,
   fetchProjects,
+  updateProject,
 } from 'src/api/projects'
 import type { AuthUser } from 'src/types/auth'
 import type { Project } from 'src/types/project'
@@ -194,34 +196,279 @@ function ProjectsView() {
 }
 
 function ProjectCard({ index, project }: { index: number; project: Project }) {
+  const queryClient = useQueryClient()
   const models = project.thumbnail?.models ?? []
   const modelCount = project.thumbnail?.model_count ?? 0
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [editName, setEditName] = useState(project.name)
+  const [editDescription, setEditDescription] = useState(project.description)
+  const [actionError, setActionError] = useState('')
   const updatedAt = new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   }).format(new Date(project.updated_at))
 
+  const updateMutation = useMutation({
+    mutationFn: async () =>
+      (await updateProject(project.id, {
+        name: editName,
+        description: editDescription,
+      })).data.project,
+    onSuccess: async () => {
+      setActionError('')
+      setIsEditOpen(false)
+      await queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+    onError: (error) => {
+      if (axios.isAxiosError(error) && error.response?.status === 400) {
+        setActionError('Add a project name and keep the description under 350 characters.')
+        return
+      }
+      setActionError('The project could not be updated. Please try again.')
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => deleteProject(project.id),
+    onSuccess: async () => {
+      setActionError('')
+      setIsDeleteOpen(false)
+      await queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+    onError: () => {
+      setActionError('The project could not be deleted. Please try again.')
+    },
+  })
+
+  const openEdit = () => {
+    setEditName(project.name)
+    setEditDescription(project.description)
+    setActionError('')
+    setIsEditOpen(true)
+  }
+
+  const openDelete = () => {
+    setActionError('')
+    setIsDeleteOpen(true)
+  }
+
+  const handleEditSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setActionError('')
+    updateMutation.mutate()
+  }
+
   return (
-    <Link
-      className="group flex aspect-[4/3] flex-col overflow-hidden rounded-lg border border-[#ddd6c8] bg-[#fbfaf5] text-inherit no-underline transition hover:-translate-y-0.5 hover:border-[#c9c0ad] hover:shadow-sm"
-      to={`/projects/${project.id}`}
-    >
-      <div className="relative min-h-0 flex-1 overflow-hidden border-b border-[#e5e1d8] bg-[#f8fafc]">
+    <article className="group flex aspect-[4/3] flex-col overflow-hidden rounded-lg border border-[#ddd6c8] bg-[#fbfaf5] text-inherit transition hover:-translate-y-0.5 hover:border-[#c9c0ad] hover:shadow-sm">
+      <Link
+        aria-label={`Open ${project.name}`}
+        className="relative min-h-0 flex-1 overflow-hidden border-b border-[#e5e1d8] bg-[#f8fafc]"
+        to={`/projects/${project.id}`}
+      >
         <ProjectCoverPreview cardIndex={index} models={models} snapshot={project.thumbnail?.snapshot} />
-      </div>
+      </Link>
       <div className="flex h-16 shrink-0 items-center justify-between gap-4 px-4 py-3.5">
-        <div className="flex min-w-0 items-center">
-          <span className="min-w-0">
+        <Link className="flex min-w-0 items-center text-inherit no-underline" to={`/projects/${project.id}`}>
+          <span className="min-w-0 text-left">
             <h2 className="line-clamp-1 text-sm font-medium leading-5 text-[#171814]">{project.name}</h2>
             <span className="block truncate text-xs leading-5 text-[#8a857b]">Edited {updatedAt}</span>
           </span>
+        </Link>
+        <div className="flex shrink-0 items-center gap-1">
+          <span className="mr-1 hidden text-xs font-medium uppercase tracking-normal text-[#686a60] sm:inline">
+            {modelCount > 0 ? `${modelCount} model${modelCount > 1 ? 's' : ''}` : 'No models'}
+          </span>
+          <button
+            aria-label={`Rename ${project.name}`}
+            className="grid size-8 place-items-center rounded-md border border-transparent text-[#686a60] transition hover:border-[#cfc6b2] hover:bg-[#f3f0e8] hover:text-[#171814]"
+            onClick={openEdit}
+            type="button"
+          >
+            <Pencil className="size-4" />
+          </button>
+          <button
+            aria-label={`Delete ${project.name}`}
+            className="grid size-8 place-items-center rounded-md border border-transparent text-[#8a4a3d] transition hover:border-[#d9a9a1] hover:bg-[#fff2ef]"
+            onClick={openDelete}
+            type="button"
+          >
+            <Trash2 className="size-4" />
+          </button>
         </div>
-        <span className="shrink-0 text-xs font-medium uppercase tracking-normal text-[#686a60]">
-          {modelCount > 0 ? `${modelCount} model${modelCount > 1 ? 's' : ''}` : 'No models'}
-        </span>
       </div>
-    </Link>
+      {isEditOpen && (
+        <ProjectEditModal
+          description={editDescription}
+          errorMessage={actionError}
+          isPending={updateMutation.isPending}
+          name={editName}
+          onClose={() => setIsEditOpen(false)}
+          onDescriptionChange={setEditDescription}
+          onNameChange={setEditName}
+          onSubmit={handleEditSubmit}
+          projectName={project.name}
+        />
+      )}
+      {isDeleteOpen && (
+        <ProjectDeleteModal
+          errorMessage={actionError}
+          isPending={deleteMutation.isPending}
+          onClose={() => setIsDeleteOpen(false)}
+          onConfirm={() => deleteMutation.mutate()}
+          projectName={project.name}
+        />
+      )}
+    </article>
+  )
+}
+
+function ProjectEditModal({
+  description,
+  errorMessage,
+  isPending,
+  name,
+  onClose,
+  onDescriptionChange,
+  onNameChange,
+  onSubmit,
+  projectName,
+}: {
+  description: string
+  errorMessage: string
+  isPending: boolean
+  name: string
+  onClose: () => void
+  onDescriptionChange: (value: string) => void
+  onNameChange: (value: string) => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  projectName: string
+}) {
+  return (
+    <div className="fixed inset-0 z-[80] grid place-items-center bg-[#171814]/32 px-4 backdrop-blur-sm">
+      <section className="w-full max-w-[520px] rounded-md border border-[#d8cfbc] bg-[#fcfaf3] shadow-xl">
+        <div className="flex items-start justify-between gap-4 border-b border-[#d9d3c2] px-5 py-4">
+          <div>
+            <p className="font-mono text-xs uppercase text-[#7a6c52]">Rename</p>
+            <h2 className="mt-2 text-2xl font-semibold text-[#171814]">{projectName}</h2>
+          </div>
+          <button
+            aria-label="Close"
+            className="grid size-9 place-items-center rounded-md border border-[#cfc6b2] text-[#303329] transition hover:border-[#52625a]"
+            onClick={onClose}
+            type="button"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <form className="grid gap-4 p-5" onSubmit={onSubmit}>
+          <label className="grid gap-2 text-sm font-medium text-[#303329]">
+            Project name
+            <input
+              autoFocus
+              className="h-12 rounded-md border border-[#cfc6b2] bg-white px-3 text-sm outline-none focus:border-[#52625a]"
+              maxLength={120}
+              onChange={(event) => onNameChange(event.target.value)}
+              required
+              value={name}
+            />
+          </label>
+
+          <label className="grid gap-2 text-sm font-medium text-[#303329]">
+            Description
+            <textarea
+              className="min-h-28 resize-none rounded-md border border-[#cfc6b2] bg-white p-3 text-sm leading-6 outline-none focus:border-[#52625a]"
+              maxLength={350}
+              onChange={(event) => onDescriptionChange(event.target.value)}
+              value={description}
+            />
+          </label>
+
+          <div className="flex items-center justify-between text-xs text-[#7a6c52]">
+            <span>Project metadata</span>
+            <span>{description.length}/350</span>
+          </div>
+
+          {errorMessage && (
+            <p className="rounded-md border border-[#d9a9a1] bg-[#fff2ef] px-3 py-2 text-sm text-[#8a2f24]">
+              {errorMessage}
+            </p>
+          )}
+
+          <button
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#171814] px-5 text-sm font-semibold text-[#f7f5ef] transition hover:bg-[#303329] disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={isPending}
+            type="submit"
+          >
+            {isPending ? <Loader2 className="size-4 animate-spin" /> : <Pencil className="size-4" />}
+            Save changes
+          </button>
+        </form>
+      </section>
+    </div>
+  )
+}
+
+function ProjectDeleteModal({
+  errorMessage,
+  isPending,
+  onClose,
+  onConfirm,
+  projectName,
+}: {
+  errorMessage: string
+  isPending: boolean
+  onClose: () => void
+  onConfirm: () => void
+  projectName: string
+}) {
+  return (
+    <div className="fixed inset-0 z-[80] grid place-items-center bg-[#171814]/32 px-4 backdrop-blur-sm">
+      <section className="w-full max-w-[440px] rounded-md border border-[#d8cfbc] bg-[#fcfaf3] p-5 shadow-xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-xs uppercase text-[#8a4a3d]">Delete</p>
+            <h2 className="mt-2 text-xl font-semibold text-[#171814]">{projectName}</h2>
+          </div>
+          <button
+            aria-label="Close"
+            className="grid size-9 place-items-center rounded-md border border-[#cfc6b2] text-[#303329] transition hover:border-[#52625a]"
+            onClick={onClose}
+            type="button"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <p className="mt-4 text-sm leading-6 text-[#686a60]">
+          This removes the project from your project library. Uploaded source records stay server-side but are no longer reachable through project APIs.
+        </p>
+        {errorMessage && (
+          <p className="mt-4 rounded-md border border-[#d9a9a1] bg-[#fff2ef] px-3 py-2 text-sm text-[#8a2f24]">
+            {errorMessage}
+          </p>
+        )}
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            className="inline-flex h-10 items-center justify-center rounded-md border border-[#cfc6b2] px-4 text-sm font-semibold text-[#303329] transition hover:border-[#52625a]"
+            onClick={onClose}
+            type="button"
+          >
+            Cancel
+          </button>
+          <button
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#8a4a3d] px-4 text-sm font-semibold text-white transition hover:bg-[#743a30] disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={isPending}
+            onClick={onConfirm}
+            type="button"
+          >
+            {isPending ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            Delete
+          </button>
+        </div>
+      </section>
+    </div>
   )
 }
 

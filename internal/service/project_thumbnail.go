@@ -43,7 +43,7 @@ func (s *Service) GetProjectThumbnailSnapshot(ctx context.Context, ownerUserID, 
 	var snapshot entity.ProjectThumbnailSnapshot
 	err := s.db.WithContext(ctx).
 		Joins("JOIN projects ON projects.id = project_thumbnail_snapshots.project_id").
-		Where("project_thumbnail_snapshots.project_id = ? AND projects.owner_user_id = ?", projectID, ownerUserID).
+		Where("project_thumbnail_snapshots.project_id = ? AND projects.owner_user_id = ? AND projects.deleted_at IS NULL", projectID, ownerUserID).
 		First(&snapshot).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

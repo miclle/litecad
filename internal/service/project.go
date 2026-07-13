@@ -40,6 +40,14 @@ type CreateProjectInput struct {
 	Description string
 }
 
+// UpdateProjectInput is the data required to update project metadata.
+type UpdateProjectInput struct {
+	OwnerUserID string
+	ProjectID   string
+	Name        string
+	Description string
+}
+
 // Project is the public project shape returned by project APIs.
 type Project struct {
 	ID          string           `json:"id"`
@@ -179,6 +187,58 @@ func (s *Service) CreateProject(ctx context.Context, input CreateProjectInput) (
 	return publicProject(project), nil
 }
 
+// UpdateProject updates user-owned project metadata.
+func (s *Service) UpdateProject(ctx context.Context, input UpdateProjectInput) (Project, error) {
+	ownerUserID := strings.TrimSpace(input.OwnerUserID)
+	projectID := strings.TrimSpace(input.ProjectID)
+	name := strings.TrimSpace(input.Name)
+	description := strings.TrimSpace(input.Description)
+	if ownerUserID == "" || projectID == "" {
+		return Project{}, ErrProjectNotFound
+	}
+	if name == "" || utf8.RuneCountInString(name) > 120 || utf8.RuneCountInString(description) > maxProjectDescriptionRunes {
+		return Project{}, ErrInvalidProjectInput
+	}
+
+	var project entity.Project
+	err := s.db.WithContext(ctx).
+		First(&project, "id = ? AND owner_user_id = ?", projectID, ownerUserID).
+		Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Project{}, ErrProjectNotFound
+		}
+		return Project{}, fmt.Errorf("load project for update: %w", err)
+	}
+
+	project.Name = name
+	project.Description = description
+	if err := s.db.WithContext(ctx).Save(&project).Error; err != nil {
+		return Project{}, fmt.Errorf("update project: %w", err)
+	}
+	return publicProject(project), nil
+}
+
+// DeleteProject soft-deletes a user-owned project.
+func (s *Service) DeleteProject(ctx context.Context, ownerUserID, projectID string) error {
+	ownerUserID = strings.TrimSpace(ownerUserID)
+	projectID = strings.TrimSpace(projectID)
+	if ownerUserID == "" || projectID == "" {
+		return ErrProjectNotFound
+	}
+
+	result := s.db.WithContext(ctx).
+		Where("id = ? AND owner_user_id = ?", projectID, ownerUserID).
+		Delete(&entity.Project{})
+	if result.Error != nil {
+		return fmt.Errorf("delete project: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return ErrProjectNotFound
+	}
+	return nil
+}
+
 // UploadProjectModel stores an uploaded CAD source file for a user-owned project.
 func (s *Service) UploadProjectModel(ctx context.Context, input UploadProjectModelInput) (ProjectModel, error) {
 	ownerUserID := strings.TrimSpace(input.OwnerUserID)
@@ -276,7 +336,7 @@ func (s *Service) GetProjectModelSource(ctx context.Context, ownerUserID, projec
 	var model entity.ProjectModel
 	err := s.db.WithContext(ctx).
 		Joins("JOIN projects ON projects.id = project_models.project_id").
-		Where("project_models.id = ? AND project_models.project_id = ? AND projects.owner_user_id = ?", modelID, projectID, ownerUserID).
+		Where("project_models.id = ? AND project_models.project_id = ? AND projects.owner_user_id = ? AND projects.deleted_at IS NULL", modelID, projectID, ownerUserID).
 		First(&model).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

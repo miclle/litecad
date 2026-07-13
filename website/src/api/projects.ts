@@ -1,6 +1,7 @@
 import client from './client'
 import type {
   CreateProjectPayload,
+  UpdateProjectPayload,
   CADBoxFeature,
   CADTransform,
   CreateProjectAgentConversationPayload,
@@ -144,6 +145,14 @@ export function updateProjectParametricModelParameters(
 
 export function createProject(payload: CreateProjectPayload) {
   return client.post<ProjectResponse>('/projects', payload)
+}
+
+export function updateProject(projectId: string, payload: UpdateProjectPayload) {
+  return client.patch<ProjectResponse>(`/projects/${projectId}`, payload)
+}
+
+export function deleteProject(projectId: string) {
+  return client.delete(`/projects/${projectId}`)
 }
 
 export function uploadProjectThumbnailSnapshot(

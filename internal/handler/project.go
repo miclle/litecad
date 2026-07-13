@@ -12,6 +12,11 @@ type createProjectRequest struct {
 	Description string `json:"description" binding:"max=350"`
 }
 
+type updateProjectRequest struct {
+	Name        string `json:"name" binding:"required,min=1,max=120"`
+	Description string `json:"description" binding:"max=350"`
+}
+
 type projectsResponse struct {
 	Projects []service.Project `json:"projects"`
 }
@@ -61,5 +66,36 @@ func (ctrl *Ctrl) CreateProject(c *fox.Context, req *createProjectRequest) error
 		return projectError(err)
 	}
 	c.JSON(http.StatusCreated, projectResponse{Project: project})
+	return nil
+}
+
+// UpdateProject updates a signed-in user's project metadata.
+func (ctrl *Ctrl) UpdateProject(c *fox.Context, req *updateProjectRequest) (projectResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectResponse{}, err
+	}
+	project, err := ctrl.service.UpdateProject(c.Request.Context(), service.UpdateProjectInput{
+		OwnerUserID: user.ID,
+		ProjectID:   c.Param("projectID"),
+		Name:        req.Name,
+		Description: req.Description,
+	})
+	if err != nil {
+		return projectResponse{}, projectError(err)
+	}
+	return projectResponse{Project: project}, nil
+}
+
+// DeleteProject soft-deletes a signed-in user's project.
+func (ctrl *Ctrl) DeleteProject(c *fox.Context) error {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return err
+	}
+	if err := ctrl.service.DeleteProject(c.Request.Context(), user.ID, c.Param("projectID")); err != nil {
+		return projectError(err)
+	}
+	c.Status(http.StatusNoContent)
 	return nil
 }
