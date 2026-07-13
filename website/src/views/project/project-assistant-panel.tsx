@@ -179,17 +179,17 @@ export function ProjectAssistantPanel({
         </Button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-3 py-4">
         {messages.map((message) => (
           <div
-            className={`max-w-[96%] rounded-md px-3 py-2 text-sm leading-6 ${
+            className={`min-w-0 max-w-[96%] overflow-hidden break-words rounded-md px-3 py-2 text-sm leading-6 ${
               message.role === 'user'
                 ? 'ml-auto bg-[#0f172a] text-white'
                 : 'mr-auto border border-[#e2e8f0] bg-white/80 text-[#1f2937]'
             }`}
             key={message.id}
           >
-            {message.role === 'assistant' ? <AgentMarkdown>{message.body}</AgentMarkdown> : message.body}
+            <AgentMarkdown tone={message.role}>{message.body}</AgentMarkdown>
           </div>
         ))}
       </div>
