@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { FEATURE_DSL_COMPILER_TYPES } from './opencascade-step'
+import { FEATURE_DSL_COMPILER_TYPES } from './feature-dsl/compile-feature'
 import {
   LITECAD_FEATURE_DSL_CAPABILITY_REGISTRY,
   assertFeatureDSLCompilerCoverage,

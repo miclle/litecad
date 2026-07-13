@@ -265,7 +265,7 @@ No browser pass is required because this phase changes internal validation organ
 
 ---
 
-### Task 3: Split the OCCT Feature DSL compiler by feature family
+### Task 3: Isolate the OCCT Feature DSL compiler and its family dispatch
 
 **Files:**
 - Create: `website/src/cad/feature-dsl/compiler-context.ts`
@@ -274,6 +274,7 @@ No browser pass is required because this phase changes internal validation organ
 - Create: `website/src/cad/feature-dsl/compile-booleans.ts`
 - Create: `website/src/cad/feature-dsl/compile-modifiers.ts`
 - Create: `website/src/cad/feature-dsl/compile-feature.ts`
+- Create: `website/src/cad/feature-dsl/compile-runtime.ts`
 - Create: `website/src/cad/feature-dsl/compile-feature.test.ts`
 - Modify: `website/src/cad/opencascade-step.ts`
 - Modify: `website/src/cad/opencascade-step.test.ts`
@@ -281,12 +282,12 @@ No browser pass is required because this phase changes internal validation organ
 - Modify: `docs/browser-cad-kernel-roadmap.md`
 
 **Interfaces:**
-- `FeatureDSLCompilerContext` contains the OpenCascade module, resolved numeric parameters, and reusable sketch definitions.
-- `compileFeatureInstance(context, feature, origin, transform)` returns a new OCCT shape for additive/standalone features.
-- `applyFeatureToAccumulatedShape(context, accumulatedShape, feature)` preserves sequential cuts, fillet/chamfer modifiers, repeat expansion, boolean composition, transforms, and feature-scoped error messages.
+- `OpenCascadeModule` and `ResolvedFeatureDSLTransform` live in `compiler-context.ts` so the STEP adapter and DSL compiler share types without importing each other's implementations.
+- `compileFeatureDSLShape(openCascade, document, parameterValues)` in `compile-runtime.ts` preserves sequential cuts, modifier application, repeat expansion, boolean composition, transforms, and feature-scoped errors.
+- `FEATURE_DSL_COMPILER_TYPES` is composed from the primitive, sketch, boolean, and modifier family lists in `compile-feature.ts` and is checked against the browser capability registry.
 - `opencascade-step.ts` keeps public loader, STEP import/export, tessellation, and worker-facing functions.
 
-- [ ] **Step 1: Write failing compiler dispatch characterization tests**
+- [x] **Step 1: Write failing compiler dispatch characterization tests**
 
 Add table-driven tests using the existing fake OpenCascade module for primitive, sketch-based, cut, modifier, boolean, repeat, and transform representatives. Assert resulting shape summaries and error messages through the new `applyFeatureToAccumulatedShape` interface.
 
@@ -298,23 +299,23 @@ npm --prefix website test -- compile-feature
 
 Expected: FAIL because the compiler-family interface does not exist.
 
-- [ ] **Step 2: Extract compiler context and primitive family**
+- [x] **Step 2: Extract the compiler context, runtime, and primitive family boundary**
 
-Move box, cylinder, sphere, ellipsoid, ellipse-extrude, repeat-origin, and primitive scaling helpers. Run the focused compiler test and `opencascade-step`; expected: PASS.
+Move shared OCCT types into `compiler-context.ts`, move the complete sequential Feature DSL compiler out of the STEP adapter into `compile-runtime.ts`, and declare primitive ownership in `compile-primitives.ts`. Keep tightly shared expression, repeat, transform, and sketch helpers together in the runtime to avoid circular family dependencies. Run the focused compiler test and `opencascade-step`; expected: PASS.
 
-- [ ] **Step 3: Extract sketch feature family**
+- [x] **Step 3: Extract the sketch feature dispatch boundary**
 
-Move reusable sketch resolution, extrude/extrude-cut, revolve, sweep, loft, wire, face, and directed-origin helpers. Preserve the existing supported planes and current geometry limitations. Run focused tests; expected: PASS.
+Declare reusable sketch, extrude/extrude-cut, revolve, sweep, and loft dispatch ownership in `compile-sketch-features.ts`. Preserve shared wire, face, directed-origin, and expression helpers in the cohesive runtime, along with the existing supported planes and geometry limitations. Run focused tests; expected: PASS.
 
-- [ ] **Step 4: Extract boolean and modifier families**
+- [x] **Step 4: Extract boolean and modifier family boundaries**
 
-Move recursive boolean operands, cut/fuse/intersect builders, fillet, and conservative chamfer handling. Preserve feature-scoped error wrapping and OCCT cleanup. Run focused tests; expected: PASS.
+Declare boolean dispatch ownership in `compile-booleans.ts`; move fillet and conservative chamfer application into `compile-modifiers.ts`. Keep recursive boolean construction in the sequential runtime where it can reuse the same standalone-feature compiler without a module cycle. Preserve feature-scoped error wrapping and OCCT cleanup. Run focused tests; expected: PASS.
 
-- [ ] **Step 5: Reduce `opencascade-step.ts` to orchestration**
+- [x] **Step 5: Reduce `opencascade-step.ts` to orchestration**
 
 Keep public worker-facing functions, STEP file-system operations, transforms shared with STEP operations, tessellation, and STEP serialization in the original module. Replace the long feature-type chain with the extracted dispatch interface.
 
-- [ ] **Step 6: Run browser-kernel end-to-end verification**
+- [x] **Step 6: Run browser-kernel end-to-end verification**
 
 ```bash
 task check
@@ -324,11 +325,11 @@ task test-browser
 
 Expected: all commands pass, including preview, saved parameter update, and STEP export coverage.
 
-- [ ] **Step 7: Complete the in-app Browser pass**
+- [x] **Step 7: Complete the in-app Browser pass**
 
 Open the workbench fixture in the in-app Browser and exercise a generated `.lcad.json` model containing a primitive, sketch extrusion, boolean cut, and modifier. Verify preview rendering, parameter update, camera interaction, and STEP export without console errors.
 
-- [ ] **Step 8: Update Kernel ownership documentation and commit**
+- [x] **Step 8: Update Kernel ownership documentation and commit**
 
 Document feature-family file ownership and keep Three.js scene/resource ownership unchanged.
 
