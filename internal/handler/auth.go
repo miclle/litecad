@@ -101,8 +101,10 @@ func authError(err error) error {
 		return httperr.NewBadRequest("invalid account information")
 	case errors.Is(err, service.ErrEmailAlreadyRegistered):
 		return httperr.NewConflict("email is already registered")
-	case errors.Is(err, service.ErrInvalidCredentials), errors.Is(err, service.ErrInvalidSession):
+	case errors.Is(err, service.ErrInvalidCredentials):
 		return httperr.NewUnauthorized("invalid email or password")
+	case errors.Is(err, service.ErrInvalidSession):
+		return httperr.NewUnauthorized("not signed in")
 	default:
 		return err
 	}

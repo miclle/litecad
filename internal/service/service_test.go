@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/miclle/litecad/internal/entity"
 	"gorm.io/driver/sqlite"
@@ -106,18 +108,103 @@ func TestAuthenticateUserChecksPassword(t *testing.T) {
 	}
 }
 
+func TestSessionLifecycleRejectsExpiredAndDeletedSessions(t *testing.T) {
+	now := time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC)
+	svc := newTestServiceWithOptions(t, WithClock(func() time.Time { return now }))
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada",
+		Email:    "ada@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	session, err := svc.CreateSession(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("CreateSession returned error: %v", err)
+	}
+	if !session.ExpiresAt.Equal(now.Add(sessionTTL)) {
+		t.Fatalf("session expires at %s, want %s", session.ExpiresAt, now.Add(sessionTTL))
+	}
+
+	if _, err := svc.UserBySessionToken(ctx, session.Token); err != nil {
+		t.Fatalf("UserBySessionToken returned error for active session: %v", err)
+	}
+
+	now = session.ExpiresAt
+	if _, err := svc.UserBySessionToken(ctx, session.Token); !errors.Is(err, ErrInvalidSession) {
+		t.Fatalf("UserBySessionToken expired error = %v, want ErrInvalidSession", err)
+	}
+
+	now = time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC)
+	session, err = svc.CreateSession(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("CreateSession returned error: %v", err)
+	}
+	if err := svc.DeleteSession(ctx, session.Token); err != nil {
+		t.Fatalf("DeleteSession returned error: %v", err)
+	}
+	if _, err := svc.UserBySessionToken(ctx, session.Token); !errors.Is(err, ErrInvalidSession) {
+		t.Fatalf("UserBySessionToken deleted error = %v, want ErrInvalidSession", err)
+	}
+}
+
+func TestPruneExpiredSessionsRemovesOnlyExpiredRows(t *testing.T) {
+	now := time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC)
+	svc := newTestServiceWithOptions(t, WithClock(func() time.Time { return now }))
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada",
+		Email:    "ada@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	expired, err := svc.CreateSession(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("CreateSession expired returned error: %v", err)
+	}
+	now = now.Add(sessionTTL + time.Minute)
+	active, err := svc.CreateSession(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("CreateSession active returned error: %v", err)
+	}
+
+	pruned, err := svc.PruneExpiredSessions(ctx)
+	if err != nil {
+		t.Fatalf("PruneExpiredSessions returned error: %v", err)
+	}
+	if pruned != 1 {
+		t.Fatalf("pruned = %d, want 1", pruned)
+	}
+	if _, err := svc.UserBySessionToken(ctx, expired.Token); !errors.Is(err, ErrInvalidSession) {
+		t.Fatalf("expired session error = %v, want ErrInvalidSession", err)
+	}
+	if _, err := svc.UserBySessionToken(ctx, active.Token); err != nil {
+		t.Fatalf("active session should survive prune: %v", err)
+	}
+}
+
 func newTestService(t *testing.T) *Service {
+	return newTestServiceWithOptions(t)
+}
+
+func newTestServiceWithOptions(t *testing.T, options ...Option) *Service {
 	t.Helper()
 
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.NewReplacer("/", "_", " ", "_").Replace(t.Name()))), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.User{}, &entity.Project{}, &entity.ProjectModel{}, &entity.ProjectModelPreviewArtifact{}, &entity.ProjectThumbnailSnapshot{}, &entity.ProjectGeometryVersion{}, &entity.ProjectCADDocument{}, &entity.ProjectCADHistoryEntry{}, &entity.ProjectAgentConversation{}, &entity.ProjectAgentMessage{}, &entity.ProjectParametricArtifact{}, &entity.ProjectParametricRevision{}); err != nil {
+	if err := db.AutoMigrate(&entity.User{}, &entity.UserSession{}, &entity.Project{}, &entity.ProjectModel{}, &entity.ProjectModelPreviewArtifact{}, &entity.ProjectThumbnailSnapshot{}, &entity.ProjectGeometryVersion{}, &entity.ProjectCADDocument{}, &entity.ProjectCADHistoryEntry{}, &entity.ProjectAgentConversation{}, &entity.ProjectAgentMessage{}, &entity.ProjectParametricArtifact{}, &entity.ProjectParametricRevision{}); err != nil {
 		t.Fatalf("migrate test db: %v", err)
 	}
 
-	svc, err := New(context.Background(), db)
+	svc, err := New(context.Background(), db, options...)
 	if err != nil {
 		t.Fatalf("create service: %v", err)
 	}

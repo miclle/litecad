@@ -122,7 +122,7 @@ func (s *Service) CreateSession(ctx context.Context, userID string) (AuthSession
 	if err != nil {
 		return AuthSession{}, err
 	}
-	expiresAt := time.Now().Add(sessionTTL)
+	expiresAt := s.now().Add(sessionTTL)
 	session := entity.UserSession{
 		ID:        sessionID,
 		UserID:    userID,
@@ -144,7 +144,7 @@ func (s *Service) UserBySessionToken(ctx context.Context, token string) (AuthUse
 	var session entity.UserSession
 	err := s.db.WithContext(ctx).
 		Preload("User").
-		First(&session, "token_hash = ? AND expires_at > ?", secret.SHA256Hex(token), time.Now()).
+		First(&session, "token_hash = ? AND expires_at > ?", secret.SHA256Hex(token), s.now()).
 		Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -164,6 +164,15 @@ func (s *Service) DeleteSession(ctx context.Context, token string) error {
 		return fmt.Errorf("delete session: %w", err)
 	}
 	return nil
+}
+
+// PruneExpiredSessions removes sessions that can no longer authenticate.
+func (s *Service) PruneExpiredSessions(ctx context.Context) (int64, error) {
+	result := s.db.WithContext(ctx).Where("expires_at <= ?", s.now()).Delete(&entity.UserSession{})
+	if result.Error != nil {
+		return 0, fmt.Errorf("prune expired sessions: %w", result.Error)
+	}
+	return result.RowsAffected, nil
 }
 
 func normalizeEmail(email string) string {

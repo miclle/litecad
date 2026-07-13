@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fox-gonic/fox"
 	"github.com/miclle/litecad/internal/entity"
@@ -68,11 +69,63 @@ func TestAuthRoutesRejectInvalidLogin(t *testing.T) {
 	}
 }
 
+func TestAuthRoutesRejectExpiredSessionCookie(t *testing.T) {
+	now := time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC)
+	router := newTestRouterWithOptions(t, []service.Option{
+		service.WithClock(func() time.Time { return now }),
+	}, nil)
+
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name":     "Ada Lovelace",
+		"email":    "ada@example.com",
+		"password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+
+	now = now.Add(30*24*time.Hour + time.Second)
+
+	me := getWithCookie(t, router, "/api/v1/auth/me", sessionCookie)
+	if me.Code != http.StatusUnauthorized {
+		t.Fatalf("me status = %d, want %d, body = %s", me.Code, http.StatusUnauthorized, me.Body.String())
+	}
+	if strings.Contains(me.Body.String(), "invalid email or password") {
+		t.Fatalf("expired session should not report credential failure: %s", me.Body.String())
+	}
+	projects := getWithCookie(t, router, "/api/v1/projects", sessionCookie)
+	if projects.Code != http.StatusUnauthorized {
+		t.Fatalf("projects status = %d, want %d, body = %s", projects.Code, http.StatusUnauthorized, projects.Body.String())
+	}
+}
+
+func TestAuthRoutesLogoutClearsStaleSessionCookie(t *testing.T) {
+	router := newTestRouter(t)
+	staleCookie := &http.Cookie{Name: SessionCookieName, Value: "stale-token"}
+
+	logout := postJSONWithCookie(t, router, "/api/v1/auth/logout", map[string]bool{}, staleCookie)
+	if logout.Code != http.StatusOK {
+		t.Fatalf("logout status = %d, want %d, body = %s", logout.Code, http.StatusOK, logout.Body.String())
+	}
+	cleared := findCookie(logout.Result(), SessionCookieName)
+	if cleared == nil {
+		t.Fatal("logout should clear the session cookie")
+	}
+	if cleared.MaxAge >= 0 {
+		t.Fatalf("cleared cookie max age = %d, want negative", cleared.MaxAge)
+	}
+}
+
 func newTestRouter(t *testing.T) *fox.Engine {
 	return newTestRouterWithAI(t, nil)
 }
 
 func newTestRouterWithAI(t *testing.T, aiClient service.AIClient) *fox.Engine {
+	return newTestRouterWithOptions(t, nil, aiClient)
+}
+
+func newTestRouterWithOptions(t *testing.T, options []service.Option, aiClient service.AIClient) *fox.Engine {
 	t.Helper()
 
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.NewReplacer("/", "_", " ", "_").Replace(t.Name()))), &gorm.Config{})
@@ -83,7 +136,8 @@ func newTestRouterWithAI(t *testing.T, aiClient service.AIClient) *fox.Engine {
 		t.Fatalf("migrate test db: %v", err)
 	}
 
-	svc, err := service.New(context.Background(), db, service.WithAIClient(aiClient))
+	options = append(options, service.WithAIClient(aiClient))
+	svc, err := service.New(context.Background(), db, options...)
 	if err != nil {
 		t.Fatalf("create service: %v", err)
 	}
