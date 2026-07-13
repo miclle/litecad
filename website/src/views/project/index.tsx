@@ -1,13 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-} from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   FileText,
@@ -48,13 +40,7 @@ import { useProjectThumbnailSnapshotController } from './use-project-thumbnail-s
 import { useProjectWorkbenchInspectorState } from './use-project-workbench-inspector-state'
 import { useProjectWorkbenchDraftCommands, type ProjectWorkbenchDraftCommandAdapter } from './use-project-workbench-draft-commands'
 import { useProjectWorkbenchModelState } from './use-project-workbench-model-state'
-import {
-  aiChatPanelMinWidth,
-  defaultAiChatPanelWidth,
-  leftPanelMaxWidth,
-  leftPanelMinWidth,
-  useProjectWorkspacePreferences,
-} from './use-project-workspace-preferences'
+import { useProjectWorkbenchShellState } from './use-project-workbench-shell-state'
 import {
   initialViewOrientation,
   orientationDistance,
@@ -64,47 +50,38 @@ import {
 } from './view-orientation'
 import type { ProjectParametricArtifact } from 'src/types/project'
 
-const aiChatPanelMaxWidthRatio = 0.5
-const aiChatPanelTransitionMs = 220
-
-function clampPanelWidth(width: number, minWidth: number, maxWidth: number) {
-  return Math.min(Math.max(width, minWidth), maxWidth)
-}
-
-function getAiChatPanelMaxWidth() {
-  if (typeof window === 'undefined') {
-    return Math.max(defaultAiChatPanelWidth, aiChatPanelMinWidth)
-  }
-  return Math.max(Math.floor(window.innerWidth * aiChatPanelMaxWidthRatio), aiChatPanelMinWidth)
-}
-
 function ProjectView() {
   const { projectId = '' } = useParams()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const {
+    aiChatPanelMaxWidth,
     aiChatPanelWidth,
+    canvasRightOffset,
+    canvasStatusLeftOffset,
+    closeAiChat,
+    handleCADDocumentConflict,
     isAiChatOpen,
+    isAiChatPanelResizing,
+    isAiChatTransitioning,
+    isHistoryOpen,
     isLeftPanelCollapsed,
+    isProjectInfoOpen,
+    isStepExportOpen,
     leftPanelWidth,
-    setAiChatPanelWidth,
-    setIsAiChatOpen,
+    setIsHistoryOpen,
     setIsLeftPanelCollapsed,
-    setLeftPanelWidth,
-  } = useProjectWorkspacePreferences()
-  const [isAiChatColumnVisible, setIsAiChatColumnVisible] = useState(isAiChatOpen)
-  const [isAiChatTransitioning, setIsAiChatTransitioning] = useState(false)
-  const [isAiChatPanelResizing, setIsAiChatPanelResizing] = useState(false)
-  const [isProjectInfoOpen, setIsProjectInfoOpen] = useState(false)
-  const [isStepExportOpen, setIsStepExportOpen] = useState(false)
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
-  const [aiChatPanelMaxWidth, setAiChatPanelMaxWidth] = useState(getAiChatPanelMaxWidth)
+    setIsProjectInfoOpen,
+    setIsStepExportOpen,
+    startAiChatPanelResize,
+    startLeftPanelResize,
+    toggleAiChat,
+    workspaceGridStyle,
+  } = useProjectWorkbenchShellState()
   const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
   const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
   const [hiddenModelIDs, setHiddenModelIDs] = useState<Set<string>>(() => new Set())
   const cadDocumentCommandAdapterRef = useRef<ProjectWorkbenchDraftCommandAdapter | null>(null)
-  const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
-  const handleCADDocumentConflict = useCallback(() => setIsHistoryOpen(true), [])
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: async () => (await fetchProject(projectId)).data.project,
@@ -295,19 +272,6 @@ function ProjectView() {
   }, [canDeleteNodeFromKeyboard, clearDeleteError, deleteNode, isCADDocumentCommandPending, keyboardDeleteNode])
 
   useEffect(() => {
-    const syncAiChatPanelMaxWidth = () => {
-      const nextMaxWidth = getAiChatPanelMaxWidth()
-
-      setAiChatPanelMaxWidth(nextMaxWidth)
-      setAiChatPanelWidth((currentWidth) => clampPanelWidth(currentWidth, aiChatPanelMinWidth, nextMaxWidth))
-    }
-
-    syncAiChatPanelMaxWidth()
-    window.addEventListener('resize', syncAiChatPanelMaxWidth)
-    return () => window.removeEventListener('resize', syncAiChatPanelMaxWidth)
-  }, [setAiChatPanelWidth])
-
-  useEffect(() => {
     const handleViewOrientationChange = (event: Event) => {
       const nextOrientation = orientationFromEvent(event)
       if (!nextOrientation) {
@@ -322,66 +286,6 @@ function ProjectView() {
     window.addEventListener(viewOrientationChangeEventName, handleViewOrientationChange)
     return () => window.removeEventListener(viewOrientationChangeEventName, handleViewOrientationChange)
   }, [])
-
-  const openAiChat = () => {
-    if (aiChatTransitionTimerRef.current !== undefined) {
-      window.clearTimeout(aiChatTransitionTimerRef.current)
-    }
-
-    setIsAiChatTransitioning(true)
-    setIsAiChatColumnVisible(true)
-    setIsAiChatOpen(true)
-    aiChatTransitionTimerRef.current = window.setTimeout(() => {
-      setIsAiChatTransitioning(false)
-      aiChatTransitionTimerRef.current = undefined
-    }, aiChatPanelTransitionMs)
-  }
-
-  const closeAiChat = useCallback(() => {
-    if (aiChatTransitionTimerRef.current !== undefined) {
-      window.clearTimeout(aiChatTransitionTimerRef.current)
-    }
-
-    setIsAiChatTransitioning(true)
-    setIsAiChatOpen(false)
-    setIsAiChatColumnVisible(false)
-    aiChatTransitionTimerRef.current = window.setTimeout(() => {
-      setIsAiChatTransitioning(false)
-      aiChatTransitionTimerRef.current = undefined
-    }, aiChatPanelTransitionMs)
-  }, [setIsAiChatOpen])
-
-  const toggleAiChat = () => {
-    if (isAiChatOpen) {
-      closeAiChat()
-      return
-    }
-
-    openAiChat()
-  }
-
-  useEffect(() => {
-    return () => {
-      if (aiChatTransitionTimerRef.current !== undefined) {
-        window.clearTimeout(aiChatTransitionTimerRef.current)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!isAiChatOpen) {
-      return
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closeAiChat()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [closeAiChat, isAiChatOpen])
 
   const {
     documentDetails,
@@ -439,68 +343,6 @@ function ProjectView() {
         </div>
       </div>
     )
-  }
-  const canvasStatusLeftOffset = isLeftPanelCollapsed ? 16 : leftPanelWidth + 32
-  const canvasRightOffset = 20
-  const cadWorkspaceMinWidth = (isLeftPanelCollapsed ? 196 : leftPanelWidth) + 260
-  const workspaceGridStyle = {
-    gridTemplateColumns: isAiChatColumnVisible
-      ? `minmax(${cadWorkspaceMinWidth}px, 1fr) ${aiChatPanelWidth}px`
-      : 'minmax(0, 1fr) 0px',
-  } as CSSProperties
-  const startLeftPanelResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = leftPanelWidth
-    const previousCursor = document.body.style.cursor
-    const previousUserSelect = document.body.style.userSelect
-
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const deltaX = moveEvent.clientX - startX
-      setLeftPanelWidth(clampPanelWidth(startWidth + deltaX, leftPanelMinWidth, leftPanelMaxWidth))
-    }
-
-    const handlePointerUp = () => {
-      document.body.style.cursor = previousCursor
-      document.body.style.userSelect = previousUserSelect
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-    }
-
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-  }
-  const startAiChatPanelResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = aiChatPanelWidth
-    const previousCursor = document.body.style.cursor
-    const previousUserSelect = document.body.style.userSelect
-
-    setIsAiChatPanelResizing(true)
-    setIsAiChatTransitioning(true)
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const deltaX = startX - moveEvent.clientX
-      setAiChatPanelWidth(clampPanelWidth(startWidth + deltaX, aiChatPanelMinWidth, aiChatPanelMaxWidth))
-    }
-
-    const handlePointerUp = () => {
-      setIsAiChatPanelResizing(false)
-      setIsAiChatTransitioning(false)
-      document.body.style.cursor = previousCursor
-      document.body.style.userSelect = previousUserSelect
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-    }
-
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
   }
   const applyCanvasOrientation = (orientation: ViewOrientation) => {
     const nextOrientation = normalizeViewOrientation(orientation) ?? initialViewOrientation
