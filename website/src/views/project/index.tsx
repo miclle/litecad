@@ -10,10 +10,7 @@ import {
 } from 'react'
 import {
   ArrowLeft,
-  Box,
   FileText,
-  PanelLeftClose,
-  PanelLeftOpen,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
@@ -48,14 +45,13 @@ import {
 } from './cad-document-box-features'
 import { cadHistoryActionForKey } from './cad-document-history'
 import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
-import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
 import { ProjectCanvas } from './project-canvas'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
 import { ProjectAssistantPanel } from './project-assistant-panel'
-import { ProjectInspector, type ProjectInspectorSelection, type TransformDraft } from './project-inspector'
-import { ProjectModelTree } from './project-model-tree'
+import type { ProjectInspectorSelection, TransformDraft } from './project-inspector'
 import { ProjectTopbar } from './project-topbar'
+import { ProjectWorkbenchSidebar } from './project-workbench-sidebar'
 import { ProjectWorkbenchLayout } from './project-workbench-layout'
 import {
   buildProjectPreviewAssets,
@@ -647,7 +643,6 @@ function ProjectView() {
     day: 'numeric',
     year: 'numeric',
   }).format(new Date(project.updated_at))
-  const LeftPanelIcon = isLeftPanelCollapsed ? PanelLeftOpen : PanelLeftClose
   const projectDescription = project.description || 'No description yet. Import a CAD source file to begin the project record.'
   const selectedModelDisplayName =
     selectedDocumentNode?.source_format === 'step-component'
@@ -918,108 +913,41 @@ function ProjectView() {
       }
       isAiChatPanelResizing={isAiChatPanelResizing}
       leftPanel={
-        <aside
-          className={`absolute left-4 top-4 z-30 hidden border border-[#e2e8f0] bg-[#ffffff]/92 shadow-[0_10px_28px_rgba(15,23,42,0.06)] backdrop-blur lg:block ${
-            isLeftPanelCollapsed
-              ? 'w-[196px] rounded-[14px] px-3 py-1.5'
-              : 'bottom-4 overflow-y-auto rounded-md p-3'
-          }`}
-          style={isLeftPanelCollapsed ? undefined : { width: leftPanelWidth }}
-        >
-          {isLeftPanelCollapsed ? (
-            <div className="flex min-h-7 items-center gap-2.5">
-              <Box className="size-3.5 shrink-0 text-[#0f172a]" />
-              <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                <p className="truncate text-sm font-semibold text-[#0f172a]">Project</p>
-                <span className="shrink-0 rounded bg-[#eff6ff] px-1.5 py-0.5 text-[11px] font-medium leading-none text-[#0074d9]">
-                  {projectModels.length} models
-                </span>
-              </div>
-              <button
-                aria-label="Expand left panel"
-                className="grid size-6 shrink-0 place-items-center rounded text-[#0f172a] transition hover:bg-[#f1f5f9]"
-                onClick={() => setIsLeftPanelCollapsed(false)}
-                title="Expand left panel"
-                type="button"
-              >
-                <LeftPanelIcon className="size-3.5" />
-              </button>
-            </div>
-          ) : (
-            <>
-              <div
-                aria-label="Resize left panel"
-                aria-orientation="vertical"
-                className="group absolute right-0 top-0 z-40 h-full w-2 cursor-col-resize"
-                onPointerDown={startLeftPanelResize}
-                role="separator"
-                title="Resize left panel"
-              >
-                <span className="absolute bottom-3 right-0 top-3 w-px rounded-full bg-transparent transition group-hover:bg-[#94a3b8]" />
-              </div>
-
-              <div className="flex min-h-full flex-col">
-                <ProjectModelTree
-                  groups={projectModelTree}
-                  headerAction={
-                    <button
-                      aria-label="Collapse left panel"
-                      className="grid size-8 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
-                      onClick={() => setIsLeftPanelCollapsed(true)}
-                      title="Collapse left panel"
-                      type="button"
-                    >
-                      <LeftPanelIcon className="size-4" />
-                    </button>
-                  }
-                  hiddenModelIds={hiddenModelIDs}
-                  isLoading={projectModelsQuery.isLoading}
-                  isUploading={projectModelUpload.isUploading}
-                  onSelect={(modelId, nodeId) => {
-                    selectModel(modelId, nodeId)
-                    cadDocumentCommands.clearDeleteError()
-                  }}
-                  onToggleVisibility={toggleModelVisibility}
-                  previewAssetModelIds={previewAssetModelIDs}
-                  selectedNodeId={effectiveSelectedDocumentNodeID}
-                  uploadError={projectModelUpload.uploadError}
-                />
-
-                {selectedParametricArtifact ? (
-                  <ParametricArtifactEditor
-                    artifact={selectedParametricArtifact}
-                    autoSaveOnPreviewSuccess={selectedParametricArtifact.source_kind === 'litecad-feature-dsl'}
-                    onSaveAsModel={(parameterValues) =>
-                      saveProjectParametricArtifactMutation.mutate({ artifact: selectedParametricArtifact, parameterValues })
-                    }
-                  />
-                ) : selectedSavedParametricArtifact ? (
-                  <ParametricArtifactEditor
-                    artifact={selectedSavedParametricArtifact}
-                    initialParameterValues={selectedSavedParametricArtifact.parameter_values}
-                    onParameterValuesChange={(parameterValues) =>
-                      parametricModels.updatePreviewParameters(selectedSavedParametricArtifact.preview_model_id, parameterValues)
-                    }
-                    onSaveParameters={(parameterValues) =>
-                      updateProjectParametricModelParametersMutation.mutate({
-                        modelID: selectedSavedParametricArtifact.preview_model_id,
-                        parameterValues,
-                      })
-                    }
-                  />
-                ) : (
-                  <ProjectInspector
-                    documentDetails={documentDetails}
-                    modelCount={projectModels.length}
-                    onTransformChange={updateTransformDraftField}
-                    selected={inspectorSelection}
-                    unitLabel={documentUnitLabel}
-                  />
-                )}
-              </div>
-            </>
-          )}
-        </aside>
+        <ProjectWorkbenchSidebar
+          documentDetails={documentDetails}
+          hiddenModelIds={hiddenModelIDs}
+          inspectorSelection={inspectorSelection}
+          isLeftPanelCollapsed={isLeftPanelCollapsed}
+          isModelTreeLoading={projectModelsQuery.isLoading}
+          isUploading={projectModelUpload.isUploading}
+          leftPanelWidth={leftPanelWidth}
+          modelCount={projectModels.length}
+          onCollapseChange={setIsLeftPanelCollapsed}
+          onModelSelect={(modelId, nodeId) => {
+            selectModel(modelId, nodeId)
+            cadDocumentCommands.clearDeleteError()
+          }}
+          onParameterValuesChange={parametricModels.updatePreviewParameters}
+          onResizePointerDown={startLeftPanelResize}
+          onSaveGeneratedArtifactAsModel={(artifact, parameterValues) =>
+            saveProjectParametricArtifactMutation.mutate({ artifact, parameterValues })
+          }
+          onSaveModelParameters={(modelID, parameterValues) =>
+            updateProjectParametricModelParametersMutation.mutate({
+              modelID,
+              parameterValues,
+            })
+          }
+          onToggleModelVisibility={toggleModelVisibility}
+          onTransformChange={updateTransformDraftField}
+          previewAssetModelIds={previewAssetModelIDs}
+          projectModelTree={projectModelTree}
+          selectedGeneratedArtifact={selectedParametricArtifact}
+          selectedNodeId={effectiveSelectedDocumentNodeID}
+          selectedSavedArtifact={selectedSavedParametricArtifact}
+          unitLabel={documentUnitLabel}
+          uploadError={projectModelUpload.uploadError}
+        />
       }
       topbar={
         <ProjectTopbar
