@@ -26,6 +26,9 @@ website/test-results/
 # Task runner cache
 .task/
 
+# Agent worktrees
+.worktrees/
+
 # OS
 .DS_Store
 
