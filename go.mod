@@ -6,7 +6,7 @@ require (
 	github.com/fox-gonic/fox v0.1.1
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/spf13/viper v1.21.0
-	golang.org/x/crypto v0.51.0
+	golang.org/x/crypto v0.52.0
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/driver/sqlite v1.6.0
