@@ -1,5 +1,5 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   ArrowLeft,
   FileText,
@@ -9,21 +9,8 @@ import { Link, useParams } from 'react-router-dom'
 import {
   fetchProject,
   fetchProjectCADHistory,
-  saveProjectParametricArtifactModel,
-  updateProjectParametricArtifact,
-  updateProjectParametricModelParameters,
 } from 'src/api/projects'
-import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
-import {
-  dispatchModelPreviewSetViewEvent,
-  normalizeViewOrientation,
-  orientationFromEvent,
-  viewOrientationChangeEventName,
-} from './view-events'
-import { cadHistoryActionForKey } from './cad-document-history'
-import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
 import { ProjectCanvas } from './project-canvas'
-import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
 import { ProjectAssistantPanel } from './project-assistant-panel'
 import { ProjectTopbar } from './project-topbar'
 import { ProjectWorkbenchSidebar } from './project-workbench-sidebar'
@@ -39,20 +26,16 @@ import { useProjectStepExportController } from './use-project-step-export-contro
 import { useProjectThumbnailSnapshotController } from './use-project-thumbnail-snapshot-controller'
 import { useProjectWorkbenchInspectorState } from './use-project-workbench-inspector-state'
 import { useProjectWorkbenchDraftCommands, type ProjectWorkbenchDraftCommandAdapter } from './use-project-workbench-draft-commands'
+import { useProjectWorkbenchKeyboardCommands } from './use-project-workbench-keyboard-commands'
 import { useProjectWorkbenchModelState } from './use-project-workbench-model-state'
+import { useProjectWorkbenchParametricModelCommands } from './use-project-workbench-parametric-model-commands'
 import { useProjectWorkbenchShellState } from './use-project-workbench-shell-state'
-import {
-  initialViewOrientation,
-  orientationDistance,
-  rotateOrientation,
-  type ViewOrientation,
-  type ViewRotationStep,
-} from './view-orientation'
-import type { ProjectParametricArtifact } from 'src/types/project'
+import { useProjectWorkbenchViewControls } from './use-project-workbench-view-controls'
+import { useProjectWorkbenchVisibilityState } from './use-project-workbench-visibility-state'
+import { initialViewOrientation } from './view-orientation'
 
 function ProjectView() {
   const { projectId = '' } = useParams()
-  const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const {
     aiChatPanelMaxWidth,
@@ -78,9 +61,14 @@ function ProjectView() {
     toggleAiChat,
     workspaceGridStyle,
   } = useProjectWorkbenchShellState()
-  const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
-  const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
-  const [hiddenModelIDs, setHiddenModelIDs] = useState<Set<string>>(() => new Set())
+  const {
+    animateViewCubeOrientation,
+    applyCanvasOrientation,
+    flipCanvasOrientation,
+    stepCanvasOrientation,
+    viewOrientation,
+  } = useProjectWorkbenchViewControls()
+  const { hiddenModelIDs, toggleModelVisibility } = useProjectWorkbenchVisibilityState()
   const cadDocumentCommandAdapterRef = useRef<ProjectWorkbenchDraftCommandAdapter | null>(null)
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -89,54 +77,6 @@ function ProjectView() {
   })
   const projectModelUpload = useProjectModelUploadController({
     projectId,
-  })
-  const saveProjectParametricArtifactMutation = useMutation({
-    mutationFn: async ({
-      artifact,
-      parameterValues,
-    }: {
-      artifact: ProjectParametricArtifact
-      parameterValues: Record<string, OpenSCADParameterValue>
-    }) => {
-      await updateProjectParametricArtifact(projectId, artifact.id, {
-        title: artifact.title,
-        source_kind: artifact.source_kind,
-        source_code: artifact.source_code,
-        parameter_values: parameterValues,
-        compile_status: 'success',
-        compile_error: '',
-      })
-      return (await saveProjectParametricArtifactModel(projectId, artifact.id)).data.model
-    },
-    onSuccess: async (model) => {
-      projectSelection.selectModel(model.id)
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
-    },
-    onError: () => {
-      projectAssistant.setParametricRunError('Generated source could not be added to the canvas. Try generating it again.')
-    },
-  })
-  const updateProjectParametricModelParametersMutation = useMutation({
-    mutationFn: async ({
-      modelID,
-      parameterValues,
-    }: {
-      modelID: string
-      parameterValues: Record<string, OpenSCADParameterValue>
-    }) =>
-      (
-        await updateProjectParametricModelParameters(projectId, modelID, {
-          parameter_values: parameterValues,
-        })
-      ).data.model,
-    onSuccess: async (model) => {
-      projectSelection.selectModel(model.id)
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
-    },
   })
   const project = projectQuery.data
   const {
@@ -212,13 +152,17 @@ function ProjectView() {
   })
   const {
     changeHistory,
-    clearDeleteError,
-    deleteNode,
     isPending: isCADDocumentCommandPending,
   } = cadDocumentCommands
   const keyboardDeleteNode = effectiveSelectedDocumentNodeID ? cadNodeByID.get(effectiveSelectedDocumentNodeID) : undefined
-  const canDeleteNodeFromKeyboard = isCADDocumentNodeDeletable(keyboardDeleteNode)
   const selectedSavedParametricArtifact = parametricModels.selectedSavedArtifact
+  const projectParametricModelCommands = useProjectWorkbenchParametricModelCommands({
+    onArtifactSaveError: () => {
+      projectAssistant.setParametricRunError('Generated source could not be added to the canvas. Try generating it again.')
+    },
+    onModelSelected: projectSelection.selectModel,
+    projectId,
+  })
   const projectThumbnailSnapshot = useProjectThumbnailSnapshotController({
     previewAssets,
     projectId,
@@ -235,57 +179,14 @@ function ProjectView() {
     }
   }, [cadDocumentCommands])
 
-  useEffect(() => {
-    const handleHistoryKeyDown = (event: KeyboardEvent) => {
-      const action = cadHistoryActionForKey(event)
-      if (!action || isCADDocumentCommandPending) {
-        return
-      }
-      const canRun = action === 'undo' ? projectCADDocument?.history.can_undo : projectCADDocument?.history.can_redo
-      if (!canRun) {
-        return
-      }
-      event.preventDefault()
-      changeHistory(action)
-    }
-
-    window.addEventListener('keydown', handleHistoryKeyDown)
-    return () => window.removeEventListener('keydown', handleHistoryKeyDown)
-  }, [changeHistory, isCADDocumentCommandPending, projectCADDocument?.history.can_redo, projectCADDocument?.history.can_undo])
-
-  useEffect(() => {
-    if (!keyboardDeleteNode || !canDeleteNodeFromKeyboard || isCADDocumentCommandPending) {
-      return
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (!shouldDeleteSelectedCADNodeFromKey(event)) {
-        return
-      }
-      event.preventDefault()
-      clearDeleteError()
-      deleteNode(keyboardDeleteNode.id)
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [canDeleteNodeFromKeyboard, clearDeleteError, deleteNode, isCADDocumentCommandPending, keyboardDeleteNode])
-
-  useEffect(() => {
-    const handleViewOrientationChange = (event: Event) => {
-      const nextOrientation = orientationFromEvent(event)
-      if (!nextOrientation) {
-        return
-      }
-      setAnimateViewCubeOrientation(false)
-      setViewOrientation((currentOrientation) =>
-        orientationDistance(currentOrientation, nextOrientation) < 0.2 ? currentOrientation : nextOrientation,
-      )
-    }
-
-    window.addEventListener(viewOrientationChangeEventName, handleViewOrientationChange)
-    return () => window.removeEventListener(viewOrientationChangeEventName, handleViewOrientationChange)
-  }, [])
+  useProjectWorkbenchKeyboardCommands({
+    changeHistory,
+    clearDeleteError: cadDocumentCommands.clearDeleteError,
+    deleteNode: cadDocumentCommands.deleteNode,
+    isCADDocumentCommandPending,
+    keyboardDeleteNode,
+    projectCADDocument,
+  })
 
   const {
     documentDetails,
@@ -343,29 +244,6 @@ function ProjectView() {
         </div>
       </div>
     )
-  }
-  const applyCanvasOrientation = (orientation: ViewOrientation) => {
-    const nextOrientation = normalizeViewOrientation(orientation) ?? initialViewOrientation
-    setAnimateViewCubeOrientation(true)
-    setViewOrientation(nextOrientation)
-    dispatchModelPreviewSetViewEvent(nextOrientation)
-  }
-  const stepCanvasOrientation = (step: ViewRotationStep) => {
-    applyCanvasOrientation({ ...rotateOrientation(viewOrientation, step), rotationStep: step })
-  }
-  const flipCanvasOrientation = () => {
-    applyCanvasOrientation({ ...rotateOrientation(viewOrientation, { horizontal: 180 }), rotationStep: { horizontal: 180 } })
-  }
-  const toggleModelVisibility = (modelID: string) => {
-    setHiddenModelIDs((currentIDs) => {
-      const nextIDs = new Set(currentIDs)
-      if (nextIDs.has(modelID)) {
-        nextIDs.delete(modelID)
-      } else {
-        nextIDs.add(modelID)
-      }
-      return nextIDs
-    })
   }
   return (
     <ProjectWorkbenchLayout
@@ -459,13 +337,10 @@ function ProjectView() {
           onParameterValuesChange={parametricModels.updatePreviewParameters}
           onResizePointerDown={startLeftPanelResize}
           onSaveGeneratedArtifactAsModel={(artifact, parameterValues) =>
-            saveProjectParametricArtifactMutation.mutate({ artifact, parameterValues })
+            projectParametricModelCommands.saveGeneratedArtifactAsModel({ artifact, parameterValues })
           }
           onSaveModelParameters={(modelID, parameterValues) =>
-            updateProjectParametricModelParametersMutation.mutate({
-              modelID,
-              parameterValues,
-            })
+            projectParametricModelCommands.saveModelParameters({ modelID, parameterValues })
           }
           onToggleModelVisibility={toggleModelVisibility}
           onTransformChange={projectDraftCommands.updateTransformDraftField}
