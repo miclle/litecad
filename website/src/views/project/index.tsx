@@ -40,11 +40,10 @@ import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
 import { ProjectCanvas } from './project-canvas'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
 import { ProjectAssistantPanel } from './project-assistant-panel'
-import type { ProjectInspectorSelection, TransformDraft } from './project-inspector'
+import type { TransformDraft } from './project-inspector'
 import { ProjectTopbar } from './project-topbar'
 import { ProjectWorkbenchSidebar } from './project-workbench-sidebar'
 import { ProjectWorkbenchLayout } from './project-workbench-layout'
-import { getModelDisplayName } from './project-preview-assets'
 import {
   buildStepExportTargets,
   stepAssemblyExportFilename,
@@ -54,6 +53,11 @@ import { useProjectAssistantController } from './use-project-assistant-controlle
 import { useProjectModelUploadController } from './use-project-model-upload-controller'
 import { useProjectStepExportController } from './use-project-step-export-controller'
 import { useProjectThumbnailSnapshotController } from './use-project-thumbnail-snapshot-controller'
+import {
+  parseTransformDraft,
+  transformDraftFromTranslation,
+  useProjectWorkbenchInspectorState,
+} from './use-project-workbench-inspector-state'
 import { useProjectWorkbenchModelState } from './use-project-workbench-model-state'
 import {
   aiChatPanelMinWidth,
@@ -83,46 +87,6 @@ function getAiChatPanelMaxWidth() {
     return Math.max(defaultAiChatPanelWidth, aiChatPanelMinWidth)
   }
   return Math.max(Math.floor(window.innerWidth * aiChatPanelMaxWidthRatio), aiChatPanelMinWidth)
-}
-
-function transformDraftFromTranslation(translation: CADTranslation): TransformDraft {
-  return {
-    x: String(translation.x),
-    y: String(translation.y),
-    z: String(translation.z),
-  }
-}
-
-function parseTransformDraft(draft: TransformDraft | undefined): CADTranslation | undefined {
-  if (!draft) {
-    return undefined
-  }
-  const translation = {
-    x: Number(draft.x),
-    y: Number(draft.y),
-    z: Number(draft.z),
-  }
-  if (!Number.isFinite(translation.x) || !Number.isFinite(translation.y) || !Number.isFinite(translation.z)) {
-    return undefined
-  }
-  return translation
-}
-
-function cadUnitLabel(unit: string | undefined) {
-  const normalizedUnit = unit?.trim().toLowerCase()
-  if (normalizedUnit === 'millimetre' || normalizedUnit === 'millimeter' || normalizedUnit === 'millimeters' || normalizedUnit === 'millimetres') {
-    return 'mm'
-  }
-  if (normalizedUnit === 'centimetre' || normalizedUnit === 'centimeter' || normalizedUnit === 'centimeters' || normalizedUnit === 'centimetres') {
-    return 'cm'
-  }
-  if (normalizedUnit === 'metre' || normalizedUnit === 'meter' || normalizedUnit === 'meters' || normalizedUnit === 'metres') {
-    return 'm'
-  }
-  if (normalizedUnit === 'inch' || normalizedUnit === 'inches') {
-    return 'in'
-  }
-  return unit || 'unit'
 }
 
 function translationsEqual(left: CADTranslation | undefined, right: CADTranslation | undefined) {
@@ -255,7 +219,6 @@ function ProjectView() {
     enabled: projectId !== '' && Boolean(projectCADDocument) && isHistoryOpen,
   })
   const projectCADHistory = projectCADHistoryQuery.data?.pages.flatMap((page) => page.entries) ?? []
-  const documentUnitLabel = cadUnitLabel(projectCADDocument?.unit)
   const stepExportTargets = useMemo(
     () => buildStepExportTargets(projectModels, projectCADDocument),
     [projectModels, projectCADDocument],
@@ -437,6 +400,35 @@ function ProjectView() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [closeAiChat, isAiChatOpen])
 
+  const {
+    documentDetails,
+    documentUnitLabel,
+    inspectorSelection,
+    isSelectedModelBoxFeatureUpdating,
+    projectDescription,
+    selectedModelBoxFeatureDraft,
+    selectedModelBoxFeatureError,
+    selectedModelDisplayName,
+    selectedModelSupportsFuseBox,
+  } = useProjectWorkbenchInspectorState({
+    boxErrorsByModelId: cadDocumentCommands.boxErrorsByModelId,
+    boxFeatureDraftsByModelId: boxFeatureDraftsByModelID,
+    deleteError: cadDocumentCommands.deleteError,
+    getBoxFeatureDraft: latestBoxFeatureDraftForModel,
+    isBoxUnionPendingFor: cadDocumentCommands.isBoxUnionPendingFor,
+    latestModel,
+    latestTriangleCount,
+    previewSummary,
+    project,
+    projectCADDocument,
+    selectedDocumentNode,
+    selectedSourceModel,
+    stepExportErrorByModelId: projectStepExport.errorByModelID,
+    stepExportStatusByModelId: projectStepExport.statusByModelID,
+    transformDraftsByNodeId: transformDraftsByModelID,
+    transformErrorsByNodeId: cadDocumentCommands.transformErrorsByNodeId,
+  })
+
   if (projectQuery.isLoading) {
     return (
       <div className="grid min-h-screen place-items-center bg-[#f8fafc] text-[#0f172a]">
@@ -465,68 +457,6 @@ function ProjectView() {
       </div>
     )
   }
-
-  const updatedAt = new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(project.updated_at))
-  const projectDescription = project.description || 'No description yet. Import a CAD source file to begin the project record.'
-  const selectedModelDisplayName =
-    selectedDocumentNode?.source_format === 'step-component'
-      ? selectedDocumentNode.name
-      : selectedSourceModel
-        ? getModelDisplayName(selectedSourceModel)
-        : ''
-  const selectedModelTransformDraft = selectedDocumentNode
-    ? transformDraftsByModelID[selectedDocumentNode.id] ?? transformDraftFromTranslation(translationFromCADTransform(selectedDocumentNode.transform))
-    : undefined
-  const selectedModelTransformError = selectedDocumentNode ? cadDocumentCommands.transformErrorsByNodeId[selectedDocumentNode.id] : ''
-  const selectedModelSupportsFuseBox = selectedSourceModel?.format === 'step'
-  const selectedModelBoxFeatureDraft = selectedSourceModel
-    ? boxFeatureDraftsByModelID[selectedSourceModel.id] ?? latestBoxFeatureDraftForModel(selectedSourceModel.id)
-    : undefined
-  const selectedModelBoxFeatureError = selectedSourceModel ? cadDocumentCommands.boxErrorsByModelId[selectedSourceModel.id] : ''
-  const isSelectedModelBoxFeatureUpdating = selectedSourceModel ? cadDocumentCommands.isBoxUnionPendingFor(selectedSourceModel.id) : false
-  const selectedModelStepExportError = selectedSourceModel ? projectStepExport.errorByModelID[selectedSourceModel.id] : ''
-  const selectedModelStepExportStatus = selectedSourceModel ? projectStepExport.statusByModelID[selectedSourceModel.id] : ''
-  const selectedModelDetails = selectedSourceModel
-    ? [
-        { label: 'Format', value: selectedDocumentNode?.source_format === 'step-component' ? 'STEP-COMPONENT' : selectedSourceModel.format.toUpperCase() },
-        { label: 'Status', value: selectedSourceModel.parse_status },
-        { label: 'Unit', value: selectedSourceModel.metadata.length_unit || documentUnitLabel },
-        { label: 'Entities', value: selectedSourceModel.metadata.entity_count },
-        { label: 'Triangles', value: selectedSourceModel.metadata.triangle_count },
-      ]
-    : []
-  const documentDetails = [
-    { label: 'Updated', value: updatedAt },
-    { label: 'Preview', value: previewSummary.previewLabel },
-    ...(latestModel
-      ? [
-          {
-            label: 'Schema',
-            value: latestModel.metadata.schema || latestModel.metadata.asset_type.toUpperCase() || latestModel.parse_status,
-          },
-          { label: 'Unit', value: latestModel.metadata.length_unit || 'Unknown' },
-          { label: 'Entities', value: latestModel.metadata.entity_count },
-          { label: 'Triangles', value: latestTriangleCount },
-        ]
-      : []),
-  ]
-  const inspectorSelection: ProjectInspectorSelection | undefined =
-    selectedDocumentNode && selectedModelTransformDraft
-      ? {
-          deleteError: cadDocumentCommands.deleteError,
-          details: selectedModelDetails,
-          name: selectedModelDisplayName,
-          nodeId: selectedDocumentNode.id,
-          stepExportError: selectedModelStepExportError,
-          stepExportStatus: selectedModelStepExportStatus,
-          transformDraft: selectedModelTransformDraft,
-          transformError: selectedModelTransformError,
-        }
-      : undefined
   const canvasStatusLeftOffset = isLeftPanelCollapsed ? 16 : leftPanelWidth + 32
   const canvasRightOffset = 20
   const cadWorkspaceMinWidth = (isLeftPanelCollapsed ? 196 : leftPanelWidth) + 260
