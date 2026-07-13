@@ -87,7 +87,6 @@ function useModelStateScenario(overrides: Partial<Parameters<typeof useProjectWo
     hiddenModelIds: new Set(),
     isProjectLoaded: true,
     projectId,
-    transformDraftsByNodeId: {},
     ...overrides,
   })
 }

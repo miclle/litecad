@@ -9,7 +9,6 @@ import {
   fetchProjectModels,
 } from 'src/api/projects'
 import { runStepPreviewInWorker, type CadKernelWorkerPreviewResult } from 'src/cad/kernel-worker-client'
-import type { TransformDraft } from './project-inspector'
 import {
   buildProjectModelTree,
   buildProjectPreviewAssets,
@@ -25,14 +24,12 @@ type UseProjectWorkbenchModelStateOptions = {
   hiddenModelIds: ReadonlySet<string>
   isProjectLoaded: boolean
   projectId: string
-  transformDraftsByNodeId: Record<string, TransformDraft>
 }
 
 export function useProjectWorkbenchModelState({
   hiddenModelIds,
   isProjectLoaded,
   projectId,
-  transformDraftsByNodeId,
 }: UseProjectWorkbenchModelStateOptions) {
   const [previewUrlsByModelID, setPreviewUrlsByModelID] = useState<Record<string, string>>({})
   const projectModelsQuery = useQuery({
@@ -80,20 +77,6 @@ export function useProjectWorkbenchModelState({
     }
     return translations
   }, [projectCADDocument])
-  const draftModelTranslationsByID = useMemo(() => {
-    const translations: Record<string, CADTranslation> = {}
-    for (const [nodeID, draft] of Object.entries(transformDraftsByNodeId)) {
-      const translation = parseTransformDraft(draft)
-      if (translation) {
-        translations[nodeID] = translation
-        const modelID = cadNodeByID.get(nodeID)?.model_id
-        if (modelID) {
-          translations[modelID] = translation
-        }
-      }
-    }
-    return translations
-  }, [cadNodeByID, transformDraftsByNodeId])
   const previewModels = parametricModels.previewModels
   const browserKernelStepPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'step'), [previewModels])
   const browserKernelFeatureDSLPreviewModels = parametricModels.featureDSLPreviewModels
@@ -226,7 +209,6 @@ export function useProjectWorkbenchModelState({
     cadNodeByID,
     canvasStatusBody,
     canvasStatusLabel,
-    draftModelTranslationsByID,
     latestModel,
     latestTriangleCount,
     modelTranslationsByID,
@@ -244,19 +226,4 @@ export function useProjectWorkbenchModelState({
     sourceNodeIDByModelID,
     visibleModelIds,
   }
-}
-
-function parseTransformDraft(draft: TransformDraft | undefined): CADTranslation | undefined {
-  if (!draft) {
-    return undefined
-  }
-  const translation = {
-    x: Number(draft.x),
-    y: Number(draft.y),
-    z: Number(draft.z),
-  }
-  if (!Number.isFinite(translation.x) || !Number.isFinite(translation.y) || !Number.isFinite(translation.z)) {
-    return undefined
-  }
-  return translation
 }

@@ -28,19 +28,11 @@ import {
   orientationFromEvent,
   viewOrientationChangeEventName,
 } from './view-events'
-import {
-  boxFeatureDraftFromCADBoxFeature,
-  defaultBoxFeatureDraft,
-  parseBoxFeatureDraft,
-  type BoxFeatureDraft,
-} from './cad-document-box-features'
 import { cadHistoryActionForKey } from './cad-document-history'
-import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
 import { ProjectCanvas } from './project-canvas'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
 import { ProjectAssistantPanel } from './project-assistant-panel'
-import type { TransformDraft } from './project-inspector'
 import { ProjectTopbar } from './project-topbar'
 import { ProjectWorkbenchSidebar } from './project-workbench-sidebar'
 import { ProjectWorkbenchLayout } from './project-workbench-layout'
@@ -53,11 +45,8 @@ import { useProjectAssistantController } from './use-project-assistant-controlle
 import { useProjectModelUploadController } from './use-project-model-upload-controller'
 import { useProjectStepExportController } from './use-project-step-export-controller'
 import { useProjectThumbnailSnapshotController } from './use-project-thumbnail-snapshot-controller'
-import {
-  parseTransformDraft,
-  transformDraftFromTranslation,
-  useProjectWorkbenchInspectorState,
-} from './use-project-workbench-inspector-state'
+import { useProjectWorkbenchInspectorState } from './use-project-workbench-inspector-state'
+import { useProjectWorkbenchDraftCommands, type ProjectWorkbenchDraftCommandAdapter } from './use-project-workbench-draft-commands'
 import { useProjectWorkbenchModelState } from './use-project-workbench-model-state'
 import {
   aiChatPanelMinWidth,
@@ -89,10 +78,6 @@ function getAiChatPanelMaxWidth() {
   return Math.max(Math.floor(window.innerWidth * aiChatPanelMaxWidthRatio), aiChatPanelMinWidth)
 }
 
-function translationsEqual(left: CADTranslation | undefined, right: CADTranslation | undefined) {
-  return !!left && !!right && left.x === right.x && left.y === right.y && left.z === right.z
-}
-
 function ProjectView() {
   const { projectId = '' } = useParams()
   const queryClient = useQueryClient()
@@ -117,17 +102,9 @@ function ProjectView() {
   const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
   const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
   const [hiddenModelIDs, setHiddenModelIDs] = useState<Set<string>>(() => new Set())
-  const [transformDraftsByModelID, setTransformDraftsByModelID] = useState<Record<string, TransformDraft>>({})
-  const [boxFeatureDraftsByModelID, setBoxFeatureDraftsByModelID] = useState<Record<string, BoxFeatureDraft>>({})
+  const cadDocumentCommandAdapterRef = useRef<ProjectWorkbenchDraftCommandAdapter | null>(null)
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
   const handleCADDocumentConflict = useCallback(() => setIsHistoryOpen(true), [])
-  const handleTransformSynchronized = useCallback((nodeId: string) => {
-    setTransformDraftsByModelID((currentDrafts) => {
-      const nextDrafts = { ...currentDrafts }
-      delete nextDrafts[nodeId]
-      return nextDrafts
-    })
-  }, [])
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: async () => (await fetchProject(projectId)).data.project,
@@ -189,7 +166,6 @@ function ProjectView() {
     cadNodeByID,
     canvasStatusBody,
     canvasStatusLabel,
-    draftModelTranslationsByID,
     latestModel,
     latestTriangleCount,
     modelTranslationsByID,
@@ -209,7 +185,6 @@ function ProjectView() {
     hiddenModelIds: hiddenModelIDs,
     isProjectLoaded: projectQuery.isSuccess,
     projectId,
-    transformDraftsByNodeId: transformDraftsByModelID,
   })
   const projectCADHistoryQuery = useInfiniteQuery({
     queryKey: ['projects', projectId, 'cad-document', 'history'],
@@ -245,19 +220,18 @@ function ProjectView() {
     selectedSourceModel,
     setActiveCADTool,
   } = projectSelection
-  const handleCADDocumentNodeDeleted = (nodeId: string) => {
-    setTransformDraftsByModelID((currentDrafts) => {
-      const nextDrafts = { ...currentDrafts }
-      delete nextDrafts[nodeId]
-      return nextDrafts
-    })
-    clearSelection()
-  }
+  const projectDraftCommands = useProjectWorkbenchDraftCommands({
+    cadNodeByID,
+    commandAdapterRef: cadDocumentCommandAdapterRef,
+    onSelectionClear: clearSelection,
+    projectCADDocument,
+    sourceNodeIDByModelID,
+  })
   const cadDocumentCommands = useCADDocumentCommands({
     projectId,
     onConflict: handleCADDocumentConflict,
-    onNodeDeleted: handleCADDocumentNodeDeleted,
-    onTransformSynchronized: handleTransformSynchronized,
+    onNodeDeleted: projectDraftCommands.handleCADDocumentNodeDeleted,
+    onTransformSynchronized: projectDraftCommands.handleTransformSynchronized,
   })
   const {
     changeHistory,
@@ -274,6 +248,15 @@ function ProjectView() {
     revision: projectCADDocument?.revision ?? 0,
     visibleModelIds,
   })
+
+  useEffect(() => {
+    cadDocumentCommandAdapterRef.current = cadDocumentCommands
+    return () => {
+      if (cadDocumentCommandAdapterRef.current === cadDocumentCommands) {
+        cadDocumentCommandAdapterRef.current = null
+      }
+    }
+  }, [cadDocumentCommands])
 
   useEffect(() => {
     const handleHistoryKeyDown = (event: KeyboardEvent) => {
@@ -412,9 +395,9 @@ function ProjectView() {
     selectedModelSupportsFuseBox,
   } = useProjectWorkbenchInspectorState({
     boxErrorsByModelId: cadDocumentCommands.boxErrorsByModelId,
-    boxFeatureDraftsByModelId: boxFeatureDraftsByModelID,
+    boxFeatureDraftsByModelId: projectDraftCommands.boxFeatureDraftsByModelID,
     deleteError: cadDocumentCommands.deleteError,
-    getBoxFeatureDraft: latestBoxFeatureDraftForModel,
+    getBoxFeatureDraft: projectDraftCommands.latestBoxFeatureDraftForModel,
     isBoxUnionPendingFor: cadDocumentCommands.isBoxUnionPendingFor,
     latestModel,
     latestTriangleCount,
@@ -425,7 +408,7 @@ function ProjectView() {
     selectedSourceModel,
     stepExportErrorByModelId: projectStepExport.errorByModelID,
     stepExportStatusByModelId: projectStepExport.statusByModelID,
-    transformDraftsByNodeId: transformDraftsByModelID,
+    transformDraftsByNodeId: projectDraftCommands.transformDraftsByNodeID,
     transformErrorsByNodeId: cadDocumentCommands.transformErrorsByNodeId,
   })
 
@@ -542,60 +525,6 @@ function ProjectView() {
       return nextIDs
     })
   }
-  const updateTransformDraftFromTranslation = (modelID: string, translation: CADTranslation, selectedNodeID?: string) => {
-    const nodeID = selectedNodeID ?? sourceNodeIDByModelID.get(modelID) ?? `node_${modelID}`
-    const nextDraft = transformDraftFromTranslation(translation)
-    setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [nodeID]: nextDraft }))
-    cadDocumentCommands.setTransformValidationError(nodeID, '')
-    cadDocumentCommands.scheduleTransformAutosave(nodeID, translation)
-  }
-  const updateTransformDraftField = (nodeID: string, axis: keyof CADTranslation, value: string) => {
-    const currentDraft =
-      transformDraftsByModelID[nodeID] ?? transformDraftFromTranslation(translationFromCADTransform(cadNodeByID.get(nodeID)?.transform))
-    const nextDraft = { ...currentDraft, [axis]: value }
-    setTransformDraftsByModelID((currentDrafts) => ({ ...currentDrafts, [nodeID]: nextDraft }))
-    const translation = parseTransformDraft(nextDraft)
-    if (!translation) {
-      cadDocumentCommands.cancelTransformAutosave(nodeID)
-      cadDocumentCommands.setTransformValidationError(nodeID, 'Invalid transform')
-      return
-    }
-    const savedTranslation = translationFromCADTransform(cadNodeByID.get(nodeID)?.transform)
-    if (translationsEqual(translation, savedTranslation)) {
-      cadDocumentCommands.cancelTransformAutosave(nodeID)
-      cadDocumentCommands.setTransformValidationError(nodeID, '')
-      return
-    }
-    cadDocumentCommands.setTransformValidationError(nodeID, '')
-    cadDocumentCommands.scheduleTransformAutosave(nodeID, translation)
-  }
-  function latestBoxFeatureDraftForModel(modelID: string) {
-    const latestBoxOperation = [...(projectCADDocument?.operations ?? [])]
-      .reverse()
-      .find((operation) => operation.model_id === modelID && operation.type === 'box-union' && operation.box)
-    return latestBoxOperation?.box ? boxFeatureDraftFromCADBoxFeature(latestBoxOperation.box) : defaultBoxFeatureDraft()
-  }
-  const updateBoxFeatureDraft = (modelID: string, field: keyof BoxFeatureDraft, value: string) => {
-    setBoxFeatureDraftsByModelID((currentDrafts) => {
-      const currentDraft = currentDrafts[modelID] ?? latestBoxFeatureDraftForModel(modelID)
-      return {
-        ...currentDrafts,
-        [modelID]: {
-          ...currentDraft,
-          [field]: value,
-        },
-      }
-    })
-  }
-  const addBoxFeatureDraft = (modelID: string) => {
-    const draft = boxFeatureDraftsByModelID[modelID] ?? latestBoxFeatureDraftForModel(modelID)
-    const box = parseBoxFeatureDraft(draft)
-    if (!box) {
-      cadDocumentCommands.setBoxValidationError(modelID, 'Invalid box feature')
-      return
-    }
-    cadDocumentCommands.addBoxUnion(modelID, box)
-  }
   return (
     <ProjectWorkbenchLayout
       assistantPanel={
@@ -631,17 +560,17 @@ function ProjectView() {
           canvasStatusLabel={canvasStatusLabel}
           canvasStatusLeftOffset={canvasStatusLeftOffset}
           deferResize={isAiChatTransitioning}
-          draftModelTranslations={draftModelTranslationsByID}
+          draftModelTranslations={projectDraftCommands.draftModelTranslationsByID}
           isSelectedModelBoxFeatureUpdating={isSelectedModelBoxFeatureUpdating}
           modelTranslations={modelTranslationsByID}
-          onApplyBoxFeatureDraft={addBoxFeatureDraft}
+          onApplyBoxFeatureDraft={projectDraftCommands.addBoxFeatureDraft}
           onClearSelection={() => {
             clearSelection()
             cadDocumentCommands.clearDeleteError()
           }}
           onCloseCADTool={() => setActiveCADTool('inspect')}
           onFlipOrientation={flipCanvasOrientation}
-          onModelTranslationChange={updateTransformDraftFromTranslation}
+          onModelTranslationChange={projectDraftCommands.updateTransformDraftFromTranslation}
           onResetIsometric={() => applyCanvasOrientation(initialViewOrientation)}
           onSelectModel={(modelID, nodeID) => {
             selectModel(modelID, nodeID)
@@ -651,7 +580,7 @@ function ProjectView() {
           onSnapshotCapture={projectThumbnailSnapshot.onSnapshotCapture}
           onStepOrientation={stepCanvasOrientation}
           onToggleFuseBoxTool={() => setActiveCADTool((currentTool) => (currentTool === 'fuse-box' ? 'inspect' : 'fuse-box'))}
-          onUpdateBoxFeatureDraft={updateBoxFeatureDraft}
+          onUpdateBoxFeatureDraft={projectDraftCommands.updateBoxFeatureDraft}
           previewAssets={previewAssets}
           projectCADDocument={projectCADDocument}
           projectId={project.id}
@@ -697,7 +626,7 @@ function ProjectView() {
             })
           }
           onToggleModelVisibility={toggleModelVisibility}
-          onTransformChange={updateTransformDraftField}
+          onTransformChange={projectDraftCommands.updateTransformDraftField}
           previewAssetModelIds={previewAssetModelIDs}
           projectModelTree={projectModelTree}
           selectedGeneratedArtifact={selectedParametricArtifact}
