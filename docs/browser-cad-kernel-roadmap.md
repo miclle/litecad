@@ -277,7 +277,7 @@ Phase 5 acceptance status: complete on 2026-07-08. The normal import, preview, e
 Current Phase 5 status:
 
 - Production/runtime search across `internal`, `cmd`, `pkg`, non-test `website/src`, `website/*.go`, `scripts`, `go.mod`, and `Taskfile.yaml` found no `freecad`, `freecadcmd`, `python`, or `step_to_obj` runtime references.
-- Repository-wide references to FreeCAD/Python are documentation guardrails, a historical superseded plan under `docs/superpowers/plans/`, STEP metadata fixture text, package-license metadata, or old test fixture labels. The superseded plan now carries an explicit historical note pointing readers to this browser-kernel roadmap.
+- Repository-wide references to FreeCAD/Python are documentation guardrails, STEP metadata fixture text, package-license metadata, or old test fixture labels. The superseded FreeCAD/Python preview implementation plan has been removed from `docs/superpowers/plans/`; historical implementation details remain available through git history, while this roadmap is the current source of truth.
 - Browser verification for the post-export state used the current Workbench flow on 2026-07-08: generated a real STEP in the browser kernel, imported it, applied a box-union edit, exported `phase4-base-litecad-r2.step`, re-imported that exported STEP, confirmed 2 project models and two kernel preview meshes, measured the main preview canvas at 1280 x 788, and observed no Workbench-phase console, page, or HTTP errors.
 - Verification for this sweep includes `git diff --check`, `task check`, and `task test`.
 
