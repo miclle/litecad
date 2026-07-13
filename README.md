@@ -126,7 +126,7 @@ ai:
   base_url: "${LITECAD_AI_BASE_URL:-https://api.openai.com/v1}"
   api_key: "${LITECAD_AI_API_KEY:-}"
   model: "${LITECAD_AI_MODEL:-gpt-4.1-mini}"
-  timeout_seconds: 30
+  timeout_seconds: 90
   max_output_tokens: 2048
 ```
 

@@ -1,6 +1,6 @@
 # AI Parametric Assistant
 
-LiteCAD's AI Assistant target is text-to-parameterized CAD: users can start a project-scoped Assistant session, generate a parameterized model from text, preview it in the browser once a compatible runtime is selected, edit exposed parameters, and save the result as a project-owned model source.
+LiteCAD's AI Assistant target is text-to-parameterized CAD: users can start a project-scoped Assistant session, generate a parameterized model from text, preview supported LiteCAD Feature DSL output in the browser, edit exposed parameters, and save the result as a project-owned model source.
 
 ## Current Status
 
@@ -37,7 +37,7 @@ Each project can own multiple Assistant conversations. New conversations start w
 7. A successfully compiled LiteCAD DSL artifact is automatically saved as a durable `.lcad.json` source model and selected in the main canvas.
 8. Saved `.lcad.json` model parameters can be edited later with immediate local feedback and automatic debounced revision persistence; `.scad` parameter persistence remains a storage capability until an OpenSCAD browser runtime is selected.
 
-## Target MVP Workflow
+## Generated Model Workflow
 
 1. Create or select an Assistant conversation.
 2. Send a text prompt.
@@ -47,9 +47,9 @@ Each project can own multiple Assistant conversations. New conversations start w
 6. LiteCAD automatically saves a successful generated model into the project and displays it in the main canvas.
 7. Parameter edits recompile from local values, update the existing viewer scene, and persist automatically after the edit settles or the user finishes the control interaction.
 
-## Implementation Plan
+## Historical Implementation Summary
 
-The phase-by-phase implementation plan lives in [docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md](superpowers/plans/2026-07-11-ai-parametric-assistant.md).
+The completed implementation summary lives in [docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md](superpowers/plans/2026-07-11-ai-parametric-assistant.md). It records the OpenSCAD runtime deferral, the LiteCAD Feature DSL shipped path, and the historical commit trail; current follow-up work lives in [TODO.md](../TODO.md).
 
 ## Provider Controls
 
