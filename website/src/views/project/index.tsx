@@ -653,7 +653,7 @@ function ProjectView() {
     syncAiChatPanelMaxWidth()
     window.addEventListener('resize', syncAiChatPanelMaxWidth)
     return () => window.removeEventListener('resize', syncAiChatPanelMaxWidth)
-  }, [])
+  }, [setAiChatPanelWidth])
 
   useEffect(() => {
     const nextPreviewUrlsByModelID: Record<string, string> = {}
@@ -709,7 +709,7 @@ function ProjectView() {
     }, aiChatPanelTransitionMs)
   }
 
-  const closeAiChat = () => {
+  const closeAiChat = useCallback(() => {
     if (aiChatTransitionTimerRef.current !== undefined) {
       window.clearTimeout(aiChatTransitionTimerRef.current)
     }
@@ -721,7 +721,7 @@ function ProjectView() {
       setIsAiChatTransitioning(false)
       aiChatTransitionTimerRef.current = undefined
     }, aiChatPanelTransitionMs)
-  }
+  }, [setIsAiChatOpen])
 
   const toggleAiChat = () => {
     if (isAiChatOpen) {
@@ -753,7 +753,7 @@ function ProjectView() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isAiChatOpen])
+  }, [closeAiChat, isAiChatOpen])
 
   if (projectQuery.isLoading) {
     return (

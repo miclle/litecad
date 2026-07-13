@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useEffectEvent, useState, type Dispatch, type SetStateAction } from 'react'
 
 export const defaultLeftPanelWidth = 270
 export const defaultAiChatPanelWidth = 420
@@ -76,8 +76,7 @@ function persistProjectWorkspacePreferences(preferences: ProjectWorkspacePrefere
 
 export function useProjectWorkspacePreferences() {
   const [preferences, setPreferences] = useState(readProjectWorkspacePreferences)
-  const preferencesRef = useRef(preferences)
-  preferencesRef.current = preferences
+  const flushPreferences = useEffectEvent(() => persistProjectWorkspacePreferences(preferences))
 
   useEffect(() => {
     const timeoutID = window.setTimeout(() => persistProjectWorkspacePreferences(preferences), preferencesPersistenceDelayMs)
@@ -85,9 +84,9 @@ export function useProjectWorkspacePreferences() {
   }, [preferences])
 
   useEffect(() => {
-    const flushPreferences = () => persistProjectWorkspacePreferences(preferencesRef.current)
-    window.addEventListener('pagehide', flushPreferences)
-    return () => window.removeEventListener('pagehide', flushPreferences)
+    const handlePageHide = () => flushPreferences()
+    window.addEventListener('pagehide', handlePageHide)
+    return () => window.removeEventListener('pagehide', handlePageHide)
   }, [])
 
   const setIsLeftPanelCollapsed: Dispatch<SetStateAction<boolean>> = useCallback(
