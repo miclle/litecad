@@ -123,7 +123,7 @@ function Home() {
 
               <p className="font-mono text-xs uppercase text-[#7a6c52] lg:mt-5">Next</p>
               <div className="rounded-md border border-[#d8cfbc] bg-[#f7f1e4] p-3 text-sm leading-6 text-[#303329] sm:col-span-2 lg:mt-3">
-                Editable geometry documents, measurement, export, and full CAD feature semantics remain tracked in TODO.
+                Durable geometry state, saved measurement/section records, export history, and full CAD feature semantics remain tracked in TODO.
               </div>
             </aside>
           </div>
