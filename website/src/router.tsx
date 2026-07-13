@@ -1,6 +1,7 @@
 import type { RouteObject } from 'react-router-dom'
 
 import MainLayout from 'src/layouts/MainLayout'
+import { RequireAuth } from 'src/layouts/RequireAuth'
 import Home from 'src/views/home'
 import AuthView from 'src/views/auth'
 import NotFound from 'src/views/errors/NotFound'
@@ -13,8 +14,22 @@ const routes: RouteObject[] = [
     element: <MainLayout />,
     children: [
       { index: true, element: <Home /> },
-      { path: 'projects', element: <ProjectsView /> },
-      { path: 'projects/:projectId', element: <ProjectView /> },
+      {
+        path: 'projects',
+        element: (
+          <RequireAuth>
+            <ProjectsView />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: 'projects/:projectId',
+        element: (
+          <RequireAuth>
+            <ProjectView />
+          </RequireAuth>
+        ),
+      },
       { path: 'login', element: <AuthView /> },
       { path: 'register', element: <AuthView /> },
     ],

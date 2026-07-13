@@ -52,96 +52,114 @@ export function compileFeatureDSLShape(
     const transform = resolveFeatureDSLTransform(feature.transform, parameters)
     for (const origin of origins) {
       try {
-      if (feature.type === 'box') {
-        const shape = buildFeatureDSLBoxShape(openCascade, feature, parameters, origin, transform.scale)
-        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
-        continue
-      }
-      if (feature.type === 'box_cut') {
-        if (!accumulatedShape) {
-          throw new Error(`Feature ${feature.id} box_cut requires a prior solid feature`)
+        switch (feature.type) {
+          case 'box': {
+            const shape = buildFeatureDSLBoxShape(openCascade, feature, parameters, origin, transform.scale)
+            accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+            break
+          }
+          case 'box_cut': {
+            if (!accumulatedShape) {
+              throw new Error(`Feature ${feature.id} box_cut requires a prior solid feature`)
+            }
+            const cutterShape = applyFeatureDSLTransform(
+              openCascade,
+              buildFeatureDSLBoxShape(openCascade, feature, parameters, origin, transform.scale),
+              transform,
+              origin,
+            )
+            const cutBuilder = new openCascade.BRepAlgoAPI_Cut_3(
+              accumulatedShape,
+              cutterShape,
+              new openCascade.Message_ProgressRange_1(),
+            )
+            accumulatedShape = cutBuilder.Shape()
+            break
+          }
+          case 'extrude': {
+            const shape = buildFeatureDSLExtrudeShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
+            accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+            break
+          }
+          case 'extrude_cut': {
+            if (!accumulatedShape) {
+              throw new Error(`Feature ${feature.id} extrude_cut requires a prior solid feature`)
+            }
+            const cutterShape = applyFeatureDSLTransform(
+              openCascade,
+              buildFeatureDSLExtrudeCutShape(openCascade, feature, sketches, parameters, origin, transform.scale),
+              transform,
+              origin,
+            )
+            const cutBuilder = new openCascade.BRepAlgoAPI_Cut_3(
+              accumulatedShape,
+              cutterShape,
+              new openCascade.Message_ProgressRange_1(),
+            )
+            accumulatedShape = cutBuilder.Shape()
+            break
+          }
+          case 'cylinder': {
+            const shape = buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'height', origin, transform.scale)
+            accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+            break
+          }
+          case 'sphere': {
+            const shape = buildFeatureDSLSphereShape(openCascade, feature, parameters, origin, transform.scale)
+            accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+            break
+          }
+          case 'ellipsoid': {
+            const shape = buildFeatureDSLEllipsoidShape(openCascade, feature, parameters, origin, transform.scale)
+            accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+            break
+          }
+          case 'ellipse_extrude': {
+            const shape = buildFeatureDSLEllipseExtrudeShape(openCascade, feature, parameters, origin, transform.scale)
+            accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+            break
+          }
+          case 'revolve': {
+            const shape = buildFeatureDSLRevolveShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
+            accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+            break
+          }
+          case 'sweep': {
+            const shape = buildFeatureDSLSweepShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
+            accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+            break
+          }
+          case 'loft': {
+            const shape = buildFeatureDSLLoftShape(openCascade, feature, sketches, parameters, origin, transform.scale)
+            accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+            break
+          }
+          case 'boolean': {
+            const shape = buildFeatureDSLBooleanShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined)
+            accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+            break
+          }
+          case 'cylinder_cut': {
+            if (!accumulatedShape) {
+              throw new Error(`Feature ${feature.id} cylinder_cut requires a prior solid feature`)
+            }
+            const cutterShape = applyFeatureDSLTransform(
+              openCascade,
+              buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'depth', origin, transform.scale),
+              transform,
+              origin,
+            )
+            const cutBuilder = new openCascade.BRepAlgoAPI_Cut_3(
+              accumulatedShape,
+              cutterShape,
+              new openCascade.Message_ProgressRange_1(),
+            )
+            accumulatedShape = cutBuilder.Shape()
+            break
+          }
+          default:
+            throw new Error(`Unsupported feature DSL type: ${(feature as { type?: string }).type}`)
         }
-        const cutterShape = applyFeatureDSLTransform(openCascade, buildFeatureDSLBoxShape(openCascade, feature, parameters, origin, transform.scale), transform, origin)
-        const cutBuilder = new openCascade.BRepAlgoAPI_Cut_3(
-          accumulatedShape,
-          cutterShape,
-          new openCascade.Message_ProgressRange_1(),
-        )
-        accumulatedShape = cutBuilder.Shape()
-        continue
-      }
-      if (feature.type === 'extrude') {
-        const shape = buildFeatureDSLExtrudeShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
-        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
-        continue
-      }
-      if (feature.type === 'extrude_cut') {
-        if (!accumulatedShape) {
-          throw new Error(`Feature ${feature.id} extrude_cut requires a prior solid feature`)
-        }
-        const cutterShape = applyFeatureDSLTransform(openCascade, buildFeatureDSLExtrudeCutShape(openCascade, feature, sketches, parameters, origin, transform.scale), transform, origin)
-        const cutBuilder = new openCascade.BRepAlgoAPI_Cut_3(
-          accumulatedShape,
-          cutterShape,
-          new openCascade.Message_ProgressRange_1(),
-        )
-        accumulatedShape = cutBuilder.Shape()
-        continue
-      }
-      if (feature.type === 'cylinder') {
-        const shape = buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'height', origin, transform.scale)
-        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
-        continue
-      }
-      if (feature.type === 'sphere') {
-        const shape = buildFeatureDSLSphereShape(openCascade, feature, parameters, origin, transform.scale)
-        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
-        continue
-      }
-      if (feature.type === 'ellipsoid') {
-        const shape = buildFeatureDSLEllipsoidShape(openCascade, feature, parameters, origin, transform.scale)
-        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
-        continue
-      }
-      if (feature.type === 'ellipse_extrude') {
-        const shape = buildFeatureDSLEllipseExtrudeShape(openCascade, feature, parameters, origin, transform.scale)
-        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
-        continue
-      }
-      if (feature.type === 'revolve') {
-        const shape = buildFeatureDSLRevolveShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
-        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
-        continue
-      }
-      if (feature.type === 'sweep') {
-        const shape = buildFeatureDSLSweepShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
-        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
-        continue
-      }
-      if (feature.type === 'loft') {
-        const shape = buildFeatureDSLLoftShape(openCascade, feature, sketches, parameters, origin, transform.scale)
-        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
-        continue
-	      }
-	      if (feature.type === 'boolean') {
-	        const shape = buildFeatureDSLBooleanShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined)
-	        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
-	        continue
-	      }
-      if (feature.type === 'cylinder_cut') {
-        if (!accumulatedShape) {
-          throw new Error(`Feature ${feature.id} cylinder_cut requires a prior solid feature`)
-        }
-        const cutterShape = applyFeatureDSLTransform(openCascade, buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'depth', origin, transform.scale), transform, origin)
-        const cutBuilder = new openCascade.BRepAlgoAPI_Cut_3(
-          accumulatedShape,
-          cutterShape,
-          new openCascade.Message_ProgressRange_1(),
-        )
-        accumulatedShape = cutBuilder.Shape()
-        continue
-      }
-      throw new Error(`Unsupported feature DSL type: ${(feature as { type?: string }).type}`)
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error)
         throw new Error(`Feature ${feature.id} (${feature.type}) failed: ${reason}`, { cause: error })

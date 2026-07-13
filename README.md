@@ -8,7 +8,7 @@ It is built for an early but concrete product loop: sign in, create a project, u
 
 LiteCAD currently supports:
 
-- Account registration, login, current-user lookup, and logout with an `HttpOnly` session cookie.
+- Account registration, login, current-user lookup, logout with an `HttpOnly` session cookie, and deliberate sign-in prompts for protected project routes.
 - User-owned projects with names, descriptions, project-list cards, and static thumbnail snapshots generated from the workbench.
 - Uploads for `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files.
 - Lightweight CAD source metadata, including STEP schema/product/component/unit/entity summaries and STL triangle counts where available.
@@ -171,7 +171,7 @@ Run the browser-level workbench smoke after changing project routing, panels, or
 task test-browser
 ```
 
-The browser suite starts an isolated Vite server and uses a fresh closure-scoped API fixture for every test, so workflows do not share mutable models, messages, history, or counters. Independent specs cover shell/panel rendering, source import, transform conflict recovery with Undo/Redo, Assistant draft/save/parameter reload, and LiteCAD DSL STEP export; they fail on unexpected browser console or page errors and do not require a local database.
+The browser suite starts an isolated Vite server and uses a fresh closure-scoped API fixture for every test, so workflows do not share mutable models, messages, history, or counters. Independent specs cover shell/panel rendering, source import, transform conflict recovery with Undo/Redo, Assistant draft/save/parameter reload, and LiteCAD DSL STEP export; focused frontend tests cover protected project routes, project creation navigation, and project detail loading/error states. The browser suite fails on unexpected browser console or page errors and does not require a local database.
 
 CI also runs Go tests, frontend lint/type/test/build, actionlint, dependency review on pull requests, and golangci-lint.
 

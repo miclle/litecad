@@ -1,5 +1,5 @@
 import { FormEvent, useMemo, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRight, BadgeCheck, LockKeyhole, Mail, UserRound } from 'lucide-react'
 import axios from 'axios'
@@ -7,10 +7,20 @@ import axios from 'axios'
 import { loginAccount, registerAccount } from 'src/api/auth'
 import type { AuthResponse } from 'src/types/auth'
 
+type AuthLocationState = {
+  from?: string
+}
+
 function AuthView() {
   const location = useLocation()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const isRegister = location.pathname === '/register'
+  const locationState = location.state as AuthLocationState | null
+  const redirectPath =
+    typeof locationState?.from === 'string' && locationState.from.startsWith('/') && !locationState.from.startsWith('//')
+      ? locationState.from
+      : '/'
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -25,7 +35,8 @@ function AuthView() {
     },
     onSuccess: (data: AuthResponse) => {
       setErrorMessage('')
-      navigate('/', { replace: true, state: { signedInUser: data.user.name } })
+      queryClient.setQueryData(['auth', 'me'], data.user)
+      navigate(redirectPath, { replace: true, state: { signedInUser: data.user.name } })
     },
     onError: (error) => {
       if (axios.isAxiosError(error) && error.response?.status === 409) {

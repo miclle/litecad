@@ -30,6 +30,7 @@ function ProjectsView() {
   const projectsQuery = useQuery({
     queryKey: ['projects'],
     queryFn: async () => (await fetchProjects()).data.projects,
+    enabled: Boolean(currentUser),
   })
 
   const createMutation = useMutation({

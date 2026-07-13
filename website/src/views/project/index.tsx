@@ -41,10 +41,7 @@ import {
   uploadProjectModel,
 } from 'src/api/projects'
 import {
-  runFeatureDSLExportInWorker,
-  runStepAssemblyExportInWorker,
   runStepPreviewInWorker,
-  runStepRoundTripInWorker,
   type CadKernelWorkerPreviewResult,
 } from 'src/cad/kernel-worker-client'
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
@@ -85,7 +82,6 @@ import { ProjectHistoryPopover } from './project-history-popover'
 import { ProjectInspector, type ProjectInspectorSelection, type TransformDraft } from './project-inspector'
 import { ProjectModelTree } from './project-model-tree'
 import { ProjectStepExportPopover } from './project-step-export-popover'
-import { exportMergedStepTargets, exportStepTarget } from './project-step-export-action'
 import {
   buildProjectPreviewAssets,
   buildProjectModelTree,
@@ -97,16 +93,13 @@ import {
 } from './project-preview-assets'
 import {
   buildStepExportTargets,
-  defaultSelectedStepExportTargetIDs,
-  publishStepExportDownload,
-  selectedStepExportTargets,
   stepAssemblyExportFilename,
-  type StepExportMode,
 } from './project-step-export'
 import { ViewController } from './view-controller'
 import { useCADDocumentCommands } from './use-cad-document-commands'
 import { useProjectAssistantController } from './use-project-assistant-controller'
 import { useProjectParametricModels } from './use-project-parametric-models'
+import { useProjectStepExportController } from './use-project-step-export-controller'
 import {
   aiChatPanelMinWidth,
   defaultAiChatPanelWidth,
@@ -262,11 +255,7 @@ function ProjectView() {
   const [activeCADTool, setActiveCADTool] = useState<CADTool>('inspect')
   const [transformDraftsByModelID, setTransformDraftsByModelID] = useState<Record<string, TransformDraft>>({})
   const [boxFeatureDraftsByModelID, setBoxFeatureDraftsByModelID] = useState<Record<string, BoxFeatureDraft>>({})
-  const [stepExportErrorByModelID, setStepExportErrorByModelID] = useState<Record<string, string>>({})
-  const [stepExportStatusByModelID, setStepExportStatusByModelID] = useState<Record<string, string>>({})
-  const [selectedStepExportTargetIDs, setSelectedStepExportTargetIDs] = useState<Set<string>>(() => new Set())
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
-  const hasTouchedStepExportSelectionRef = useRef(false)
   const lastRequestedThumbnailSignatureRef = useRef('')
   const handleAssistantArtifactSelected = useCallback((artifact: ProjectParametricArtifact) => {
     setSelectedParametricArtifact(artifact)
@@ -425,11 +414,12 @@ function ProjectView() {
     () => buildStepExportTargets(projectModels, projectCADDocument),
     [projectModels, projectCADDocument],
   )
-  const selectedStepExportTargetList = useMemo(
-    () => selectedStepExportTargets(stepExportTargets, selectedStepExportTargetIDs),
-    [selectedStepExportTargetIDs, stepExportTargets],
-  )
   const stepAssemblyDownloadFilename = stepAssemblyExportFilename(project?.name ?? 'assembly', projectCADDocument?.revision ?? 0)
+  const projectStepExport = useProjectStepExportController({
+    assemblyDownloadFilename: stepAssemblyDownloadFilename,
+    projectId,
+    targets: stepExportTargets,
+  })
   const cadDocumentNodes = projectCADDocument?.nodes
   const cadNodeByID = useMemo(() => new Map((cadDocumentNodes ?? []).map((node) => [node.id, node])), [cadDocumentNodes])
   const sourceNodeIDByModelID = new Map(
@@ -633,16 +623,6 @@ function ProjectView() {
   }, [canDeleteNodeFromKeyboard, clearDeleteError, deleteNode, isCADDocumentCommandPending, keyboardDeleteNode])
 
   useEffect(() => {
-    setSelectedStepExportTargetIDs((currentIDs) => {
-      if (!hasTouchedStepExportSelectionRef.current) {
-        return defaultSelectedStepExportTargetIDs(stepExportTargets)
-      }
-      const availableIDs = new Set(stepExportTargets.map((target) => target.modelId))
-      return new Set([...currentIDs].filter((modelID) => availableIDs.has(modelID)))
-    })
-  }, [stepExportTargets])
-
-  useEffect(() => {
     const syncAiChatPanelMaxWidth = () => {
       const nextMaxWidth = getAiChatPanelMaxWidth()
 
@@ -807,8 +787,8 @@ function ProjectView() {
     : undefined
   const selectedModelBoxFeatureError = selectedSourceModel ? cadDocumentCommands.boxErrorsByModelId[selectedSourceModel.id] : ''
   const isSelectedModelBoxFeatureUpdating = selectedSourceModel ? cadDocumentCommands.isBoxUnionPendingFor(selectedSourceModel.id) : false
-  const selectedModelStepExportError = selectedSourceModel ? stepExportErrorByModelID[selectedSourceModel.id] : ''
-  const selectedModelStepExportStatus = selectedSourceModel ? stepExportStatusByModelID[selectedSourceModel.id] : ''
+  const selectedModelStepExportError = selectedSourceModel ? projectStepExport.errorByModelID[selectedSourceModel.id] : ''
+  const selectedModelStepExportStatus = selectedSourceModel ? projectStepExport.statusByModelID[selectedSourceModel.id] : ''
   const selectedModelDetails = selectedSourceModel
     ? [
         { label: 'Format', value: selectedDocumentNode?.source_format === 'step-component' ? 'STEP-COMPONENT' : selectedSourceModel.format.toUpperCase() },
@@ -985,66 +965,6 @@ function ProjectView() {
     }
     cadDocumentCommands.addBoxUnion(modelID, box)
   }
-  const selectAllStepExportTargets = () => {
-    hasTouchedStepExportSelectionRef.current = true
-    setSelectedStepExportTargetIDs(defaultSelectedStepExportTargetIDs(stepExportTargets))
-  }
-  const toggleStepExportTarget = (modelID: string) => {
-    hasTouchedStepExportSelectionRef.current = true
-    setSelectedStepExportTargetIDs((currentIDs) => {
-      const nextIDs = new Set(currentIDs)
-      if (nextIDs.has(modelID)) {
-        nextIDs.delete(modelID)
-      } else {
-        nextIDs.add(modelID)
-      }
-      return nextIDs
-    })
-  }
-  const exportSelectedStepModels = async (mode: StepExportMode) => {
-    if (selectedStepExportTargetList.length === 0) {
-      throw new Error('No STEP models selected')
-    }
-    const fetchSourceText = async (modelId: string) => {
-      const source = (await fetchProjectModelSource(projectId, modelId)).data
-      return source.text()
-    }
-    if (mode === 'merged') {
-      await exportMergedStepTargets({
-        targets: selectedStepExportTargetList,
-        downloadFilename: stepAssemblyDownloadFilename,
-        fetchSourceText,
-        runStepAssemblyExport: runStepAssemblyExportInWorker,
-        runFeatureDSLExport: runFeatureDSLExportInWorker,
-        publishDownload: publishStepExportDownload,
-      })
-    } else {
-      for (const target of selectedStepExportTargetList) {
-        await exportStepTarget({
-          target,
-          fetchSourceText,
-          runStepRoundTrip: runStepRoundTripInWorker,
-          runFeatureDSLExport: runFeatureDSLExportInWorker,
-          publishDownload: publishStepExportDownload,
-        })
-      }
-    }
-    setStepExportErrorByModelID((currentErrors) => {
-      const nextErrors = { ...currentErrors }
-      selectedStepExportTargetList.forEach((target) => {
-        nextErrors[target.modelId] = ''
-      })
-      return nextErrors
-    })
-    setStepExportStatusByModelID((currentStatuses) => {
-      const nextStatuses = { ...currentStatuses }
-      selectedStepExportTargetList.forEach((target) => {
-        nextStatuses[target.modelId] =
-          mode === 'merged' ? `Included in ${stepAssemblyDownloadFilename}` : `Downloaded ${target.downloadFilename}`
-      })
-      return nextStatuses
-    })
-  }
   const handleModelFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) {
@@ -1159,12 +1079,12 @@ function ProjectView() {
           />
           <ProjectStepExportPopover
             disabled={stepExportTargets.length === 0 || !projectCADDocument}
-            onExport={exportSelectedStepModels}
+            onExport={projectStepExport.exportSelection}
             onOpenChange={setIsStepExportOpen}
-            onSelectAll={selectAllStepExportTargets}
-            onToggleTarget={toggleStepExportTarget}
+            onSelectAll={projectStepExport.selectAllTargets}
+            onToggleTarget={projectStepExport.toggleTarget}
             open={isStepExportOpen}
-            selectedTargetIds={selectedStepExportTargetIDs}
+            selectedTargetIds={projectStepExport.selectedTargetIDs}
             targets={stepExportTargets}
           />
           <TopbarTooltip
