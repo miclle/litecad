@@ -519,6 +519,103 @@ func TestCreateLiteCADFeatureDSLArtifactAcceptsEllipseFeatures(t *testing.T) {
 	}
 }
 
+func TestCreateLiteCADFeatureDSLArtifactAcceptsFeatureGraphAST(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-feature-graph@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Feature graph generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Feature graph body",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode: `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "round": { "type": "number", "default": 0.75, "min": 0.1, "max": 3 }
+  },
+  "features": [
+    { "id": "lathe_profile", "type": "sketch", "plane": "XZ", "origin": [8, 0, -4], "profile": { "type": "rectangle", "size": [4, 8] } },
+    { "id": "turned_body", "type": "revolve", "sketch": "lathe_profile", "axis_origin": [0, 0, 0], "axis": [0, 0, 1], "angle_degrees": 360 },
+    { "id": "extrude_profile", "type": "sketch", "plane": "XY", "origin": [14, 0, 0], "profile": { "type": "rectangle", "size": [8, 6] } },
+    { "id": "referenced_extrude", "type": "extrude", "sketch": "extrude_profile", "height": 4 },
+    { "id": "tube", "type": "sweep", "sketch": { "type": "circle", "diameter": 6 }, "path": [[30, 0, 0], [30, 0, 24]] },
+    { "id": "lofted_body", "type": "loft", "sections": [
+      { "origin": [50, 0, 0], "sketch": { "type": "circle", "diameter": 8 } },
+      { "origin": [50, 0, 20], "sketch": { "type": "circle", "diameter": 16 } }
+    ] },
+    { "id": "boolean_body", "type": "boolean", "operation": "subtract", "operands": [
+      { "id": "base", "type": "box", "origin": [70, 0, 0], "size": [20, 20, 8] },
+      { "id": "hole", "type": "cylinder", "origin": [80, 10, -1], "diameter": 6, "height": 10 }
+    ] },
+    { "id": "soften", "type": "fillet", "radius": "round" },
+    { "id": "bevel", "type": "chamfer", "distance": 0.4 }
+  ]
+}`,
+		CompileStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	if artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", artifact)
+	}
+}
+
+func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedFeatureGraphAST(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-bad-feature-graph@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Reject malformed feature graph generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	for _, source := range []string{
+		`{"version":1,"unit":"millimetre","features":[{"id":"profile","type":"sketch","plane":"XZ","profile":{"type":"rectangle","size":[4,8]}},{"id":"bad_revolve","type":"revolve","sketch":"profile","angle_degrees":361}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"profile","type":"sketch","plane":"XY","profile":{"type":"circle","diameter":6}},{"id":"bad_sweep","type":"sweep","sketch":"profile","path":[[0,0,0],[0,0,0]]}]}`,
+	} {
+		_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+			OwnerUserID:   user.ID,
+			ProjectID:     project.ID,
+			Title:         "Bad feature graph bracket",
+			SourceKind:    "litecad-feature-dsl",
+			SourceCode:    source,
+			CompileStatus: "pending",
+		})
+		if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+			t.Fatalf("CreateProjectParametricArtifact(%s) error = %v, want ErrInvalidProjectParametricArtifactInput", source, err)
+		}
+	}
+}
+
 func TestCreateLiteCADFeatureDSLArtifactAcceptsFeatureTransforms(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
@@ -785,6 +882,7 @@ func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedExtrude(t *testing.T) {
 		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"extrude","origin":[0,0,0],"sketch":{"type":"rectangle","size":[80]},"height":6}]}`,
 		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"extrude","origin":[0,0],"sketch":{"type":"rectangle","size":[80,40]},"height":6}]}`,
 		`{"version":1,"unit":"millimetre","features":[{"id":"base","type":"extrude","origin":[0,0,0],"sketch":{"type":"rectangle","size":[80,40]},"height":0}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"profile","type":"sketch","plane":"XZ","profile":{"type":"rectangle","size":[80,40]}},{"id":"base","type":"extrude","sketch":"profile","height":6}]}`,
 	} {
 		_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
 			OwnerUserID:   user.ID,

@@ -98,6 +98,26 @@ func TestAIParametricToolCallParserAcceptsLiteCADFeatureDSLEllipseFeatures(t *te
 	}
 }
 
+func TestAIParametricToolCallParserAcceptsLiteCADFeatureGraphAST(t *testing.T) {
+	call, err := ParseAIParametricToolCall(`{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Feature graph body",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"profile\",\"type\":\"sketch\",\"plane\":\"XZ\",\"origin\":[8,0,-4],\"profile\":{\"type\":\"rectangle\",\"size\":[4,8]}},{\"id\":\"turned_body\",\"type\":\"revolve\",\"sketch\":\"profile\",\"axis_origin\":[0,0,0],\"axis\":[0,0,1],\"angle_degrees\":360},{\"id\":\"plate_profile\",\"type\":\"sketch\",\"plane\":\"XY\",\"origin\":[14,0,0],\"profile\":{\"type\":\"rectangle\",\"size\":[8,6]}},{\"id\":\"referenced_extrude\",\"type\":\"extrude\",\"sketch\":\"plate_profile\",\"height\":4},{\"id\":\"tube\",\"type\":\"sweep\",\"sketch\":{\"type\":\"circle\",\"diameter\":6},\"path\":[[30,0,0],[30,0,24]]},{\"id\":\"loft\",\"type\":\"loft\",\"sections\":[{\"origin\":[50,0,0],\"sketch\":{\"type\":\"circle\",\"diameter\":8}},{\"origin\":[50,0,20],\"sketch\":{\"type\":\"circle\",\"diameter\":16}}]},{\"id\":\"cut_body\",\"type\":\"boolean\",\"operation\":\"subtract\",\"operands\":[{\"id\":\"base\",\"type\":\"box\",\"origin\":[70,0,0],\"size\":[20,20,8]},{\"id\":\"hole\",\"type\":\"cylinder\",\"origin\":[80,10,-1],\"diameter\":6,\"height\":10}]},{\"id\":\"soften\",\"type\":\"fillet\",\"radius\":0.75},{\"id\":\"bevel\",\"type\":\"chamfer\",\"distance\":0.4}]}"
+  }
+}`)
+	if err != nil {
+		t.Fatalf("ParseAIParametricToolCall returned error: %v", err)
+	}
+	for _, want := range []string{`"sketch"`, `"revolve"`, `"sweep"`, `"loft"`, `"boolean"`, `"fillet"`, `"chamfer"`} {
+		if !strings.Contains(call.Input.Code, want) {
+			t.Fatalf("call input should contain %s, got %s", want, call.Input.Code)
+		}
+	}
+}
+
 func TestAIParametricToolCallParserAcceptsFallbackAliasesAndObjectCode(t *testing.T) {
 	call, err := ParseAIParametricToolCall(`{
   "tool": "build_parametric_model",
@@ -362,7 +382,7 @@ func TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact(t *testing.T) {
 	}
 
 	joined := joinAIMessageBodies(svc.aiClient.(*recordingAIClient).messages)
-	for _, want := range []string{"litecad-feature-dsl", "box", "extrude", "extrude_cut", "circle", "direction", "symmetric", "cylinder", "cylinder_cut", "holes", "non-zero axis", "repeat", "expression", "add", "boolean", "string", "geometry"} {
+	for _, want := range []string{"litecad-feature-dsl", "capability registry", "box", "extrude", "extrude_cut", "circle", "direction", "symmetric", "cylinder", "cylinder_cut", "sphere", "ellipsoid", "ellipse_extrude", "sketch", "revolve", "sweep", "loft", "fillet", "chamfer", "boolean", "holes", "non-zero axis", "repeat", "expression", "add", "string", "geometry"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("provider context should mention %q, got:\n%s", want, joined)
 		}
@@ -430,6 +450,71 @@ func TestAIParametricRunUsesNativeToolClient(t *testing.T) {
 	}
 	if run.Artifact.GenerationToolMode != "native_tool" || run.Artifact.GenerationDurationMS < 0 {
 		t.Fatalf("artifact generation telemetry = %+v", run.Artifact)
+	}
+}
+
+func TestAIParametricRunFallsBackToJSONWhenNativeToolCallIsInvalid(t *testing.T) {
+	toolClient := &recordingAIToolClient{
+		call: AIChatToolCall{
+			Tool:      aiParametricToolBuildModel,
+			Arguments: []byte(`{"title":"Bad native output","version":"v1","source_kind":"python","code":"print(1)"}`),
+		},
+		chatReply: `{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "Repaired feature graph",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"profile\",\"type\":\"sketch\",\"plane\":\"XZ\",\"origin\":[8,0,-4],\"profile\":{\"type\":\"rectangle\",\"size\":[4,8]}},{\"id\":\"turned_body\",\"type\":\"revolve\",\"sketch\":\"profile\",\"axis_origin\":[0,0,0],\"axis\":[0,0,1],\"angle_degrees\":360}]}"
+  }
+}`,
+	}
+	svc := newTestService(t)
+	svc.aiClient = toolClient
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-run-invalid-native-fallback@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{OwnerUserID: user.ID, Name: "Invalid native fallback study"})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Invalid native fallback run",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	run, err := svc.RunProjectAgentParametric(ctx, ProjectAgentParametricRunInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
+		Message:        "Make a repaired LiteCAD feature graph",
+	})
+	if err != nil {
+		t.Fatalf("RunProjectAgentParametric returned error: %v", err)
+	}
+	if !toolClient.chatCalled {
+		t.Fatal("RunProjectAgentParametric should fall back to plain JSON chat after invalid native arguments")
+	}
+	fallbackPrompt := joinAIMessageBodies(toolClient.chatMessages)
+	if !strings.Contains(fallbackPrompt, "native tool arguments were invalid") {
+		t.Fatalf("fallback chat messages should include repair context, got %+v", toolClient.chatMessages)
+	}
+	if run.Artifact.Title != "Repaired feature graph" || run.Artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", run.Artifact)
+	}
+	if run.Telemetry.ToolMode != "json_fallback" {
+		t.Fatalf("telemetry = %+v", run.Telemetry)
 	}
 }
 

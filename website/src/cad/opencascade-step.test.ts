@@ -234,6 +234,99 @@ describe('runOpenCascadeFeatureDSLPreview', () => {
     expect(bounds.minZ).toBeCloseTo(-10, 1)
     expect(bounds.maxZ).toBeCloseTo(10, 1)
   }, 30000)
+
+  it('tessellates feature graph AST nodes for revolve, sweep, loft, boolean, fillet, and chamfer', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    const result = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'feature-graph.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          { id: 'lathe_profile', type: 'sketch', plane: 'XZ', origin: [8, 0, -4], profile: { type: 'rectangle', size: [4, 8] } },
+          { id: 'turned_body', type: 'revolve', sketch: 'lathe_profile', axis_origin: [0, 0, 0], axis: [0, 0, 1], angle_degrees: 360 },
+          { id: 'extrude_profile', type: 'sketch', plane: 'XY', origin: [14, 0, 0], profile: { type: 'rectangle', size: [8, 6] } },
+          { id: 'referenced_extrude', type: 'extrude', sketch: 'extrude_profile', height: 4 },
+          {
+            id: 'swept_tube',
+            type: 'sweep',
+            sketch: { type: 'circle', diameter: 6 },
+            path: [
+              [30, 0, 0],
+              [30, 0, 24],
+            ],
+          },
+          {
+            id: 'lofted_body',
+            type: 'loft',
+            sections: [
+              { origin: [50, 0, 0], sketch: { type: 'circle', diameter: 8 } },
+              { origin: [50, 0, 20], sketch: { type: 'circle', diameter: 16 } },
+            ],
+          },
+          {
+            id: 'boolean_body',
+            type: 'boolean',
+            operation: 'subtract',
+            operands: [
+              { id: 'base', type: 'box', origin: [70, 0, 0], size: [20, 20, 8] },
+              { id: 'hole', type: 'cylinder', origin: [80, 10, -1], diameter: 6, height: 10 },
+            ],
+          },
+          { id: 'soften', type: 'fillet', radius: 0.75 },
+          { id: 'bevel', type: 'chamfer', distance: 0.4 },
+        ],
+      },
+      parameterValues: {},
+    })
+
+    const bounds = meshBounds(result.mesh)
+    expect(result.mesh.indices.length).toBeGreaterThan(0)
+    expect(bounds.minX).toBeLessThan(-11)
+    expect(bounds.maxX).toBeGreaterThan(89)
+    expect(bounds.maxZ).toBeGreaterThan(23)
+  }, 30000)
+
+  it('offsets repeated boolean feature graph operands as repeated instances', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    const result = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'repeated-boolean.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          {
+            id: 'repeated_boolean_body',
+            type: 'boolean',
+            operation: 'subtract',
+            repeat: { count: 2, step: [30, 0, 0] },
+            operands: [
+              { id: 'base', type: 'box', origin: [0, 0, 0], size: [20, 20, 8] },
+              { id: 'hole', type: 'cylinder', origin: [10, 10, -1], diameter: 6, height: 10 },
+            ],
+          },
+        ],
+      },
+      parameterValues: {},
+    })
+
+    const bounds = meshBounds(result.mesh)
+    expect(result.mesh.indices.length).toBeGreaterThan(0)
+    expect(bounds.minX).toBeCloseTo(0, 1)
+    expect(bounds.maxX).toBeGreaterThan(49)
+    expect(bounds.maxX).toBeLessThan(51)
+  }, 30000)
+
 })
 
 function meshSize(mesh: { positions: readonly number[] }) {

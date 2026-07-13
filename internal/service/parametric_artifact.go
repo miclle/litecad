@@ -26,6 +26,7 @@ const (
 	projectParametricCompileStatusSuccess   = "success"
 	projectParametricCompileStatusError     = "error"
 	maxLiteCADFeatureDSLRepeatCount         = 128
+	maxLiteCADFeatureDSLRevolveAngleDegrees = 360
 )
 
 var (
@@ -514,32 +515,51 @@ type liteCADFeatureDSLValidationParameter struct {
 }
 
 type liteCADFeatureDSLValidationFeature struct {
-	ID        string                                `json:"id"`
-	Type      string                                `json:"type"`
-	Origin    []any                                 `json:"origin"`
-	Axis      []any                                 `json:"axis"`
-	Sketch    *liteCADFeatureDSLValidationSketch    `json:"sketch"`
-	Size      []any                                 `json:"size"`
-	Radius    any                                   `json:"radius"`
-	Diameter  any                                   `json:"diameter"`
-	RadiusX   any                                   `json:"radius_x"`
-	RadiusY   any                                   `json:"radius_y"`
-	RadiusZ   any                                   `json:"radius_z"`
-	DiameterX any                                   `json:"diameter_x"`
-	DiameterY any                                   `json:"diameter_y"`
-	DiameterZ any                                   `json:"diameter_z"`
-	Height    any                                   `json:"height"`
-	Depth     any                                   `json:"depth"`
-	Direction string                                `json:"direction"`
-	Repeat    *liteCADFeatureDSLValidationRepeat    `json:"repeat"`
-	Transform *liteCADFeatureDSLValidationTransform `json:"transform"`
+	ID           string                                   `json:"id"`
+	Type         string                                   `json:"type"`
+	Plane        string                                   `json:"plane"`
+	Origin       []any                                    `json:"origin"`
+	Axis         []any                                    `json:"axis"`
+	AxisOrigin   []any                                    `json:"axis_origin"`
+	Sketch       any                                      `json:"sketch"`
+	Profile      any                                      `json:"profile"`
+	Size         []any                                    `json:"size"`
+	Radius       any                                      `json:"radius"`
+	Diameter     any                                      `json:"diameter"`
+	RadiusX      any                                      `json:"radius_x"`
+	RadiusY      any                                      `json:"radius_y"`
+	RadiusZ      any                                      `json:"radius_z"`
+	DiameterX    any                                      `json:"diameter_x"`
+	DiameterY    any                                      `json:"diameter_y"`
+	DiameterZ    any                                      `json:"diameter_z"`
+	Height       any                                      `json:"height"`
+	Depth        any                                      `json:"depth"`
+	Distance     any                                      `json:"distance"`
+	AngleDegrees any                                      `json:"angle_degrees"`
+	Direction    string                                   `json:"direction"`
+	Path         [][]any                                  `json:"path"`
+	Sections     []liteCADFeatureDSLValidationLoftSection `json:"sections"`
+	Operation    string                                   `json:"operation"`
+	Operands     []liteCADFeatureDSLValidationFeature     `json:"operands"`
+	Repeat       *liteCADFeatureDSLValidationRepeat       `json:"repeat"`
+	Transform    *liteCADFeatureDSLValidationTransform    `json:"transform"`
+}
+
+type liteCADFeatureDSLValidationLoftSection struct {
+	Origin []any  `json:"origin"`
+	Sketch any    `json:"sketch"`
+	Plane  string `json:"plane"`
 }
 
 type liteCADFeatureDSLValidationSketch struct {
-	Type     string `json:"type"`
-	Size     []any  `json:"size"`
-	Radius   any    `json:"radius"`
-	Diameter any    `json:"diameter"`
+	Type      string `json:"type"`
+	Size      []any  `json:"size"`
+	Radius    any    `json:"radius"`
+	Diameter  any    `json:"diameter"`
+	RadiusX   any    `json:"radius_x"`
+	RadiusY   any    `json:"radius_y"`
+	DiameterX any    `json:"diameter_x"`
+	DiameterY any    `json:"diameter_y"`
 }
 
 type liteCADFeatureDSLValidationRepeat struct {
@@ -560,7 +580,8 @@ type liteCADFeatureDSLValidationRotation struct {
 }
 
 type liteCADFeatureDSLValidationParameters struct {
-	numeric map[string]struct{}
+	numeric  map[string]struct{}
+	sketches map[string]string
 }
 
 func validateLiteCADFeatureDSLSource(data []byte) error {
@@ -572,7 +593,8 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 		return ErrInvalidProjectParametricArtifactInput
 	}
 	parameters := liteCADFeatureDSLValidationParameters{
-		numeric: map[string]struct{}{},
+		numeric:  map[string]struct{}{},
+		sketches: map[string]string{},
 	}
 	for name, parameter := range document.Parameters {
 		if strings.TrimSpace(name) == "" {
@@ -583,6 +605,11 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 		}
 		if parameter.Type == "number" {
 			parameters.numeric[name] = struct{}{}
+		}
+	}
+	for _, feature := range document.Features {
+		if feature.Type == "sketch" && strings.TrimSpace(feature.ID) != "" {
+			parameters.sketches[feature.ID] = feature.Plane
 		}
 	}
 	hasSolid := false
@@ -599,7 +626,7 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 
 func isLiteCADFeatureDSLSolidFeature(featureType string) bool {
 	switch featureType {
-	case "box", "extrude", "cylinder", "sphere", "ellipsoid", "ellipse_extrude", "box_cut", "extrude_cut", "cylinder_cut":
+	case "box", "extrude", "cylinder", "sphere", "ellipsoid", "ellipse_extrude", "box_cut", "extrude_cut", "cylinder_cut", "revolve", "sweep", "loft", "boolean":
 		return true
 	default:
 		return false
@@ -661,6 +688,16 @@ func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature
 		return err
 	}
 	switch feature.Type {
+	case "sketch":
+		if err := validateLiteCADFeatureDSLSketchPlane(feature.Plane); err != nil {
+			return err
+		}
+		if feature.Origin != nil {
+			if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameters.numeric); err != nil {
+				return err
+			}
+		}
+		return validateLiteCADFeatureDSLSketch(feature.Profile, parameters)
 	case "box":
 		if err := validateLiteCADFeatureDSLExpressionTuple(feature.Size, 3, parameters.numeric); err != nil {
 			return err
@@ -677,12 +714,12 @@ func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature
 		}
 		return validateLiteCADFeatureDSLBoxCutFeature(feature, parameters.numeric)
 	case "extrude":
-		return validateLiteCADFeatureDSLExtrudeFeature(feature, parameters.numeric)
+		return validateLiteCADFeatureDSLExtrudeFeature(feature, parameters)
 	case "extrude_cut":
 		if !hasPriorSolid {
 			return ErrInvalidProjectParametricArtifactInput
 		}
-		return validateLiteCADFeatureDSLExtrudeCutFeature(feature, parameters.numeric)
+		return validateLiteCADFeatureDSLExtrudeCutFeature(feature, parameters)
 	case "cylinder":
 		return validateLiteCADFeatureDSLCylinderLikeFeature(feature, "height", feature.Height, parameters.numeric)
 	case "sphere":
@@ -696,6 +733,24 @@ func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature
 			return ErrInvalidProjectParametricArtifactInput
 		}
 		return validateLiteCADFeatureDSLCylinderLikeFeature(feature, "depth", feature.Depth, parameters.numeric)
+	case "revolve":
+		return validateLiteCADFeatureDSLRevolveFeature(feature, parameters)
+	case "sweep":
+		return validateLiteCADFeatureDSLSweepFeature(feature, parameters)
+	case "loft":
+		return validateLiteCADFeatureDSLLoftFeature(feature, parameters)
+	case "boolean":
+		return validateLiteCADFeatureDSLBooleanFeature(feature, parameters)
+	case "fillet":
+		if !hasPriorSolid {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		return validateLiteCADFeatureDSLPositiveExpression(feature.Radius, parameters.numeric)
+	case "chamfer":
+		if !hasPriorSolid {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		return validateLiteCADFeatureDSLPositiveExpression(feature.Distance, parameters.numeric)
 	default:
 		return ErrInvalidProjectParametricArtifactInput
 	}
@@ -713,38 +768,38 @@ func validateLiteCADFeatureDSLBoxCutFeature(feature liteCADFeatureDSLValidationF
 	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameterNames)
 }
 
-func validateLiteCADFeatureDSLExtrudeFeature(feature liteCADFeatureDSLValidationFeature, parameterNames map[string]struct{}) error {
-	if err := validateLiteCADFeatureDSLSketch(feature.Sketch, parameterNames); err != nil {
+func validateLiteCADFeatureDSLExtrudeFeature(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters) error {
+	if err := validateLiteCADFeatureDSLXYExtrudeSketchReference(feature.Sketch, parameters); err != nil {
 		return ErrInvalidProjectParametricArtifactInput
 	}
 	if err := validateLiteCADFeatureDSLExtrudeDirection(feature.Direction); err != nil {
 		return err
 	}
 	if feature.Origin != nil {
-		if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameterNames); err != nil {
+		if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameters.numeric); err != nil {
 			return err
 		}
 	}
-	if err := validateLiteCADFeatureDSLPositiveExpression(feature.Height, parameterNames); err != nil {
+	if err := validateLiteCADFeatureDSLPositiveExpression(feature.Height, parameters.numeric); err != nil {
 		return err
 	}
-	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameterNames)
+	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameters.numeric)
 }
 
-func validateLiteCADFeatureDSLExtrudeCutFeature(feature liteCADFeatureDSLValidationFeature, parameterNames map[string]struct{}) error {
-	if err := validateLiteCADFeatureDSLSketch(feature.Sketch, parameterNames); err != nil {
+func validateLiteCADFeatureDSLExtrudeCutFeature(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters) error {
+	if err := validateLiteCADFeatureDSLXYExtrudeSketchReference(feature.Sketch, parameters); err != nil {
 		return ErrInvalidProjectParametricArtifactInput
 	}
 	if err := validateLiteCADFeatureDSLExtrudeDirection(feature.Direction); err != nil {
 		return err
 	}
-	if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameterNames); err != nil {
+	if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameters.numeric); err != nil {
 		return err
 	}
-	if err := validateLiteCADFeatureDSLPositiveExpression(feature.Depth, parameterNames); err != nil {
+	if err := validateLiteCADFeatureDSLPositiveExpression(feature.Depth, parameters.numeric); err != nil {
 		return err
 	}
-	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameterNames)
+	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameters.numeric)
 }
 
 func validateLiteCADFeatureDSLExtrudeDirection(direction string) error {
@@ -756,10 +811,36 @@ func validateLiteCADFeatureDSLExtrudeDirection(direction string) error {
 	}
 }
 
-func validateLiteCADFeatureDSLSketch(sketch *liteCADFeatureDSLValidationSketch, parameterNames map[string]struct{}) error {
-	if sketch == nil {
+func validateLiteCADFeatureDSLSketchReference(sketch any, parameters liteCADFeatureDSLValidationParameters) error {
+	if name, ok := sketch.(string); ok {
+		if _, exists := parameters.sketches[name]; exists {
+			return nil
+		}
 		return ErrInvalidProjectParametricArtifactInput
 	}
+	return validateLiteCADFeatureDSLSketch(sketch, parameters)
+}
+
+func validateLiteCADFeatureDSLXYExtrudeSketchReference(sketch any, parameters liteCADFeatureDSLValidationParameters) error {
+	if name, ok := sketch.(string); ok {
+		plane, exists := parameters.sketches[name]
+		if !exists {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		if plane != "" && plane != "XY" {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		return nil
+	}
+	return validateLiteCADFeatureDSLSketch(sketch, parameters)
+}
+
+func validateLiteCADFeatureDSLSketch(sketchValue any, parameters liteCADFeatureDSLValidationParameters) error {
+	sketch, ok := liteCADFeatureDSLValidationSketchFromValue(sketchValue)
+	if !ok {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	parameterNames := parameters.numeric
 	switch sketch.Type {
 	case "rectangle":
 		return validateLiteCADFeatureDSLPositiveExpressionTuple(sketch.Size, 2, parameterNames)
@@ -776,6 +857,129 @@ func validateLiteCADFeatureDSLSketch(sketch *liteCADFeatureDSLValidationSketch, 
 			return validateLiteCADFeatureDSLPositiveExpression(sketch.Radius, parameterNames)
 		}
 		return validateLiteCADFeatureDSLPositiveExpression(sketch.Diameter, parameterNames)
+	case "ellipse":
+		if err := validateLiteCADFeatureDSLAxisRadiusExpression(sketch.RadiusX, sketch.DiameterX, parameterNames); err != nil {
+			return err
+		}
+		return validateLiteCADFeatureDSLAxisRadiusExpression(sketch.RadiusY, sketch.DiameterY, parameterNames)
+	default:
+		return ErrInvalidProjectParametricArtifactInput
+	}
+}
+
+func liteCADFeatureDSLValidationSketchFromValue(value any) (liteCADFeatureDSLValidationSketch, bool) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return liteCADFeatureDSLValidationSketch{}, false
+	}
+	var sketch liteCADFeatureDSLValidationSketch
+	if err := json.Unmarshal(data, &sketch); err != nil {
+		return liteCADFeatureDSLValidationSketch{}, false
+	}
+	return sketch, true
+}
+
+func validateLiteCADFeatureDSLRevolveFeature(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters) error {
+	if err := validateLiteCADFeatureDSLSketchReference(feature.Sketch, parameters); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLSketchPlane(feature.Plane); err != nil {
+		return err
+	}
+	if feature.Origin != nil {
+		if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameters.numeric); err != nil {
+			return err
+		}
+	}
+	if feature.AxisOrigin != nil {
+		if err := validateLiteCADFeatureDSLExpressionTuple(feature.AxisOrigin, 3, parameters.numeric); err != nil {
+			return err
+		}
+	}
+	if feature.Axis != nil {
+		if err := validateLiteCADFeatureDSLAxisTuple(feature.Axis, parameters.numeric); err != nil {
+			return err
+		}
+	}
+	if feature.AngleDegrees != nil {
+		if err := validateLiteCADFeatureDSLRevolveAngleExpression(feature.AngleDegrees, parameters.numeric); err != nil {
+			return err
+		}
+	}
+	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameters.numeric)
+}
+
+func validateLiteCADFeatureDSLSweepFeature(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters) error {
+	if err := validateLiteCADFeatureDSLSketchReference(feature.Sketch, parameters); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLSketchPlane(feature.Plane); err != nil {
+		return err
+	}
+	if feature.Origin != nil {
+		if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameters.numeric); err != nil {
+			return err
+		}
+	}
+	if len(feature.Path) < 2 {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	for _, point := range feature.Path {
+		if err := validateLiteCADFeatureDSLExpressionTuple(point, 3, parameters.numeric); err != nil {
+			return err
+		}
+	}
+	if err := validateLiteCADFeatureDSLSweepStaticPath(feature.Path); err != nil {
+		return err
+	}
+	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameters.numeric)
+}
+
+func validateLiteCADFeatureDSLLoftFeature(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters) error {
+	if len(feature.Sections) < 2 {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	for _, section := range feature.Sections {
+		if err := validateLiteCADFeatureDSLExpressionTuple(section.Origin, 3, parameters.numeric); err != nil {
+			return err
+		}
+		if err := validateLiteCADFeatureDSLSketchReference(section.Sketch, parameters); err != nil {
+			return err
+		}
+		if err := validateLiteCADFeatureDSLSketchPlane(section.Plane); err != nil {
+			return err
+		}
+	}
+	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameters.numeric)
+}
+
+func validateLiteCADFeatureDSLBooleanFeature(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters) error {
+	if feature.Operation != "union" && feature.Operation != "subtract" && feature.Operation != "intersect" {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	if feature.Origin != nil {
+		if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameters.numeric); err != nil {
+			return err
+		}
+	}
+	if len(feature.Operands) < 2 {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	for _, operand := range feature.Operands {
+		if operand.Type == "sketch" || operand.Type == "fillet" || operand.Type == "chamfer" || strings.Contains(operand.Type, "_cut") {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		if err := validateLiteCADFeatureDSLFeature(operand, parameters, true); err != nil {
+			return err
+		}
+	}
+	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameters.numeric)
+}
+
+func validateLiteCADFeatureDSLSketchPlane(plane string) error {
+	switch plane {
+	case "", "XY", "XZ", "YZ":
+		return nil
 	default:
 		return ErrInvalidProjectParametricArtifactInput
 	}
@@ -949,6 +1153,16 @@ func validateLiteCADFeatureDSLPositiveExpression(value any, parameterNames map[s
 	return nil
 }
 
+func validateLiteCADFeatureDSLRevolveAngleExpression(value any, parameterNames map[string]struct{}) error {
+	if err := validateLiteCADFeatureDSLPositiveExpression(value, parameterNames); err != nil {
+		return err
+	}
+	if number, ok := value.(float64); ok && number > maxLiteCADFeatureDSLRevolveAngleDegrees {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	return nil
+}
+
 func validateLiteCADFeatureDSLPositiveExpressionTuple(values []any, length int, parameterNames map[string]struct{}) error {
 	if len(values) != length {
 		return ErrInvalidProjectParametricArtifactInput
@@ -962,6 +1176,33 @@ func validateLiteCADFeatureDSLPositiveExpressionTuple(values []any, length int, 
 		}
 	}
 	return nil
+}
+
+func validateLiteCADFeatureDSLSweepStaticPath(path [][]any) error {
+	first, firstOK := liteCADFeatureDSLStaticPoint(path[0])
+	last, lastOK := liteCADFeatureDSLStaticPoint(path[len(path)-1])
+	if !firstOK || !lastOK {
+		return nil
+	}
+	if first == last {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	return nil
+}
+
+func liteCADFeatureDSLStaticPoint(values []any) ([3]float64, bool) {
+	var point [3]float64
+	if len(values) != 3 {
+		return point, false
+	}
+	for index, value := range values {
+		number, ok := value.(float64)
+		if !ok {
+			return point, false
+		}
+		point[index] = number
+	}
+	return point, true
 }
 
 func validateLiteCADFeatureDSLExpressionTuple(values []any, length int, parameterNames map[string]struct{}) error {

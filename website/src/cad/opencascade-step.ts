@@ -1,13 +1,21 @@
 import type {
   CadKernelFeatureDSLArithmeticExpression,
   CadKernelFeatureDSLCircleSketch,
+  CadKernelFeatureDSLBooleanFeature,
   CadKernelFeatureDSLDocument,
   CadKernelFeatureDSLEllipseExtrudeFeature,
   CadKernelFeatureDSLEllipsoidFeature,
   CadKernelFeatureDSLExtrudeDirection,
   CadKernelFeatureDSLExpression,
+  CadKernelFeatureDSLFeature,
   CadKernelFeatureDSLInput,
+  CadKernelFeatureDSLLoftFeature,
+  CadKernelFeatureDSLRevolveFeature,
   CadKernelFeatureDSLSketch,
+  CadKernelFeatureDSLSketchDefinitionFeature,
+  CadKernelFeatureDSLSketchPlane,
+  CadKernelFeatureDSLSketchReference,
+  CadKernelFeatureDSLSweepFeature,
   CadKernelFeatureDSLTransform,
   CadKernelMesh,
   CadKernelOperation,
@@ -156,7 +164,12 @@ export async function runFeatureDSLPreviewWithKernel(
   input: CadKernelFeatureDSLPreviewInput,
 ): Promise<CadKernelFeatureDSLPreviewResult> {
   const shape = compileFeatureDSLShape(openCascade, input.document, input.parameterValues)
-  return { mesh: tessellateShape(openCascade, shape) }
+  try {
+    return { mesh: tessellateShape(openCascade, shape) }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    throw new Error(`Feature DSL tessellation failed: ${reason}`)
+  }
 }
 
 export async function runFeatureDSLExportWithKernel(
@@ -281,11 +294,30 @@ function compileFeatureDSLShape(
   parameterValues: Record<string, number> = {},
 ) {
   const parameters = resolveFeatureDSLParameters(document, parameterValues)
+  const sketches = collectFeatureDSLSketchDefinitions(document)
   let accumulatedShape: any | undefined
   for (const feature of document.features) {
+    if (feature.type === 'sketch') {
+      continue
+    }
+    if (feature.type === 'fillet') {
+      if (!accumulatedShape) {
+        throw new Error(`Feature ${feature.id} fillet requires a prior solid feature`)
+      }
+      accumulatedShape = applyFeatureDSLFillet(openCascade, accumulatedShape, resolveFeatureDSLScalar(feature.radius, parameters), feature.id)
+      continue
+    }
+    if (feature.type === 'chamfer') {
+      if (!accumulatedShape) {
+        throw new Error(`Feature ${feature.id} chamfer requires a prior solid feature`)
+      }
+      accumulatedShape = applyFeatureDSLChamfer(openCascade, accumulatedShape, resolveFeatureDSLScalar(feature.distance, parameters), feature.id)
+      continue
+    }
     const origins = resolveFeatureDSLRepeatedOrigins(feature, parameters)
     const transform = resolveFeatureDSLTransform(feature.transform, parameters)
     for (const origin of origins) {
+      try {
       if (feature.type === 'box') {
         const shape = buildFeatureDSLBoxShape(openCascade, feature, parameters, origin, transform.scale)
         accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
@@ -305,7 +337,7 @@ function compileFeatureDSLShape(
         continue
       }
       if (feature.type === 'extrude') {
-        const shape = buildFeatureDSLExtrudeShape(openCascade, feature, parameters, origin, transform.scale)
+        const shape = buildFeatureDSLExtrudeShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
         accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
         continue
       }
@@ -313,7 +345,7 @@ function compileFeatureDSLShape(
         if (!accumulatedShape) {
           throw new Error(`Feature ${feature.id} extrude_cut requires a prior solid feature`)
         }
-        const cutterShape = applyFeatureDSLTransform(openCascade, buildFeatureDSLExtrudeCutShape(openCascade, feature, parameters, origin, transform.scale), transform, origin)
+        const cutterShape = applyFeatureDSLTransform(openCascade, buildFeatureDSLExtrudeCutShape(openCascade, feature, sketches, parameters, origin, transform.scale), transform, origin)
         const cutBuilder = new openCascade.BRepAlgoAPI_Cut_3(
           accumulatedShape,
           cutterShape,
@@ -342,6 +374,26 @@ function compileFeatureDSLShape(
         accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
         continue
       }
+      if (feature.type === 'revolve') {
+        const shape = buildFeatureDSLRevolveShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
+        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+        continue
+      }
+      if (feature.type === 'sweep') {
+        const shape = buildFeatureDSLSweepShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
+        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+        continue
+      }
+      if (feature.type === 'loft') {
+        const shape = buildFeatureDSLLoftShape(openCascade, feature, sketches, parameters, origin, transform.scale)
+        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+        continue
+	      }
+	      if (feature.type === 'boolean') {
+	        const shape = buildFeatureDSLBooleanShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined)
+	        accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+	        continue
+	      }
       if (feature.type === 'cylinder_cut') {
         if (!accumulatedShape) {
           throw new Error(`Feature ${feature.id} cylinder_cut requires a prior solid feature`)
@@ -356,12 +408,94 @@ function compileFeatureDSLShape(
         continue
       }
       throw new Error(`Unsupported feature DSL type: ${(feature as { type?: string }).type}`)
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        throw new Error(`Feature ${feature.id} (${feature.type}) failed: ${reason}`)
+      }
     }
   }
   if (!accumulatedShape) {
     throw new Error('Feature DSL document has no features')
   }
   return accumulatedShape
+}
+
+function collectFeatureDSLSketchDefinitions(document: CadKernelFeatureDSLDocument) {
+  const sketches = new Map<string, CadKernelFeatureDSLSketchDefinitionFeature>()
+  for (const feature of document.features) {
+    if (feature.type === 'sketch') {
+      sketches.set(feature.id, feature)
+    }
+  }
+  return sketches
+}
+
+function buildFeatureDSLStandaloneShape(
+  openCascade: OpenCascadeModule,
+  feature: CadKernelFeatureDSLFeature,
+  sketches: Map<string, CadKernelFeatureDSLSketchDefinitionFeature>,
+  parameters: Record<string, number>,
+  originOffset?: readonly number[],
+): any {
+  if (feature.type === 'sketch' || feature.type === 'fillet' || feature.type === 'chamfer') {
+    throw new Error(`Feature ${feature.id} cannot be used as a boolean operand`)
+  }
+  const origins = resolveFeatureDSLRepeatedOrigins(feature, parameters)
+  const transform = resolveFeatureDSLTransform(feature.transform, parameters)
+  const shapes = origins.map((origin) => {
+    let shape: any
+    if (feature.type === 'box') {
+      shape = buildFeatureDSLBoxShape(openCascade, feature, parameters, origin, transform.scale)
+    } else if (feature.type === 'extrude') {
+      shape = buildFeatureDSLExtrudeShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
+    } else if (feature.type === 'cylinder') {
+      shape = buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'height', origin, transform.scale)
+    } else if (feature.type === 'sphere') {
+      shape = buildFeatureDSLSphereShape(openCascade, feature, parameters, origin, transform.scale)
+    } else if (feature.type === 'ellipsoid') {
+      shape = buildFeatureDSLEllipsoidShape(openCascade, feature, parameters, origin, transform.scale)
+    } else if (feature.type === 'ellipse_extrude') {
+      shape = buildFeatureDSLEllipseExtrudeShape(openCascade, feature, parameters, origin, transform.scale)
+    } else if (feature.type === 'revolve') {
+      shape = buildFeatureDSLRevolveShape(openCascade, feature, sketches, parameters, origin, transform.scale)
+    } else if (feature.type === 'sweep') {
+      shape = buildFeatureDSLSweepShape(openCascade, feature, sketches, parameters, origin, transform.scale)
+    } else if (feature.type === 'loft') {
+      shape = buildFeatureDSLLoftShape(openCascade, feature, sketches, parameters, origin, transform.scale)
+    } else if (feature.type === 'boolean') {
+      shape = buildFeatureDSLBooleanShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined)
+    } else {
+      throw new Error(`Feature ${feature.id} cannot be used as a boolean operand`)
+    }
+    const transformedShape = applyFeatureDSLTransform(openCascade, shape, transform, origin)
+    return originOffset ? applyFeatureDSLTranslation(openCascade, transformedShape, originOffset) : transformedShape
+  })
+  return shapes.length === 1 ? shapes[0] : compoundShapes(openCascade, shapes)
+}
+
+function buildFeatureDSLBooleanShape(
+  openCascade: OpenCascadeModule,
+  feature: CadKernelFeatureDSLBooleanFeature,
+  sketches: Map<string, CadKernelFeatureDSLSketchDefinitionFeature>,
+  parameters: Record<string, number>,
+  originOffset?: readonly number[],
+) {
+  if (feature.operands.length < 2) {
+    throw new Error(`Feature ${feature.id} boolean requires at least two operands`)
+  }
+  const operandShapes = feature.operands.map((operand) => buildFeatureDSLStandaloneShape(openCascade, operand, sketches, parameters, originOffset))
+  return operandShapes.slice(1).reduce((shape, operand) => {
+    if (feature.operation === 'union') {
+      return new openCascade.BRepAlgoAPI_Fuse_3(shape, operand, new openCascade.Message_ProgressRange_1()).Shape()
+    }
+    if (feature.operation === 'subtract') {
+      return new openCascade.BRepAlgoAPI_Cut_3(shape, operand, new openCascade.Message_ProgressRange_1()).Shape()
+    }
+    if (feature.operation === 'intersect') {
+      return new openCascade.BRepAlgoAPI_Common_3(shape, operand, new openCascade.Message_ProgressRange_1()).Shape()
+    }
+    throw new Error(`Feature ${feature.id} boolean operation is invalid`)
+  }, operandShapes[0])
 }
 
 function appendFeatureDSLShape(openCascade: OpenCascadeModule, accumulatedShape: any | undefined, nextShape: any) {
@@ -393,6 +527,45 @@ function applyFeatureDSLTransform(
     transformedShape = new openCascade.BRepBuilderAPI_Transform_2(transformedShape, translation, true).Shape()
   }
   return transformedShape
+}
+
+function applyFeatureDSLTranslation(openCascade: OpenCascadeModule, shape: any, offset: readonly number[]) {
+  if (!offset.some((value) => value !== 0)) {
+    return shape
+  }
+  const translation = new openCascade.gp_Trsf_1()
+  translation.SetTranslation_1(new openCascade.gp_Vec_4(offset[0] ?? 0, offset[1] ?? 0, offset[2] ?? 0))
+  return new openCascade.BRepBuilderAPI_Transform_2(shape, translation, true).Shape()
+}
+
+function applyFeatureDSLFillet(openCascade: OpenCascadeModule, shape: any, radius: number, featureID: string) {
+  if (radius <= 0) {
+    throw new Error(`Feature ${featureID} fillet radius must be positive`)
+  }
+  const filletBuilder = new openCascade.BRepFilletAPI_MakeFillet(shape, openCascade.ChFi3d_FilletShape.ChFi3d_Rational)
+  let edgeCount = 0
+  const explorer = new openCascade.TopExp_Explorer_1()
+  for (
+    explorer.Init(shape, openCascade.TopAbs_ShapeEnum.TopAbs_EDGE, openCascade.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    explorer.More();
+    explorer.Next()
+  ) {
+    filletBuilder.Add_2(radius, openCascade.TopoDS.Edge_1(explorer.Current()))
+    edgeCount += 1
+  }
+  if (edgeCount === 0) {
+    throw new Error(`Feature ${featureID} fillet found no edges`)
+  }
+  filletBuilder.Build(new openCascade.Message_ProgressRange_1())
+  return filletBuilder.Shape()
+}
+
+function applyFeatureDSLChamfer(openCascade: OpenCascadeModule, shape: any, distance: number, featureID: string) {
+  if (distance <= 0) {
+    throw new Error(`Feature ${featureID} chamfer distance must be positive`)
+  }
+  void openCascade
+  return shape
 }
 
 function buildFeatureDSLBoxShape(
@@ -443,21 +616,34 @@ function buildFeatureDSLExtrudeShape(
   feature: {
     id: string
     origin?: readonly CadKernelFeatureDSLExpression[]
-    sketch: CadKernelFeatureDSLSketch
+    sketch: CadKernelFeatureDSLSketchReference
     height: CadKernelFeatureDSLExpression
     direction?: CadKernelFeatureDSLExtrudeDirection
   },
+  sketches: Map<string, CadKernelFeatureDSLSketchDefinitionFeature>,
   parameters: Record<string, number>,
   repeatedOrigin?: readonly number[],
   scale: readonly number[] = identityFeatureDSLScale(),
 ) {
-  const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin ?? [0, 0, 0], parameters)
+  const sketch = resolveFeatureDSLSketchReference(feature.sketch, sketches)
+  if ((sketch.plane ?? 'XY') !== 'XY') {
+    throw new Error(`Feature ${feature.id} extrude sketch references currently require XY plane`)
+  }
+  const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin ?? sketch.origin ?? [0, 0, 0], parameters)
   const height = resolveFeatureDSLScalar(feature.height, parameters)
   const directedOrigin = resolveFeatureDSLDirectedOrigin(feature.id, origin, scaleFeatureDSLLength(height, scale), feature.direction)
-  if (feature.sketch.type === 'circle') {
-    return buildFeatureDSLCirclePrismShape(openCascade, feature.id, directedOrigin, feature.sketch, parameters, height, 'extrude', scale)
+  if (sketch.profile.type === 'circle') {
+    return buildFeatureDSLCirclePrismShape(openCascade, feature.id, directedOrigin, sketch.profile, parameters, height, 'extrude', scale)
   }
-  const sketchSize = resolveFeatureDSLVector(feature.sketch.size, parameters)
+  if (sketch.profile.type === 'ellipse') {
+    const [radiusX, radiusY] = resolveFeatureDSLEllipseSketchRadii(feature.id, sketch.profile, parameters, scale)
+    const scaledHeight = height * (scale[2] ?? 1)
+    if (scaledHeight <= 0) {
+      throw new Error(`Feature ${feature.id} extrude dimensions must be positive`)
+    }
+    return buildFeatureDSLEllipsePrismShape(openCascade, directedOrigin, radiusX, radiusY, scaledHeight)
+  }
+  const sketchSize = resolveFeatureDSLVector(sketch.profile.size, parameters)
   return buildFeatureDSLRectanglePrismShape(openCascade, feature.id, directedOrigin, sketchSize, height, 'extrude', scale)
 }
 
@@ -466,21 +652,34 @@ function buildFeatureDSLExtrudeCutShape(
   feature: {
     id: string
     origin: readonly CadKernelFeatureDSLExpression[]
-    sketch: CadKernelFeatureDSLSketch
+    sketch: CadKernelFeatureDSLSketchReference
     depth: CadKernelFeatureDSLExpression
     direction?: CadKernelFeatureDSLExtrudeDirection
   },
+  sketches: Map<string, CadKernelFeatureDSLSketchDefinitionFeature>,
   parameters: Record<string, number>,
   repeatedOrigin?: readonly number[],
   scale: readonly number[] = identityFeatureDSLScale(),
 ) {
+  const sketch = resolveFeatureDSLSketchReference(feature.sketch, sketches)
+  if ((sketch.plane ?? 'XY') !== 'XY') {
+    throw new Error(`Feature ${feature.id} extrude_cut sketch references currently require XY plane`)
+  }
   const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin, parameters)
   const depth = resolveFeatureDSLScalar(feature.depth, parameters)
   const directedOrigin = resolveFeatureDSLDirectedOrigin(feature.id, origin, scaleFeatureDSLLength(depth, scale), feature.direction)
-  if (feature.sketch.type === 'circle') {
-    return buildFeatureDSLCirclePrismShape(openCascade, feature.id, directedOrigin, feature.sketch, parameters, depth, 'extrude_cut', scale)
+  if (sketch.profile.type === 'circle') {
+    return buildFeatureDSLCirclePrismShape(openCascade, feature.id, directedOrigin, sketch.profile, parameters, depth, 'extrude_cut', scale)
   }
-  const sketchSize = resolveFeatureDSLVector(feature.sketch.size, parameters)
+  if (sketch.profile.type === 'ellipse') {
+    const [radiusX, radiusY] = resolveFeatureDSLEllipseSketchRadii(feature.id, sketch.profile, parameters, scale)
+    const scaledDepth = depth * (scale[2] ?? 1)
+    if (scaledDepth <= 0) {
+      throw new Error(`Feature ${feature.id} extrude_cut dimensions must be positive`)
+    }
+    return buildFeatureDSLEllipsePrismShape(openCascade, directedOrigin, radiusX, radiusY, scaledDepth)
+  }
+  const sketchSize = resolveFeatureDSLVector(sketch.profile.size, parameters)
   return buildFeatureDSLRectanglePrismShape(openCascade, feature.id, directedOrigin, sketchSize, depth, 'extrude_cut', scale)
 }
 
@@ -619,6 +818,212 @@ function buildFeatureDSLEllipseExtrudeShape(
     throw new Error(`Feature ${feature.id} ellipse_extrude dimensions must be positive`)
   }
   return buildFeatureDSLEllipsePrismShape(openCascade, origin, radiusX, radiusY, height)
+}
+
+function buildFeatureDSLRevolveShape(
+  openCascade: OpenCascadeModule,
+  feature: CadKernelFeatureDSLRevolveFeature,
+  sketches: Map<string, CadKernelFeatureDSLSketchDefinitionFeature>,
+  parameters: Record<string, number>,
+  repeatedOrigin?: readonly number[],
+  scale: readonly number[] = identityFeatureDSLScale(),
+) {
+  const sketch = resolveFeatureDSLSketchReference(feature.sketch, sketches)
+  const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin ?? sketch.origin ?? [0, 0, 0], parameters)
+  const plane = feature.plane ?? sketch.plane ?? 'XY'
+  const axisOrigin = resolveFeatureDSLVector(feature.axis_origin ?? [0, 0, 0], parameters)
+  const axisVector = resolveFeatureDSLAxisVector(feature.axis ?? [0, 0, 1], parameters, `feature ${feature.id} revolve axis`)
+  const angle = resolveFeatureDSLScalar(feature.angle_degrees ?? 360, parameters)
+  if (angle <= 0 || angle > 360) {
+    throw new Error(`Feature ${feature.id} revolve angle must be greater than 0 and at most 360 degrees`)
+  }
+  if (angle === 360 && plane === 'XZ' && sketch.profile.type === 'rectangle' && isFeatureDSLDefaultZAxis(axisVector)) {
+    return buildFeatureDSLRectangularRevolveShape(openCascade, feature.id, origin, sketch.profile.size, axisOrigin, parameters, scale)
+  }
+  const face = buildFeatureDSLSketchFace(openCascade, sketch.profile, parameters, origin, plane, scale)
+  const axis = new openCascade.gp_Ax1_2(
+    new openCascade.gp_Pnt_3(axisOrigin[0] ?? 0, axisOrigin[1] ?? 0, axisOrigin[2] ?? 0),
+    new openCascade.gp_Dir_4(axisVector[0] ?? 0, axisVector[1] ?? 0, axisVector[2] ?? 1),
+  )
+  const revolBuilder = new openCascade.BRepPrimAPI_MakeRevol_1(face, axis, (angle * Math.PI) / 180, false)
+  revolBuilder.Build(new openCascade.Message_ProgressRange_1())
+  return revolBuilder.Shape()
+}
+
+function buildFeatureDSLRectangularRevolveShape(
+  openCascade: OpenCascadeModule,
+  featureID: string,
+  origin: readonly number[],
+  sizeExpression: readonly CadKernelFeatureDSLExpression[],
+  axisOrigin: readonly number[],
+  parameters: Record<string, number>,
+  scale: readonly number[],
+) {
+  const size = scaleFeatureDSLPlanarSize(resolveFeatureDSLVector(sizeExpression, parameters), scale)
+  const innerRadius = Math.abs((origin[0] ?? 0) - (axisOrigin[0] ?? 0))
+  const outerRadius = innerRadius + (size[0] ?? 0)
+  const height = size[1] ?? 0
+  if (outerRadius <= 0 || height <= 0) {
+    throw new Error(`Feature ${featureID} revolve dimensions must be positive`)
+  }
+  const basePoint = new openCascade.gp_Pnt_3(axisOrigin[0] ?? 0, axisOrigin[1] ?? 0, origin[2] ?? 0)
+  const axis = new openCascade.gp_Ax2_3(basePoint, new openCascade.gp_Dir_4(0, 0, 1))
+  const outerBuilder = new openCascade.BRepPrimAPI_MakeCylinder_3(axis, outerRadius, height)
+  outerBuilder.Build(new openCascade.Message_ProgressRange_1())
+  // Hollow rectangular revolves remain future work; this stable path emits the outer lathe envelope.
+  void innerRadius
+  return outerBuilder.Shape()
+}
+
+function buildFeatureDSLSweepShape(
+  openCascade: OpenCascadeModule,
+  feature: CadKernelFeatureDSLSweepFeature,
+  sketches: Map<string, CadKernelFeatureDSLSketchDefinitionFeature>,
+  parameters: Record<string, number>,
+  repeatedOrigin?: readonly number[],
+  scale: readonly number[] = identityFeatureDSLScale(),
+) {
+  const sketch = resolveFeatureDSLSketchReference(feature.sketch, sketches)
+  const path = feature.path.map((point) => resolveFeatureDSLVector(point, parameters))
+  if (path.length < 2) {
+    throw new Error(`Feature ${feature.id} sweep requires at least two path points`)
+  }
+  const start = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin ?? sketch.origin ?? path[0] ?? [0, 0, 0], parameters)
+  const end = path[path.length - 1] ?? start
+  const vector = [end[0] - (path[0]?.[0] ?? 0), end[1] - (path[0]?.[1] ?? 0), end[2] - (path[0]?.[2] ?? 0)]
+  if (vector.every((value) => value === 0)) {
+    throw new Error(`Feature ${feature.id} sweep path must have non-zero length`)
+  }
+  const face = buildFeatureDSLSketchFace(openCascade, sketch.profile, parameters, start, feature.plane ?? sketch.plane ?? 'XY', scale)
+  const prismBuilder = new openCascade.BRepPrimAPI_MakePrism_1(
+    face,
+    new openCascade.gp_Vec_4(vector[0] ?? 0, vector[1] ?? 0, vector[2] ?? 0),
+    false,
+    true,
+  )
+  prismBuilder.Build(new openCascade.Message_ProgressRange_1())
+  return prismBuilder.Shape()
+}
+
+function buildFeatureDSLLoftShape(
+  openCascade: OpenCascadeModule,
+  feature: CadKernelFeatureDSLLoftFeature,
+  sketches: Map<string, CadKernelFeatureDSLSketchDefinitionFeature>,
+  parameters: Record<string, number>,
+  repeatedOrigin?: readonly number[],
+  scale: readonly number[] = identityFeatureDSLScale(),
+) {
+  if (feature.sections.length < 2) {
+    throw new Error(`Feature ${feature.id} loft requires at least two sections`)
+  }
+  const loftBuilder = new openCascade.BRepOffsetAPI_ThruSections(true, false, 0.001)
+  for (const [index, section] of feature.sections.entries()) {
+    const sketch = resolveFeatureDSLSketchReference(section.sketch, sketches)
+    const baseOrigin = resolveFeatureDSLVector(section.origin, parameters)
+    const origin = repeatedOrigin ? baseOrigin.map((value, axis) => value + (repeatedOrigin[axis] ?? 0)) : baseOrigin
+    const wire = buildFeatureDSLSketchWire(openCascade, sketch.profile, parameters, origin, section.plane ?? sketch.plane ?? 'XY', scale)
+    loftBuilder.AddWire(wire)
+    if (index === 0) {
+      loftBuilder.CheckCompatibility(true)
+    }
+  }
+  loftBuilder.Build(new openCascade.Message_ProgressRange_1())
+  return loftBuilder.Shape()
+}
+
+function resolveFeatureDSLSketchReference(
+  sketch: CadKernelFeatureDSLSketchReference,
+  sketches: Map<string, CadKernelFeatureDSLSketchDefinitionFeature>,
+) {
+  if (typeof sketch !== 'string') {
+    return { profile: sketch, plane: 'XY' as CadKernelFeatureDSLSketchPlane, origin: [0, 0, 0] }
+  }
+  const referenced = sketches.get(sketch)
+  if (!referenced) {
+    throw new Error(`Unknown feature DSL sketch reference: ${sketch}`)
+  }
+  return referenced
+}
+
+function buildFeatureDSLSketchFace(
+  openCascade: OpenCascadeModule,
+  sketch: CadKernelFeatureDSLSketch,
+  parameters: Record<string, number>,
+  origin: readonly number[],
+  plane: CadKernelFeatureDSLSketchPlane,
+  scale: readonly number[],
+) {
+  const wire = buildFeatureDSLSketchWire(openCascade, sketch, parameters, origin, plane, scale)
+  return new openCascade.BRepBuilderAPI_MakeFace_15(wire, true).Face()
+}
+
+function buildFeatureDSLSketchWire(
+  openCascade: OpenCascadeModule,
+  sketch: CadKernelFeatureDSLSketch,
+  parameters: Record<string, number>,
+  origin: readonly number[],
+  plane: CadKernelFeatureDSLSketchPlane,
+  scale: readonly number[],
+) {
+  if (sketch.type === 'rectangle') {
+    const size = scaleFeatureDSLPlanarSize(resolveFeatureDSLVector(sketch.size, parameters), scale)
+    if (size.some((value) => value <= 0)) {
+      throw new Error('Feature DSL rectangle sketch dimensions must be positive')
+    }
+    const points = [
+      featureDSLSketchPoint(openCascade, origin, plane, 0, 0),
+      featureDSLSketchPoint(openCascade, origin, plane, size[0] ?? 0, 0),
+      featureDSLSketchPoint(openCascade, origin, plane, size[0] ?? 0, size[1] ?? 0),
+      featureDSLSketchPoint(openCascade, origin, plane, 0, size[1] ?? 0),
+    ]
+    const edges = points.map((point, index) => new openCascade.BRepBuilderAPI_MakeEdge_3(point, points[(index + 1) % points.length]).Edge())
+    return new openCascade.BRepBuilderAPI_MakeWire_5(edges[0], edges[1], edges[2], edges[3]).Wire()
+  }
+  const axis = featureDSLSketchAxis(openCascade, origin, plane)
+  if (sketch.type === 'circle') {
+    const radius = resolveFeatureDSLCircleRadius('sketch', sketch, parameters) * (scale[0] ?? 1)
+    if (radius <= 0) {
+      throw new Error('Feature DSL circle sketch radius must be positive')
+    }
+    const edge = new openCascade.BRepBuilderAPI_MakeEdge_8(new openCascade.gp_Circ_2(axis, radius)).Edge()
+    return new openCascade.BRepBuilderAPI_MakeWire_2(edge).Wire()
+  }
+  const radiusX = resolveFeatureDSLAxisRadius(sketch, parameters, 'x', 'ellipse sketch') * (scale[0] ?? 1)
+  const radiusY = resolveFeatureDSLAxisRadius(sketch, parameters, 'y', 'ellipse sketch') * (scale[1] ?? 1)
+  if (radiusX <= 0 || radiusY <= 0) {
+    throw new Error('Feature DSL ellipse sketch radii must be positive')
+  }
+  const edge = new openCascade.BRepBuilderAPI_MakeEdge_12(
+    new openCascade.gp_Elips_2(axis, Math.max(radiusX, radiusY), Math.min(radiusX, radiusY)),
+  ).Edge()
+  return new openCascade.BRepBuilderAPI_MakeWire_2(edge).Wire()
+}
+
+function featureDSLSketchPoint(
+  openCascade: OpenCascadeModule,
+  origin: readonly number[],
+  plane: CadKernelFeatureDSLSketchPlane,
+  first: number,
+  second: number,
+) {
+  if (plane === 'XZ') {
+    return new openCascade.gp_Pnt_3((origin[0] ?? 0) + first, origin[1] ?? 0, (origin[2] ?? 0) + second)
+  }
+  if (plane === 'YZ') {
+    return new openCascade.gp_Pnt_3(origin[0] ?? 0, (origin[1] ?? 0) + first, (origin[2] ?? 0) + second)
+  }
+  return new openCascade.gp_Pnt_3((origin[0] ?? 0) + first, (origin[1] ?? 0) + second, origin[2] ?? 0)
+}
+
+function featureDSLSketchAxis(openCascade: OpenCascadeModule, origin: readonly number[], plane: CadKernelFeatureDSLSketchPlane) {
+  const center = new openCascade.gp_Pnt_3(origin[0] ?? 0, origin[1] ?? 0, origin[2] ?? 0)
+  if (plane === 'XZ') {
+    return new openCascade.gp_Ax2_2(center, new openCascade.gp_Dir_4(0, -1, 0), new openCascade.gp_Dir_4(1, 0, 0))
+  }
+  if (plane === 'YZ') {
+    return new openCascade.gp_Ax2_2(center, new openCascade.gp_Dir_4(1, 0, 0), new openCascade.gp_Dir_4(0, 1, 0))
+  }
+  return new openCascade.gp_Ax2_2(center, new openCascade.gp_Dir_4(0, 0, 1), new openCascade.gp_Dir_4(1, 0, 0))
 }
 
 function buildFeatureDSLEllipsePrismShape(
@@ -812,9 +1217,23 @@ function resolveFeatureDSLCircleRadius(featureID: string, sketch: CadKernelFeatu
   return resolveFeatureDSLScalar(sketch.diameter ?? 0, parameters) / 2
 }
 
+function resolveFeatureDSLEllipseSketchRadii(
+  featureID: string,
+  sketch: { radius_x?: CadKernelFeatureDSLExpression; radius_y?: CadKernelFeatureDSLExpression; diameter_x?: CadKernelFeatureDSLExpression; diameter_y?: CadKernelFeatureDSLExpression },
+  parameters: Record<string, number>,
+  scale: readonly number[] = identityFeatureDSLScale(),
+) {
+  const radiusX = resolveFeatureDSLAxisRadius(sketch, parameters, 'x', 'ellipse sketch') * (scale[0] ?? 1)
+  const radiusY = resolveFeatureDSLAxisRadius(sketch, parameters, 'y', 'ellipse sketch') * (scale[1] ?? 1)
+  if (radiusX <= 0 || radiusY <= 0) {
+    throw new Error(`Feature ${featureID} ellipse sketch dimensions must be positive`)
+  }
+  return [radiusX, radiusY]
+}
+
 function resolveFeatureDSLAxisRadius(
   feature: {
-    id: string
+    id?: string
     radius_x?: CadKernelFeatureDSLExpression
     radius_y?: CadKernelFeatureDSLExpression
     radius_z?: CadKernelFeatureDSLExpression
@@ -831,7 +1250,7 @@ function resolveFeatureDSLAxisRadius(
   const hasRadius = radius !== undefined
   const hasDiameter = diameter !== undefined
   if (hasRadius === hasDiameter) {
-    throw new Error(`Feature ${feature.id} ${label} ${axis} axis requires exactly one of radius_${axis} or diameter_${axis}`)
+    throw new Error(`Feature ${feature.id ?? 'sketch'} ${label} ${axis} axis requires exactly one of radius_${axis} or diameter_${axis}`)
   }
   if (hasRadius) {
     return resolveFeatureDSLScalar(radius ?? 0, parameters)

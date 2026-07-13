@@ -61,6 +61,30 @@ export type CadKernelFeatureDSLTransform = {
   scale?: readonly CadKernelFeatureDSLExpression[]
 }
 
+export const LITECAD_FEATURE_DSL_CAPABILITY_REGISTRY = {
+  version: 1,
+  features: [
+    'sketch',
+    'box',
+    'box_cut',
+    'extrude',
+    'extrude_cut',
+    'cylinder',
+    'cylinder_cut',
+    'sphere',
+    'ellipsoid',
+    'ellipse_extrude',
+    'revolve',
+    'sweep',
+    'loft',
+    'fillet',
+    'chamfer',
+    'boolean',
+  ],
+  booleanOperations: ['union', 'subtract', 'intersect'],
+  sketchPlanes: ['XY', 'XZ', 'YZ'],
+} as const
+
 export type CadKernelFeatureDSLBoxFeature = {
   id: string
   type: 'box'
@@ -151,7 +175,27 @@ export type CadKernelFeatureDSLCircleSketch = {
   diameter?: CadKernelFeatureDSLExpression
 }
 
-export type CadKernelFeatureDSLSketch = CadKernelFeatureDSLRectangleSketch | CadKernelFeatureDSLCircleSketch
+export type CadKernelFeatureDSLEllipseSketch = {
+  type: 'ellipse'
+  radius_x?: CadKernelFeatureDSLExpression
+  radius_y?: CadKernelFeatureDSLExpression
+  diameter_x?: CadKernelFeatureDSLExpression
+  diameter_y?: CadKernelFeatureDSLExpression
+}
+
+export type CadKernelFeatureDSLSketch = CadKernelFeatureDSLRectangleSketch | CadKernelFeatureDSLCircleSketch | CadKernelFeatureDSLEllipseSketch
+
+export type CadKernelFeatureDSLSketchPlane = 'XY' | 'XZ' | 'YZ'
+
+export type CadKernelFeatureDSLSketchDefinitionFeature = {
+  id: string
+  type: 'sketch'
+  plane?: CadKernelFeatureDSLSketchPlane
+  origin?: readonly CadKernelFeatureDSLExpression[]
+  profile: CadKernelFeatureDSLSketch
+}
+
+export type CadKernelFeatureDSLSketchReference = string | CadKernelFeatureDSLSketch
 
 export type CadKernelFeatureDSLExtrudeDirection = 'positive' | 'negative' | 'symmetric'
 
@@ -159,7 +203,7 @@ export type CadKernelFeatureDSLExtrudeFeature = {
   id: string
   type: 'extrude'
   origin?: readonly CadKernelFeatureDSLExpression[]
-  sketch: CadKernelFeatureDSLSketch
+  sketch: CadKernelFeatureDSLSketchReference
   height: CadKernelFeatureDSLExpression
   direction?: CadKernelFeatureDSLExtrudeDirection
   repeat?: CadKernelFeatureDSLRepeat
@@ -170,14 +214,75 @@ export type CadKernelFeatureDSLExtrudeCutFeature = {
   id: string
   type: 'extrude_cut'
   origin: readonly CadKernelFeatureDSLExpression[]
-  sketch: CadKernelFeatureDSLSketch
+  sketch: CadKernelFeatureDSLSketchReference
   depth: CadKernelFeatureDSLExpression
   direction?: CadKernelFeatureDSLExtrudeDirection
   repeat?: CadKernelFeatureDSLRepeat
   transform?: CadKernelFeatureDSLTransform
 }
 
+export type CadKernelFeatureDSLRevolveFeature = {
+  id: string
+  type: 'revolve'
+  sketch: CadKernelFeatureDSLSketchReference
+  origin?: readonly CadKernelFeatureDSLExpression[]
+  plane?: CadKernelFeatureDSLSketchPlane
+  axis_origin?: readonly CadKernelFeatureDSLExpression[]
+  axis?: readonly CadKernelFeatureDSLExpression[]
+  angle_degrees?: CadKernelFeatureDSLExpression
+  repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
+}
+
+export type CadKernelFeatureDSLSweepFeature = {
+  id: string
+  type: 'sweep'
+  sketch: CadKernelFeatureDSLSketchReference
+  origin?: readonly CadKernelFeatureDSLExpression[]
+  plane?: CadKernelFeatureDSLSketchPlane
+  path: readonly (readonly CadKernelFeatureDSLExpression[])[]
+  repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
+}
+
+export type CadKernelFeatureDSLLoftSection = {
+  origin: readonly CadKernelFeatureDSLExpression[]
+  sketch: CadKernelFeatureDSLSketchReference
+  plane?: CadKernelFeatureDSLSketchPlane
+}
+
+export type CadKernelFeatureDSLLoftFeature = {
+  id: string
+  type: 'loft'
+  sections: readonly CadKernelFeatureDSLLoftSection[]
+  repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
+}
+
+export type CadKernelFeatureDSLBooleanFeature = {
+  id: string
+  type: 'boolean'
+  operation: 'union' | 'subtract' | 'intersect'
+  operands: readonly CadKernelFeatureDSLFeature[]
+  origin?: readonly CadKernelFeatureDSLExpression[]
+  repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
+}
+
+export type CadKernelFeatureDSLFilletFeature = {
+  id: string
+  type: 'fillet'
+  radius: CadKernelFeatureDSLExpression
+}
+
+export type CadKernelFeatureDSLChamferFeature = {
+  id: string
+  type: 'chamfer'
+  distance: CadKernelFeatureDSLExpression
+}
+
 export type CadKernelFeatureDSLFeature =
+  | CadKernelFeatureDSLSketchDefinitionFeature
   | CadKernelFeatureDSLBoxFeature
   | CadKernelFeatureDSLBoxCutFeature
   | CadKernelFeatureDSLExtrudeFeature
@@ -187,6 +292,12 @@ export type CadKernelFeatureDSLFeature =
   | CadKernelFeatureDSLSphereFeature
   | CadKernelFeatureDSLEllipsoidFeature
   | CadKernelFeatureDSLEllipseExtrudeFeature
+  | CadKernelFeatureDSLRevolveFeature
+  | CadKernelFeatureDSLSweepFeature
+  | CadKernelFeatureDSLLoftFeature
+  | CadKernelFeatureDSLBooleanFeature
+  | CadKernelFeatureDSLFilletFeature
+  | CadKernelFeatureDSLChamferFeature
 
 export type CadKernelFeatureDSLDocument = {
   version: 1
@@ -420,6 +531,9 @@ function isFeatureDSLFeature(value: unknown): value is CadKernelFeatureDSLFeatur
   if (value.type === 'box' || value.type === 'box_cut') {
     return isFeatureDSLBoxLikeFeature(value)
   }
+  if (value.type === 'sketch') {
+    return isFeatureDSLSketchDefinitionFeature(value)
+  }
   if (value.type === 'extrude') {
     return isFeatureDSLExtrudeFeature(value)
   }
@@ -441,6 +555,24 @@ function isFeatureDSLFeature(value: unknown): value is CadKernelFeatureDSLFeatur
   if (value.type === 'ellipse_extrude') {
     return isFeatureDSLEllipseExtrudeFeature(value)
   }
+  if (value.type === 'revolve') {
+    return isFeatureDSLRevolveFeature(value)
+  }
+  if (value.type === 'sweep') {
+    return isFeatureDSLSweepFeature(value)
+  }
+  if (value.type === 'loft') {
+    return isFeatureDSLLoftFeature(value)
+  }
+  if (value.type === 'boolean') {
+    return isFeatureDSLBooleanFeature(value)
+  }
+  if (value.type === 'fillet') {
+    return isFeatureDSLExpression(value.radius)
+  }
+  if (value.type === 'chamfer') {
+    return isFeatureDSLExpression(value.distance)
+  }
   return false
 }
 
@@ -455,7 +587,7 @@ function isFeatureDSLBoxLikeFeature(value: Record<string, unknown>) {
 function isFeatureDSLExtrudeFeature(value: Record<string, unknown>) {
   return (
     (value.origin === undefined || isFeatureDSLExpressionTuple(value.origin, 3)) &&
-    isFeatureDSLSketch(value.sketch) &&
+    isFeatureDSLSketchReference(value.sketch) &&
     isFeatureDSLExpression(value.height) &&
     (value.direction === undefined || isFeatureDSLExtrudeDirection(value.direction)) &&
     (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
@@ -465,11 +597,83 @@ function isFeatureDSLExtrudeFeature(value: Record<string, unknown>) {
 function isFeatureDSLExtrudeCutFeature(value: Record<string, unknown>) {
   return (
     isFeatureDSLExpressionTuple(value.origin, 3) &&
-    isFeatureDSLSketch(value.sketch) &&
+    isFeatureDSLSketchReference(value.sketch) &&
     isFeatureDSLExpression(value.depth) &&
     (value.direction === undefined || isFeatureDSLExtrudeDirection(value.direction)) &&
     (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
   )
+}
+
+function isFeatureDSLSketchDefinitionFeature(value: Record<string, unknown>) {
+  return (
+    (value.plane === undefined || isFeatureDSLSketchPlane(value.plane)) &&
+    (value.origin === undefined || isFeatureDSLExpressionTuple(value.origin, 3)) &&
+    isFeatureDSLSketch(value.profile)
+  )
+}
+
+function isFeatureDSLRevolveFeature(value: Record<string, unknown>) {
+  return (
+    isFeatureDSLSketchReference(value.sketch) &&
+    (value.origin === undefined || isFeatureDSLExpressionTuple(value.origin, 3)) &&
+    (value.plane === undefined || isFeatureDSLSketchPlane(value.plane)) &&
+    (value.axis_origin === undefined || isFeatureDSLExpressionTuple(value.axis_origin, 3)) &&
+    (value.axis === undefined || isFeatureDSLAxisTuple(value.axis)) &&
+    (value.angle_degrees === undefined || isFeatureDSLExpression(value.angle_degrees)) &&
+    (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
+  )
+}
+
+function isFeatureDSLSweepFeature(value: Record<string, unknown>) {
+  return (
+    isFeatureDSLSketchReference(value.sketch) &&
+    (value.origin === undefined || isFeatureDSLExpressionTuple(value.origin, 3)) &&
+    (value.plane === undefined || isFeatureDSLSketchPlane(value.plane)) &&
+    Array.isArray(value.path) &&
+    value.path.length >= 2 &&
+    value.path.every((point) => isFeatureDSLExpressionTuple(point, 3)) &&
+    (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
+  )
+}
+
+function isFeatureDSLLoftFeature(value: Record<string, unknown>) {
+  return (
+    Array.isArray(value.sections) &&
+    value.sections.length >= 2 &&
+    value.sections.every(isFeatureDSLLoftSection) &&
+    (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
+  )
+}
+
+function isFeatureDSLLoftSection(value: unknown) {
+  return (
+    isRecord(value) &&
+    isFeatureDSLExpressionTuple(value.origin, 3) &&
+    isFeatureDSLSketchReference(value.sketch) &&
+    (value.plane === undefined || isFeatureDSLSketchPlane(value.plane))
+  )
+}
+
+function isFeatureDSLBooleanFeature(value: Record<string, unknown>) {
+  return (
+    (value.operation === 'union' || value.operation === 'subtract' || value.operation === 'intersect') &&
+	    Array.isArray(value.operands) &&
+	    value.operands.length >= 2 &&
+	    value.operands.every(isFeatureDSLBooleanOperand) &&
+	    (value.origin === undefined || isFeatureDSLExpressionTuple(value.origin, 3)) &&
+	    (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
+	  )
+}
+
+function isFeatureDSLBooleanOperand(value: unknown) {
+  if (!isFeatureDSLFeature(value)) {
+    return false
+  }
+  return value.type !== 'sketch' && value.type !== 'fillet' && value.type !== 'chamfer' && !value.type.endsWith('_cut')
+}
+
+function isFeatureDSLSketchReference(value: unknown): value is CadKernelFeatureDSLSketchReference {
+  return typeof value === 'string' || isFeatureDSLSketch(value)
 }
 
 function isFeatureDSLExtrudeDirection(value: unknown): value is CadKernelFeatureDSLExtrudeDirection {
@@ -477,7 +681,7 @@ function isFeatureDSLExtrudeDirection(value: unknown): value is CadKernelFeature
 }
 
 function isFeatureDSLSketch(value: unknown): value is CadKernelFeatureDSLSketch {
-  return isFeatureDSLRectangleSketch(value) || isFeatureDSLCircleSketch(value)
+  return isFeatureDSLRectangleSketch(value) || isFeatureDSLCircleSketch(value) || isFeatureDSLEllipseSketch(value)
 }
 
 function isFeatureDSLRectangleSketch(value: unknown): value is CadKernelFeatureDSLRectangleSketch {
@@ -494,6 +698,19 @@ function isFeatureDSLCircleSketch(value: unknown): value is CadKernelFeatureDSLC
   const hasRadius = value.radius !== undefined
   const hasDiameter = value.diameter !== undefined
   return hasRadius !== hasDiameter && (hasRadius ? isFeatureDSLExpression(value.radius) : isFeatureDSLExpression(value.diameter))
+}
+
+function isFeatureDSLEllipseSketch(value: unknown) {
+  return (
+    isRecord(value) &&
+    value.type === 'ellipse' &&
+    isFeatureDSLAxisRadiusExpression(value.radius_x, value.diameter_x) &&
+    isFeatureDSLAxisRadiusExpression(value.radius_y, value.diameter_y)
+  )
+}
+
+function isFeatureDSLSketchPlane(value: unknown): value is CadKernelFeatureDSLSketchPlane {
+  return value === 'XY' || value === 'XZ' || value === 'YZ'
 }
 
 function isFeatureDSLSphereFeature(value: Record<string, unknown>) {

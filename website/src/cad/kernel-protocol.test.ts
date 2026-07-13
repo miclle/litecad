@@ -269,6 +269,86 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts LiteCAD feature graph nodes and the capability registry', () => {
+    const document = {
+      version: 1,
+      unit: 'millimetre',
+      parameters: {
+        fillet_radius: { type: 'number', default: 1, min: 0.1, max: 5 },
+      },
+      features: [
+        {
+          id: 'lathe_profile',
+          type: 'sketch',
+          plane: 'XZ',
+          origin: [8, 0, -4],
+          profile: { type: 'rectangle', size: [4, 8] },
+        },
+        {
+          id: 'turned_body',
+          type: 'revolve',
+          sketch: 'lathe_profile',
+          axis_origin: [0, 0, 0],
+          axis: [0, 0, 1],
+          angle_degrees: 360,
+        },
+        {
+          id: 'extrude_profile',
+          type: 'sketch',
+          plane: 'XY',
+          origin: [14, 0, 0],
+          profile: { type: 'rectangle', size: [8, 6] },
+        },
+        {
+          id: 'referenced_extrude',
+          type: 'extrude',
+          sketch: 'extrude_profile',
+          height: 4,
+        },
+        {
+          id: 'tube',
+          type: 'sweep',
+          sketch: { type: 'circle', diameter: 6 },
+          path: [
+            [30, 0, 0],
+            [30, 0, 24],
+          ],
+        },
+        {
+          id: 'lofted_body',
+          type: 'loft',
+          sections: [
+            { origin: [50, 0, 0], sketch: { type: 'circle', diameter: 8 } },
+            { origin: [50, 0, 20], sketch: { type: 'circle', diameter: 16 } },
+          ],
+        },
+        {
+          id: 'boolean_body',
+          type: 'boolean',
+          operation: 'subtract',
+          operands: [
+            { id: 'base', type: 'box', origin: [70, 0, 0], size: [20, 20, 8] },
+            { id: 'hole', type: 'cylinder', origin: [80, 10, -1], diameter: 6, height: 10 },
+          ],
+        },
+        { id: 'soften', type: 'fillet', radius: 'fillet_radius' },
+        { id: 'bevel', type: 'chamfer', distance: 0.5 },
+      ],
+    }
+
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-feature-graph-preview',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'feature-graph.lcad.json',
+          document,
+          parameterValues: { fillet_radius: 1.2 },
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('rejects malformed LiteCAD feature DSL transforms', () => {
     expect(
       isCadKernelRequest({

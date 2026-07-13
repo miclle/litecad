@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/fox-gonic/fox/logger"
 	"github.com/miclle/litecad/internal/entity"
 	"github.com/miclle/litecad/pkg/id"
 	"gorm.io/gorm"
@@ -16,13 +18,15 @@ import (
 
 const (
 	aiParametricToolBuildModel            = "build_parametric_model"
-	aiParametricSystemPrompt              = "You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Prefer source_kind litecad-feature-dsl with a valid JSON document using version, unit, parameters, and features. Use extrude features for rectangular or circular sketched bases, plates, and bosses when that better describes design intent, extrude_cut features for rectangular or circular sketch-based slots, pockets, notches, and holes, box features for direct rectangular bodies, box_cut features for direct rectangular slots, pockets, and edge notches, cylinder features for bosses or posts, sphere features for balls or spherical bodies, ellipsoid features for oval or three-axis spherical bodies, ellipse_extrude features for elliptical cylinders or oval posts, and cylinder_cut features for round holes. In LiteCAD feature DSL, extrude uses an optional origin, a rectangle sketch with size or a circle sketch with radius or diameter, height, and optional direction positive, negative, or symmetric; extrude_cut uses origin, a rectangle sketch with size or a circle sketch with radius or diameter, depth, and optional direction positive, negative, or symmetric; box and box_cut use origin and size; cylinder uses origin, optional non-zero axis, radius or diameter, and height; sphere uses origin plus radius or diameter; ellipsoid uses origin plus radius_x/radius_y/radius_z or diameter_x/diameter_y/diameter_z; ellipse_extrude uses origin, radius_x or diameter_x, radius_y or diameter_y, and height; cylinder_cut uses origin, optional non-zero axis, radius or diameter, and depth. Omit direction for default positive Z extrusion; use negative for downward cuts and symmetric for cuts centered on the sketch plane. Omit axis for default Z-axis cylinders, and use axis such as [1,0,0] or [0,1,0] for side holes or horizontal posts. Use repeat with integer count from 1 to 128 and a step vector for linear patterns such as repeated holes, slots, posts, spheres, ellipsoids, or oval posts; keep count literal and make step spacing parameterized when useful. Any feature may include transform with optional translate [x,y,z], rotate {axis:[x,y,z], angle_degrees:n, origin:[x,y,z]}, and positive scale [sx,sy,sz]; scale is feature-local and use it for stretched or proportionally varied primitives. Use numeric parameters or structured numeric expression objects such as {\"op\":\"add\",\"args\":[\"width\",2]} for geometry expressions; supported ops are add, sub, mul, and div. You may include boolean or string parameters as editable UI metadata, but do not reference them from geometry expressions. Use openscad only when the user explicitly asks for OpenSCAD source. Declare editable parameters in the artifact so LiteCAD can preview and save them."
+	aiParametricSystemPrompt              = "You are LiteCAD Assistant. When the user asks to create or edit a parameterized CAD model, call build_parametric_model. Do not claim that a model was created unless a valid tool call is returned. The tool input is the source artifact shown in LiteCAD. Prefer source_kind litecad-feature-dsl with a valid JSON document using version, unit, parameters, and features. The backend-owned LiteCAD feature DSL capability registry currently includes box, box_cut, extrude, extrude_cut, cylinder, cylinder_cut, sphere, ellipsoid, ellipse_extrude, sketch, revolve, sweep, loft, fillet, chamfer, and boolean. Use extrude features for rectangular, circular, or elliptical sketched bases, plates, and bosses when that better describes design intent, extrude_cut features for rectangular, circular, or elliptical sketch-based slots, pockets, notches, and holes, box features for direct rectangular bodies, box_cut features for direct rectangular slots, pockets, and edge notches, cylinder features for bosses or posts, sphere features for balls or spherical bodies, ellipsoid features for oval or three-axis spherical bodies, ellipse_extrude features for elliptical cylinders or oval posts, and cylinder_cut features for round holes. Use sketch nodes with plane XY for reusable extrude profiles, and use XY, XZ, or YZ sketch nodes for profiles referenced by revolve, sweep, or loft. Use revolve for lathe-like parts, sweep for straight profile sweeps along a path, loft for two or more profile sections, boolean with operation union/subtract/intersect and inline solid operands for explicit boolean trees, fillet for rounded edges, and chamfer only when the user asks for a bevel; chamfer is accepted as a conservative modifier until edge-face selection is expanded. In LiteCAD feature DSL, extrude uses an optional origin, a rectangle/circle/ellipse sketch, height, and optional direction positive, negative, or symmetric; extrude_cut uses origin, a rectangle/circle/ellipse sketch, depth, and optional direction positive, negative, or symmetric; box and box_cut use origin and size; cylinder uses origin, optional non-zero axis, radius or diameter, and height; sphere uses origin plus radius or diameter; ellipsoid uses origin plus radius_x/radius_y/radius_z or diameter_x/diameter_y/diameter_z; ellipse_extrude uses origin, radius_x or diameter_x, radius_y or diameter_y, and height; cylinder_cut uses origin, optional non-zero axis, radius or diameter, and depth. Omit direction for default positive Z extrusion; use negative for downward cuts and symmetric for cuts centered on the sketch plane. Omit axis for default Z-axis cylinders, and use axis such as [1,0,0] or [0,1,0] for side holes or horizontal posts. Use repeat with integer count from 1 to 128 and a step vector for linear patterns such as repeated holes, slots, posts, spheres, ellipsoids, oval posts, or generated graph nodes; keep count literal and make step spacing parameterized when useful. Any generated solid feature may include transform with optional translate [x,y,z], rotate {axis:[x,y,z], angle_degrees:n, origin:[x,y,z]}, and positive scale [sx,sy,sz]; scale is feature-local and use it for stretched or proportionally varied primitives. Use numeric parameters or structured numeric expression objects such as {\"op\":\"add\",\"args\":[\"width\",2]} for geometry expressions; supported ops are add, sub, mul, and div. You may include boolean or string parameters as editable UI metadata, but do not reference them from geometry expressions. Use openscad only when the user explicitly asks for OpenSCAD source. Declare editable parameters in the artifact so LiteCAD can preview and save them."
 	aiParametricConversationPrompt        = "In ordinary Assistant conversations, answer normally for inspection, metadata, design discussion, and planning requests. If the user asks to create, generate, add, or edit a CAD model or parametric source, return only strict JSON with no Markdown and no explanation, using exactly this shape: {\"tool\":\"build_parametric_model\",\"input\":{\"title\":\"...\",\"version\":\"v1\",\"source_kind\":\"litecad-feature-dsl\",\"code\":\"...\"}}. The input.code value must be a JSON-encoded string containing the generated source document."
 	aiParametricJSONFallbackPrompt        = "Native function calling is unavailable for this request. Return only strict JSON with no Markdown and no explanation, using exactly this shape: {\"tool\":\"build_parametric_model\",\"input\":{\"title\":\"...\",\"version\":\"v1\",\"source_kind\":\"litecad-feature-dsl\",\"code\":\"...\"}}. The input.code value must be a JSON-encoded string containing the generated source document."
 	aiParametricInvalidToolFailureMessage = "I could not create a valid parametric model from that response. Please try again with a more specific request."
 	aiParametricToolModeJSONFallback      = "json_fallback"
 	aiParametricToolModeNativeTool        = "native_tool"
 )
+
+var errAIParametricProviderChatFailed = errors.New("ai parametric provider chat failed")
 
 // AIParametricArtifactInput is the validated tool input for generated CAD source.
 type AIParametricArtifactInput struct {
@@ -341,7 +345,7 @@ func buildParametricModelAITool() AIChatTool {
 				},
 				"code": map[string]any{
 					"type":        "string",
-					"description": "Complete source text. For litecad-feature-dsl, use version 1 JSON with extrude, extrude_cut, box, box_cut, cylinder, sphere, ellipsoid, ellipse_extrude, and cylinder_cut features. extrude uses an optional origin, a rectangle sketch with size or circle sketch with radius/diameter, height, and optional direction positive/negative/symmetric; extrude_cut uses origin, a rectangle sketch with size or circle sketch with radius/diameter, depth, and optional direction positive/negative/symmetric. box_cut uses origin and size for rectangular slots, pockets, and notches. Cylinders and cylinder cuts may include an optional non-zero axis vector; spheres use origin plus radius or diameter; ellipsoids use origin plus radius_x/radius_y/radius_z or diameter_x/diameter_y/diameter_z; ellipse_extrude uses origin, radius_x or diameter_x, radius_y or diameter_y, and height. Features may include repeat with integer count 1..128 plus a step vector, and transform with optional translate [x,y,z], rotate {axis, angle_degrees, origin}, and positive scale [sx,sy,sz]. Geometry expressions may reference numeric parameters directly or use structured numeric expression objects with op add/sub/mul/div and two args; boolean and string parameters are UI metadata.",
+					"description": "Complete source text. For litecad-feature-dsl, use version 1 JSON and the backend capability registry: sketch, box, box_cut, extrude, extrude_cut, cylinder, cylinder_cut, sphere, ellipsoid, ellipse_extrude, revolve, sweep, loft, fillet, chamfer, and boolean. sketch defines reusable rectangle/circle/ellipse profiles; extrude sketch references must use XY profiles, while revolve/sweep/loft may use XY/XZ/YZ profiles. revolve references a sketch plus axis_origin/axis/angle_degrees; sweep uses a sketch and path points; loft uses two or more sections; boolean uses operation union/subtract/intersect and inline solid operands; fillet uses radius and chamfer uses distance as conservative edge modifiers. Features may include repeat with integer count 1..128 plus a step vector, and generated solid features may include transform with optional translate [x,y,z], rotate {axis, angle_degrees, origin}, and positive scale [sx,sy,sz]. Geometry expressions may reference numeric parameters directly or use structured numeric expression objects with op add/sub/mul/div and two args; boolean and string parameters are UI metadata.",
 				},
 			},
 		},
@@ -399,42 +403,43 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 	if toolClient, ok := s.aiClient.(AIChatToolClient); ok {
 		nativeCall, err := toolClient.ChatWithTools(ctx, providerMessages, []AIChatTool{buildParametricModelAITool()})
 		if err != nil {
-			providerReply, fallbackErr := s.aiClient.Chat(ctx, appendAIParametricJSONFallbackPrompt(providerMessages))
+			fallbackCall, fallbackReply, fallbackErr := s.runAIParametricJSONFallback(ctx, providerMessages, "native tool call failed: "+err.Error())
 			if fallbackErr != nil {
+				logAIParametricRunFailure(ctx, "native_tool_failed_json_fallback_failed", fallbackErr)
 				return ProjectAgentParametricRun{}, fmt.Errorf("send ai parametric chat: native tool call failed: %v; json fallback failed: %w", err, fallbackErr)
 			}
-			call, err = ParseAIParametricToolCall(providerReply)
-			if err != nil {
-				if persistErr := s.persistProjectAgentParametricFailure(ctx, project.ID, conversation.ID, userMessage); persistErr != nil {
-					return ProjectAgentParametricRun{}, persistErr
-				}
-				return ProjectAgentParametricRun{}, err
-			}
-			reply = strings.TrimSpace(providerReply)
+			call = fallbackCall
+			reply = fallbackReply
 		} else {
 			call, err = ParseAIParametricNativeToolCall(nativeCall)
 			if err != nil {
-				if persistErr := s.persistProjectAgentParametricFailure(ctx, project.ID, conversation.ID, userMessage); persistErr != nil {
-					return ProjectAgentParametricRun{}, persistErr
+				fallbackCall, fallbackReply, fallbackErr := s.runAIParametricJSONFallback(ctx, providerMessages, "native tool arguments were invalid: "+err.Error())
+				if fallbackErr != nil {
+					logAIParametricRunFailure(ctx, "native_tool_invalid_fallback_failed", fallbackErr)
+					if persistErr := s.persistProjectAgentParametricFailure(ctx, project.ID, conversation.ID, userMessage); persistErr != nil {
+						return ProjectAgentParametricRun{}, persistErr
+					}
+					return ProjectAgentParametricRun{}, err
 				}
-				return ProjectAgentParametricRun{}, err
+				call = fallbackCall
+				reply = fallbackReply
+			} else {
+				reply = marshalAIParametricToolCall(call)
+				toolMode = aiParametricToolModeNativeTool
 			}
-			reply = marshalAIParametricToolCall(call)
-			toolMode = aiParametricToolModeNativeTool
 		}
 	} else {
-		providerReply, err := s.aiClient.Chat(ctx, appendAIParametricJSONFallbackPrompt(providerMessages))
+		call, reply, err = s.runAIParametricJSONFallback(ctx, providerMessages, "")
 		if err != nil {
-			return ProjectAgentParametricRun{}, fmt.Errorf("send ai parametric chat: %w", err)
-		}
-		call, err = ParseAIParametricToolCall(providerReply)
-		if err != nil {
+			if errors.Is(err, errAIParametricProviderChatFailed) {
+				return ProjectAgentParametricRun{}, err
+			}
+			logAIParametricRunFailure(ctx, "json_fallback_failed", err)
 			if persistErr := s.persistProjectAgentParametricFailure(ctx, project.ID, conversation.ID, userMessage); persistErr != nil {
 				return ProjectAgentParametricRun{}, persistErr
 			}
 			return ProjectAgentParametricRun{}, err
 		}
-		reply = strings.TrimSpace(providerReply)
 	}
 	telemetry := ProjectAgentParametricTelemetry{
 		ToolMode:   toolMode,
@@ -443,6 +448,63 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 	}
 
 	return s.persistProjectAgentParametricRun(ctx, project.ID, conversation.ID, userMessage, call, reply, telemetry)
+}
+
+func (s *Service) runAIParametricJSONFallback(ctx context.Context, providerMessages []AIChatMessage, repairReason string) (AIParametricToolCall, string, error) {
+	messages := appendAIParametricJSONFallbackPrompt(providerMessages)
+	if strings.TrimSpace(repairReason) != "" {
+		messages = append(messages, AIChatMessage{
+			Role: "system",
+			Body: "The previous parametric model response was not accepted: " + summarizeAIParametricToolError(repairReason) + ". Return one corrected strict JSON build_parametric_model tool call only.",
+		})
+	}
+
+	providerReply, err := s.aiClient.Chat(ctx, messages)
+	if err != nil {
+		return AIParametricToolCall{}, "", fmt.Errorf("%w: %v", errAIParametricProviderChatFailed, err)
+	}
+	call, err := ParseAIParametricToolCall(providerReply)
+	if err == nil {
+		return call, strings.TrimSpace(providerReply), nil
+	}
+
+	repairMessages := appendAIParametricJSONFallbackPrompt(providerMessages)
+	repairMessages = append(repairMessages, AIChatMessage{
+		Role: "assistant",
+		Body: strings.TrimSpace(providerReply),
+	})
+	repairMessages = append(repairMessages, AIChatMessage{
+		Role: "system",
+		Body: "Repair the previous response. It was rejected because: " + summarizeAIParametricToolError(err.Error()) + ". Return one corrected strict JSON build_parametric_model tool call only.",
+	})
+	repairedReply, repairErr := s.aiClient.Chat(ctx, repairMessages)
+	if repairErr != nil {
+		return AIParametricToolCall{}, "", fmt.Errorf("initial json fallback invalid: %v; repair chat failed: %w", err, repairErr)
+	}
+	repairedCall, repairParseErr := ParseAIParametricToolCall(repairedReply)
+	if repairParseErr != nil {
+		return AIParametricToolCall{}, "", fmt.Errorf("initial json fallback invalid: %v; repair invalid: %w", err, repairParseErr)
+	}
+	return repairedCall, strings.TrimSpace(repairedReply), nil
+}
+
+func summarizeAIParametricToolError(message string) string {
+	message = strings.TrimSpace(strings.ReplaceAll(message, "\n", " "))
+	if len(message) > 600 {
+		return message[:600] + "..."
+	}
+	if message == "" {
+		return "invalid tool output"
+	}
+	return message
+}
+
+func logAIParametricRunFailure(ctx context.Context, phase string, err error) {
+	logger.NewWithContext(ctx).WithFields(map[string]any{
+		"type":  "AI_PARAMETRIC",
+		"phase": phase,
+		"error": summarizeAIParametricToolError(err.Error()),
+	}).Warn("parametric model generation failed")
 }
 
 func (s *Service) persistProjectAgentParametricRun(ctx context.Context, projectID, conversationID string, userMessage AIChatMessage, call AIParametricToolCall, reply string, telemetry ProjectAgentParametricTelemetry) (ProjectAgentParametricRun, error) {
