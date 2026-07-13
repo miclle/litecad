@@ -6,21 +6,15 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type ReactElement,
-  type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import {
   ArrowLeft,
   Box,
-  BotMessageSquare,
-  CheckCircle2,
   FileText,
   HardDrive,
-  Info,
   PanelLeftClose,
   PanelLeftOpen,
-  Upload,
   X,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
@@ -45,15 +39,6 @@ import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
 import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import {
-  Popover,
-  PopoverArrow,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-} from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import {
@@ -75,10 +60,9 @@ import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
 import { ProjectAssistantPanel } from './project-assistant-panel'
-import { ProjectHistoryPopover } from './project-history-popover'
 import { ProjectInspector, type ProjectInspectorSelection, type TransformDraft } from './project-inspector'
 import { ProjectModelTree } from './project-model-tree'
-import { ProjectStepExportPopover } from './project-step-export-popover'
+import { ProjectTopbar } from './project-topbar'
 import { ProjectWorkbenchLayout } from './project-workbench-layout'
 import {
   buildProjectPreviewAssets,
@@ -118,23 +102,6 @@ import type { ProjectParametricArtifact } from 'src/types/project'
 
 const aiChatPanelMaxWidthRatio = 0.5
 const aiChatPanelTransitionMs = 220
-
-function TopbarTooltip({
-  label,
-  render,
-  children,
-}: {
-  label: string
-  render: ReactElement
-  children: ReactNode
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={render}>{children}</TooltipTrigger>
-      <TooltipContent sideOffset={8}>{label}</TooltipContent>
-    </Tooltip>
-  )
-}
 
 function clampPanelWidth(width: number, minWidth: number, maxWidth: number) {
   return Math.min(Math.max(width, minWidth), maxWidth)
@@ -1232,150 +1199,40 @@ function ProjectView() {
         </aside>
       }
       topbar={
-        <>
-          <div className="flex min-w-0 items-center gap-3">
-            <TopbarTooltip
-              label="All projects"
-              render={
-                <Link
-                  aria-label="All projects"
-                  className="grid size-9 shrink-0 place-items-center rounded-md text-[#64748b] no-underline transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
-                  to="/projects"
-                />
-              }
-            >
-              <ArrowLeft className="size-4" />
-            </TopbarTooltip>
-            <div className="relative flex min-w-0 items-center gap-1.5">
-              <h1 className="truncate text-sm font-semibold leading-tight text-[#0f172a]">{project.name}</h1>
-              <Popover onOpenChange={setIsProjectInfoOpen} open={isProjectInfoOpen}>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <PopoverTrigger
-                        render={
-                          <Button
-                            aria-label="Project info"
-                            className="shrink-0"
-                            size="icon-sm"
-                            type="button"
-                            variant="ghost"
-                          />
-                        }
-                      >
-                        <Info />
-                      </PopoverTrigger>
-                    }
-                  />
-                  <TooltipContent sideOffset={8}>Project info</TooltipContent>
-                </Tooltip>
-                <PopoverContent
-                  align="center"
-                  aria-label="Project info"
-                  className="relative w-[min(360px,calc(100vw-24px))] gap-0 rounded-md border-[#e2e8f0] bg-white/96 p-4 text-left shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur"
-                  sideOffset={10}
-                >
-                  <PopoverArrow className="border-[#e2e8f0] bg-white/96" />
-                  <PopoverHeader className="flex-row items-center justify-between gap-3">
-                    <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">Project</PopoverTitle>
-                    <PopoverDescription className="truncate text-sm font-semibold text-[#0f172a]">
-                      {project.name}
-                    </PopoverDescription>
-                  </PopoverHeader>
-
-                  <section className="mt-4">
-                    <p className="font-mono text-[11px] uppercase text-[#64748b]">Description</p>
-                    <p className="mt-2 text-sm leading-6 text-[#1f2937]">{projectDescription}</p>
-                  </section>
-
-                  <section className="mt-4 rounded-md border border-[#e2e8f0] bg-[#f8fafc] p-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
-                      <CheckCircle2 className="size-4 text-[#475569]" />
-                      {previewSummary.sourceLabel}
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-[#64748b]">{previewSummary.sourceBody}</p>
-                  </section>
-
-                  <section className="mt-4">
-                    <p className="font-mono text-[11px] uppercase text-[#64748b]">Document</p>
-                    <dl className="mt-3 grid gap-2 text-sm">
-                      {documentDetails.map((detail) => (
-                        <div className="flex items-center justify-between gap-4 border-b border-[#e2e8f0] pb-2" key={detail.label}>
-                          <dt className="text-[#64748b]">{detail.label}</dt>
-                          <dd className="truncate text-[#1f2937]">{detail.value}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </section>
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-
-          <div className="hidden items-center justify-end gap-1.5 lg:flex">
-            <ProjectHistoryPopover
-              canRedo={Boolean(projectCADDocument?.history.can_redo)}
-              canUndo={Boolean(projectCADDocument?.history.can_undo)}
-              entries={projectCADHistory}
-              error={cadDocumentCommands.historyError}
-              hasNextPage={Boolean(projectCADHistoryQuery.hasNextPage)}
-              isFetchingNextPage={projectCADHistoryQuery.isFetchingNextPage}
-              isLoading={projectCADHistoryQuery.isPending}
-              isMutationPending={cadDocumentCommands.isPending}
-              loadError={projectCADHistoryQuery.isError}
-              onFetchNextPage={() => projectCADHistoryQuery.fetchNextPage()}
-              onHistoryAction={cadDocumentCommands.changeHistory}
-              onOpenChange={setIsHistoryOpen}
-              open={isHistoryOpen}
-            />
-            <ProjectStepExportPopover
-              disabled={stepExportTargets.length === 0 || !projectCADDocument}
-              onExport={projectStepExport.exportSelection}
-              onOpenChange={setIsStepExportOpen}
-              onSelectAll={projectStepExport.selectAllTargets}
-              onToggleTarget={projectStepExport.toggleTarget}
-              open={isStepExportOpen}
-              selectedTargetIds={projectStepExport.selectedTargetIDs}
-              targets={stepExportTargets}
-            />
-            <TopbarTooltip
-              label="Import model"
-              render={
-                <button
-                  aria-label="Import model"
-                  className="grid size-9 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={projectModelUpload.isUploading}
-                  onClick={() => fileInputRef.current?.click()}
-                  type="button"
-                />
-              }
-            >
-              <Upload className="size-4" />
-            </TopbarTooltip>
-            <button
-              aria-label="Toggle Assistant"
-              aria-pressed={isAiChatOpen}
-              className={`flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
-                isAiChatOpen
-                  ? 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]'
-                  : 'border-transparent text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]'
-              }`}
-              onClick={toggleAiChat}
-              title={isAiChatOpen ? 'Close Assistant' : 'Open Assistant'}
-              type="button"
-            >
-              <BotMessageSquare className="size-4" />
-              Assistant
-            </button>
-            <input
-              accept=".step,.stp,.gltf,.glb,.stl"
-              className="hidden"
-              onChange={projectModelUpload.handleModelFileChange}
-              ref={fileInputRef}
-              type="file"
-            />
-          </div>
-        </>
+        <ProjectTopbar
+          canRedo={Boolean(projectCADDocument?.history.can_redo)}
+          canUndo={Boolean(projectCADDocument?.history.can_undo)}
+          documentDetails={documentDetails}
+          fileInputRef={fileInputRef}
+          hasNextHistoryPage={Boolean(projectCADHistoryQuery.hasNextPage)}
+          historyEntries={projectCADHistory}
+          historyError={cadDocumentCommands.historyError}
+          isAiChatOpen={isAiChatOpen}
+          isHistoryFetchingNextPage={projectCADHistoryQuery.isFetchingNextPage}
+          isHistoryLoading={projectCADHistoryQuery.isPending}
+          isHistoryLoadError={projectCADHistoryQuery.isError}
+          isHistoryMutationPending={cadDocumentCommands.isPending}
+          isHistoryOpen={isHistoryOpen}
+          isProjectInfoOpen={isProjectInfoOpen}
+          isStepExportOpen={isStepExportOpen}
+          isUploading={projectModelUpload.isUploading}
+          onFetchNextHistoryPage={() => projectCADHistoryQuery.fetchNextPage()}
+          onHistoryAction={cadDocumentCommands.changeHistory}
+          onHistoryOpenChange={setIsHistoryOpen}
+          onModelFileChange={projectModelUpload.handleModelFileChange}
+          onProjectInfoOpenChange={setIsProjectInfoOpen}
+          onStepExport={projectStepExport.exportSelection}
+          onStepExportOpenChange={setIsStepExportOpen}
+          onStepExportSelectAll={projectStepExport.selectAllTargets}
+          onStepExportToggleTarget={projectStepExport.toggleTarget}
+          onToggleAiChat={toggleAiChat}
+          previewSummary={previewSummary}
+          project={project}
+          projectDescription={projectDescription}
+          selectedStepExportTargetIds={projectStepExport.selectedTargetIDs}
+          stepExportDisabled={stepExportTargets.length === 0 || !projectCADDocument}
+          stepExportTargets={stepExportTargets}
+        />
       }
       workspaceGridStyle={workspaceGridStyle}
     />

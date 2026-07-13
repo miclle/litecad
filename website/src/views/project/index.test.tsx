@@ -39,7 +39,7 @@ vi.mock('src/api/projects', () => ({
 describe('ProjectView', () => {
   afterEach(() => {
     vi.clearAllMocks()
-    window.localStorage.clear()
+    window.localStorage?.clear()
     document.body.innerHTML = ''
   })
 

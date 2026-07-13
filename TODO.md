@@ -24,7 +24,7 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 
 ## Frontend
 
-- Continue shrinking the remaining project workbench composition hotspot in `website/src/views/project/index.tsx` after moving route commands, Assistant conversation/generation orchestration, saved parametric source/preview orchestration, STEP export orchestration, project selection state, thumbnail publication, model upload, the route-level workbench layout shell, and controlled surfaces out of that file and splitting `ModelPreview` into a thin component plus scene, resource-generation, and live selection/transform hooks. The remaining route hotspot is primarily the detailed topbar/canvas/sidebar slot content; preserve the extracted controller, layout, renderer cleanup, stale-loader disposal, view-event, and resource ownership boundaries during later work.
+- Continue shrinking the remaining project workbench composition hotspot in `website/src/views/project/index.tsx` after moving route commands, Assistant conversation/generation orchestration, saved parametric source/preview orchestration, STEP export orchestration, project selection state, thumbnail publication, model upload, the route-level workbench layout shell, the controlled topbar, and other controlled surfaces out of that file and splitting `ModelPreview` into a thin component plus scene, resource-generation, and live selection/transform hooks. The remaining route hotspot is primarily the detailed canvas and sidebar slot content; preserve the extracted controller, layout, topbar, renderer cleanup, stale-loader disposal, view-event, and resource ownership boundaries during later work.
 
 ## Documentation And Operations
 
