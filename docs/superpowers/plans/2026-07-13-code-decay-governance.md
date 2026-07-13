@@ -82,7 +82,7 @@ git commit -m "docs: plan code decay governance"
 - `useProjectParametricModels({ projectId, projectModels, selectedSourceModel, selectedArtifact, queryClient })` owns saved-source loading, parameter overrides, preview query inputs, debounced persistence coordination, and selected saved-artifact derivation.
 - `ProjectView` consumes the returned state and callbacks and remains responsible only for composing controlled workbench surfaces.
 
-- [ ] **Step 1: Write failing Assistant controller tests**
+- [x] **Step 1: Write failing Assistant controller tests**
 
 Add tests that render the wished-for hook with a `QueryClientProvider` and assert that it:
 
@@ -103,7 +103,7 @@ npm --prefix website test -- use-project-assistant-controller
 
 Expected: FAIL because the hook does not exist.
 
-- [ ] **Step 2: Implement and verify the Assistant controller**
+- [x] **Step 2: Implement and verify the Assistant controller**
 
 Move the existing conversation queries, local message overlay, mutation callbacks, retry state, and selected artifact coordination without changing API payloads or query keys.
 
@@ -115,7 +115,7 @@ npm --prefix website test -- use-project-assistant-controller project-assistant-
 
 Expected: PASS.
 
-- [ ] **Step 3: Write failing parametric controller tests**
+- [x] **Step 3: Write failing parametric controller tests**
 
 Add tests asserting saved `.lcad.json` source derivation and stable local overrides:
 
@@ -133,7 +133,7 @@ npm --prefix website test -- use-project-parametric-models
 
 Expected: FAIL because the hook does not exist.
 
-- [ ] **Step 4: Implement and integrate the parametric controller**
+- [x] **Step 4: Implement and integrate the parametric controller**
 
 Move saved-source loading, saved-artifact derivation, local parameter overrides, and Feature DSL preview coordination from `ProjectView`. Keep source query keys and stale-mesh preservation behavior unchanged.
 
@@ -145,7 +145,7 @@ npm --prefix website test -- use-project-parametric-models use-parametric-artifa
 
 Expected: PASS.
 
-- [ ] **Step 5: Add an independent Assistant/parameter browser workflow**
+- [x] **Step 5: Add an independent Assistant/parameter browser workflow**
 
 Split the Assistant draft/save/parameter-edit path into its own Playwright test with fresh fixture reset. Assert conversation selection, draft preview status, save, parameter edit, persisted request count, and absence of console/page errors.
 
@@ -157,7 +157,7 @@ task test-browser
 
 Expected: all Playwright tests pass.
 
-- [ ] **Step 6: Complete the in-app Browser pass**
+- [x] **Step 6: Complete the in-app Browser pass**
 
 Start the normal development environment, open `/projects/<fixture-id>` in the in-app Browser, and verify:
 
@@ -167,11 +167,11 @@ Start the normal development environment, open `/projects/<fixture-id>` in the i
 4. Saving and editing a numeric parameter updates the visible preview status.
 5. History opens after the parameter edit.
 
-- [ ] **Step 7: Update ownership documentation**
+- [x] **Step 7: Update ownership documentation**
 
 Update `TODO.md` to remove the completed Assistant/parametric portion of the composition hotspot. Update `.agents/rules/litecad-architecture.md` to assign those responsibilities to the new hooks and keep future queries/effects out of `ProjectView`.
 
-- [ ] **Step 8: Run the phase gate and commit**
+- [x] **Step 8: Run the phase gate and commit**
 
 ```bash
 task check

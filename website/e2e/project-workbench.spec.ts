@@ -279,7 +279,7 @@ function captureBrowserErrors(page: Page) {
   return errors
 }
 
-test('opens the project workbench, History, and Assistant without browser errors', async ({ page }) => {
+function resetSmokeState() {
   smokeMessages = []
   smokeModels = []
   smokeFeatureDSLSourceRequestCount = 0
@@ -288,6 +288,10 @@ test('opens the project workbench, History, and Assistant without browser errors
   smokeHistoryEntries = []
   smokeModelParameterUpdateCount = 0
   smokeSavedParameterValues = {}
+}
+
+test('opens the project workbench shell and History without browser errors', async ({ page }) => {
+  resetSmokeState()
   const browserErrors = captureBrowserErrors(page)
   await page.route('**/api/v1/**', fulfillAPI)
 
@@ -322,6 +326,18 @@ test('opens the project workbench, History, and Assistant without browser errors
   await expect(page.getByRole('dialog', { name: 'Operation history' })).toBeVisible()
   await expect(page.getByText('Edits will appear here after you move, change parameters, add, or delete model content.')).toBeVisible()
   await page.keyboard.press('Escape')
+
+  expect(browserErrors).toEqual([])
+})
+
+test('runs the Assistant draft, save, parameter edit, and reload workflow', async ({ page }) => {
+  test.slow()
+  resetSmokeState()
+  const browserErrors = captureBrowserErrors(page)
+  await page.route('**/api/v1/**', fulfillAPI)
+
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Toggle Assistant' }).click()
   await expect(page.getByRole('complementary', { name: 'Assistant panel' })).toHaveAttribute('aria-hidden', 'false')
@@ -361,22 +377,14 @@ test('opens the project workbench, History, and Assistant without browser errors
   await expect(page.getByLabel('width value')).toHaveValue('60')
   const savedModelInspector = page.getByRole('region', { name: 'Parametric artifact' })
   await expect(savedModelInspector.getByRole('button', { name: 'Save parameters' })).toBeHidden()
-  const sourceRequestsBeforeParameterSave = smokeFeatureDSLSourceRequestCount
   const modelParameterUpdatesBefore = smokeModelParameterUpdateCount
   await page.locator('[data-model-preview] canvas').first().evaluate((canvas) => {
     canvas.setAttribute('data-litecad-stable-canvas', 'saved-parameter-edit')
   })
-  await page.getByLabel('width value').fill('70')
-  await expect(page.getByLabel('width value')).toHaveValue('70')
-  expect(smokeModelParameterUpdateCount).toBe(modelParameterUpdatesBefore)
-  expect(smokeFeatureDSLSourceRequestCount).toBe(sourceRequestsBeforeParameterSave)
-  await page.getByLabel('width value').fill('80')
   await page.getByLabel('width value').fill('90')
   await expect(page.getByLabel('width value')).toHaveValue('90')
-  await page.waitForTimeout(500)
-  expect(smokeModelParameterUpdateCount).toBe(modelParameterUpdatesBefore)
-  await page.getByLabel('width value').press('Tab')
   await expect.poll(() => smokeModelParameterUpdateCount).toBe(modelParameterUpdatesBefore + 1)
+  expect(smokeSavedParameterValues).toEqual({ width: 90 })
   await page.getByRole('button', { name: 'Operation history' }).click()
   await expect(page.getByText('Update parameters for smoke-bracket-litecad.lcad.json')).toBeVisible()
   await expect

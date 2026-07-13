@@ -27,7 +27,7 @@ These rules keep LiteCAD product work aligned with the small Go + React single-b
 - API calls live in `website/src/api/`.
 - Shared HTTP contract types live in `website/src/types/`.
 - Page-level routes live in `website/src/views/`.
-- `ProjectView` is the project route composition root. Keep serialized CAD mutations, revision conflict refresh, and transform autosave in `useCADDocumentCommands(...)`; keep History, STEP export, Assistant, model tree, and Inspector UI in controlled components that receive data and callbacks instead of fetching route state themselves.
+- `ProjectView` is the project route composition root. Keep serialized CAD mutations, revision conflict refresh, and transform autosave in `useCADDocumentCommands(...)`; keep Assistant conversations, messages, generation mutations, and retry state in `useProjectAssistantController(...)`; keep saved parametric source loading, local parameter preview overrides, and LiteCAD DSL preview mesh caching in `useProjectParametricModels(...)`. History, STEP export, Assistant, model tree, and Inspector UI remain controlled components that receive data and callbacks instead of fetching route state themselves.
 - Keep the left-panel and Assistant-panel open state and widths in the versioned `useProjectWorkspacePreferences(...)` browser-local boundary. Treat these as non-sensitive presentation preferences, not project data or React Query server state, and retain stored-value validation plus runtime width clamps.
 - Reuse the existing React Router, React Query, Tailwind, shadcn/ui component conventions, Lucide icons, Axios, and Three.js patterns.
 - UI components must use or compose shadcn/ui primitives unless shadcn/ui has no suitable component for the requirement.

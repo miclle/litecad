@@ -27,9 +27,6 @@ import {
 import { Link, useParams } from 'react-router-dom'
 
 import {
-  createProjectAgentConversation,
-  fetchProjectAgentConversationMessages,
-  fetchProjectAgentConversations,
   fetchProject,
   fetchProjectCADDocument,
   fetchProjectCADHistory,
@@ -37,10 +34,7 @@ import {
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
   fetchProjectModels,
-  fetchProjectParametricArtifacts,
-  runProjectAgentParametric,
   saveProjectParametricArtifactModel,
-  sendProjectAgentConversationMessage,
   updateProjectParametricArtifact,
   updateProjectParametricModelParameters,
   uploadProjectThumbnailSnapshot,
@@ -48,7 +42,6 @@ import {
 } from 'src/api/projects'
 import {
   runFeatureDSLExportInWorker,
-  runFeatureDSLPreviewInWorker,
   runStepAssemblyExportInWorker,
   runStepPreviewInWorker,
   runStepRoundTripInWorker,
@@ -87,13 +80,10 @@ import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
 import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
-import { displayAiChatBody, generatedArtifactTitleFromAIChatBody } from './project-agent-tool-message'
-import { ProjectAssistantPanel, type AiChatMessage } from './project-assistant-panel'
-import { buildFeatureDSLPreviewInput } from './project-feature-dsl-preview'
+import { ProjectAssistantPanel } from './project-assistant-panel'
 import { ProjectHistoryPopover } from './project-history-popover'
 import { ProjectInspector, type ProjectInspectorSelection, type TransformDraft } from './project-inspector'
 import { ProjectModelTree } from './project-model-tree'
-import { formatParametricRunSummary } from './project-parametric-run-telemetry'
 import { ProjectStepExportPopover } from './project-step-export-popover'
 import { exportMergedStepTargets, exportStepTarget } from './project-step-export-action'
 import {
@@ -102,7 +92,6 @@ import {
   cadKernelGeometryOperationSignature,
   cadKernelGeometryOperationsForModel,
   getModelDisplayName,
-  parsedPreviewModels,
   projectPreviewSummary,
   projectPreviewAssetSignature,
 } from './project-preview-assets'
@@ -116,6 +105,8 @@ import {
 } from './project-step-export'
 import { ViewController } from './view-controller'
 import { useCADDocumentCommands } from './use-cad-document-commands'
+import { useProjectAssistantController } from './use-project-assistant-controller'
+import { useProjectParametricModels } from './use-project-parametric-models'
 import {
   aiChatPanelMinWidth,
   defaultAiChatPanelWidth,
@@ -153,14 +144,6 @@ function TopbarTooltip({
   )
 }
 
-const initialAiChatMessages: AiChatMessage[] = [
-  {
-    id: 'assistant-initial',
-    role: 'assistant',
-    body: 'I can stay beside the model while you inspect sources, metadata, and design notes.',
-  },
-]
-
 function clampPanelWidth(width: number, minWidth: number, maxWidth: number) {
   return Math.min(Math.max(width, minWidth), maxWidth)
 }
@@ -170,18 +153,6 @@ function getAiChatPanelMaxWidth() {
     return Math.max(defaultAiChatPanelWidth, aiChatPanelMinWidth)
   }
   return Math.max(Math.floor(window.innerWidth * aiChatPanelMaxWidthRatio), aiChatPanelMinWidth)
-}
-
-function projectAgentErrorMessage(error: unknown) {
-  const status = (error as { response?: { status?: number } }).response?.status
-  const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message
-  if (status === 503) {
-    return 'Assistant is not configured yet. Add the server-side AI provider settings, then try again.'
-  }
-  if (message) {
-    return message
-  }
-  return 'Assistant could not answer right now. Check the AI provider configuration and try again.'
 }
 
 function transformDraftFromTranslation(translation: CADTranslation): TransformDraft {
@@ -279,12 +250,7 @@ function ProjectView() {
   const [isProjectInfoOpen, setIsProjectInfoOpen] = useState(false)
   const [isStepExportOpen, setIsStepExportOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
-  const [aiChatDraft, setAiChatDraft] = useState('')
-  const [localAiChatMessages, setLocalAiChatMessages] = useState<AiChatMessage[]>([])
-  const [selectedAgentConversationID, setSelectedAgentConversationID] = useState('')
   const [selectedParametricArtifact, setSelectedParametricArtifact] = useState<ProjectParametricArtifact | undefined>(undefined)
-  const [parametricRunError, setParametricRunError] = useState('')
-  const [retryParametricPrompt, setRetryParametricPrompt] = useState('')
   const [aiChatPanelMaxWidth, setAiChatPanelMaxWidth] = useState(getAiChatPanelMaxWidth)
   const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
   const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
@@ -299,12 +265,20 @@ function ProjectView() {
   const [stepExportErrorByModelID, setStepExportErrorByModelID] = useState<Record<string, string>>({})
   const [stepExportStatusByModelID, setStepExportStatusByModelID] = useState<Record<string, string>>({})
   const [selectedStepExportTargetIDs, setSelectedStepExportTargetIDs] = useState<Set<string>>(() => new Set())
-  const [parametricPreviewParameterOverridesByModelID, setParametricPreviewParameterOverridesByModelID] = useState<
-    Record<string, Record<string, OpenSCADParameterValue>>
-  >({})
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
   const hasTouchedStepExportSelectionRef = useRef(false)
   const lastRequestedThumbnailSignatureRef = useRef('')
+  const handleAssistantArtifactSelected = useCallback((artifact: ProjectParametricArtifact) => {
+    setSelectedParametricArtifact(artifact)
+    setSelectedModelID('')
+    setSelectedDocumentNodeID('')
+    setActiveCADTool('inspect')
+  }, [])
+  const projectAssistant = useProjectAssistantController({
+    enabled: projectId !== '' && isAiChatOpen,
+    onArtifactSelected: handleAssistantArtifactSelected,
+    projectId,
+  })
   const handleCADDocumentConflict = useCallback(() => setIsHistoryOpen(true), [])
   const handleCADDocumentNodeDeleted = useCallback((nodeId: string) => {
     setTransformDraftsByModelID((currentDrafts) => {
@@ -345,20 +319,6 @@ function ProjectView() {
     queryFn: async () => (await fetchProjectModels(projectId)).data.models,
     enabled: projectId !== '' && projectQuery.isSuccess,
   })
-  const projectAgentConversationsQuery = useQuery({
-    queryKey: ['project-agent-conversations', projectId],
-    queryFn: async () => (await fetchProjectAgentConversations(projectId)).data.conversations,
-    enabled: projectId !== '' && projectQuery.isSuccess && isAiChatOpen,
-  })
-  const projectAgentConversations = useMemo(() => projectAgentConversationsQuery.data ?? [], [projectAgentConversationsQuery.data])
-  const activeAgentConversationID = projectAgentConversations.some((conversation) => conversation.id === selectedAgentConversationID)
-    ? selectedAgentConversationID
-    : projectAgentConversations[0]?.id || ''
-  const projectAgentMessagesQuery = useQuery({
-    queryKey: ['project-agent-messages', projectId, activeAgentConversationID],
-    queryFn: async () => (await fetchProjectAgentConversationMessages(projectId, activeAgentConversationID)).data.messages,
-    enabled: projectId !== '' && isAiChatOpen && activeAgentConversationID !== '',
-  })
   const uploadModelMutation = useMutation({
     mutationFn: (file: File) => uploadProjectModel(projectId, file),
     onSuccess: async () => {
@@ -368,100 +328,6 @@ function ProjectView() {
     },
     onError: () => {
       setUploadError('Model upload failed. Check that the file is STEP, GLTF, GLB, or STL and try again.')
-    },
-  })
-  const projectAgentMutation = useMutation({
-    mutationFn: async (messageBody: string) => {
-      const response = await sendProjectAgentConversationMessage(projectId, activeAgentConversationID, {
-        messages: [{ role: 'user', body: messageBody }],
-      })
-      return response.data
-    },
-    onSuccess: async ({ artifact, message }) => {
-      setLocalAiChatMessages((currentMessages) => [
-        ...currentMessages,
-        {
-          id: `local-assistant-${message.id || Date.now()}`,
-          role: 'assistant',
-          body: message.body,
-        },
-      ])
-      await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })
-      await queryClient.invalidateQueries({ queryKey: ['project-agent-messages', projectId, message.conversation_id] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
-      if (artifact) {
-        setParametricRunError('')
-        setRetryParametricPrompt('')
-        setSelectedParametricArtifact(artifact)
-        setSelectedModelID('')
-        setSelectedDocumentNodeID('')
-        setActiveCADTool('inspect')
-      } else {
-        const generatedTitle = generatedArtifactTitleFromAIChatBody(message.body)
-        if (generatedTitle) {
-          const artifacts = (await fetchProjectParametricArtifacts(projectId)).data.artifacts
-          const generatedArtifact =
-            artifacts.find((artifact) => artifact.message_id === message.id) ??
-            artifacts.find((artifact) => artifact.title === generatedTitle && artifact.conversation_id === message.conversation_id)
-          if (generatedArtifact) {
-            setParametricRunError('')
-            setRetryParametricPrompt('')
-            setSelectedParametricArtifact(generatedArtifact)
-            setSelectedModelID('')
-            setSelectedDocumentNodeID('')
-            setActiveCADTool('inspect')
-          }
-        }
-      }
-      setLocalAiChatMessages([])
-    },
-    onError: (error) => {
-      setLocalAiChatMessages((currentMessages) => [
-        ...currentMessages,
-        {
-          id: `assistant-error-${Date.now()}`,
-          role: 'assistant',
-          body: projectAgentErrorMessage(error),
-        },
-      ])
-    },
-  })
-  const projectAgentParametricMutation = useMutation({
-    mutationFn: async (messageBody: string) => {
-      const response = await runProjectAgentParametric(projectId, activeAgentConversationID, { message: messageBody })
-      return response.data
-    },
-    onSuccess: async ({ artifact, message, telemetry }) => {
-      setParametricRunError('')
-      setRetryParametricPrompt('')
-      setSelectedParametricArtifact(artifact)
-      setSelectedModelID('')
-      setSelectedDocumentNodeID('')
-      setActiveCADTool('inspect')
-      setLocalAiChatMessages((currentMessages) => [
-        ...currentMessages,
-        {
-          id: `local-assistant-parametric-${message.id || Date.now()}`,
-          role: 'assistant',
-          body: formatParametricRunSummary(artifact.title, telemetry),
-        },
-      ])
-      await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })
-      await queryClient.invalidateQueries({ queryKey: ['project-agent-messages', projectId, message.conversation_id] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
-      setLocalAiChatMessages([])
-    },
-    onError: (error) => {
-      const errorMessage = projectAgentErrorMessage(error)
-      setParametricRunError(errorMessage)
-      setLocalAiChatMessages((currentMessages) => [
-        ...currentMessages,
-        {
-          id: `assistant-parametric-error-${Date.now()}`,
-          role: 'assistant',
-          body: errorMessage,
-        },
-      ])
     },
   })
   const saveProjectParametricArtifactMutation = useMutation({
@@ -492,7 +358,7 @@ function ProjectView() {
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
     },
     onError: () => {
-      setParametricRunError('Generated source could not be added to the canvas. Try generating it again.')
+      projectAssistant.setParametricRunError('Generated source could not be added to the canvas. Try generating it again.')
     },
   })
   const updateProjectParametricModelParametersMutation = useMutation({
@@ -513,17 +379,6 @@ function ProjectView() {
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
-    },
-  })
-  const createProjectAgentConversationMutation = useMutation({
-    mutationFn: async () => (await createProjectAgentConversation(projectId, { title: 'New chat' })).data.conversation,
-    onSuccess: async (conversation) => {
-      setSelectedAgentConversationID(conversation.id)
-      setAiChatDraft('')
-      setLocalAiChatMessages([])
-      setParametricRunError('')
-      setRetryParametricPrompt('')
-      await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })
     },
   })
   const thumbnailSnapshotMutation = useMutation({
@@ -547,17 +402,6 @@ function ProjectView() {
   })
   const project = projectQuery.data
   const projectModels = useMemo(() => projectModelsQuery.data ?? [], [projectModelsQuery.data])
-  const persistedAiChatMessages = useMemo<AiChatMessage[]>(
-    () =>
-      projectAgentMessagesQuery.data && projectAgentMessagesQuery.data.length > 0
-        ? projectAgentMessagesQuery.data.map((message) => ({ id: message.id, role: message.role, body: displayAiChatBody(message.body) }))
-        : initialAiChatMessages,
-    [projectAgentMessagesQuery.data],
-  )
-  const aiChatMessages = useMemo(
-    () => [...persistedAiChatMessages, ...localAiChatMessages],
-    [localAiChatMessages, persistedAiChatMessages],
-  )
   const selectedModel = useMemo(
     () => projectModels.find((model) => model.id === selectedModelID),
     [projectModels, selectedModelID],
@@ -600,33 +444,13 @@ function ProjectView() {
   const selectedSourceModel = selectedSourceModelID ? projectModels.find((model) => model.id === selectedSourceModelID) : undefined
   const keyboardDeleteNode = effectiveSelectedDocumentNodeID ? cadNodeByID.get(effectiveSelectedDocumentNodeID) : undefined
   const canDeleteNodeFromKeyboard = isCADDocumentNodeDeletable(keyboardDeleteNode)
-  const selectedParametricModelSourceQuery = useQuery({
-    queryKey: ['projects', projectId, 'models', selectedSourceModelID, 'parametric-source'],
-    queryFn: async () => (await fetchProjectModelSource(projectId, selectedSourceModelID)).data.text(),
-    enabled: projectId !== '' && isParametricProjectModelFormat(selectedSourceModel?.format) && !selectedParametricArtifact,
+  const parametricModels = useProjectParametricModels({
+    projectId,
+    projectModels,
+    selectedArtifact: selectedParametricArtifact,
+    selectedSourceModel,
   })
-  const selectedSavedParametricArtifact: ProjectParametricArtifact | undefined = (() => {
-    if (!selectedSourceModel || !isParametricProjectModelFormat(selectedSourceModel.format) || !selectedParametricModelSourceQuery.data) {
-      return undefined
-    }
-    return {
-      id: `model-${selectedSourceModel.id}`,
-      project_id: projectId,
-      conversation_id: '',
-      message_id: '',
-      title: getModelDisplayName(selectedSourceModel),
-      source_kind: selectedSourceModel.format === 'lcad' ? 'litecad-feature-dsl' : 'openscad',
-      source_code: selectedParametricModelSourceQuery.data,
-      parameter_values: selectedSourceModel.metadata.parameter_values ?? {},
-      compile_status: 'success',
-      compile_error: '',
-      preview_model_id: selectedSourceModel.id,
-      generation_tool_mode: '',
-      generation_duration_ms: 0,
-      created_at: selectedSourceModel.created_at,
-      updated_at: selectedSourceModel.updated_at,
-    }
-  })()
+  const selectedSavedParametricArtifact = parametricModels.selectedSavedArtifact
   const projectModelTree = useMemo(() => buildProjectModelTree(projectModels, projectCADDocument), [projectModels, projectCADDocument])
   const modelTranslationsByID = useMemo(() => {
     const translations: Record<string, CADTranslation> = {}
@@ -653,29 +477,9 @@ function ProjectView() {
     }
     return translations
   }, [cadNodeByID, transformDraftsByModelID])
-  const previewModels = useMemo(() => parsedPreviewModels(projectModels), [projectModels])
-  const previewModelsWithParametricOverrides = useMemo(
-    () =>
-      previewModels.map((model) => {
-        const parameterValues = parametricPreviewParameterOverridesByModelID[model.id]
-        if (model.format !== 'lcad' || !parameterValues) {
-          return model
-        }
-        return {
-          ...model,
-          metadata: {
-            ...model.metadata,
-            parameter_values: parameterValues,
-          },
-        }
-      }),
-    [parametricPreviewParameterOverridesByModelID, previewModels],
-  )
+  const previewModels = parametricModels.previewModels
   const browserKernelStepPreviewModels = useMemo(() => previewModels.filter((model) => model.format === 'step'), [previewModels])
-  const browserKernelFeatureDSLPreviewModels = useMemo(
-    () => previewModelsWithParametricOverrides.filter((model) => model.format === 'lcad'),
-    [previewModelsWithParametricOverrides],
-  )
+  const browserKernelFeatureDSLPreviewModels = parametricModels.featureDSLPreviewModels
   const backendPreviewModels = useMemo(() => previewModels.filter((model) => model.format !== 'step' && model.format !== 'lcad'), [previewModels])
   const latestModel = projectModels[0]
   const latestProductName = latestModel?.metadata.product_names?.[0]
@@ -697,49 +501,8 @@ function ProjectView() {
       }
     }),
   })
-  const browserKernelFeatureDSLPreviewQueries = useQueries({
-    queries: browserKernelFeatureDSLPreviewModels.map((model) => ({
-      queryKey: ['projects', projectId, 'models', model.id, 'feature-dsl-preview', model.updated_at, stableJSONStringify(model.metadata.parameter_values ?? {})],
-      queryFn: async () => {
-        const sourceQueryKey = ['projects', projectId, 'models', model.id, 'parametric-source'] as const
-        const cachedSourceText = queryClient.getQueryData<string>(sourceQueryKey)
-        const sourceText = cachedSourceText ?? (await (await fetchProjectModelSource(projectId, model.id)).data.text())
-        if (cachedSourceText === undefined) {
-          queryClient.setQueryData(sourceQueryKey, sourceText)
-        }
-        return runFeatureDSLPreviewInWorker(buildFeatureDSLPreviewInput(model, sourceText))
-      },
-      enabled: projectId !== '',
-      placeholderData: (previousData: CadKernelWorkerPreviewResult | undefined) => previousData,
-      retry: false,
-    })),
-  })
-  const [featureDSLKernelMeshesByModelID, setFeatureDSLKernelMeshesByModelID] = useState<Record<string, CadKernelWorkerPreviewResult>>({})
-  useEffect(() => {
-    const updateFeatureDSLMeshCacheTimeout = window.setTimeout(() => {
-      setFeatureDSLKernelMeshesByModelID((currentMeshes) => {
-        const nextMeshes: Record<string, CadKernelWorkerPreviewResult> = {}
-        browserKernelFeatureDSLPreviewModels.forEach((model, index) => {
-          const previewMesh = browserKernelFeatureDSLPreviewQueries[index]?.data ?? currentMeshes[model.id]
-          if (previewMesh) {
-            nextMeshes[model.id] = previewMesh
-          }
-        })
-        const currentModelIDs = Object.keys(currentMeshes)
-        const nextModelIDs = Object.keys(nextMeshes)
-        if (
-          currentModelIDs.length === nextModelIDs.length &&
-          nextModelIDs.every((modelID) => currentMeshes[modelID] === nextMeshes[modelID])
-        ) {
-          return currentMeshes
-        }
-        return nextMeshes
-      })
-    }, 0)
-    return () => {
-      window.clearTimeout(updateFeatureDSLMeshCacheTimeout)
-    }
-  }, [browserKernelFeatureDSLPreviewModels, browserKernelFeatureDSLPreviewQueries])
+  const browserKernelFeatureDSLPreviewQueries = parametricModels.featureDSLPreviewQueries
+  const featureDSLKernelMeshesByModelID = parametricModels.featureDSLKernelMeshesByModelID
   const kernelMeshesByModelID = browserKernelPreviewQueries.reduce<Record<string, CadKernelWorkerPreviewResult>>(
     (meshByModelID, query, index) => {
       const modelID = browserKernelStepPreviewModels[index]?.id
@@ -968,15 +731,6 @@ function ProjectView() {
 
     openAiChat()
   }
-
-  const updateParametricPreviewParameters = useCallback((modelID: string, parameterValues: Record<string, OpenSCADParameterValue>) => {
-    setParametricPreviewParameterOverridesByModelID((currentOverrides) => {
-      if (stableJSONStringify(currentOverrides[modelID] ?? {}) === stableJSONStringify(parameterValues)) {
-        return currentOverrides
-      }
-      return { ...currentOverrides, [modelID]: parameterValues }
-    })
-  }, [])
 
   useEffect(() => {
     return () => {
@@ -1299,71 +1053,6 @@ function ProjectView() {
     uploadModelMutation.mutate(file)
     event.target.value = ''
   }
-  const submitAiChat = () => {
-    const messageBody = aiChatDraft.trim()
-    if (
-      !messageBody ||
-      projectAgentMutation.isPending ||
-      projectAgentParametricMutation.isPending ||
-      activeAgentConversationID === ''
-    ) {
-      return
-    }
-    setLocalAiChatMessages((currentMessages) => [
-      ...currentMessages,
-      { id: `user-${Date.now()}`, role: 'user' as const, body: messageBody },
-    ])
-    projectAgentMutation.mutate(messageBody)
-    setAiChatDraft('')
-  }
-  const generateParametricArtifact = () => {
-    const messageBody = aiChatDraft.trim()
-    if (
-      !messageBody ||
-      projectAgentParametricMutation.isPending ||
-      activeAgentConversationID === ''
-    ) {
-      return
-    }
-    runParametricGeneration(messageBody)
-    setAiChatDraft('')
-  }
-  const retryParametricGeneration = () => {
-    const messageBody = retryParametricPrompt.trim()
-    if (
-      !messageBody ||
-      projectAgentMutation.isPending ||
-      projectAgentParametricMutation.isPending ||
-      createProjectAgentConversationMutation.isPending ||
-      activeAgentConversationID === ''
-    ) {
-      return
-    }
-    runParametricGeneration(messageBody)
-  }
-  const runParametricGeneration = (messageBody: string) => {
-    setParametricRunError('')
-    setRetryParametricPrompt(messageBody)
-    setLocalAiChatMessages((currentMessages) => [
-      ...currentMessages,
-      { id: `user-parametric-${Date.now()}`, role: 'user' as const, body: messageBody },
-    ])
-    projectAgentParametricMutation.mutate(messageBody)
-  }
-  const createAiChatConversation = () => {
-    if (createProjectAgentConversationMutation.isPending) {
-      return
-    }
-    createProjectAgentConversationMutation.mutate()
-  }
-  const selectAiChatConversation = (conversationID: string) => {
-    setSelectedAgentConversationID(conversationID)
-    setAiChatDraft('')
-    setLocalAiChatMessages([])
-    setParametricRunError('')
-    setRetryParametricPrompt('')
-  }
-
   return (
     <div
       className={`grid min-h-screen overflow-x-auto overflow-y-hidden bg-[#f8fafc] text-[#0f172a] motion-reduce:transition-none ${
@@ -1789,7 +1478,7 @@ function ProjectView() {
                     artifact={selectedSavedParametricArtifact}
                     initialParameterValues={selectedSavedParametricArtifact.parameter_values}
                     onParameterValuesChange={(parameterValues) =>
-                      updateParametricPreviewParameters(selectedSavedParametricArtifact.preview_model_id, parameterValues)
+                      parametricModels.updatePreviewParameters(selectedSavedParametricArtifact.preview_model_id, parameterValues)
                     }
                     onSaveParameters={(parameterValues) =>
                       updateProjectParametricModelParametersMutation.mutate({
@@ -1817,54 +1506,30 @@ function ProjectView() {
 
       <div className="h-screen min-w-0 overflow-hidden">
         <ProjectAssistantPanel
-          activeConversationId={activeAgentConversationID}
-          conversations={projectAgentConversations}
-          draft={aiChatDraft}
-          isPending={
-            projectAgentMutation.isPending ||
-            projectAgentParametricMutation.isPending ||
-            createProjectAgentConversationMutation.isPending
-          }
+          activeConversationId={projectAssistant.activeConversationID}
+          conversations={projectAssistant.conversations}
+          draft={projectAssistant.draft}
+          isPending={projectAssistant.isPending}
           maxWidth={aiChatPanelMaxWidth}
-          messages={aiChatMessages}
+          messages={projectAssistant.messages}
           onClose={closeAiChat}
-          onCreateConversation={createAiChatConversation}
-          onDraftChange={setAiChatDraft}
-          onGenerateParametric={generateParametricArtifact}
+          onCreateConversation={projectAssistant.createConversation}
+          onDraftChange={projectAssistant.setDraft}
+          onGenerateParametric={projectAssistant.generateParametricArtifact}
           onResizePointerDown={startAiChatPanelResize}
-          onRetryParametric={retryParametricGeneration}
-          onSelectConversation={selectAiChatConversation}
-          onSubmit={submitAiChat}
+          onRetryParametric={projectAssistant.retryParametricGeneration}
+          onSelectConversation={projectAssistant.selectConversation}
+          onSubmit={projectAssistant.submitMessage}
           open={isAiChatOpen}
-          parametricRunError={parametricRunError}
-          pendingKind={
-            projectAgentParametricMutation.isPending
-              ? 'parametric'
-              : createProjectAgentConversationMutation.isPending
-                ? 'conversation'
-                : projectAgentMutation.isPending
-                  ? 'message'
-                  : 'idle'
-          }
-          retryParametricPrompt={retryParametricPrompt}
+          parametricRunError={projectAssistant.parametricRunError}
+          pendingKind={projectAssistant.pendingKind}
+          retryParametricPrompt={projectAssistant.retryParametricPrompt}
           sourceCount={projectModels.length}
           width={aiChatPanelWidth}
         />
       </div>
     </div>
   )
-}
-
-function isParametricProjectModelFormat(format: string | undefined) {
-  return format === 'scad' || format === 'lcad'
-}
-
-function stableJSONStringify(value: Record<string, unknown>) {
-  const ordered: Record<string, unknown> = {}
-  for (const key of Object.keys(value).sort()) {
-    ordered[key] = value[key]
-  }
-  return JSON.stringify(ordered)
 }
 
 export default ProjectView
