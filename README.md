@@ -151,6 +151,16 @@ task update-tools   # Install/update reflex, staticcheck, golangci-lint
 
 Production builds keep the compact single-binary deployment model inherited from `miclle/goblet`: the Go backend embeds the built Vite frontend, so deployment needs one executable plus a configured database.
 
+## Production Deployment
+
+Production deployment is one binary plus a PostgreSQL or MySQL database. Build with `task build`, copy the resulting `bin/litecad` and a production YAML config to the target environment, provide the database DSN through an environment variable, then run:
+
+```bash
+./bin/litecad -c config.production.yaml
+```
+
+The production binary serves embedded SPA assets directly; it does not require a Vite server. Full packaging, runtime config, and pre-release verification notes live in [docs/production-deployment.md](docs/production-deployment.md).
+
 ## Verification
 
 Run before committing:
@@ -177,7 +187,7 @@ CI also runs Go tests, frontend lint/type/test/build, actionlint, dependency rev
 
 ## Roadmap
 
-Near-term product work is focused on turning the current preview/edit/export loop into a richer CAD workflow: durable kernel shape state, broader feature operations, measurement and sectioning, clearer assembly semantics, stronger CAD Agent tool boundaries, project management polish, and production deployment guidance.
+Near-term product work is focused on turning the current preview/edit/export loop into a richer CAD workflow: durable kernel shape state, broader feature operations, measurement and sectioning, clearer assembly semantics, stronger CAD Agent tool boundaries, and project management polish.
 
 Active follow-up items are tracked in [TODO.md](TODO.md). The browser-kernel architecture plan and phase history live in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md).
 

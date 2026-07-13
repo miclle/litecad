@@ -14,7 +14,7 @@ These rules keep LiteCAD product work aligned with the small Go + React single-b
 ## Backend Boundaries
 
 - Handlers own HTTP binding, status codes, response DTOs, cookies, and route grouping.
-- Project handlers are split by domain: `project.go` owns project metadata, `project_models.go` owns thumbnail/model/geometry delivery, `project_cad.go` owns editable CAD document and History commands, `project_agent.go` owns advisory chat, and `project_errors.go` owns shared session/error translation.
+- Project handlers are split by domain: `project.go` owns project metadata, `project_models.go` owns thumbnail/model/source/preview/geometry delivery, `project_cad.go` owns editable CAD document and History commands, `project_agent.go` owns advisory chat and parametric runs, `project_parametric.go` owns generated parametric artifact CRUD/save/parameter routes, and `project_errors.go` owns shared session/error translation.
 - Application handlers use `pkg/httperr` for HTTP-status-aware errors. The website asset handlers use Fox's `httperrors` only for framework-level API/SPAs NotFound behavior.
 - Services own business logic, validation that is not purely HTTP binding, and database access.
 - Entities own GORM models, table names, persistence constants, and narrow model helpers.

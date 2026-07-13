@@ -16,6 +16,8 @@ LiteCAD uses `github.com/fox-gonic/fox`, not raw Gin. The application entrypoint
 - Give handler methods resource-specific names, such as `CreateUser` or `ListProjects`, rather than generic `Create` or `List`.
 - Put routes in the smallest sensible group under `/api/v1`.
 - Document exceptions such as health checks, webhooks, streaming endpoints, and reverse proxies near their route registration.
+- Keep project HTTP behavior in the existing domain files: project metadata in `project.go`, source files/thumbnails/preview/geometry delivery in `project_models.go`, editable CAD document and History commands in `project_cad.go`, Assistant conversations and parametric runs in `project_agent.go`, generated parametric artifact CRUD/save/parameter routes in `project_parametric.go`, and shared project/session error translation in `project_errors.go`.
+- When adding a project route, put the handler and route test in that domain's file pair first. Create a new `project_<domain>.go` only when the behavior cannot honestly fit one of the existing domains.
 
 ## Status Codes
 

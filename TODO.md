@@ -19,10 +19,7 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 ## Backend And Data
 
 - Decide whether product-facing URLs should keep exposing prefixed entity IDs such as `project_...`, or introduce project slugs / slug-plus-short-id routes while preserving prefixed IDs as internal canonical identifiers.
-- Keep new project HTTP behavior inside the established `project.go`, `project_models.go`, `project_cad.go`, `project_agent.go`, and `project_errors.go` domain boundaries instead of rebuilding a single project handler hotspot.
 
 ## Documentation And Operations
 
-- Keep [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md) current as browser-kernel feasibility results, package choices, limitations, and phase completions become known.
-- Document production deployment once database provisioning, config injection, and binary release flow are settled.
 - Keep README, AGENTS.md, and `.agents/rules/` aligned whenever shipped capabilities move out of this TODO.
