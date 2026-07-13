@@ -117,6 +117,13 @@ import {
 import { ViewController } from './view-controller'
 import { useCADDocumentCommands } from './use-cad-document-commands'
 import {
+  aiChatPanelMinWidth,
+  defaultAiChatPanelWidth,
+  leftPanelMaxWidth,
+  leftPanelMinWidth,
+  useProjectWorkspacePreferences,
+} from './use-project-workspace-preferences'
+import {
   initialViewOrientation,
   orientationDistance,
   rotateOrientation,
@@ -125,11 +132,6 @@ import {
 } from './view-orientation'
 import type { ProjectParametricArtifact } from 'src/types/project'
 
-const defaultLeftPanelWidth = 270
-const leftPanelMinWidth = 220
-const leftPanelMaxWidth = 440
-const defaultAiChatPanelWidth = 420
-const aiChatPanelMinWidth = 340
 const aiChatPanelMaxWidthRatio = 0.5
 const aiChatPanelTransitionMs = 220
 type CADTool = 'inspect' | 'fuse-box'
@@ -261,9 +263,17 @@ function ProjectView() {
   const { projectId = '' } = useParams()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false)
-  const [isAiChatOpen, setIsAiChatOpen] = useState(false)
-  const [isAiChatColumnVisible, setIsAiChatColumnVisible] = useState(false)
+  const {
+    aiChatPanelWidth,
+    isAiChatOpen,
+    isLeftPanelCollapsed,
+    leftPanelWidth,
+    setAiChatPanelWidth,
+    setIsAiChatOpen,
+    setIsLeftPanelCollapsed,
+    setLeftPanelWidth,
+  } = useProjectWorkspacePreferences()
+  const [isAiChatColumnVisible, setIsAiChatColumnVisible] = useState(isAiChatOpen)
   const [isAiChatTransitioning, setIsAiChatTransitioning] = useState(false)
   const [isAiChatPanelResizing, setIsAiChatPanelResizing] = useState(false)
   const [isProjectInfoOpen, setIsProjectInfoOpen] = useState(false)
@@ -275,8 +285,6 @@ function ProjectView() {
   const [selectedParametricArtifact, setSelectedParametricArtifact] = useState<ProjectParametricArtifact | undefined>(undefined)
   const [parametricRunError, setParametricRunError] = useState('')
   const [retryParametricPrompt, setRetryParametricPrompt] = useState('')
-  const [leftPanelWidth, setLeftPanelWidth] = useState(defaultLeftPanelWidth)
-  const [aiChatPanelWidth, setAiChatPanelWidth] = useState(defaultAiChatPanelWidth)
   const [aiChatPanelMaxWidth, setAiChatPanelMaxWidth] = useState(getAiChatPanelMaxWidth)
   const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
   const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
