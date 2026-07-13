@@ -684,6 +684,9 @@ func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature
 	if strings.TrimSpace(feature.ID) == "" {
 		return ErrInvalidProjectParametricArtifactInput
 	}
+	if !isLiteCADFeatureDSLFeatureType(feature.Type) {
+		return ErrInvalidProjectParametricArtifactInput
+	}
 	if err := validateLiteCADFeatureDSLTransform(feature.Transform, parameters.numeric); err != nil {
 		return err
 	}

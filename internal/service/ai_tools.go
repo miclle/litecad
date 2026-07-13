@@ -91,6 +91,14 @@ func appendAIParametricJSONFallbackPrompt(messages []AIChatMessage) []AIChatMess
 	return fallbackMessages
 }
 
+func buildAIParametricSystemPrompt() string {
+	return replaceCapabilityList(
+		aiParametricSystemPrompt,
+		"The backend-owned LiteCAD feature DSL capability registry currently includes ",
+		". Use extrude features",
+	)
+}
+
 // ParseAIParametricToolCall validates strict JSON tool output from an AI provider.
 func ParseAIParametricToolCall(output string) (AIParametricToolCall, error) {
 	output = normalizeAIParametricToolOutput(output)
@@ -322,7 +330,7 @@ func liteCADFeatureDSLTypeDefaultsToOrigin(featureType string) bool {
 }
 
 func buildParametricModelAITool() AIChatTool {
-	return AIChatTool{
+	tool := AIChatTool{
 		Name:        aiParametricToolBuildModel,
 		Description: "Create or edit one parameterized CAD source artifact for LiteCAD.",
 		Parameters: map[string]any{
@@ -350,6 +358,14 @@ func buildParametricModelAITool() AIChatTool {
 			},
 		},
 	}
+	properties := tool.Parameters["properties"].(map[string]any)
+	codeSchema := properties["code"].(map[string]any)
+	codeSchema["description"] = replaceCapabilityList(
+		codeSchema["description"].(string),
+		"the backend capability registry: ",
+		". sketch defines",
+	)
+	return tool
 }
 
 func marshalAIParametricToolCall(call AIParametricToolCall) string {
@@ -388,7 +404,7 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 	providerMessages := make([]AIChatMessage, 0, len(persistedMessages)+3)
 	providerMessages = append(providerMessages,
 		AIChatMessage{Role: "system", Body: cadAgentSystemPrompt},
-		AIChatMessage{Role: "system", Body: aiParametricSystemPrompt},
+		AIChatMessage{Role: "system", Body: buildAIParametricSystemPrompt()},
 		AIChatMessage{Role: "system", Body: buildProjectAgentContext(project, models)},
 	)
 	for _, message := range persistedMessages {

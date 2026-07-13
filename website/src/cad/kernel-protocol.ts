@@ -61,30 +61,6 @@ export type CadKernelFeatureDSLTransform = {
   scale?: readonly CadKernelFeatureDSLExpression[]
 }
 
-export const LITECAD_FEATURE_DSL_CAPABILITY_REGISTRY = {
-  version: 1,
-  features: [
-    'sketch',
-    'box',
-    'box_cut',
-    'extrude',
-    'extrude_cut',
-    'cylinder',
-    'cylinder_cut',
-    'sphere',
-    'ellipsoid',
-    'ellipse_extrude',
-    'revolve',
-    'sweep',
-    'loft',
-    'fillet',
-    'chamfer',
-    'boolean',
-  ],
-  booleanOperations: ['union', 'subtract', 'intersect'],
-  sketchPlanes: ['XY', 'XZ', 'YZ'],
-} as const
-
 export type CadKernelFeatureDSLBoxFeature = {
   id: string
   type: 'box'
@@ -522,7 +498,7 @@ function isFeatureDSLParameter(value: unknown): value is CadKernelFeatureDSLPara
 }
 
 function isFeatureDSLFeature(value: unknown): value is CadKernelFeatureDSLFeature {
-  if (!isRecord(value) || typeof value.id !== 'string') {
+  if (!isRecord(value) || typeof value.id !== 'string' || !isSupportedFeatureDSLType(value.type)) {
     return false
   }
   if (value.transform !== undefined && !isFeatureDSLTransform(value.transform)) {
@@ -892,3 +868,4 @@ export function cadKernelErrorResponse(id: string, error: unknown): CadKernelErr
     error: error instanceof Error ? error.message : String(error),
   }
 }
+import { isSupportedFeatureDSLType } from './feature-dsl-capabilities'

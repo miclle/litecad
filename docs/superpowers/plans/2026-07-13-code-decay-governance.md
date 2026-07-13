@@ -204,7 +204,7 @@ git commit -m "refactor(project): extract workbench controllers"
 - TypeScript exports `LITECAD_FEATURE_DSL_CAPABILITY_REGISTRY`, `isSupportedFeatureDSLType(type)`, and `assertFeatureDSLCompilerCoverage(types)` from one browser-owned module.
 - Tests compare normalized feature, boolean-operation, and sketch-plane sets across validation and compilation dispatch; no production HTTP endpoint or generated file is added.
 
-- [ ] **Step 1: Write failing backend registry tests**
+- [x] **Step 1: Write failing backend registry tests**
 
 Assert exact stable capability names and prove AI prompting consumes the same registry:
 
@@ -222,13 +222,13 @@ go test ./internal/service -run 'TestLiteCADFeatureDSLCapabilities|TestAIParamet
 
 Expected: FAIL because the registry API does not exist.
 
-- [ ] **Step 2: Implement the backend capability registry**
+- [x] **Step 2: Implement the backend capability registry**
 
 Move capability constants out of validation/prompt construction, return defensive copies, and preserve all accepted JSON inputs.
 
 Run the focused backend command again; expected: PASS.
 
-- [ ] **Step 3: Write failing browser compiler-coverage tests**
+- [x] **Step 3: Write failing browser compiler-coverage tests**
 
 Assert that every registered feature is accepted by protocol validation and declared by the compiler dispatch table, and that an unknown feature is rejected.
 
@@ -240,17 +240,17 @@ npm --prefix website test -- feature-dsl-capabilities kernel-protocol opencascad
 
 Expected: FAIL because compiler coverage is not exposed as a checkable contract.
 
-- [ ] **Step 4: Implement browser capability helpers**
+- [x] **Step 4: Implement browser capability helpers**
 
 Move the registry from `kernel-protocol.ts`, replace repeated string-set checks with the helper, and expose a compiler-handler map or coverage set from the OCCT compiler without changing worker messages.
 
 Run the focused frontend command again; expected: PASS.
 
-- [ ] **Step 5: Update contract documentation**
+- [x] **Step 5: Update contract documentation**
 
 Document that backend prompting/validation and browser protocol/compiler each have a local single source of truth protected by exact parity tests. Do not claim cross-language code generation.
 
-- [ ] **Step 6: Run the phase gate and commit**
+- [x] **Step 6: Run the phase gate and commit**
 
 ```bash
 task check

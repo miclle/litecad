@@ -100,6 +100,25 @@ const outputStepName = 'litecad-output.step'
 const inputStepPath = `/${inputStepName}`
 const outputStepPath = `/${outputStepName}`
 
+export const FEATURE_DSL_COMPILER_TYPES = [
+  'sketch',
+  'box',
+  'box_cut',
+  'extrude',
+  'extrude_cut',
+  'cylinder',
+  'cylinder_cut',
+  'sphere',
+  'ellipsoid',
+  'ellipse_extrude',
+  'revolve',
+  'sweep',
+  'loft',
+  'fillet',
+  'chamfer',
+  'boolean',
+] as const
+
 export function createOpenCascadeLoader(initOpenCascade: OpenCascadeFactory, wasmUrl: string) {
   return () =>
     initOpenCascade({
