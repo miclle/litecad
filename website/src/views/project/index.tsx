@@ -37,7 +37,6 @@ import {
   saveProjectParametricArtifactModel,
   updateProjectParametricArtifact,
   updateProjectParametricModelParameters,
-  uploadProjectThumbnailSnapshot,
   uploadProjectModel,
 } from 'src/api/projects'
 import {
@@ -73,7 +72,7 @@ import {
 } from './cad-document-box-features'
 import { cadHistoryActionForKey } from './cad-document-history'
 import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
-import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
+import { ModelPreview } from './model-preview'
 import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
@@ -89,7 +88,6 @@ import {
   cadKernelGeometryOperationsForModel,
   getModelDisplayName,
   projectPreviewSummary,
-  projectPreviewAssetSignature,
 } from './project-preview-assets'
 import {
   buildStepExportTargets,
@@ -101,6 +99,7 @@ import { useProjectAssistantController } from './use-project-assistant-controlle
 import { useProjectParametricModels } from './use-project-parametric-models'
 import { useProjectSelectionController } from './use-project-selection-controller'
 import { useProjectStepExportController } from './use-project-step-export-controller'
+import { useProjectThumbnailSnapshotController } from './use-project-thumbnail-snapshot-controller'
 import {
   aiChatPanelMinWidth,
   defaultAiChatPanelWidth,
@@ -252,7 +251,6 @@ function ProjectView() {
   const [transformDraftsByModelID, setTransformDraftsByModelID] = useState<Record<string, TransformDraft>>({})
   const [boxFeatureDraftsByModelID, setBoxFeatureDraftsByModelID] = useState<Record<string, BoxFeatureDraft>>({})
   const aiChatTransitionTimerRef = useRef<number | undefined>(undefined)
-  const lastRequestedThumbnailSignatureRef = useRef('')
   const handleCADDocumentConflict = useCallback(() => setIsHistoryOpen(true), [])
   const handleTransformSynchronized = useCallback((nodeId: string) => {
     setTransformDraftsByModelID((currentDrafts) => {
@@ -328,25 +326,6 @@ function ProjectView() {
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
-    },
-  })
-  const thumbnailSnapshotMutation = useMutation({
-    mutationFn: async ({
-      snapshot,
-      revision,
-    }: {
-      snapshot: ModelPreviewSnapshotCapture
-      revision: number
-    }) =>
-      (
-        await uploadProjectThumbnailSnapshot(projectId, snapshot.blob, {
-          width: snapshot.width,
-          height: snapshot.height,
-          revision,
-        })
-      ).data.snapshot,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
   })
   const project = projectQuery.data
@@ -537,12 +516,17 @@ function ProjectView() {
     () => buildProjectPreviewAssets(previewModels, previewArtifacts, previewUrlsByModelID, kernelMeshesByModelID, projectCADDocument),
     [kernelMeshesByModelID, previewArtifacts, previewModels, previewUrlsByModelID, projectCADDocument],
   )
-  const thumbnailPreviewSignature = useMemo(() => projectPreviewAssetSignature(previewAssets), [previewAssets])
   const previewAssetModelIDs = useMemo(() => new Set(previewAssets.map((asset) => asset.modelId)), [previewAssets])
   const visibleModelIds = useMemo(
     () => previewAssets.flatMap((asset) => (hiddenModelIDs.has(asset.modelId) ? [] : [asset.modelId])),
     [hiddenModelIDs, previewAssets],
   )
+  const projectThumbnailSnapshot = useProjectThumbnailSnapshotController({
+    previewAssets,
+    projectId,
+    revision: projectCADDocument?.revision ?? 0,
+    visibleModelIds,
+  })
   const areAllPreviewAssetsHidden = previewAssets.length > 0 && visibleModelIds.length === 0
   const previewSummary = projectPreviewSummary({
     modelCount: projectModels.length,
@@ -556,22 +540,6 @@ function ProjectView() {
     : latestModel
     ? `${latestProductName || latestModel.original_filename} metadata is parsed. Geometry preview is being prepared.`
     : 'The canvas is empty until imported geometry is prepared for preview. Import a CAD source file to attach real model data to this project.'
-  const handlePreviewSnapshotCapture = useCallback(
-    (snapshot: ModelPreviewSnapshotCapture) => {
-      const revision = projectCADDocument?.revision ?? 0
-      const visibleSignature = visibleModelIds.join('|')
-      if (!projectId || previewAssets.length === 0 || visibleModelIds.length === 0 || revision <= 0) {
-        return
-      }
-      const signature = `${projectId}:${revision}:${thumbnailPreviewSignature}:${visibleSignature}`
-      if (lastRequestedThumbnailSignatureRef.current === signature) {
-        return
-      }
-      lastRequestedThumbnailSignatureRef.current = signature
-      thumbnailSnapshotMutation.mutate({ snapshot, revision })
-    },
-    [previewAssets.length, projectCADDocument?.revision, projectId, thumbnailPreviewSignature, thumbnailSnapshotMutation, visibleModelIds],
-  )
   const previewBlobSignature = projectModelPreviewQueries
     .map((query, index) => {
       const modelID = backendPreviewModels[index]?.id ?? ''
@@ -1137,7 +1105,7 @@ function ProjectView() {
                 selectModel(modelID, nodeID)
                 cadDocumentCommands.clearDeleteError()
               }}
-              onSnapshotCapture={handlePreviewSnapshotCapture}
+              onSnapshotCapture={projectThumbnailSnapshot.onSnapshotCapture}
               previewAssets={previewAssets}
               selectedModelId={effectiveSelectedModelID}
               selectedNodeId={effectiveSelectedDocumentNodeID}
