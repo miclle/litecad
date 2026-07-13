@@ -11,9 +11,22 @@ import type { CADDocumentNode, ProjectCADDocument, ProjectModel } from 'src/type
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 vi.mock('./model-preview', () => ({
-  ModelPreview: vi.fn((props: { selectedModelId: string; selectedNodeId: string }) => (
-    <div data-model-preview data-selected-model={props.selectedModelId} data-selected-node={props.selectedNodeId} />
-  )),
+  ModelPreview: vi.fn(
+    (props: {
+      displayOptions: { measurement: boolean; section: boolean; showEdges: boolean }
+      selectedModelId: string
+      selectedNodeId: string
+    }) => (
+      <div
+        data-edges={String(props.displayOptions.showEdges)}
+        data-measurement={String(props.displayOptions.measurement)}
+        data-model-preview
+        data-section={String(props.displayOptions.section)}
+        data-selected-model={props.selectedModelId}
+        data-selected-node={props.selectedNodeId}
+      />
+    ),
+  ),
 }))
 
 vi.mock('./view-controller', () => ({
@@ -34,6 +47,20 @@ describe('ProjectCanvas', () => {
     expect(document.querySelector('[data-model-preview]')?.getAttribute('data-selected-model')).toBe('')
     expect(document.querySelector('[aria-label="View orientation controls"]')).toBeTruthy()
     expect((document.querySelector('button[aria-pressed="false"]') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  test('toggles preview analysis tools for loaded preview assets', async () => {
+    const user = userEvent.setup()
+    renderCanvas({ previewAssets: [{ modelId: 'mdl_step', name: 'gearbox.step', previewFormat: 'obj', previewUrl: '/gearbox.obj' }] })
+
+    await user.click(document.querySelector('button[aria-label="Edges"]') as HTMLButtonElement)
+    await user.click(document.querySelector('button[aria-label="Section"]') as HTMLButtonElement)
+    await user.click(document.querySelector('button[aria-label="Measure"]') as HTMLButtonElement)
+
+    const preview = document.querySelector('[data-model-preview]')
+    expect(preview?.getAttribute('data-edges')).toBe('true')
+    expect(preview?.getAttribute('data-section')).toBe('true')
+    expect(preview?.getAttribute('data-measurement')).toBe('true')
   })
 
   test('edits and applies the Fuse box draft for the selected STEP source', async () => {

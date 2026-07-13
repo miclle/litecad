@@ -81,7 +81,7 @@ Recommended concepts:
 - `previewMesh`: derived render data produced from the current shape state.
 - `exportArtifact`: generated STEP/GLB/STL/etc. output from the current document state.
 
-The first browser-kernel proof of concept has proven import, tessellation, constrained per-model edit replay, direct per-model STEP export, and selected multi-model compound STEP export. LiteCAD now persists reversible command History for its supported edits, but a durable database schema for kernel shape state, rich parametric B-rep feature semantics, and backend export artifact history is still future design work.
+The first browser-kernel proof of concept has proven import, tessellation, constrained per-model edit replay, direct per-model STEP export, selected multi-model compound STEP export, and preview-layer inspection aids for edge display, center-plane visual sectioning, and visible-model bounds measurement. LiteCAD now persists reversible command History for its supported edits, but a durable database schema for kernel shape state, rich parametric B-rep feature semantics, durable CAD measurement/section records, and backend export artifact history is still future design work.
 
 ## Generated Parametric Source Status
 
@@ -314,9 +314,10 @@ As of this roadmap, the current shipped path is:
 - GLB and self-contained GLTF uploads can be published as preview artifacts after backend validation.
 - STL is converted to OBJ preview data in Go.
 - The project workbench renders browser-kernel STEP meshes and backend-provided GLB/GLTF/STL preview artifacts in Three.js.
+- The project workbench can overlay mesh edges, visually clip the current preview through a center plane, and display visible-model bounding-box dimensions. These are viewer-derived inspection tools, not persisted CAD measurement entities or durable B-rep section geometry.
 - The project workbench stores and reloads a LiteCAD editable document for uploaded source model nodes, independently selectable STEP component child nodes, transform, node-delete, and constrained box-union operations.
 - Database-backed History stores reversible transform, node-delete, box-union, and saved parametric model parameter commands, the active Undo/Redo head, and discarded alternate paths; every CAD document mutation uses an expected document revision.
 - STEP preview derives mesh data by replaying box-union geometry in the browser CAD worker before tessellation, then applies the latest persisted absolute transform in the Three.js scene.
 - Direct per-model STEP export and selected multi-model compound STEP export replay geometry operations followed by the latest absolute transform in the browser CAD worker and download the worker-produced STEP text.
 - Saved `.lcad.json` project model sources preview through `feature-dsl-preview`, export through `feature-dsl-export`, and update existing viewer-scene meshes after local parameter edits.
-- No durable kernel shape serialization, rich parametric B-rep feature model, backend export artifact history, or durable cross-model CAD merge/assembly semantics exist yet.
+- No durable kernel shape serialization, rich parametric B-rep feature model, durable CAD measurement/section records, backend export artifact history, or durable cross-model CAD merge/assembly semantics exist yet.

@@ -13,6 +13,7 @@ LiteCAD currently supports:
 - Uploads for `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files.
 - Lightweight CAD source metadata, including STEP schema/product/component/unit/entity summaries and STL triangle counts where available.
 - A project workbench with a Three.js viewer, source list, document inspector, ViewCube/orientation controls, model visibility toggles, multi-model preview composition, and locally restored left-panel/Assistant visibility and widths.
+- Preview-layer workbench inspection tools for mesh edge overlays, center-plane visual sectioning, and visible-model bounds measurement.
 - Browser-kernel STEP/STP preview through an OCCT/OpenCascade.js Web Worker, without requiring FreeCAD or another desktop CAD application at runtime.
 - Persisted per-model transform edits, model/source node deletion with STEP component child deletion, and a constrained STEP box-union operation in a LiteCAD document.
 - Database-backed operation History with owner-scoped Undo/Redo for transforms, box unions, and node deletion, including persisted redo state across reloads and devices.
@@ -24,7 +25,7 @@ The home page and workbench use project-owned CAD data rather than hard-coded de
 
 ## Product Boundaries
 
-LiteCAD is not a full parametric CAD system yet. Current edits are limited to persisted placement, model/source node deletion with STEP component child deletion, and a constrained STEP box-union operation. LiteCAD records those edits as reversible project history, but this is not preserved source-application history or a general parametric B-rep feature graph. Projects do not yet store durable kernel shape state, editable B-rep geometry, durable assemblies, measurement data, sectioning, or backend export artifact history.
+LiteCAD is not a full parametric CAD system yet. Current edits are limited to persisted placement, model/source node deletion with STEP component child deletion, and a constrained STEP box-union operation. LiteCAD records those edits as reversible project history, but this is not preserved source-application history or a general parametric B-rep feature graph. Projects do not yet store durable kernel shape state, editable B-rep geometry, durable assemblies, CAD measurement entities, durable section definitions, or backend export artifact history. The current edge, section, and measurement controls are viewer inspection aids derived from preview meshes.
 
 The CAD Agent can use project and source metadata as context for chat, and the dedicated parametric-run API can create pending OpenSCAD-style or LiteCAD feature DSL artifact drafts from strict model tool output. The workbench can inspect generated source and parameter controls, compile LiteCAD feature DSL drafts through the browser CAD kernel before save, automatically save successfully compiled LiteCAD DSL artifacts as durable `.lcad.json` source models, preview/export saved `.lcad.json` models through the browser CAD kernel, and persist saved `.scad` / `.lcad.json` parameter edits as separate revision records that survive reload. The current LiteCAD feature DSL supports a narrow but executable backend-owned capability registry: primitives, cuts, rectangular/circular/elliptical sketch extrudes, reusable sketch definitions, `revolve`, straight-path `sweep`, multi-section `loft`, recursive boolean trees, `fillet`, conservative `chamfer`, repeat, feature-local translate/rotate/positive non-uniform scale transforms, and structured numeric-expression geometry; it is not a full sketch-constraint or durable B-rep feature-history system. OpenSCAD source drafts can expose editable parameters, but OpenSCAD browser mesh compilation and the normal save-to-canvas path remain unavailable until a compatible runtime decision is made. The Assistant cannot mutate CAD documents, run measurements, or generate durable B-rep CAD features yet.
 
@@ -101,6 +102,7 @@ The workbench is the main product surface. It combines:
 - A source/model tree with visibility controls, parse status, and imported STEP product/component nodes grouped under the imported model.
 - Independent document selection, position editing, and deletion for imported STEP component nodes.
 - A document inspector for selected-model placement and STEP box-union controls.
+- Preview inspection controls for edge display, center-plane sectioning, and visible-model bounds measurement.
 - Compact Undo/Redo controls and a persisted operation History panel. A new edit after Undo keeps the old record as an alternate path while clearing it from the active Redo path.
 - STEP export controls for selected files or a merged compound download.
 - A CAD Agent panel for project-aware design discussion when AI configuration is present.
@@ -187,7 +189,7 @@ CI also runs Go tests, frontend lint/type/test/build, actionlint, dependency rev
 
 ## Roadmap
 
-Near-term product work is focused on turning the current preview/edit/export loop into a richer CAD workflow: durable kernel shape state, broader feature operations, measurement and sectioning, clearer assembly semantics, stronger CAD Agent tool boundaries, and project management polish.
+Near-term product work is focused on turning the current preview/edit/export loop into a richer CAD workflow: durable kernel shape state, broader feature operations, richer CAD measurement and section semantics, clearer assembly behavior, stronger CAD Agent tool boundaries, and project management polish.
 
 Active follow-up items are tracked in [TODO.md](TODO.md). The browser-kernel architecture plan and phase history live in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md).
 

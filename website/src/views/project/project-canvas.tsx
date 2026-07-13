@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
-import { Box, HardDrive, X } from 'lucide-react'
+import { useState } from 'react'
+import { Box, HardDrive, Layers, Ruler, ScanLine, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from '@/components/ui/field'
@@ -10,6 +11,7 @@ import type { CADDocumentNode, ProjectCADDocument, ProjectModel } from 'src/type
 import type { CADTranslation } from './cad-document-transforms'
 import type { BoxFeatureDraft } from './cad-document-box-features'
 import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
+import { defaultModelPreviewDisplayOptions, type ModelPreviewDisplayOptions } from './model-preview-tools'
 import type { ProjectPreviewAsset } from './project-preview-assets'
 import { ViewController } from './view-controller'
 import type { CADTool } from './use-project-selection-controller'
@@ -53,6 +55,13 @@ type ProjectCanvasProps = {
   unitLabel: string
   viewOrientation: ViewOrientation
   visibleModelIds: readonly string[]
+}
+
+type PreviewTool = {
+  description: string
+  icon: typeof Ruler
+  key: keyof ModelPreviewDisplayOptions
+  label: string
 }
 
 function NumericCADField({
@@ -126,10 +135,21 @@ export function ProjectCanvas({
   viewOrientation,
   visibleModelIds,
 }: ProjectCanvasProps) {
+  const [displayOptions, setDisplayOptions] = useState<ModelPreviewDisplayOptions>(defaultModelPreviewDisplayOptions)
+  const previewTools: PreviewTool[] = [
+    { description: 'Overlay mesh edge lines', icon: Layers, key: 'showEdges', label: 'Edges' },
+    { description: 'Clip the preview at the model center', icon: ScanLine, key: 'section', label: 'Section' },
+    { description: 'Show visible bounds dimensions', icon: Ruler, key: 'measurement', label: 'Measure' },
+  ]
+  const toggleDisplayOption = (key: keyof ModelPreviewDisplayOptions) => {
+    setDisplayOptions((currentOptions) => ({ ...currentOptions, [key]: !currentOptions[key] }))
+  }
+
   return (
     <section className="absolute inset-0 overflow-hidden">
       <ModelPreview
         deferResize={deferResize}
+        displayOptions={displayOptions}
         draftModelTranslations={draftModelTranslations}
         key={projectId}
         modelTranslations={modelTranslations}
@@ -140,6 +160,7 @@ export function ProjectCanvas({
         previewAssets={previewAssets}
         selectedModelId={selectedModelId}
         selectedNodeId={selectedNodeId}
+        unitLabel={unitLabel}
         visibleModelIds={visibleModelIds}
       />
       {shouldShowCanvasStatus ? (
@@ -161,6 +182,34 @@ export function ProjectCanvas({
         role="toolbar"
       >
         <span className="px-1.5 font-mono text-[10px] font-semibold uppercase text-[#64748b]">CAD tools</span>
+        {previewTools.map((tool) => {
+          const Icon = tool.icon
+          return (
+            <Tooltip key={tool.key}>
+              <TooltipTrigger
+                render={
+                  <Button
+                    aria-label={tool.label}
+                    aria-pressed={displayOptions[tool.key]}
+                    className={cn(
+                      'min-w-[78px] justify-center',
+                      displayOptions[tool.key] && 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8] hover:bg-[#dbeafe]',
+                    )}
+                    disabled={previewAssets.length === 0}
+                    onClick={() => toggleDisplayOption(tool.key)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  />
+                }
+              >
+                <Icon data-icon="inline-start" />
+                <span className="truncate">{tool.label}</span>
+              </TooltipTrigger>
+              <TooltipContent sideOffset={8}>{previewAssets.length === 0 ? 'Import a model first' : tool.description}</TooltipContent>
+            </Tooltip>
+          )
+        })}
         <Tooltip>
           <TooltipTrigger
             render={

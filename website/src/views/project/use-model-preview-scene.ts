@@ -42,6 +42,16 @@ import {
 import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
 import { useModelPreviewResources } from './use-model-preview-resources'
 import { useModelPreviewSelection } from './use-model-preview-selection'
+import {
+  applyModelPreviewClipping,
+  defaultModelPreviewDisplayOptions,
+  formatModelPreviewMeasurementValue,
+  measureModelPreviewObjects,
+  removeEdgeOverlays,
+  syncModelPreviewEdgeOverlays,
+  type ModelPreviewDisplayOptions,
+  type ModelPreviewMeasurement,
+} from './model-preview-tools'
 
 export type ModelPreviewSnapshotCapture = {
   blob: Blob
@@ -51,6 +61,7 @@ export type ModelPreviewSnapshotCapture = {
 
 export type ModelPreviewProps = {
   deferResize?: boolean
+  displayOptions?: ModelPreviewDisplayOptions
   draftModelTranslations?: Record<string, CADTranslation>
   modelTranslations?: Record<string, CADTranslation>
   onClearSelection?: () => void
@@ -60,6 +71,7 @@ export type ModelPreviewProps = {
   previewAssets?: ProjectPreviewAsset[]
   selectedNodeId?: string
   selectedModelId?: string
+  unitLabel?: string
   variant?: 'workspace' | 'thumbnail'
   visibleModelIds?: readonly string[]
 }
@@ -70,6 +82,7 @@ type ZoomHUDState = {
 }
 
 type ModelPreviewSceneRuntime = {
+  updateDisplayOptions: (options: ModelPreviewDisplayOptions) => void
   updateKernelMeshAssets: (assets: readonly ProjectPreviewAsset[]) => void
 }
 
@@ -108,6 +121,7 @@ export function createModelPreviewLifecycle() {
 
 export function useModelPreviewScene({
   deferResize = false,
+  displayOptions = defaultModelPreviewDisplayOptions,
   draftModelTranslations,
   modelTranslations,
   onClearSelection,
@@ -122,6 +136,7 @@ export function useModelPreviewScene({
 }: ModelPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const deferResizeRef = useRef(deferResize)
+  const displayOptionsRef = useRef(displayOptions)
   const onSnapshotCaptureRef = useRef<ModelPreviewProps['onSnapshotCapture']>(onSnapshotCapture)
   const {
     acceptLoadedObject,
@@ -157,6 +172,7 @@ export function useModelPreviewScene({
   })
   const zoomHUDHideTimeoutRef = useRef<number | undefined>(undefined)
   const [zoomHUD, setZoomHUD] = useState<ZoomHUDState>({ percent: 100, visible: false })
+  const [measurement, setMeasurement] = useState<ModelPreviewMeasurement | undefined>(undefined)
   const previewSceneSignature = useMemo(() => projectPreviewSceneSignature(previewAssets), [previewAssets])
   const sceneRuntimeRef = useRef<ModelPreviewSceneRuntime | undefined>(undefined)
   const isPreviewObjectVisible = (modelId: string) => !visibleModelIdsRef.current || visibleModelIdsRef.current.includes(modelId)
@@ -178,6 +194,11 @@ export function useModelPreviewScene({
       containerRef.current?.dispatchEvent(new Event(modelPreviewResizeCompleteEventName))
     }
   }, [deferResize])
+
+  useEffect(() => {
+    displayOptionsRef.current = displayOptions
+    sceneRuntimeRef.current?.updateDisplayOptions(displayOptions)
+  }, [displayOptions])
 
   useEffect(() => {
     onSnapshotCaptureRef.current = onSnapshotCapture
@@ -264,14 +285,19 @@ export function useModelPreviewScene({
     let isDisposed = false
     let worldGrid = createWorldGrid(previewRadius)
     const selectionBox = new THREE.BoxHelper(new THREE.Object3D(), 0x2563eb)
+    const sectionPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0)
+    const sectionPlaneHelper = new THREE.PlaneHelper(sectionPlane, 1, 0x2563eb)
     selectionBox.visible = false
     selectionBox.renderOrder = 30
     selectionBox.material.depthTest = false
     selectionBox.material.transparent = true
     selectionBox.material.opacity = 0.85
+    sectionPlaneHelper.visible = false
+    sectionPlaneHelper.renderOrder = 16
     scene.add(worldGrid)
     scene.add(previewGroup)
     scene.add(selectionBox)
+    scene.add(sectionPlaneHelper)
     const updateWorldGrid = (bounds?: THREE.Box3) => {
       scene.remove(worldGrid)
       disposeObject3DResources(worldGrid)
@@ -359,12 +385,32 @@ export function useModelPreviewScene({
       updateSceneFog(camera.position.distanceTo(controls.target))
       renderer.render(scene, camera)
     }
+    const syncMeasurement = () => {
+      if (!displayOptionsRef.current.measurement) {
+        setMeasurement(undefined)
+        return
+      }
+      setMeasurement(measureModelPreviewObjects(previewObjectsByModelIDRef.current.values()))
+    }
+    const syncDisplayOptions = (options: ModelPreviewDisplayOptions = displayOptionsRef.current) => {
+      displayOptionsRef.current = options
+      renderer.localClippingEnabled = options.section
+      sectionPlane.constant = previewCenter.x
+      sectionPlaneHelper.visible = options.section
+      sectionPlaneHelper.size = Math.max(previewRadius * 2.35, 1)
+      sectionPlaneHelper.updateMatrixWorld(true)
+      syncModelPreviewEdgeOverlays(previewGroup, options.showEdges)
+      applyModelPreviewClipping(previewGroup, options.section ? sectionPlane : undefined)
+      syncMeasurement()
+      renderScene()
+    }
     syncPreviewObjectVisibilityRef.current = () => {
       const visibleModelIDs = visibleModelIdsRef.current ? new Set(visibleModelIdsRef.current) : undefined
       previewObjectsByModelIDRef.current.forEach((object, modelID) => {
         object.visible = !visibleModelIDs || visibleModelIDs.has(modelID)
       })
       syncSelectedPreviewObjectRef.current()
+      syncMeasurement()
       renderScene()
       scheduleSnapshotCapture()
     }
@@ -404,6 +450,7 @@ export function useModelPreviewScene({
         syncPreviewObjectTransform(nodeID, object)
       })
       syncSelectedPreviewObjectRef.current()
+      syncMeasurement()
       renderScene()
       scheduleSnapshotCapture()
     }
@@ -593,6 +640,7 @@ export function useModelPreviewScene({
         previewCenter.set(0, 0, 0)
         previewRadius = 4
         updateWorldGrid()
+        syncDisplayOptions()
         if (resetCamera) {
           resetView()
         } else {
@@ -605,6 +653,7 @@ export function useModelPreviewScene({
       previewCenter.copy(sphere.center)
       previewRadius = Math.max(sphere.radius, 1)
       updateWorldGrid(bounds)
+      syncDisplayOptions()
       if (resetCamera) {
         resetView()
       } else {
@@ -634,6 +683,7 @@ export function useModelPreviewScene({
         previewObjectBaseTranslationsByObjectIDRef.current.delete(nodeID)
       })
       previewGroup.remove(object)
+      removeEdgeOverlays(object)
       disposeObject3DResources(object)
       assetContentSignatureByModelID.delete(modelID)
     }
@@ -724,6 +774,7 @@ export function useModelPreviewScene({
       })
       previewGroup.add(object)
       assetContentSignatureByModelID.set(asset.modelId, projectPreviewAssetContentSignature(asset))
+      syncDisplayOptions()
       syncPreviewObjectTransformsRef.current()
       syncSelectedPreviewObjectRef.current()
       updatePreviewBounds({ resetCamera })
@@ -953,6 +1004,7 @@ export function useModelPreviewScene({
       }
     })
     sceneRuntimeRef.current = {
+      updateDisplayOptions: syncDisplayOptions,
       updateKernelMeshAssets: (assets) => {
         assets.forEach((asset, assetIndex) => {
           if (asset.previewFormat === 'kernel-mesh') {
@@ -991,6 +1043,7 @@ export function useModelPreviewScene({
       syncPreviewObjectTransformsRef.current = () => undefined
       syncSelectedPreviewObjectRef.current = () => undefined
       sceneRuntimeRef.current = undefined
+      setMeasurement(undefined)
       invalidateGeneration()
       scene.remove(previewGroup)
       disposeObject3DResources(scene)
@@ -1008,5 +1061,7 @@ export function useModelPreviewScene({
     sceneRuntimeRef.current?.updateKernelMeshAssets(previewAssets)
   }, [previewAssets])
 
-  return { containerRef, zoomHUD }
+  return { containerRef, measurement, zoomHUD }
 }
+
+export { formatModelPreviewMeasurementValue }
