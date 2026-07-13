@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type ChangeEvent,
   type ReactElement,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -37,7 +36,6 @@ import {
   saveProjectParametricArtifactModel,
   updateProjectParametricArtifact,
   updateProjectParametricModelParameters,
-  uploadProjectModel,
 } from 'src/api/projects'
 import {
   runStepPreviewInWorker,
@@ -96,6 +94,7 @@ import {
 import { ViewController } from './view-controller'
 import { useCADDocumentCommands } from './use-cad-document-commands'
 import { useProjectAssistantController } from './use-project-assistant-controller'
+import { useProjectModelUploadController } from './use-project-model-upload-controller'
 import { useProjectParametricModels } from './use-project-parametric-models'
 import { useProjectSelectionController } from './use-project-selection-controller'
 import { useProjectStepExportController } from './use-project-step-export-controller'
@@ -245,7 +244,6 @@ function ProjectView() {
   const [aiChatPanelMaxWidth, setAiChatPanelMaxWidth] = useState(getAiChatPanelMaxWidth)
   const [animateViewCubeOrientation, setAnimateViewCubeOrientation] = useState(false)
   const [viewOrientation, setViewOrientation] = useState<ViewOrientation>(initialViewOrientation)
-  const [uploadError, setUploadError] = useState('')
   const [previewUrlsByModelID, setPreviewUrlsByModelID] = useState<Record<string, string>>({})
   const [hiddenModelIDs, setHiddenModelIDs] = useState<Set<string>>(() => new Set())
   const [transformDraftsByModelID, setTransformDraftsByModelID] = useState<Record<string, TransformDraft>>({})
@@ -269,16 +267,8 @@ function ProjectView() {
     queryFn: async () => (await fetchProjectModels(projectId)).data.models,
     enabled: projectId !== '' && projectQuery.isSuccess,
   })
-  const uploadModelMutation = useMutation({
-    mutationFn: (file: File) => uploadProjectModel(projectId, file),
-    onSuccess: async () => {
-      setUploadError('')
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
-    },
-    onError: () => {
-      setUploadError('Model upload failed. Check that the file is STEP, GLTF, GLB, or STL and try again.')
-    },
+  const projectModelUpload = useProjectModelUploadController({
+    projectId,
   })
   const saveProjectParametricArtifactMutation = useMutation({
     mutationFn: async ({
@@ -927,14 +917,6 @@ function ProjectView() {
     }
     cadDocumentCommands.addBoxUnion(modelID, box)
   }
-  const handleModelFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) {
-      return
-    }
-    uploadModelMutation.mutate(file)
-    event.target.value = ''
-  }
   return (
     <div
       className={`grid min-h-screen overflow-x-auto overflow-y-hidden bg-[#f8fafc] text-[#0f172a] motion-reduce:transition-none ${
@@ -1055,7 +1037,7 @@ function ProjectView() {
               <button
                 aria-label="Import model"
                 className="grid size-9 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={uploadModelMutation.isPending}
+                disabled={projectModelUpload.isUploading}
                 onClick={() => fileInputRef.current?.click()}
                 type="button"
               />
@@ -1081,7 +1063,7 @@ function ProjectView() {
           <input
             accept=".step,.stp,.gltf,.glb,.stl"
             className="hidden"
-            onChange={handleModelFileChange}
+            onChange={projectModelUpload.handleModelFileChange}
             ref={fileInputRef}
             type="file"
           />
@@ -1327,7 +1309,7 @@ function ProjectView() {
                   }
                   hiddenModelIds={hiddenModelIDs}
                   isLoading={projectModelsQuery.isLoading}
-                  isUploading={uploadModelMutation.isPending}
+                  isUploading={projectModelUpload.isUploading}
                   onSelect={(modelId, nodeId) => {
                     selectModel(modelId, nodeId)
                     cadDocumentCommands.clearDeleteError()
@@ -1335,7 +1317,7 @@ function ProjectView() {
                   onToggleVisibility={toggleModelVisibility}
                   previewAssetModelIds={previewAssetModelIDs}
                   selectedNodeId={effectiveSelectedDocumentNodeID}
-                  uploadError={uploadError}
+                  uploadError={projectModelUpload.uploadError}
                 />
 
                 {selectedParametricArtifact ? (
