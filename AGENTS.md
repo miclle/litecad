@@ -8,7 +8,7 @@ litecad is a Go + React single-page application for AI-assisted CAD exploration 
 
 Current implemented product surface:
 
-- Home-page import pipeline status panel and CAD-oriented project workbench shell.
+- Home-page import pipeline status panel and CAD-oriented project workbench shell, with browser-local persistence for the left-panel and Assistant-panel visibility and widths.
 - Account registration/login/logout with an `HttpOnly` `litecad_session` cookie.
 - Session-scoped project creation, listing with lightweight static thumbnail snapshots, and detail lookup.
 - Session-scoped CAD source upload, lightweight Go-only metadata extraction, listing, source download, preview artifact metadata, preview loading, editable LiteCAD document persistence for per-model transform and constrained box-union operations, database-backed reversible operation History with cross-browser Undo/Redo for transform/box-union/node-delete edits and saved parametric model parameter changes, STEP product/component names grouped under the imported model in the workbench project tree with node-scoped selection, position edits, and model/source plus component deletion, workbench-generated static project thumbnail snapshots, direct per-model STEP export downloads, selected multi-model STEP export downloads as one browser-kernel compound STEP file, multi-source browser preview composition, read-only geometry document API, and generated geometry version snapshots for project-owned `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files, including browser-kernel STEP/STP workbench mesh generation with box-union replay plus scene-level persisted transforms, backend-validated self-contained GLTF/GLB preview publication, and Go-based STL-to-OBJ preview conversion. STEP/STP upload metadata extraction scans uploaded ISO-10303-21 text in Go and does not invoke Python, FreeCAD, or another desktop CAD application. STEP/STP backend preview artifact generation is intentionally unavailable; the workbench uses source download plus the browser kernel.
@@ -132,6 +132,7 @@ For feature work that changes the browser experience, combine the relevant front
 - UI components must be implemented with or composed from shadcn/ui primitives whenever shadcn/ui provides the needed component or a reasonable composition path. Use custom component markup only when shadcn/ui has no suitable primitive for the requirement.
 - Prefer existing Tailwind styles, shadcn/ui component conventions, Lucide icons, and local layout patterns.
 - Do not hard-code backend origins in components; use `/api/v1` through the shared client and Vite proxy.
+- Keep project workspace presentation preferences in the versioned `useProjectWorkspacePreferences` browser-local boundary. They are non-sensitive local UI state, not React Query server state or project data; validate stored values and preserve runtime width clamps.
 
 ### Product Boundaries
 

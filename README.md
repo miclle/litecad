@@ -12,7 +12,7 @@ LiteCAD currently supports:
 - User-owned projects with names, descriptions, project-list cards, and static thumbnail snapshots generated from the workbench.
 - Uploads for `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files.
 - Lightweight CAD source metadata, including STEP schema/product/component/unit/entity summaries and STL triangle counts where available.
-- A project workbench with a Three.js viewer, source list, document inspector, ViewCube/orientation controls, model visibility toggles, and multi-model preview composition.
+- A project workbench with a Three.js viewer, source list, document inspector, ViewCube/orientation controls, model visibility toggles, multi-model preview composition, and locally restored left-panel/Assistant visibility and widths.
 - Browser-kernel STEP/STP preview through an OCCT/OpenCascade.js Web Worker, without requiring FreeCAD or another desktop CAD application at runtime.
 - Persisted per-model transform edits, model/source node deletion with STEP component child deletion, and a constrained STEP box-union operation in a LiteCAD document.
 - Database-backed operation History with owner-scoped Undo/Redo for transforms, box unions, and node deletion, including persisted redo state across reloads and devices.
@@ -105,6 +105,8 @@ The workbench is the main product surface. It combines:
 - STEP export controls for selected files or a merged compound download.
 - A CAD Agent panel for project-aware design discussion when AI configuration is present.
 
+The workbench remembers the left panel and CAD Agent panel open state and widths in browser-local storage. These presentation preferences are local to the browser profile and are not project data synchronized through the backend.
+
 ### CAD Agent
 
 The CAD Agent sends project and source metadata context to a configured OpenAI-compatible chat provider and stores user/assistant messages inside project-owned conversations. A separate parametric-run endpoint validates `build_parametric_model` output and stores a pending generated-source artifact, preferring LiteCAD feature DSL JSON unless the user explicitly asks for OpenSCAD source. OpenAI-compatible providers use native function tools first, then retry the same prompt with an explicit strict JSON fallback instruction when native tool calling fails. If no provider is configured, sending a message returns a configuration error while the rest of LiteCAD continues to run.
@@ -125,6 +127,7 @@ ai:
   api_key: "${LITECAD_AI_API_KEY:-}"
   model: "${LITECAD_AI_MODEL:-gpt-4.1-mini}"
   timeout_seconds: 30
+  max_output_tokens: 2048
 ```
 
 Configuration supports `${NAME}` and `${NAME:-fallback}` environment variable expansion. Runtime database drivers are `postgres` and `mysql`. Leaving `ai.api_key` or `ai.model` empty disables CAD Agent sends.
