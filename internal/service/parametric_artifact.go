@@ -527,6 +527,7 @@ type liteCADFeatureDSLValidationFeature struct {
 	DiameterZ    any                                      `json:"diameter_z"`
 	Height       any                                      `json:"height"`
 	Depth        any                                      `json:"depth"`
+	TopScale     any                                      `json:"top_scale"`
 	Distance     any                                      `json:"distance"`
 	AngleDegrees any                                      `json:"angle_degrees"`
 	Direction    string                                   `json:"direction"`
@@ -622,7 +623,7 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 
 func isLiteCADFeatureDSLSolidFeature(featureType string) bool {
 	switch featureType {
-	case "box", "extrude", "cylinder", "sphere", "ellipsoid", "ellipse_extrude", "box_cut", "extrude_cut", "cylinder_cut", "revolve", "sweep", "loft", "boolean":
+	case "box", "extrude", "cylinder", "sphere", "ellipsoid", "ellipse_extrude", "tapered_extrude", "box_cut", "extrude_cut", "cylinder_cut", "revolve", "sweep", "loft", "boolean":
 		return true
 	default:
 		return false
@@ -714,6 +715,8 @@ func validateLiteCADFeatureDSLFeature(feature liteCADFeatureDSLValidationFeature
 		return validateLiteCADFeatureDSLBoxCutFeature(feature, parameters.numeric)
 	case "extrude":
 		return validateLiteCADFeatureDSLExtrudeFeature(feature, parameters)
+	case "tapered_extrude":
+		return validateLiteCADFeatureDSLTaperedExtrudeFeature(feature, parameters)
 	case "extrude_cut":
 		if !hasPriorSolid {
 			return ErrInvalidProjectParametricArtifactInput
@@ -780,6 +783,27 @@ func validateLiteCADFeatureDSLExtrudeFeature(feature liteCADFeatureDSLValidation
 		}
 	}
 	if err := validateLiteCADFeatureDSLPositiveExpression(feature.Height, parameters.numeric); err != nil {
+		return err
+	}
+	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameters.numeric)
+}
+
+func validateLiteCADFeatureDSLTaperedExtrudeFeature(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters) error {
+	if err := validateLiteCADFeatureDSLXYExtrudeSketchReference(feature.Sketch, parameters); err != nil {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	if err := validateLiteCADFeatureDSLExtrudeDirection(feature.Direction); err != nil {
+		return err
+	}
+	if feature.Origin != nil {
+		if err := validateLiteCADFeatureDSLExpressionTuple(feature.Origin, 3, parameters.numeric); err != nil {
+			return err
+		}
+	}
+	if err := validateLiteCADFeatureDSLPositiveExpression(feature.Height, parameters.numeric); err != nil {
+		return err
+	}
+	if err := validateLiteCADFeatureDSLPositiveExpression(feature.TopScale, parameters.numeric); err != nil {
 		return err
 	}
 	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameters.numeric)

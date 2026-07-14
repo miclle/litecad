@@ -11,6 +11,7 @@ export const LITECAD_FEATURE_DSL_CAPABILITY_REGISTRY = {
     'sphere',
     'ellipsoid',
     'ellipse_extrude',
+    'tapered_extrude',
     'revolve',
     'sweep',
     'loft',

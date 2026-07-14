@@ -12,7 +12,7 @@ type LiteCADFeatureDSLCapabilityRegistry struct {
 var liteCADFeatureDSLCapabilityRegistry = LiteCADFeatureDSLCapabilityRegistry{
 	Features: []string{
 		"sketch", "box", "box_cut", "extrude", "extrude_cut", "cylinder", "cylinder_cut", "sphere",
-		"ellipsoid", "ellipse_extrude", "revolve", "sweep", "loft", "fillet", "chamfer", "boolean",
+		"ellipsoid", "ellipse_extrude", "tapered_extrude", "revolve", "sweep", "loft", "fillet", "chamfer", "boolean",
 	},
 	BooleanOperations: []string{"union", "subtract", "intersect"},
 	SketchPlanes:      []string{"XY", "XZ", "YZ"},
