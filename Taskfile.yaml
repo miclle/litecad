@@ -26,6 +26,11 @@ tasks:
       - go mod download
       - cd {{.WEBSITE_DIR}} && npm install
 
+  install-browser:
+    desc: Install Playwright Chromium for browser tests
+    cmds:
+      - cd {{.WEBSITE_DIR}} && npx playwright install chromium
+
   # ---------- Development ----------
 
   dev:

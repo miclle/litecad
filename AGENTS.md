@@ -38,17 +38,18 @@ Target CAD architecture is documented in `docs/browser-cad-kernel-roadmap.md`: L
 ## Development Commands
 
 ```bash
-task install        # Install Go modules and frontend dependencies
-task dev            # Start development environment (hot reload)
-task build          # Build production binary (with embedded frontend)
-task build-all      # Cross-compile for multiple platforms
-task run            # Run in production mode
-task lint           # Auto-fix code style and run checks
-task check          # Full checks (backend + frontend types + mod tidy)
-task test           # Run tests (race detection + coverage)
-task test-browser   # Run deterministic isolated Playwright workbench workflows
-task clean          # Remove build artifacts
-task update-tools   # Install/update dev tools
+task install         # Install Go modules and frontend dependencies
+task install-browser # Install Playwright Chromium for browser tests
+task dev             # Start development environment (hot reload)
+task build           # Build production binary (with embedded frontend)
+task build-all       # Cross-compile for multiple platforms
+task run             # Run in production mode
+task lint            # Auto-fix code style and run checks
+task check           # Full checks (backend + frontend types + mod tidy)
+task test            # Run tests (race detection + coverage)
+task test-browser    # Run deterministic isolated Playwright workbench workflows
+task clean           # Remove build artifacts
+task update-tools    # Install/update dev tools
 ```
 
 ## Directory Overview
@@ -171,7 +172,7 @@ For feature work that changes the browser experience, combine the relevant front
 - Respect the existing layering and directory structure; do not reshape architecture for local changes.
 - Run `task check` before committing.
 - Run `task test` when changing behavior, API contracts, database models, or non-trivial frontend interactions.
-- Run `task test-browser` when changing project routing, workbench panels, model upload, thumbnail publication, or browser-visible CAD interactions. The suite uses per-test API fixture state and independently covers signed-out route protection, shell, import, transform conflict/Undo/Redo, Assistant parameter persistence, and export. Install Chromium once with `npx --prefix website playwright install chromium`.
+- Run `task test-browser` when changing project routing, workbench panels, model upload, thumbnail publication, or browser-visible CAD interactions. The suite uses per-test API fixture state and independently covers signed-out route protection, shell, import, transform conflict/Undo/Redo, Assistant parameter persistence, and export. Install Chromium once with `task install-browser`.
 
 ## Pre-commit Checklist
 

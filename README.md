@@ -41,7 +41,7 @@ Requirements:
 - PostgreSQL or MySQL
 - [Task](https://taskfile.dev/)
 - `reflex`, `staticcheck`, and `golangci-lint` for local development checks
-- Playwright Chromium for the optional browser smoke suite
+- Playwright Chromium for browser-level workbench regression tests
 
 Install or refresh local Go tools:
 
@@ -57,10 +57,10 @@ cd litecad
 task install
 ```
 
-Install the browser used by the workbench smoke suite once:
+Install the browser used by the workbench regression suite once:
 
 ```bash
-npx --prefix website playwright install chromium
+task install-browser
 ```
 
 Create local config:
@@ -143,17 +143,18 @@ AI provider calls default to a 90-second timeout and can be tuned with `ai.timeo
 ## Development Commands
 
 ```bash
-task install        # Install Go modules and frontend dependencies
-task dev            # Start Vite dev server + Go hot reload
-task build          # Build production binary with embedded frontend
-task build-all      # Cross-compile for linux/darwin/windows x amd64/arm64
-task run            # Run the server in production mode with local config
-task lint           # Auto-fix Go module/style issues and run frontend lint
-task check          # CI-aligned local checks
-task test           # Go tests with race/coverage + frontend Vitest
-task test-browser   # Deterministic Playwright workbench smoke
-task clean          # Remove build artifacts
-task update-tools   # Install/update reflex, staticcheck, golangci-lint
+task install         # Install Go modules and frontend dependencies
+task install-browser # Install Playwright Chromium for browser tests
+task dev             # Start Vite dev server + Go hot reload
+task build           # Build production binary with embedded frontend
+task build-all       # Cross-compile for linux/darwin/windows x amd64/arm64
+task run             # Run the server in production mode with local config
+task lint            # Auto-fix Go module/style issues and run frontend lint
+task check           # CI-aligned local checks
+task test            # Go tests with race/coverage + frontend Vitest
+task test-browser    # Deterministic Playwright workbench smoke
+task clean           # Remove build artifacts
+task update-tools    # Install/update reflex, staticcheck, golangci-lint
 ```
 
 Production builds keep the compact single-binary deployment model inherited from `miclle/goblet`: the Go backend embeds the built Vite frontend, so deployment needs one executable plus a configured database.
@@ -190,7 +191,7 @@ task test-browser
 
 The browser suite starts an isolated Vite server and uses a fresh closure-scoped API fixture for every test, so workflows do not share mutable models, messages, history, or counters. Independent specs cover signed-out project route protection, shell/panel rendering, source import, transform conflict recovery with Undo/Redo, Assistant draft/save/parameter reload, and LiteCAD DSL STEP export; focused frontend tests cover protected project routes, project creation navigation, project selection state, workbench layout shell slots, model upload refresh/error handling, thumbnail publication dedupe, and project detail loading/error states. The browser suite fails on unexpected browser console or page errors and does not require a local database.
 
-CI also runs Go tests, frontend lint/type/test/build, actionlint, dependency review on pull requests, and golangci-lint.
+CI also runs Go tests, frontend lint/type/test/browser/build, actionlint, dependency review on pull requests, and golangci-lint.
 
 ## Roadmap
 
