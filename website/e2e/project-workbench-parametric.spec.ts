@@ -69,3 +69,36 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
 
   expect(browserErrors).toEqual([])
 })
+
+test('shows Assistant parametric progress and failure recovery guidance', async ({ page }) => {
+  const browserErrors = captureBrowserErrors(page)
+  const fixture = await installProjectAPIFixture(page)
+  fixture.state.parametricRunDelayMs = 250
+  fixture.state.parametricRunErrorMessage = 'Provider returned invalid LiteCAD feature DSL for browser smoke.'
+
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Toggle Assistant' }).click()
+  await expect(page.getByLabel('Assistant conversation')).toHaveValue('agc_smoke')
+  await page.getByLabel('Message Assistant').fill('Make a smoke bracket')
+  await page.getByRole('button', { name: 'Generate parametric model' }).click()
+
+  await expect(page.getByRole('status').getByText('Generating parametric model')).toBeVisible()
+  await expect(page.getByText('Attempt 1 is running.')).toBeVisible()
+  await expect(page.getByText('Prompt: Make a smoke bracket')).toBeVisible()
+  await expect(page.getByText('Provider response and validation')).toBeVisible()
+
+  const assistantForm = page.locator('form')
+  await expect(page.getByText('Generation needs attention')).toBeVisible()
+  await expect(assistantForm.getByText('Provider returned invalid LiteCAD feature DSL for browser smoke.')).toBeVisible()
+  await expect(
+    assistantForm.getByText(
+      'No canvas changes were made. Retry sends the same prompt again; edit the prompt below if the request needs more detail.',
+    ),
+  ).toBeVisible()
+  await expect(assistantForm.getByText('Last prompt:')).toBeVisible()
+  await expect(assistantForm.getByRole('button', { name: 'Retry generation' })).toBeVisible()
+
+  expect(browserErrors.filter((error) => !error.includes('status of 422'))).toEqual([])
+})

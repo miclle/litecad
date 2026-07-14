@@ -158,6 +158,7 @@ describe('ProjectAssistantPanel', () => {
         onSelectConversation={vi.fn()}
         onSubmit={vi.fn()}
         open
+        parametricProgress={{ attempt: 2, prompt: 'Make a mounting bracket' }}
         pendingKind="parametric"
         retryParametricPrompt="Make a mounting bracket"
         sourceCount={0}
@@ -166,6 +167,9 @@ describe('ProjectAssistantPanel', () => {
     )
 
     expect(screen.getByText('Generating model')).not.toBeNull()
+    expect(screen.getByText('Generating parametric model')).not.toBeNull()
+    expect(screen.getByText('Attempt 2 is running. The canvas will stay unchanged until LiteCAD accepts a valid source draft.')).not.toBeNull()
+    expect(screen.getByText('Provider response and validation in progress')).not.toBeNull()
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'New chat' }).disabled).toBe(true)
 
     rerender(
@@ -193,7 +197,10 @@ describe('ProjectAssistantPanel', () => {
       />,
     )
 
-    expect(screen.getByText('Generation failed')).not.toBeNull()
+    expect(screen.getByText('Generation needs attention')).not.toBeNull()
+    expect(screen.getByText('Assistant could not answer right now.')).not.toBeNull()
+    expect(screen.getByText(/No canvas changes were made/)).not.toBeNull()
+    expect(screen.getByText(/Make a mounting bracket/)).not.toBeNull()
     await user.click(screen.getByRole('button', { name: 'Retry generation' }))
 
     expect(onRetryParametric).toHaveBeenCalledTimes(1)

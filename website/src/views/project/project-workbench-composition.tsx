@@ -98,6 +98,7 @@ export function ProjectWorkbenchComposition({
           onSelectConversation={projectAssistant.selectConversation}
           onSubmit={projectAssistant.submitMessage}
           open={shellState.isAiChatOpen}
+          parametricProgress={projectAssistant.parametricProgress}
           parametricRunError={projectAssistant.parametricRunError}
           pendingKind={projectAssistant.pendingKind}
           retryParametricPrompt={projectAssistant.retryParametricPrompt}

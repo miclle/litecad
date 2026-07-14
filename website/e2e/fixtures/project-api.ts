@@ -21,6 +21,8 @@ export type ProjectAPIFixtureState = {
   canUndo: boolean
   canRedo: boolean
   uploadCount: number
+  parametricRunDelayMs: number
+  parametricRunErrorMessage: string
 }
 
 export function createProjectFixtureState(): ProjectAPIFixtureState {
@@ -42,6 +44,8 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
     canUndo: false,
     canRedo: false,
     uploadCount: 0,
+    parametricRunDelayMs: 0,
+    parametricRunErrorMessage: '',
   }
 }
 export const smokeFeatureDSLSource = JSON.stringify({
@@ -198,6 +202,13 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
   }
   if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/agent/conversations/agc_smoke/parametric-runs`) {
     const requestBody = request.postDataJSON() as { message?: string }
+    if (state.parametricRunDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, state.parametricRunDelayMs))
+    }
+    if (state.parametricRunErrorMessage) {
+      await route.fulfill({ json: { message: state.parametricRunErrorMessage }, status: 422 })
+      return
+    }
     const assistantMessage = {
       id: 'agm_smoke_parametric',
       project_id: projectId,

@@ -1,4 +1,4 @@
-import { BotMessageSquare, Box, Plus, RefreshCw, Send, X } from 'lucide-react'
+import { AlertTriangle, BotMessageSquare, Box, CheckCircle2, Clock3, Plus, RefreshCw, Send, X } from 'lucide-react'
 import type { FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -18,6 +18,11 @@ export type AssistantConversationSummary = {
   updated_at: string
 }
 
+export type ParametricGenerationProgress = {
+  attempt: number
+  prompt: string
+}
+
 type ProjectAssistantPanelProps = {
   activeConversationId?: string
   conversations: AssistantConversationSummary[]
@@ -34,6 +39,7 @@ type ProjectAssistantPanelProps = {
   onSelectConversation: (conversationId: string) => void
   onSubmit: () => void
   open: boolean
+  parametricProgress?: ParametricGenerationProgress
   parametricRunError?: string
   pendingKind?: 'idle' | 'message' | 'parametric' | 'conversation'
   retryParametricPrompt?: string
@@ -42,6 +48,12 @@ type ProjectAssistantPanelProps = {
 }
 
 const assistantPanelMinWidth = 340
+const parametricProgressStepKeys = [
+  'project.assistant.progress.steps.request',
+  'project.assistant.progress.steps.provider',
+  'project.assistant.progress.steps.validation',
+  'project.assistant.progress.steps.draft',
+] as const
 
 function assistantStatusLabel({
   hasActiveConversation,
@@ -82,6 +94,7 @@ export function ProjectAssistantPanel({
   onSelectConversation,
   onSubmit,
   open,
+  parametricProgress,
   parametricRunError = '',
   pendingKind = 'idle',
   retryParametricPrompt = '',
@@ -94,6 +107,7 @@ export function ProjectAssistantPanel({
   const canGenerate = canSubmit
   const canRetryParametric = retryParametricPrompt.trim() !== '' && !isPending && hasActiveConversation && !!onRetryParametric
   const statusLabel = assistantStatusLabel({ hasActiveConversation, isPending, pendingKind, t })
+  const progressPrompt = parametricProgress?.prompt.trim() || retryParametricPrompt.trim()
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (canSubmit) {
@@ -204,23 +218,64 @@ export function ProjectAssistantPanel({
         className="m-4 rounded-xl border border-[#d6dbe3] bg-white/95 p-2 shadow-[0_6px_22px_rgba(15,23,42,0.08)] transition focus-within:border-[#94a3b8] focus-within:shadow-[0_8px_30px_rgba(15,23,42,0.12)]"
         onSubmit={submit}
       >
-        {parametricRunError && (
-          <div className="mb-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-[#fecaca] bg-[#fff7ed] px-3 py-2">
-            <div className="min-w-0">
-              <div className="text-xs font-semibold text-[#991b1b]">{t('project.assistant.generationFailed')}</div>
-              <div className="truncate text-[11px] leading-5 text-[#9a3412]">{parametricRunError}</div>
+        {isPending && pendingKind === 'parametric' ? (
+          <div className="mb-2 rounded-lg border border-[#bfdbfe] bg-[#eff6ff] px-3 py-2 text-[#1e3a8a]" role="status">
+            <div className="flex items-start gap-2">
+              <RefreshCw className="mt-0.5 size-4 animate-spin motion-reduce:animate-none" />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold">{t('project.assistant.progress.title')}</div>
+                <div className="mt-0.5 text-[11px] leading-5 text-[#1d4ed8]">
+                  {t('project.assistant.progress.body', { attempt: parametricProgress?.attempt ?? 1 })}
+                </div>
+              </div>
             </div>
-            <Button
-              aria-label={t('project.assistant.retryGeneration')}
-              disabled={!canRetryParametric}
-              onClick={onRetryParametric}
-              size="icon-sm"
-              title={t('project.assistant.retryGeneration')}
-              type="button"
-              variant="outline"
-            >
-              <RefreshCw />
-            </Button>
+            {progressPrompt ? (
+              <div className="mt-2 rounded-md border border-[#bfdbfe] bg-white/70 px-2 py-1.5 text-[11px] leading-5 text-[#1e40af]">
+                <span className="font-semibold">{t('project.assistant.progress.promptLabel')}</span> {progressPrompt}
+              </div>
+            ) : null}
+            <ol className="mt-2 grid gap-1.5 text-[11px] leading-5">
+              {parametricProgressStepKeys.map((key, index) => {
+                const isCurrentStep = index === 1
+                const Icon = index === 0 ? CheckCircle2 : isCurrentStep ? Clock3 : Box
+                return (
+                  <li className="flex items-center gap-2" key={key}>
+                    <Icon className={`size-3.5 ${isCurrentStep ? 'text-[#2563eb]' : 'text-[#60a5fa]'}`} />
+                    <span className={isCurrentStep ? 'font-semibold' : ''}>{t(key)}</span>
+                  </li>
+                )
+              })}
+            </ol>
+          </div>
+        ) : null}
+        {parametricRunError && (
+          <div className="mb-2 rounded-lg border border-[#fecaca] bg-[#fff7ed] px-3 py-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-[#991b1b]">
+                  <AlertTriangle className="size-3.5" />
+                  {t('project.assistant.failure.title')}
+                </div>
+                <div className="mt-1 text-[11px] leading-5 text-[#9a3412]">{parametricRunError}</div>
+              </div>
+              <Button
+                aria-label={t('project.assistant.retryGeneration')}
+                disabled={!canRetryParametric}
+                onClick={onRetryParametric}
+                size="icon-sm"
+                title={t('project.assistant.retryGeneration')}
+                type="button"
+                variant="outline"
+              >
+                <RefreshCw />
+              </Button>
+            </div>
+            {retryParametricPrompt.trim() ? (
+              <div className="mt-2 rounded-md border border-[#fed7aa] bg-white/70 px-2 py-1.5 text-[11px] leading-5 text-[#9a3412]">
+                <span className="font-semibold">{t('project.assistant.failure.promptLabel')}</span> {retryParametricPrompt}
+              </div>
+            ) : null}
+            <div className="mt-2 text-[11px] leading-5 text-[#9a3412]">{t('project.assistant.failure.guidance')}</div>
           </div>
         )}
         <label className="sr-only" htmlFor="project-ai-chat-input">

@@ -12,7 +12,7 @@ import {
 } from 'src/api/projects'
 import type { ProjectParametricArtifact } from 'src/types/project'
 import { displayAiChatBody, generatedArtifactTitleFromAIChatBody } from './project-agent-tool-message'
-import type { AiChatMessage } from './project-assistant-panel'
+import type { AiChatMessage, ParametricGenerationProgress } from './project-assistant-panel'
 import { formatParametricRunSummary } from './project-parametric-run-telemetry'
 
 type UseProjectAssistantControllerOptions = {
@@ -56,6 +56,8 @@ export function useProjectAssistantController({
   const [localMessages, setLocalMessages] = useState<AiChatMessage[]>([])
   const [selectedConversationID, setSelectedConversationID] = useState('')
   const [parametricRunError, setParametricRunError] = useState('')
+  const [parametricProgress, setParametricProgress] = useState<ParametricGenerationProgress | undefined>(undefined)
+  const [parametricRunAttempt, setParametricRunAttempt] = useState(0)
   const [retryParametricPrompt, setRetryParametricPrompt] = useState('')
 
   const conversationsQuery = useQuery({
@@ -93,6 +95,8 @@ export function useProjectAssistantController({
 
   const selectArtifact = (artifact: ProjectParametricArtifact) => {
     setParametricRunError('')
+    setParametricProgress(undefined)
+    setParametricRunAttempt(0)
     setRetryParametricPrompt('')
     onArtifactSelected?.(artifact)
   }
@@ -161,6 +165,7 @@ export function useProjectAssistantController({
     onError: (error) => {
       const errorMessage = projectAssistantErrorMessage(error, t)
       setParametricRunError(errorMessage)
+      setParametricProgress(undefined)
       setLocalMessages((currentMessages) => [
         ...currentMessages,
         { id: `assistant-parametric-error-${Date.now()}`, role: 'assistant', body: errorMessage },
@@ -175,6 +180,8 @@ export function useProjectAssistantController({
       setDraft('')
       setLocalMessages([])
       setParametricRunError('')
+      setParametricProgress(undefined)
+      setParametricRunAttempt(0)
       setRetryParametricPrompt('')
       queryClient.setQueryData(
         ['project-agent-conversations', projectId],
@@ -198,7 +205,12 @@ export function useProjectAssistantController({
   }
 
   const runParametricGeneration = (messageBody: string) => {
+    const isRetry =
+      parametricRunError !== '' && retryParametricPrompt.trim() === messageBody
+    const nextAttempt = isRetry ? parametricRunAttempt + 1 : 1
     setParametricRunError('')
+    setParametricRunAttempt(nextAttempt)
+    setParametricProgress({ attempt: nextAttempt, prompt: messageBody })
     setRetryParametricPrompt(messageBody)
     setLocalMessages((currentMessages) => [
       ...currentMessages,
@@ -235,6 +247,8 @@ export function useProjectAssistantController({
     setDraft('')
     setLocalMessages([])
     setParametricRunError('')
+    setParametricProgress(undefined)
+    setParametricRunAttempt(0)
     setRetryParametricPrompt('')
   }
 
@@ -250,6 +264,7 @@ export function useProjectAssistantController({
     generateParametricArtifact,
     isPending: messageMutation.isPending || parametricMutation.isPending || createConversationMutation.isPending,
     messages,
+    parametricProgress,
     parametricRunError,
     pendingKind: parametricMutation.isPending
       ? ('parametric' as const)

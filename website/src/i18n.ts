@@ -273,6 +273,22 @@ const resources = {
             projectContext: 'Project context',
             newChatRequired: 'New chat required',
           },
+          progress: {
+            title: 'Generating parametric model',
+            body: 'Attempt {{attempt}} is running. The canvas will stay unchanged until LiteCAD accepts a valid source draft.',
+            promptLabel: 'Prompt:',
+            steps: {
+              request: 'Request queued',
+              provider: 'Provider response and validation in progress',
+              validation: 'Source draft creation next',
+              draft: 'Preview opens after the draft is accepted',
+            },
+          },
+          failure: {
+            title: 'Generation needs attention',
+            promptLabel: 'Last prompt:',
+            guidance: 'No canvas changes were made. Retry sends the same prompt again; edit the prompt below if the request needs more detail.',
+          },
           generatedDraft: 'Generated source draft: {{title}}',
         },
         history: {
@@ -637,6 +653,22 @@ const resources = {
             projectContext: '项目上下文',
             newChatRequired: '需要新建对话',
           },
+          progress: {
+            title: '正在生成参数化模型',
+            body: '第 {{attempt}} 次尝试正在运行。LiteCAD 接受有效源文件草稿前，画布不会被修改。',
+            promptLabel: '提示词：',
+            steps: {
+              request: '请求已排队',
+              provider: '正在等待 provider 响应并验证',
+              validation: '下一步创建源文件草稿',
+              draft: '草稿通过后会打开预览',
+            },
+          },
+          failure: {
+            title: '生成需要处理',
+            promptLabel: '上次提示词：',
+            guidance: '画布未发生变化。重试会再次发送同一个提示词；如果请求需要更多细节，可以先在下方编辑提示词。',
+          },
           generatedDraft: '已生成源文件草稿：{{title}}',
         },
         history: {
@@ -735,8 +767,48 @@ const resources = {
   },
 } as const
 
+function createMemoryStorage(): Storage {
+  const values = new Map<string, string>()
+  return {
+    get length() {
+      return values.size
+    },
+    clear() {
+      values.clear()
+    },
+    getItem(key: string) {
+      return values.get(key) ?? null
+    },
+    key(index: number) {
+      return Array.from(values.keys())[index] ?? null
+    },
+    removeItem(key: string) {
+      values.delete(key)
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value)
+    },
+  }
+}
+
+function languageStorage() {
+  try {
+    if (window.localStorage) {
+      return window.localStorage
+    }
+  } catch {
+    // Fall through to an in-memory store for test or storage-restricted environments.
+  }
+  const memoryStorage = createMemoryStorage()
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: memoryStorage,
+  })
+  return memoryStorage
+}
+
 function resolveInitialLanguage(): SupportedLanguage {
-  const storedLanguage = window.localStorage.getItem('litecad:language')
+  const storedLanguage = languageStorage().getItem('litecad:language')
   if (storedLanguage === 'en' || storedLanguage === 'zh') {
     return storedLanguage
   }
@@ -760,7 +832,7 @@ void i18n.use(initReactI18next).init({
 
 i18n.on('languageChanged', (language) => {
   if (language === 'en' || language === 'zh') {
-    window.localStorage.setItem('litecad:language', language)
+    languageStorage().setItem('litecad:language', language)
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'
   }
 })
