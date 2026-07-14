@@ -582,19 +582,36 @@ function buildFeatureDSLRectangularRevolveShape(
   scale: readonly number[],
 ) {
   const size = scaleFeatureDSLPlanarSize(resolveFeatureDSLVector(sizeExpression, parameters), scale)
-  const innerRadius = Math.abs((origin[0] ?? 0) - (axisOrigin[0] ?? 0))
-  const outerRadius = innerRadius + (size[0] ?? 0)
+  const width = size[0] ?? 0
   const height = size[1] ?? 0
-  if (outerRadius <= 0 || height <= 0) {
+  if (width <= 0 || height <= 0) {
     throw new Error(`Feature ${featureID} revolve dimensions must be positive`)
   }
+  const firstRadialEdge = (origin[0] ?? 0) - (axisOrigin[0] ?? 0)
+  const secondRadialEdge = firstRadialEdge + width
+  if (Math.abs((origin[1] ?? 0) - (axisOrigin[1] ?? 0)) > 1e-9) {
+    throw new Error(`Feature ${featureID} rectangular revolve profile plane must contain its axis`)
+  }
+  if (firstRadialEdge < 0 && secondRadialEdge > 0) {
+    throw new Error(`Feature ${featureID} rectangular revolve profile must not cross its axis`)
+  }
+  const innerRadius = Math.min(Math.abs(firstRadialEdge), Math.abs(secondRadialEdge))
+  const outerRadius = Math.max(Math.abs(firstRadialEdge), Math.abs(secondRadialEdge))
   const basePoint = new openCascade.gp_Pnt_3(axisOrigin[0] ?? 0, axisOrigin[1] ?? 0, origin[2] ?? 0)
   const axis = new openCascade.gp_Ax2_3(basePoint, new openCascade.gp_Dir_4(0, 0, 1))
   const outerBuilder = new openCascade.BRepPrimAPI_MakeCylinder_3(axis, outerRadius, height)
   outerBuilder.Build(new openCascade.Message_ProgressRange_1())
-  // Hollow rectangular revolves remain future work; this stable path emits the outer lathe envelope.
-  void innerRadius
-  return outerBuilder.Shape()
+  const outerShape = outerBuilder.Shape()
+  if (innerRadius === 0) {
+    return outerShape
+  }
+  const innerBuilder = new openCascade.BRepPrimAPI_MakeCylinder_3(axis, innerRadius, height)
+  innerBuilder.Build(new openCascade.Message_ProgressRange_1())
+  return new openCascade.BRepAlgoAPI_Cut_3(
+    outerShape,
+    innerBuilder.Shape(),
+    new openCascade.Message_ProgressRange_1(),
+  ).Shape()
 }
 
 function buildFeatureDSLSweepShape(

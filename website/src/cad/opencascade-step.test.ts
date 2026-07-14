@@ -338,6 +338,96 @@ describe('runOpenCascadeFeatureDSLPreview', () => {
     expect(bounds.maxZ).toBeGreaterThan(23)
   }, 30000)
 
+  it('tessellates an offset full-turn XZ rectangle as a hollow revolve', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    const result = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'hollow-revolve.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          { id: 'profile', type: 'sketch', plane: 'XZ', origin: [8, 0, -5], profile: { type: 'rectangle', size: [4, 10] } },
+          { id: 'body', type: 'revolve', sketch: 'profile', axis_origin: [0, 0, 0], axis: [0, 0, 1], angle_degrees: 360 },
+        ],
+      },
+      parameterValues: {},
+    })
+
+    expect(meshHasRadius(result.mesh, 8)).toBe(true)
+    expect(meshHasRadius(result.mesh, 12)).toBe(true)
+  }, 30000)
+
+  it('rejects a full-turn rectangular revolve profile that crosses its axis', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    await expect(runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'axis-crossing-revolve.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          { id: 'profile', type: 'sketch', plane: 'XZ', origin: [-2, 0, 0], profile: { type: 'rectangle', size: [4, 10] } },
+          { id: 'body', type: 'revolve', sketch: 'profile', axis_origin: [0, 0, 0], axis: [0, 0, 1], angle_degrees: 360 },
+        ],
+      },
+      parameterValues: {},
+    })).rejects.toThrow('must not cross its axis')
+  }, 30000)
+
+  it('rejects a full-turn rectangular revolve whose profile plane misses the axis', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    await expect(runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'off-plane-revolve.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          { id: 'profile', type: 'sketch', plane: 'XZ', origin: [8, 2, 0], profile: { type: 'rectangle', size: [4, 10] } },
+          { id: 'body', type: 'revolve', sketch: 'profile', axis_origin: [0, 0, 0], axis: [0, 0, 1], angle_degrees: 360 },
+        ],
+      },
+      parameterValues: {},
+    })).rejects.toThrow('profile plane must contain its axis')
+  }, 30000)
+
+  it('exports a hollow full-turn rectangular revolve to STEP', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    const result = await runFeatureDSLExportWithKernel(openCascade, {
+      filename: 'hollow-revolve.step',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          { id: 'profile', type: 'sketch', plane: 'XZ', origin: [8, 0, -5], profile: { type: 'rectangle', size: [4, 10] } },
+          { id: 'body', type: 'revolve', sketch: 'profile', axis_origin: [0, 0, 0], axis: [0, 0, 1], angle_degrees: 360 },
+        ],
+      },
+      parameterValues: {},
+    })
+
+    expect(result.exportedStepText).toContain('ISO-10303-21')
+    expect(result.exportedStepText).toContain('ADVANCED_FACE')
+  }, 30000)
+
   it('offsets repeated boolean feature graph operands as repeated instances', async () => {
     const loadOpenCascade = createOpenCascadeLoader(
       initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
@@ -405,6 +495,17 @@ function meshBounds(mesh: { positions: readonly number[] }) {
     bounds.maxZ = Math.max(bounds.maxZ, z)
   }
   return bounds
+}
+
+function meshHasRadius(mesh: { positions: readonly number[] }, expectedRadius: number) {
+  for (let index = 0; index < mesh.positions.length; index += 3) {
+    const x = mesh.positions[index] ?? 0
+    const y = mesh.positions[index + 1] ?? 0
+    if (Math.abs(Math.hypot(x, y) - expectedRadius) < 0.1) {
+      return true
+    }
+  }
+  return false
 }
 
 describe('applyCADOperationsToShape', () => {

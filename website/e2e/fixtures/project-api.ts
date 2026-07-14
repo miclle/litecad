@@ -99,6 +99,32 @@ export const sphereXYZThroughHoleFeatureDSLSource = JSON.stringify({
     },
   ],
 })
+export const hollowRevolveFeatureDSLSource = JSON.stringify({
+  version: 1,
+  unit: 'millimetre',
+  parameters: {
+    INNER_RADIUS: { type: 'number', default: 8, min: 1, max: 50, step: 1 },
+    WALL_THICKNESS: { type: 'number', default: 4, min: 1, max: 20, step: 1 },
+    HEIGHT: { type: 'number', default: 10, min: 1, max: 100, step: 1 },
+  },
+  features: [
+    {
+      id: 'profile',
+      type: 'sketch',
+      plane: 'XZ',
+      origin: ['INNER_RADIUS', 0, 0],
+      profile: { type: 'rectangle', size: ['WALL_THICKNESS', 'HEIGHT'] },
+    },
+    {
+      id: 'body',
+      type: 'revolve',
+      sketch: 'profile',
+      axis_origin: [0, 0, 0],
+      axis: [0, 0, 1],
+      angle_degrees: 360,
+    },
+  ],
+})
 const smokeParametricArtifact = {
   id: 'pma_smoke',
   project_id: projectId,

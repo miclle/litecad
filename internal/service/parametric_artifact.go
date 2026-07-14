@@ -580,8 +580,9 @@ type liteCADFeatureDSLValidationRotation struct {
 }
 
 type liteCADFeatureDSLValidationParameters struct {
-	numeric  map[string]struct{}
-	sketches map[string]string
+	numeric         map[string]struct{}
+	numericDefaults map[string]float64
+	sketches        map[string]liteCADFeatureDSLValidationFeature
 }
 
 func validateLiteCADFeatureDSLSource(data []byte) error {
@@ -593,8 +594,9 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 		return ErrInvalidProjectParametricArtifactInput
 	}
 	parameters := liteCADFeatureDSLValidationParameters{
-		numeric:  map[string]struct{}{},
-		sketches: map[string]string{},
+		numeric:         map[string]struct{}{},
+		numericDefaults: map[string]float64{},
+		sketches:        map[string]liteCADFeatureDSLValidationFeature{},
 	}
 	for name, parameter := range document.Parameters {
 		if strings.TrimSpace(name) == "" {
@@ -605,11 +607,12 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 		}
 		if parameter.Type == "number" {
 			parameters.numeric[name] = struct{}{}
+			parameters.numericDefaults[name] = parameter.Default.(float64)
 		}
 	}
 	for _, feature := range document.Features {
 		if feature.Type == "sketch" && strings.TrimSpace(feature.ID) != "" {
-			parameters.sketches[feature.ID] = feature.Plane
+			parameters.sketches[feature.ID] = feature
 		}
 	}
 	hasSolid := false
@@ -826,10 +829,11 @@ func validateLiteCADFeatureDSLSketchReference(sketch any, parameters liteCADFeat
 
 func validateLiteCADFeatureDSLXYExtrudeSketchReference(sketch any, parameters liteCADFeatureDSLValidationParameters) error {
 	if name, ok := sketch.(string); ok {
-		plane, exists := parameters.sketches[name]
+		sketchDefinition, exists := parameters.sketches[name]
 		if !exists {
 			return ErrInvalidProjectParametricArtifactInput
 		}
+		plane := sketchDefinition.Plane
 		if plane != "" && plane != "XY" {
 			return ErrInvalidProjectParametricArtifactInput
 		}
@@ -909,7 +913,137 @@ func validateLiteCADFeatureDSLRevolveFeature(feature liteCADFeatureDSLValidation
 			return err
 		}
 	}
+	if err := validateLiteCADFeatureDSLRectangularRevolveProfile(feature, parameters); err != nil {
+		return err
+	}
 	return validateLiteCADFeatureDSLRepeat(feature.Repeat, parameters.numeric)
+}
+
+func validateLiteCADFeatureDSLRectangularRevolveProfile(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters) error {
+	plane := feature.Plane
+	origin := feature.Origin
+	sketchValue := feature.Sketch
+	if sketchName, referenced := feature.Sketch.(string); referenced {
+		sketch, exists := parameters.sketches[sketchName]
+		if !exists {
+			return nil
+		}
+		sketchValue = sketch.Profile
+		if plane == "" {
+			plane = sketch.Plane
+		}
+		if origin == nil {
+			origin = sketch.Origin
+		}
+	}
+	if plane != "XZ" {
+		return nil
+	}
+	angle := 360.0
+	if feature.AngleDegrees != nil {
+		var resolved bool
+		angle, resolved = resolveLiteCADFeatureDSLValidationNumber(feature.AngleDegrees, parameters.numericDefaults)
+		if !resolved {
+			return nil
+		}
+	}
+	if angle != 360 {
+		return nil
+	}
+	axis := []any{float64(0), float64(0), float64(1)}
+	if feature.Axis != nil {
+		axis = feature.Axis
+	}
+	axisX, axisXOK := resolveLiteCADFeatureDSLValidationNumber(axis[0], parameters.numericDefaults)
+	axisY, axisYOK := resolveLiteCADFeatureDSLValidationNumber(axis[1], parameters.numericDefaults)
+	axisZ, axisZOK := resolveLiteCADFeatureDSLValidationNumber(axis[2], parameters.numericDefaults)
+	if !axisXOK || !axisYOK || !axisZOK || axisX != 0 || axisY != 0 || axisZ != 1 {
+		return nil
+	}
+	profile, ok := liteCADFeatureDSLValidationSketchFromValue(sketchValue)
+	if !ok || profile.Type != "rectangle" || len(profile.Size) != 2 {
+		return nil
+	}
+	axisOriginX := 0.0
+	axisOriginY := 0.0
+	if feature.AxisOrigin != nil {
+		var xResolved, yResolved bool
+		axisOriginX, xResolved = resolveLiteCADFeatureDSLValidationNumber(feature.AxisOrigin[0], parameters.numericDefaults)
+		axisOriginY, yResolved = resolveLiteCADFeatureDSLValidationNumber(feature.AxisOrigin[1], parameters.numericDefaults)
+		if !xResolved || !yResolved {
+			return nil
+		}
+	}
+	originX := 0.0
+	originY := 0.0
+	if origin != nil {
+		var xResolved, yResolved bool
+		originX, xResolved = resolveLiteCADFeatureDSLValidationNumber(origin[0], parameters.numericDefaults)
+		originY, yResolved = resolveLiteCADFeatureDSLValidationNumber(origin[1], parameters.numericDefaults)
+		if !xResolved || !yResolved {
+			return nil
+		}
+	}
+	width, resolved := resolveLiteCADFeatureDSLValidationNumber(profile.Size[0], parameters.numericDefaults)
+	if !resolved {
+		return nil
+	}
+	if feature.Transform != nil && feature.Transform.Scale != nil {
+		scaleX, scaleResolved := resolveLiteCADFeatureDSLValidationNumber(feature.Transform.Scale[0], parameters.numericDefaults)
+		if !scaleResolved {
+			return nil
+		}
+		width *= scaleX
+	}
+	firstRadialEdge := originX - axisOriginX
+	secondRadialEdge := firstRadialEdge + width
+	if math.Abs(originY-axisOriginY) > 1e-9 {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	if firstRadialEdge < 0 && secondRadialEdge > 0 {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	return nil
+}
+
+func resolveLiteCADFeatureDSLValidationNumber(value any, numericDefaults map[string]float64) (float64, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, isFiniteFloat(typed)
+	case string:
+		resolved, ok := numericDefaults[typed]
+		return resolved, ok
+	case map[string]any:
+		op, opOK := typed["op"].(string)
+		args, argsOK := typed["args"].([]any)
+		if !opOK || !argsOK || len(args) != 2 {
+			return 0, false
+		}
+		left, leftOK := resolveLiteCADFeatureDSLValidationNumber(args[0], numericDefaults)
+		right, rightOK := resolveLiteCADFeatureDSLValidationNumber(args[1], numericDefaults)
+		if !leftOK || !rightOK {
+			return 0, false
+		}
+		var result float64
+		switch op {
+		case "add":
+			result = left + right
+		case "sub":
+			result = left - right
+		case "mul":
+			result = left * right
+		case "div":
+			if right == 0 {
+				return 0, false
+			}
+			result = left / right
+		default:
+			return 0, false
+		}
+		return result, isFiniteFloat(result)
+	default:
+		return 0, false
+	}
 }
 
 func validateLiteCADFeatureDSLSweepFeature(feature liteCADFeatureDSLValidationFeature, parameters liteCADFeatureDSLValidationParameters) error {

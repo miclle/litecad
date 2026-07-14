@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 
 import {
   captureBrowserErrors,
+  hollowRevolveFeatureDSLSource,
   installProjectAPIFixture,
   projectId,
   smokeFeatureDSLSource,
@@ -114,6 +115,34 @@ test('generates a sphere with X Y Z through holes through the mock provider work
     },
   })
 
+  expect(browserErrors).toEqual([])
+})
+
+test('generates previews saves and exposes STEP export for a hollow rectangular revolve', async ({ page }) => {
+  test.slow()
+  const browserErrors = captureBrowserErrors(page)
+  const fixture = await installProjectAPIFixture(page)
+  fixture.state.parametricArtifactTitle = 'Hollow revolved sleeve'
+  fixture.state.parametricArtifactSourceCode = hollowRevolveFeatureDSLSource
+  fixture.state.savedModelID = 'mdl_hollow_revolve_lcad'
+  fixture.state.savedModelFilename = 'hollow-revolved-sleeve.lcad.json'
+
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await page.getByRole('button', { name: 'Toggle Assistant' }).click()
+  await page.getByLabel('Message Assistant').fill('Create a hollow revolved sleeve with an 8 mm inner radius and 4 mm wall')
+  await page.getByRole('button', { name: 'Generate parametric model' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Hollow revolved sleeve' })).toBeVisible()
+  await expect(page.getByLabel('INNER_RADIUS parameter')).toBeVisible()
+  await expect(page.getByRole('option', { name: 'Hollow revolved sleeve' })).toBeVisible()
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+  await expect.poll(() => fixture.state.featureDSLSourceRequestCount).toBeGreaterThan(0)
+  expect(fixture.state.models).toHaveLength(1)
+
+  await page.getByRole('button', { name: 'Export STEP' }).click()
+  await expect(page.getByRole('dialog', { name: 'Export STEP' })).toBeVisible()
+  await expect(page.getByText('1/1 selected')).toBeVisible()
   expect(browserErrors).toEqual([])
 })
 

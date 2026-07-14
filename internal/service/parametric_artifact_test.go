@@ -600,6 +600,9 @@ func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedFeatureGraphAST(t *testi
 
 	for _, source := range []string{
 		`{"version":1,"unit":"millimetre","features":[{"id":"profile","type":"sketch","plane":"XZ","profile":{"type":"rectangle","size":[4,8]}},{"id":"bad_revolve","type":"revolve","sketch":"profile","angle_degrees":361}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"profile","type":"sketch","plane":"XZ","origin":[-2,0,0],"profile":{"type":"rectangle","size":[4,8]}},{"id":"bad_revolve","type":"revolve","sketch":"profile","axis_origin":[0,0,0],"axis":[0,0,1],"angle_degrees":360}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"bad_revolve","type":"revolve","plane":"XZ","origin":[-2,0,0],"sketch":{"type":"rectangle","size":[4,8]},"axis_origin":[0,0,0],"axis":[0,0,1],"angle_degrees":360}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"profile","type":"sketch","plane":"XZ","origin":[8,2,0],"profile":{"type":"rectangle","size":[4,8]}},{"id":"bad_revolve","type":"revolve","sketch":"profile","axis_origin":[0,0,0],"axis":[0,0,1],"angle_degrees":360}]}`,
 		`{"version":1,"unit":"millimetre","features":[{"id":"profile","type":"sketch","plane":"XY","profile":{"type":"circle","diameter":6}},{"id":"bad_sweep","type":"sweep","sketch":"profile","path":[[0,0,0],[0,0,0]]}]}`,
 	} {
 		_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
