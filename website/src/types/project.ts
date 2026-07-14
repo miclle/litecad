@@ -229,6 +229,7 @@ export interface CreateProjectAgentConversationPayload {
 
 export interface SendProjectAgentMessagePayload {
   messages: Pick<ProjectAgentMessage, 'body' | 'role'>[]
+  active_model_id?: string
 }
 
 export interface AIParametricToolCall {
@@ -254,6 +255,7 @@ export interface ProjectAgentStructuredMessage extends ProjectAgentMessage {
 
 export interface ProjectAgentParametricRunPayload {
   message: string
+  active_model_id?: string
 }
 
 export interface ProjectAgentParametricTelemetry {

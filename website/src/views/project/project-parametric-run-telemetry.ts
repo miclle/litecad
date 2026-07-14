@@ -2,8 +2,20 @@ import type { ProjectAgentParametricTelemetry, ProjectParametricArtifact } from 
 
 type ParametricRunTranslator = (key: string, options?: Record<string, unknown>) => string
 
-export function formatParametricRunSummary(title: string, telemetry?: ProjectAgentParametricTelemetry, t: ParametricRunTranslator = defaultParametricRunTranslator) {
-  const baseSummary = t('project.parametric.generatedDraft', { title })
+type ParametricRunSummaryOptions = {
+  activeModelName?: string
+}
+
+export function formatParametricRunSummary(
+  title: string,
+  telemetry?: ProjectAgentParametricTelemetry,
+  t: ParametricRunTranslator = defaultParametricRunTranslator,
+  options: ParametricRunSummaryOptions = {},
+) {
+  const activeModelName = options.activeModelName?.trim()
+  const baseSummary = activeModelName
+    ? t('project.parametric.generatedRevisionDraft', { title, model: activeModelName })
+    : t('project.parametric.generatedDraft', { title })
   if (!telemetry) {
     return baseSummary
   }
@@ -45,6 +57,9 @@ function formatDuration(durationMS: number) {
 function defaultParametricRunTranslator(key: string, options: Record<string, unknown> = {}) {
   if (key === 'project.parametric.generatedDraft') {
     return `Generated source draft: ${String(options.title ?? '')}`
+  }
+  if (key === 'project.parametric.generatedRevisionDraft') {
+    return `Generated revised draft for ${String(options.model ?? '')}: ${String(options.title ?? '')}`
   }
   if (key === 'project.parametric.runSummary') {
     return `Run: ${String(options.toolMode ?? '')} · ${String(options.sourceKind ?? '')} · ${String(options.duration ?? '')}`

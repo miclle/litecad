@@ -32,6 +32,7 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
   - Expand the LiteCAD Feature DSL only when schema validation, backend prompting, browser preview, STEP export, tests, and Assistant UX can ship together.
   - Remaining DSL geometry gaps include full sketch constraints, freeform profiles, arbitrary sweep paths, arbitrary/freeform revolve profiles, hollow rectangular revolve solids, robust true chamfer edge-face selection, mirrored/negative transforms, tapers, infix formulas, functions, unit math, comparisons, and conditionals.
   - Remaining DSL data-model gaps include durable kernel feature graph state and CAD document History integration for generated feature graph nodes.
+  - Decide whether Assistant revision requests should eventually overwrite a selected saved source model in place with History semantics, or keep the current safer corrected-draft/new-source-model workflow.
   - Unsupported primitive requests should fail explicitly rather than create substitute geometry.
   - Add provider-stage telemetry, full provider analytics, richer long-run progress details, and provider-specific tuning before exposing longer generation workflows.
   - Add source-code editing and diff review for generated parametric artifacts only if product usage demands direct code control.

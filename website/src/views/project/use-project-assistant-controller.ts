@@ -10,12 +10,13 @@ import {
   runProjectAgentParametric,
   sendProjectAgentConversationMessage,
 } from 'src/api/projects'
-import type { ProjectParametricArtifact } from 'src/types/project'
+import type { ProjectModel, ProjectParametricArtifact } from 'src/types/project'
 import { displayAiChatBody, generatedArtifactTitleFromAIChatBody } from './project-agent-tool-message'
 import type { AiChatMessage, ParametricGenerationProgress } from './project-assistant-panel'
 import { formatParametricRunSummary } from './project-parametric-run-telemetry'
 
 type UseProjectAssistantControllerOptions = {
+  activeModel?: ProjectModel
   enabled: boolean
   onArtifactSelected?: (artifact: ProjectParametricArtifact) => void
   projectId: string
@@ -46,6 +47,7 @@ function defaultAssistantTranslator(key: string) {
 }
 
 export function useProjectAssistantController({
+  activeModel,
   enabled,
   onArtifactSelected,
   projectId,
@@ -59,6 +61,7 @@ export function useProjectAssistantController({
   const [parametricProgress, setParametricProgress] = useState<ParametricGenerationProgress | undefined>(undefined)
   const [parametricRunAttempt, setParametricRunAttempt] = useState(0)
   const [retryParametricPrompt, setRetryParametricPrompt] = useState('')
+  const activeModelName = activeModel ? projectAssistantModelDisplayName(activeModel) : ''
 
   const conversationsQuery = useQuery({
     queryKey: ['project-agent-conversations', projectId],
@@ -105,6 +108,7 @@ export function useProjectAssistantController({
     mutationFn: async (messageBody: string) => {
       const response = await sendProjectAgentConversationMessage(projectId, activeConversationID, {
         messages: [{ role: 'user', body: messageBody }],
+        ...(activeModel?.id ? { active_model_id: activeModel.id } : {}),
       })
       return response.data
     },
@@ -144,7 +148,10 @@ export function useProjectAssistantController({
 
   const parametricMutation = useMutation({
     mutationFn: async (messageBody: string) => {
-      const response = await runProjectAgentParametric(projectId, activeConversationID, { message: messageBody })
+      const response = await runProjectAgentParametric(projectId, activeConversationID, {
+        message: messageBody,
+        ...(activeModel?.id ? { active_model_id: activeModel.id } : {}),
+      })
       return response.data
     },
     onSuccess: async ({ artifact, message, telemetry }) => {
@@ -154,7 +161,9 @@ export function useProjectAssistantController({
         {
           id: `local-assistant-parametric-${message.id || Date.now()}`,
           role: 'assistant',
-          body: formatParametricRunSummary(artifact.title, telemetry, t),
+          body: formatParametricRunSummary(artifact.title, telemetry, t, {
+            activeModelName,
+          }),
         },
       ])
       await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })
@@ -210,7 +219,11 @@ export function useProjectAssistantController({
     const nextAttempt = isRetry ? parametricRunAttempt + 1 : 1
     setParametricRunError('')
     setParametricRunAttempt(nextAttempt)
-    setParametricProgress({ attempt: nextAttempt, prompt: messageBody })
+    setParametricProgress({
+      attempt: nextAttempt,
+      prompt: messageBody,
+      ...(activeModelName ? { activeModelName } : {}),
+    })
     setRetryParametricPrompt(messageBody)
     setLocalMessages((currentMessages) => [
       ...currentMessages,
@@ -254,6 +267,7 @@ export function useProjectAssistantController({
 
   return {
     activeConversationID,
+    activeModelName,
     conversations,
     createConversation: () => {
       if (!createConversationMutation.isPending) {
@@ -280,4 +294,8 @@ export function useProjectAssistantController({
     setParametricRunError,
     submitMessage,
   }
+}
+
+function projectAssistantModelDisplayName(model: ProjectModel) {
+  return model.metadata.product_names?.find((name) => name.trim() !== '')?.trim() || model.original_filename
 }

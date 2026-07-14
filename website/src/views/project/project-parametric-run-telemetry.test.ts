@@ -16,4 +16,10 @@ describe('formatParametricRunSummary', () => {
   it('keeps the existing summary when telemetry is unavailable', () => {
     expect(formatParametricRunSummary('Mounting bracket')).toBe('Generated source draft: Mounting bracket')
   })
+
+  it('describes revised drafts when a selected model is active', () => {
+    expect(formatParametricRunSummary('Sphere revised', undefined, undefined, { activeModelName: 'Sphere' })).toBe(
+      'Generated revised draft for Sphere: Sphere revised',
+    )
+  })
 })

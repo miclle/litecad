@@ -113,6 +113,52 @@ describe('runOpenCascadeFeatureDSLPreview', () => {
     expect(cutEllipsoid.mesh.positions.length).toBeGreaterThan(ellipsoid.mesh.positions.length)
   }, 30000)
 
+  it('cuts a sphere with centered X, Y, and Z axis through holes', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    const singleAxisHole = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'sphere-z-hole.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        parameters: {
+          sphere_diameter: { type: 'number', default: 30 },
+          hole_diameter: { type: 'number', default: 5 },
+        },
+        features: [
+          { id: 'body', type: 'sphere', origin: [0, 0, 0], diameter: 'sphere_diameter' },
+          { id: 'hole_z', type: 'cylinder_cut', origin: [0, 0, -16], axis: [0, 0, 1], diameter: 'hole_diameter', depth: 32 },
+        ],
+      },
+      parameterValues: {},
+    })
+    const threeAxisHoles = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'sphere-xyz-holes.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        parameters: {
+          sphere_diameter: { type: 'number', default: 30 },
+          hole_diameter: { type: 'number', default: 5 },
+        },
+        features: [
+          { id: 'body', type: 'sphere', origin: [0, 0, 0], diameter: 'sphere_diameter' },
+          { id: 'hole_x', type: 'cylinder_cut', origin: [-16, 0, 0], axis: [1, 0, 0], diameter: 'hole_diameter', depth: 32 },
+          { id: 'hole_y', type: 'cylinder_cut', origin: [0, -16, 0], axis: [0, 1, 0], diameter: 'hole_diameter', depth: 32 },
+          { id: 'hole_z', type: 'cylinder_cut', origin: [0, 0, -16], axis: [0, 0, 1], diameter: 'hole_diameter', depth: 32 },
+        ],
+      },
+      parameterValues: {},
+    })
+
+    expect(threeAxisHoles.mesh.positions.length).toBeGreaterThan(singleAxisHole.mesh.positions.length)
+    expect(threeAxisHoles.mesh.indices.length).toBeGreaterThan(singleAxisHole.mesh.indices.length)
+  }, 30000)
+
   it('applies feature transforms with scale, rotate, and translate', async () => {
     const loadOpenCascade = createOpenCascadeLoader(
       initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],

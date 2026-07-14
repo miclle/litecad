@@ -84,6 +84,7 @@ export function ProjectWorkbenchComposition({
       assistantPanel={
         <ProjectAssistantPanel
           activeConversationId={projectAssistant.activeConversationID}
+          activeModelName={projectAssistant.activeModelName}
           conversations={projectAssistant.conversations}
           draft={projectAssistant.draft}
           isPending={projectAssistant.isPending}

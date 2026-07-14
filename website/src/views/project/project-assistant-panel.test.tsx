@@ -205,4 +205,33 @@ describe('ProjectAssistantPanel', () => {
 
     expect(onRetryParametric).toHaveBeenCalledTimes(1)
   })
+
+  it('shows selected-model revision context while generating', () => {
+    render(
+      <ProjectAssistantPanel
+        activeConversationId="agc_one"
+        activeModelName="球体三轴通孔"
+        conversations={[{ id: 'agc_one', title: 'Design pass', updated_at: '2026-07-11T00:00:00Z' }]}
+        draft=""
+        isPending
+        maxWidth={680}
+        messages={[]}
+        onClose={vi.fn()}
+        onCreateConversation={vi.fn()}
+        onDraftChange={vi.fn()}
+        onGenerateParametric={vi.fn()}
+        onResizePointerDown={vi.fn()}
+        onSelectConversation={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        parametricProgress={{ attempt: 1, prompt: '直接修改模型', activeModelName: '球体三轴通孔' }}
+        pendingKind="parametric"
+        sourceCount={1}
+        width={420}
+      />,
+    )
+
+    expect(screen.getByText('Revising:')).not.toBeNull()
+    expect(screen.getByText('球体三轴通孔')).not.toBeNull()
+  })
 })

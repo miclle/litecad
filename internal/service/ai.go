@@ -78,6 +78,7 @@ type ProjectAgentMessageInput struct {
 	ProjectID      string
 	ConversationID string
 	Messages       []AIChatMessage
+	ActiveModelID  string
 }
 
 // ProjectAgentMessageResult is the CAD Agent reply plus any generated artifact
@@ -221,6 +222,7 @@ func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgen
 	if err != nil {
 		return ProjectAgentMessageResult{}, err
 	}
+	activeModelContext := buildAIParametricActiveModelContext(input.ActiveModelID, models)
 	persistedMessages, err := s.listRecentProjectAgentMessages(ctx, project.ID, conversation.ID, maxAIChatMessages)
 	if err != nil {
 		return ProjectAgentMessageResult{}, err
@@ -233,6 +235,9 @@ func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgen
 		AIChatMessage{Role: "system", Body: aiParametricConversationPrompt},
 		AIChatMessage{Role: "system", Body: buildProjectAgentContext(project, models)},
 	)
+	if activeModelContext != "" {
+		providerMessages = append(providerMessages, AIChatMessage{Role: "system", Body: activeModelContext})
+	}
 	for _, message := range persistedMessages {
 		providerMessages = append(providerMessages, AIChatMessage{Role: message.Role, Body: message.Body})
 	}
@@ -255,6 +260,11 @@ func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgen
 		return ProjectAgentMessageResult{Message: message}, nil
 	}
 	if err == nil {
+		originalTitle := call.Input.Title
+		call.Input.Title = distinguishAIParametricRevisionTitle(call.Input.Title, input.ActiveModelID, models)
+		if call.Input.Title != originalTitle {
+			reply = marshalAIParametricToolCall(call)
+		}
 		run, err := s.persistProjectAgentParametricRun(ctx, project.ID, conversation.ID, userMessage, call, reply, ProjectAgentParametricTelemetry{
 			ToolMode:   aiParametricToolModeJSONFallback,
 			SourceKind: call.Input.SourceKind,

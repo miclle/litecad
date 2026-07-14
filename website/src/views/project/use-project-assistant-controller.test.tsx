@@ -10,6 +10,7 @@ import {
   runProjectAgentParametric,
   sendProjectAgentConversationMessage,
 } from 'src/api/projects'
+import type { ProjectModel } from 'src/types/project'
 import { useProjectAssistantController } from './use-project-assistant-controller'
 
 vi.mock('src/api/projects', () => ({
@@ -187,4 +188,146 @@ describe('useProjectAssistantController', () => {
     await waitFor(() => expect(result.current.parametricProgress).toBeUndefined())
     expect(runProjectAgentParametric).toHaveBeenCalledTimes(3)
   })
+
+  it('sends the selected model as revision context for parametric generation', async () => {
+    vi.mocked(runProjectAgentParametric).mockResolvedValue({
+      data: {
+        message: {
+          id: 'agm_parametric',
+          project_id: projectId,
+          conversation_id: 'agc_first',
+          role: 'assistant',
+          body: '{"tool":"build_parametric_model"}',
+          parts: [],
+          created_at: '2026-07-13T00:00:00Z',
+          updated_at: '2026-07-13T00:00:00Z',
+        },
+        artifact: {
+          id: 'pma_revision',
+          project_id: projectId,
+          conversation_id: 'agc_first',
+          message_id: 'agm_parametric',
+          title: '球体三轴通孔 修正版',
+          source_kind: 'litecad-feature-dsl',
+          source_code: '{}',
+          parameter_values: {},
+          compile_status: 'pending',
+          compile_error: '',
+          preview_model_id: '',
+          generation_tool_mode: 'native_tool',
+          generation_duration_ms: 120,
+          created_at: '2026-07-13T00:00:00Z',
+          updated_at: '2026-07-13T00:00:00Z',
+        },
+        telemetry: { tool_mode: 'native_tool', source_kind: 'litecad-feature-dsl', duration_ms: 120 },
+      },
+    } as unknown as Awaited<ReturnType<typeof runProjectAgentParametric>>)
+    const { wrapper } = createHarness()
+    const { result } = renderHook(
+      () =>
+        useProjectAssistantController({
+          activeModel: {
+            id: 'mdl_sphere',
+            project_id: projectId,
+            original_filename: '球体三轴通孔-litecad.lcad.json',
+            format: 'lcad',
+            content_type: 'application/json',
+            byte_size: 120,
+            parse_status: 'parsed',
+            parse_error: '',
+            metadata: {
+              asset_type: 'lcad',
+              source_kind: 'litecad-feature-dsl',
+              version: '1',
+              schema: 'litecad-feature-dsl',
+              product_names: ['球体三轴通孔'],
+              length_unit: 'millimetre',
+              entity_count: 1,
+              representation_count: 1,
+              triangle_count: 0,
+            },
+            created_at: '2026-07-13T00:00:00Z',
+            updated_at: '2026-07-13T00:00:00Z',
+          },
+          projectId,
+          enabled: true,
+        }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.activeConversationID).toBe('agc_first'))
+    expect(result.current.activeModelName).toBe('球体三轴通孔')
+    act(() => result.current.setDraft('直接修改模型，让 xyz 轴各有一个通孔'))
+    act(() => result.current.generateParametricArtifact())
+
+    await waitFor(() =>
+      expect(runProjectAgentParametric).toHaveBeenCalledWith(projectId, 'agc_first', {
+        message: '直接修改模型，让 xyz 轴各有一个通孔',
+        active_model_id: 'mdl_sphere',
+      }),
+    )
+  })
+
+  it('sends the selected model as revision context for ordinary Assistant messages', async () => {
+    vi.mocked(sendProjectAgentConversationMessage).mockResolvedValue({
+      data: {
+        message: {
+          id: 'agm_answer',
+          project_id: projectId,
+          conversation_id: 'agc_first',
+          role: 'assistant',
+          body: 'Created a revised draft',
+          created_at: '2026-07-13T00:00:00Z',
+          updated_at: '2026-07-13T00:00:00Z',
+        },
+      },
+    } as Awaited<ReturnType<typeof sendProjectAgentConversationMessage>>)
+    const { wrapper } = createHarness()
+    const { result } = renderHook(
+      () =>
+        useProjectAssistantController({
+          activeModel: activeSphereModel(),
+          projectId,
+          enabled: true,
+        }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.activeConversationID).toBe('agc_first'))
+    act(() => result.current.setDraft('直接修改模型'))
+    act(() => result.current.submitMessage())
+
+    await waitFor(() =>
+      expect(sendProjectAgentConversationMessage).toHaveBeenCalledWith(projectId, 'agc_first', {
+        messages: [{ role: 'user', body: '直接修改模型' }],
+        active_model_id: 'mdl_sphere',
+      }),
+    )
+  })
 })
+
+function activeSphereModel(): ProjectModel {
+  return {
+    id: 'mdl_sphere',
+    project_id: projectId,
+    original_filename: '球体三轴通孔-litecad.lcad.json',
+    format: 'lcad',
+    content_type: 'application/json',
+    byte_size: 120,
+    parse_status: 'parsed',
+    parse_error: '',
+    metadata: {
+      asset_type: 'lcad',
+      source_kind: 'litecad-feature-dsl',
+      version: '1',
+      schema: 'litecad-feature-dsl',
+      product_names: ['球体三轴通孔'],
+      length_unit: 'millimetre',
+      entity_count: 1,
+      representation_count: 1,
+      triangle_count: 0,
+    },
+    created_at: '2026-07-13T00:00:00Z',
+    updated_at: '2026-07-13T00:00:00Z',
+  }
+}

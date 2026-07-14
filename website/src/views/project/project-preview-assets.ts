@@ -63,7 +63,14 @@ export function buildProjectModelTree(models: ProjectModel[], cadDocument?: Proj
     componentNodesByParentID.set(node.parent_node_id, nodes)
   }
 
-  return visibleProjectModels(models, cadDocument).map((model) => {
+  const visibleModels = visibleProjectModels(models, cadDocument)
+  const displayNameCounts = new Map<string, number>()
+  for (const model of visibleModels) {
+    displayNameCounts.set(getModelDisplayName(model), (displayNameCounts.get(getModelDisplayName(model)) ?? 0) + 1)
+  }
+  const displayNameIndexes = new Map<string, number>()
+
+  return visibleModels.map((model) => {
     const parentNodeID = `node_${model.id}`
     const documentChildren = componentNodesByParentID.get(parentNodeID) ?? []
     const metadataChildren =
@@ -75,10 +82,15 @@ export function buildProjectModelTree(models: ProjectModel[], cadDocument?: Proj
             .map((component, index) => ({ id: `node_${model.id}_component_${index + 1}`, name: component.name.trim(), sourceModelId: model.id }))
             .filter((component) => component.name !== '')
 
+    const baseDisplayName = metadataChildren.length > 1 ? getSourceDisplayName(model) : getModelDisplayName(model)
+    const duplicateIndex = (displayNameIndexes.get(baseDisplayName) ?? 0) + 1
+    const duplicateCount = displayNameCounts.get(baseDisplayName) ?? 0
+    displayNameIndexes.set(baseDisplayName, duplicateIndex)
+
     return {
       model,
       sourceNodeId: parentNodeID,
-      displayName: metadataChildren.length > 1 ? getSourceDisplayName(model) : getModelDisplayName(model),
+      displayName: duplicateCount > 1 ? `${baseDisplayName} · ${duplicateIndex}` : baseDisplayName,
       children: metadataChildren.length > 1 ? metadataChildren : [],
     }
   })

@@ -174,6 +174,7 @@ describe('project API', () => {
   test('sends project agent conversation messages', () => {
     const payload = {
       messages: [{ role: 'user' as const, body: 'Inspect the model' }],
+      active_model_id: 'mdl_active',
     }
 
     sendProjectAgentConversationMessage('prj_01test', 'agc_01test', payload)
@@ -188,7 +189,7 @@ describe('project API', () => {
   })
 
   test('runs a project agent parametric tool request', () => {
-    const payload = { message: 'Make a parametric mounting bracket' }
+    const payload = { message: 'Make a parametric mounting bracket', active_model_id: 'mdl_active' }
 
     runProjectAgentParametric('prj_01test', 'agc_01test', payload)
 

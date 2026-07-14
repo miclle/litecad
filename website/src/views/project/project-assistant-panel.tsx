@@ -19,12 +19,14 @@ export type AssistantConversationSummary = {
 }
 
 export type ParametricGenerationProgress = {
+  activeModelName?: string
   attempt: number
   prompt: string
 }
 
 type ProjectAssistantPanelProps = {
   activeConversationId?: string
+  activeModelName?: string
   conversations: AssistantConversationSummary[]
   draft: string
   isPending: boolean
@@ -80,6 +82,7 @@ function assistantStatusLabel({
 
 export function ProjectAssistantPanel({
   activeConversationId = '',
+  activeModelName = '',
   conversations,
   draft,
   isPending,
@@ -108,6 +111,7 @@ export function ProjectAssistantPanel({
   const canRetryParametric = retryParametricPrompt.trim() !== '' && !isPending && hasActiveConversation && !!onRetryParametric
   const statusLabel = assistantStatusLabel({ hasActiveConversation, isPending, pendingKind, t })
   const progressPrompt = parametricProgress?.prompt.trim() || retryParametricPrompt.trim()
+  const revisionModelName = parametricProgress?.activeModelName?.trim() || activeModelName.trim()
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (canSubmit) {
@@ -234,6 +238,11 @@ export function ProjectAssistantPanel({
                 <span className="font-semibold">{t('project.assistant.progress.promptLabel')}</span> {progressPrompt}
               </div>
             ) : null}
+            {revisionModelName ? (
+              <div className="mt-2 rounded-md border border-[#bfdbfe] bg-white/70 px-2 py-1.5 text-[11px] leading-5 text-[#1e40af]">
+                <span className="font-semibold">{t('project.assistant.progress.revisionLabel')}</span> {revisionModelName}
+              </div>
+            ) : null}
             <ol className="mt-2 grid gap-1.5 text-[11px] leading-5">
               {parametricProgressStepKeys.map((key, index) => {
                 const isCurrentStep = index === 1
@@ -292,7 +301,7 @@ export function ProjectAssistantPanel({
         />
         <div className="flex items-center justify-between gap-2 px-1 pb-1">
           <div className="h-6 rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-2 font-mono text-[10px] uppercase leading-6 text-[#64748b]">
-            {statusLabel}
+            {revisionModelName && !isPending ? t('project.assistant.status.revisingModel') : statusLabel}
           </div>
           <div className="flex items-center gap-1">
             <Button

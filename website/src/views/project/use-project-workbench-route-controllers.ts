@@ -78,6 +78,7 @@ export function useProjectWorkbenchRouteControllers({
     targets: stepExportTargets,
   })
   const projectAssistant = useProjectAssistantController({
+    activeModel: projectSelection.selectedSourceModel,
     enabled: projectId !== '' && shellState.isAiChatOpen,
     onArtifactSelected: projectSelection.selectArtifact,
     projectId,

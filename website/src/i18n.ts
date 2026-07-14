@@ -272,11 +272,13 @@ const resources = {
             thinking: 'Thinking',
             projectContext: 'Project context',
             newChatRequired: 'New chat required',
+            revisingModel: 'Revision context',
           },
           progress: {
             title: 'Generating parametric model',
             body: 'Attempt {{attempt}} is running. The canvas will stay unchanged until LiteCAD accepts a valid source draft.',
             promptLabel: 'Prompt:',
+            revisionLabel: 'Revising:',
             steps: {
               request: 'Request queued',
               provider: 'Provider response and validation in progress',
@@ -333,6 +335,7 @@ const resources = {
           generatedDraft: 'Generated source draft: {{title}}',
           runSummary: 'Run: {{toolMode}} · {{sourceKind}} · {{duration}}',
           generatedWith: 'Generated with {{toolMode}} · {{sourceKind}} · {{duration}}',
+          generatedRevisionDraft: 'Generated revised draft for {{model}}: {{title}}',
           nativeTool: 'native tool',
           jsonFallback: 'JSON fallback',
         },
@@ -652,11 +655,13 @@ const resources = {
             thinking: '思考中',
             projectContext: '项目上下文',
             newChatRequired: '需要新建对话',
+            revisingModel: '修正上下文',
           },
           progress: {
             title: '正在生成参数化模型',
             body: '第 {{attempt}} 次尝试正在运行。LiteCAD 接受有效源文件草稿前，画布不会被修改。',
             promptLabel: '提示词：',
+            revisionLabel: '正在修正：',
             steps: {
               request: '请求已排队',
               provider: '正在等待 provider 响应并验证',
@@ -713,6 +718,7 @@ const resources = {
           generatedDraft: '已生成源文件草稿：{{title}}',
           runSummary: '运行：{{toolMode}} · {{sourceKind}} · {{duration}}',
           generatedWith: '生成方式：{{toolMode}} · {{sourceKind}} · {{duration}}',
+          generatedRevisionDraft: '已为 {{model}} 生成修正版源文件草稿：{{title}}',
           nativeTool: '原生工具调用',
           jsonFallback: 'JSON 回退',
         },

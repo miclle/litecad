@@ -68,6 +68,7 @@ type ProjectAgentParametricRunInput struct {
 	ProjectID      string
 	ConversationID string
 	Message        string
+	ActiveModelID  string
 }
 
 // ProjectAgentParametricRun is the generated artifact and structured Assistant message.
@@ -396,6 +397,7 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 	if err != nil {
 		return ProjectAgentParametricRun{}, err
 	}
+	activeModelContext := buildAIParametricActiveModelContext(input.ActiveModelID, models)
 	persistedMessages, err := s.listRecentProjectAgentMessages(ctx, project.ID, conversation.ID, maxAIChatMessages)
 	if err != nil {
 		return ProjectAgentParametricRun{}, err
@@ -407,6 +409,9 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 		AIChatMessage{Role: "system", Body: buildAIParametricSystemPrompt()},
 		AIChatMessage{Role: "system", Body: buildProjectAgentContext(project, models)},
 	)
+	if activeModelContext != "" {
+		providerMessages = append(providerMessages, AIChatMessage{Role: "system", Body: activeModelContext})
+	}
 	for _, message := range persistedMessages {
 		providerMessages = append(providerMessages, AIChatMessage{Role: message.Role, Body: message.Body})
 	}
@@ -462,8 +467,97 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 		SourceKind: call.Input.SourceKind,
 		DurationMS: time.Since(startedAt).Milliseconds(),
 	}
+	originalTitle := call.Input.Title
+	call.Input.Title = distinguishAIParametricRevisionTitle(call.Input.Title, input.ActiveModelID, models)
+	if call.Input.Title != originalTitle {
+		reply = marshalAIParametricToolCall(call)
+	}
 
 	return s.persistProjectAgentParametricRun(ctx, project.ID, conversation.ID, userMessage, call, reply, telemetry)
+}
+
+func buildAIParametricActiveModelContext(activeModelID string, models []ProjectModel) string {
+	activeModelID = strings.TrimSpace(activeModelID)
+	if activeModelID == "" {
+		return ""
+	}
+	for _, model := range models {
+		if model.ID != activeModelID {
+			continue
+		}
+		displayName := strings.TrimSpace(model.OriginalFilename)
+		if names := model.Metadata.ProductNames; len(names) > 0 && strings.TrimSpace(names[0]) != "" {
+			displayName = strings.TrimSpace(names[0])
+		}
+		return fmt.Sprintf(
+			"The user is revising the currently selected project model. Treat the request as a corrected source draft for that selected model, not as a claim that the existing canvas model already changed. Selected model data: id=%q, name=%q, format=%q. Return one complete replacement source draft. If generating a revised draft, choose a title that distinguishes it from the selected model, for example by adding \" revised\" or \" 修正版\". For centered through holes made with cylinder_cut, remember cylinder_cut starts at origin and extends in the positive axis direction; it is not centered automatically. To cut a sphere along X/Y/Z, use three cylinder_cut features with axes [1,0,0], [0,1,0], [0,0,1] and origins offset by negative half the cut depth along each axis so every cutter fully passes through the body.",
+			sanitizeAIParametricContextValue(model.ID),
+			sanitizeAIParametricContextValue(displayName),
+			sanitizeAIParametricContextValue(model.Format),
+		)
+	}
+	return "The user referenced a selected model, but that model was not found in the current project context. Return a corrected source draft and make the title distinguishable from existing project models."
+}
+
+func sanitizeAIParametricContextValue(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.ReplaceAll(value, "\r", " ")
+	value = strings.ReplaceAll(value, "\n", " ")
+	return value
+}
+
+func distinguishAIParametricRevisionTitle(title, activeModelID string, models []ProjectModel) string {
+	title = strings.TrimSpace(title)
+	activeModelID = strings.TrimSpace(activeModelID)
+	if activeModelID == "" || title == "" {
+		return title
+	}
+	for _, model := range models {
+		if model.ID != activeModelID {
+			continue
+		}
+		modelNames := []string{strings.TrimSpace(model.OriginalFilename)}
+		modelNames = append(modelNames, model.Metadata.ProductNames...)
+		if titleAlreadyDistinctFromModel(title, modelNames) {
+			return title
+		}
+		if containsCJK(title) {
+			return title + " 修正版"
+		}
+		return title + " revised"
+	}
+	return title
+}
+
+func titleAlreadyDistinctFromModel(title string, modelNames []string) bool {
+	normalizedTitle := normalizeAIParametricComparableTitle(title)
+	lowerTitle := strings.ToLower(title)
+	if strings.Contains(lowerTitle, "revised") || strings.Contains(title, "修正版") {
+		return true
+	}
+	for _, name := range modelNames {
+		if normalizedTitle != "" && normalizedTitle == normalizeAIParametricComparableTitle(name) {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeAIParametricComparableTitle(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	for _, suffix := range []string{".lcad.json", ".scad", "-litecad"} {
+		value = strings.TrimSuffix(value, suffix)
+	}
+	return strings.TrimSpace(value)
+}
+
+func containsCJK(value string) bool {
+	for _, r := range value {
+		if r >= '\u4e00' && r <= '\u9fff' {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) runAIParametricJSONFallback(ctx context.Context, providerMessages []AIChatMessage, repairReason string) (AIParametricToolCall, string, error) {

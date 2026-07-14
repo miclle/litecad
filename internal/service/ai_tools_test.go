@@ -389,6 +389,75 @@ func TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact(t *testing.T) {
 	}
 }
 
+func TestAIParametricRunUsesActiveModelRevisionContext(t *testing.T) {
+	svc := newTestService(t)
+	aiClient := &recordingAIClient{reply: `{
+  "tool": "build_parametric_model",
+  "input": {
+    "title": "球体三轴通孔",
+    "version": "v1",
+    "source_kind": "litecad-feature-dsl",
+    "code": "{\"version\":1,\"unit\":\"millimetre\",\"parameters\":{\"sphere_diameter\":{\"type\":\"number\",\"default\":30},\"hole_diameter\":{\"type\":\"number\",\"default\":5}},\"features\":[{\"id\":\"body\",\"type\":\"sphere\",\"origin\":[0,0,0],\"diameter\":\"sphere_diameter\"},{\"id\":\"hole_x\",\"type\":\"cylinder_cut\",\"origin\":[-16,0,0],\"axis\":[1,0,0],\"diameter\":\"hole_diameter\",\"depth\":32},{\"id\":\"hole_y\",\"type\":\"cylinder_cut\",\"origin\":[0,-16,0],\"axis\":[0,1,0],\"diameter\":\"hole_diameter\",\"depth\":32},{\"id\":\"hole_z\",\"type\":\"cylinder_cut\",\"origin\":[0,0,-16],\"axis\":[0,0,1],\"diameter\":\"hole_diameter\",\"depth\":32}]}"
+  }
+}`}
+	svc.aiClient = aiClient
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-run-active-model@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{OwnerUserID: user.ID, Name: "Active model revision study"})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	model, err := svc.UploadProjectModel(ctx, UploadProjectModelInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Filename:    "球体三轴通孔-litecad.lcad.json",
+		ContentType: "application/json",
+		Data:        []byte(`{"version":1,"unit":"millimetre","features":[{"id":"body","type":"sphere","origin":[0,0,0],"diameter":30}]}`),
+	})
+	if err != nil {
+		t.Fatalf("UploadProjectModel returned error: %v", err)
+	}
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Revision run",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	run, err := svc.RunProjectAgentParametric(ctx, ProjectAgentParametricRunInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
+		Message:        "直接修改模型，让 xyz 轴各有一个通孔",
+		ActiveModelID:  model.ID,
+	})
+	if err != nil {
+		t.Fatalf("RunProjectAgentParametric returned error: %v", err)
+	}
+	if run.Artifact.Title != "球体三轴通孔 修正版" {
+		t.Fatalf("artifact title = %q", run.Artifact.Title)
+	}
+	providerContext := joinAIMessageBodies(aiClient.messages)
+	for _, want := range []string{"currently selected project model", model.ID, "cylinder_cut starts at origin", "[1,0,0]", "[0,1,0]", "[0,0,1]"} {
+		if !strings.Contains(providerContext, want) {
+			t.Fatalf("provider context should mention %q, got:\n%s", want, providerContext)
+		}
+	}
+	if !strings.Contains(run.Message.Body, "球体三轴通孔 修正版") {
+		t.Fatalf("assistant tool message should use the final distinct title, got %s", run.Message.Body)
+	}
+}
+
 func TestAIParametricRunUsesNativeToolClient(t *testing.T) {
 	toolClient := &recordingAIToolClient{call: AIChatToolCall{
 		Tool: aiParametricToolBuildModel,

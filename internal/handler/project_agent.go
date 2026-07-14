@@ -6,11 +6,13 @@ import (
 )
 
 type projectAgentMessageRequest struct {
-	Messages []service.AIChatMessage `json:"messages" binding:"required"`
+	Messages      []service.AIChatMessage `json:"messages" binding:"required"`
+	ActiveModelID string                  `json:"active_model_id"`
 }
 
 type projectAgentParametricRunRequest struct {
-	Message string `json:"message" binding:"required"`
+	Message       string `json:"message" binding:"required"`
+	ActiveModelID string `json:"active_model_id"`
 }
 
 type projectAgentParametricRunResponse struct {
@@ -89,7 +91,7 @@ func (ctrl *Ctrl) SendProjectAgentMessage(c *fox.Context, req *projectAgentMessa
 		return projectAgentMessageResponse{}, err
 	}
 	result, err := ctrl.service.SendProjectAgentMessage(c.Request.Context(), service.ProjectAgentMessageInput{
-		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), ConversationID: c.Param("conversationID"), Messages: req.Messages,
+		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), ConversationID: c.Param("conversationID"), Messages: req.Messages, ActiveModelID: req.ActiveModelID,
 	})
 	if err != nil {
 		return projectAgentMessageResponse{}, projectError(err)
@@ -108,6 +110,7 @@ func (ctrl *Ctrl) RunProjectAgentParametric(c *fox.Context, req *projectAgentPar
 		ProjectID:      c.Param("projectID"),
 		ConversationID: c.Param("conversationID"),
 		Message:        req.Message,
+		ActiveModelID:  req.ActiveModelID,
 	})
 	if err != nil {
 		return projectAgentParametricRunResponse{}, projectError(err)

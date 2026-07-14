@@ -118,6 +118,33 @@ describe('project preview assets', () => {
     ])
   })
 
+  test('distinguishes duplicate model display names in the tree', () => {
+    const first = {
+      ...baseModel,
+      id: 'mdl_sphere_a',
+      original_filename: 'sphere-a.lcad.json',
+      format: 'lcad',
+      content_type: 'application/json',
+      metadata: {
+        ...baseModel.metadata,
+        asset_type: 'lcad',
+        source_kind: 'litecad-feature-dsl',
+        schema: 'litecad-feature-dsl',
+        product_names: ['球体三轴通孔'],
+      },
+    } satisfies ProjectModel
+    const second = {
+      ...first,
+      id: 'mdl_sphere_b',
+      original_filename: 'sphere-b.lcad.json',
+    } satisfies ProjectModel
+
+    expect(buildProjectModelTree([first, second]).map((group) => group.displayName)).toEqual([
+      '球体三轴通孔 · 1',
+      '球体三轴通孔 · 2',
+    ])
+  })
+
   test('keeps scene identity stable while detecting same-size kernel mesh content changes', () => {
     const firstMesh = {
       positions: [0, 0, 0, 40, 0, 0, 0, 20, 0],
