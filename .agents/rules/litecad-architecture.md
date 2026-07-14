@@ -47,6 +47,7 @@ These rules keep LiteCAD product work aligned with the small Go + React single-b
 - STEP/STP upload metadata extraction is Go-only lightweight source scanning, not geometric B-rep import. Keep full STEP geometry import, preview, edit replay, and export behind the browser CAD kernel worker boundary.
 - Normal runtime code must not depend on FreeCAD, `freecadcmd`, or Python-based STEP conversion. New CAD import/edit/export work should stay behind the browser CAD kernel worker boundary and avoid third-party desktop CAD software dependencies.
 - When a feature becomes real, update README and remove or rewrite the matching TODO item in the same change.
+- Before switching machines or pausing an active CAD semantics branch, refresh `docs/current-work-handoff.md` with the current branch, verification commands, shipped boundary, and recommended next branch.
 
 ## Change Checks
 

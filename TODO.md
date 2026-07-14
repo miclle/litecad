@@ -2,6 +2,8 @@
 
 Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished work, deferred decisions, and known risks; move completed facts into README or focused docs.
 
+For a short cross-machine status snapshot and the recommended next branch, see [docs/current-work-handoff.md](docs/current-work-handoff.md).
+
 ## Product Capability
 
 - Extend the persisted CAD document model beyond the current uploaded-source nodes, independently selectable lightweight STEP component child nodes, transform/delete-node/box-union operations, database-backed reversible operation History, schema version, revision, and unit.
@@ -30,6 +32,7 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
   - Decide whether to ship a license-compatible OpenSCAD browser runtime. Until that decision is deliberately accepted, keep the normal generated-model path on LiteCAD-native OCCT Feature DSL; OpenSCAD source drafts may expose parameters but do not compile to browser meshes in normal use.
   - If OpenSCAD runtime bundling is accepted, document the chosen upstream package, license, WASM size, production-serving path, and browser compile/save/export behavior before shipping it.
   - Expand the LiteCAD Feature DSL only when schema validation, backend prompting, browser preview, STEP export, tests, and Assistant UX can ship together.
+  - Recommended next DSL slice: a restricted tapered-extrude/taper capability for rectangular, circular, and elliptical profiles with backend validation, prompt schema, worker preview, STEP export, tests, and docs in one branch.
   - Remaining DSL geometry gaps include full sketch constraints, freeform profiles, arbitrary sweep paths, arbitrary/freeform revolve profiles beyond the completed full-turn XZ rectangular solid/hollow path, robust true chamfer edge-face selection, mirrored/negative transforms, tapers, infix formulas, functions, unit math, comparisons, and conditionals.
   - Remaining DSL data-model gaps include durable kernel feature graph state and CAD document History integration for generated feature graph nodes.
   - Decide whether Assistant revision requests should eventually overwrite a selected saved source model in place with History semantics, or keep the current safer corrected-draft/new-source-model workflow.
@@ -47,4 +50,5 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
 
 - Keep README, AGENTS.md, and `.agents/rules/` aligned whenever shipped capabilities move out of this TODO.
 - Keep `docs/browser-cad-kernel-roadmap.md` as the phase-history source of truth and this file as the active follow-up list; avoid duplicating completed phase status back into TODO.
+- Keep [docs/current-work-handoff.md](docs/current-work-handoff.md) current before switching machines or pausing an active CAD semantics branch.
 - Before launch, add an operator-facing checklist for database backups, source/artifact storage retention, AI provider timeout/token tuning, and browser-worker asset deployment.

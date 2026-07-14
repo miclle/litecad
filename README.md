@@ -201,7 +201,7 @@ CI also runs Go tests, frontend lint/type/test/browser/build, actionlint, depend
 
 Near-term product work is focused on turning the current preview/edit/export loop into a richer CAD workflow: durable kernel shape state, broader feature operations, richer CAD measurement and section semantics, nested assembly and constraint behavior, stronger CAD Agent tool boundaries, and project management polish.
 
-Active follow-up items are tracked in [TODO.md](TODO.md). The browser-kernel architecture plan and phase history live in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md).
+Active follow-up items are tracked in [TODO.md](TODO.md). The browser-kernel architecture plan and phase history live in [docs/browser-cad-kernel-roadmap.md](docs/browser-cad-kernel-roadmap.md). The current cross-machine handoff is [docs/current-work-handoff.md](docs/current-work-handoff.md).
 
 ## License
 

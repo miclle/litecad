@@ -2,6 +2,8 @@
 
 This document records both the target architecture and dated implementation status for LiteCAD's CAD import, browser editing, preview, and export pipeline. Target sections remain roadmap work unless a phase status explicitly marks them complete.
 
+The short operational handoff for resuming current work lives in [current-work-handoff.md](current-work-handoff.md).
+
 ## Goal
 
 LiteCAD should let users work with real CAD models in the browser without installing or running a third-party CAD application at runtime.
