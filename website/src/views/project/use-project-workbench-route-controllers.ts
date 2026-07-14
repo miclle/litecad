@@ -13,6 +13,8 @@ import { useCADDocumentCommands } from './use-cad-document-commands'
 import { useProjectAssistantController } from './use-project-assistant-controller'
 import { useProjectModelUploadController } from './use-project-model-upload-controller'
 import { useProjectInspectionRecordsController } from './use-project-inspection-records-controller'
+import { projectSectionArtifactFilename } from './project-section-artifact-action'
+import { useProjectSectionArtifactsController } from './use-project-section-artifacts-controller'
 import { useProjectStepExportController } from './use-project-step-export-controller'
 import { useProjectThumbnailSnapshotController } from './use-project-thumbnail-snapshot-controller'
 import { useProjectWorkbenchDraftCommands, type ProjectWorkbenchDraftCommandAdapter } from './use-project-workbench-draft-commands'
@@ -129,6 +131,14 @@ export function useProjectWorkbenchRouteControllers({
     unit: projectCADDocument?.unit ?? 'unit',
     visibleModelIds,
   })
+  const projectSectionArtifacts = useProjectSectionArtifactsController({
+    cadDocumentRevision: projectCADDocument?.revision ?? 0,
+    filename: projectSectionArtifactFilename(project?.name ?? 'assembly', projectCADDocument?.revision ?? 0),
+    projectId,
+    targets: stepExportTargets,
+    unit: projectCADDocument?.unit ?? 'unit',
+    visiblePreviewIds: visibleModelIds,
+  })
 
   useEffect(() => {
     cadDocumentCommandAdapterRef.current = cadDocumentCommands
@@ -190,6 +200,7 @@ export function useProjectWorkbenchRouteControllers({
     },
     projectModelUpload,
     projectInspectionRecords,
+    projectSectionArtifacts,
     projectStepExport,
     projectThumbnailSnapshot,
     shellState,

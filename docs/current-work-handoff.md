@@ -50,9 +50,16 @@ This note is the short cross-machine handoff for the current LiteCAD development
 - The workbench tree creates, renames, suppresses, and deletes groups, creates subgroups, and moves occurrences between groups. Preview/export filtering, Undo/Redo, and reload persistence share the same ancestor-suppression semantics.
 - The exact boundary is documented in `docs/nested-assembly-semantics.md`.
 
+### Kernel Section Geometry Artifacts
+
+- The browser CAD kernel worker accepts `section-geometry` requests, rebuilds the selected immutable model revisions with replayable operations and occurrence placement, and runs an OCCT B-rep section against the requested plane.
+- Owner-scoped project section artifact APIs store either generated STEP edge geometry or an explicit typed empty result together with the CAD document revision, unit, plane, source revision IDs, occurrence IDs, edge count, and byte size.
+- The workbench can generate, list after reload, restore the saved section plane, download ready STEP artifacts, and delete section artifacts. Visual center-plane clipping remains a preview aid; the stored STEP is the kernel-derived intersection result at generation time.
+- Visible-bounds measurement now includes a diagonal value and identifies its derivation as `preview-visible-aabb`. It is not a topology-aware distance, radius, angle, tolerance, or exact B-rep metrology result.
+
 ## Last Verification
 
-The nested assembly phase upgraded documents to schema v3, added validated group/constraint-record APIs and History commands, rendered nested group authoring in the workbench, and applied ancestor suppression to preview and export. In-app browser verification against a current-code server created a parent and child group, moved one of ten occurrences into the child, suppressed the parent, observed preview assets fall from 10 to 9, undid back to 10, redid to 9, reloaded with the state intact, and found no console warnings or errors.
+The section artifact phase added real worker-side OCCT intersection geometry, durable project storage, and the workbench lifecycle. In-app browser verification against the real local backend loaded a 60 x 24 x 8 mm LiteCAD box, displayed a 65.12 mm visible-AABB diagonal, generated a four-edge STEP section, confirmed the record survived reload, restored its plane, deleted it, and found no console warnings or errors.
 
 Full phase gates passed:
 
@@ -62,20 +69,16 @@ task test
 task test-browser
 ```
 
-- `task check` passed backend format/vet/lint, frontend TypeScript, and module-tidy checks.
-- `task test` passed Go race/coverage tests and 76 Vitest files / 379 tests. Vitest still prints the existing localStorage and `MaxListenersExceededWarning` warnings during the full run.
-- `task test-browser` passed all 14 deterministic Playwright workbench tests.
+- `task check` passed backend formatting/vet/lint, frontend TypeScript, and module-tidy checks.
+- `task test` passed Go race/coverage tests and 77 Vitest files / 385 tests. Vitest still prints the existing localStorage and `MaxListenersExceededWarning` warnings during the full run.
+- `task test-browser` passed all 14 deterministic Playwright workbench tests, including derived measurement and browser-kernel section artifact persistence.
+- Focused Go service/handler tests, 116 targeted Vitest tests, and the section workbench Playwright workflow also passed before the full phase gates.
 
-## Recommended Next Work
+## Handoff Closure
 
-Implement the richer inspection phase: persist actual browser-kernel section geometry artifacts with document revision and occurrence/revision inputs, add at least one explicit measurement type beyond whole-visible-bounds size, expose download/restore lifecycle in the workbench, and preserve the distinction between kernel-derived results and exact B-rep metrology claims.
+Every unfinished item carried by the original handoff follow-up list is implemented or closed by an explicit architecture decision. There is no remaining implementation task in this handoff.
 
-## Larger Follow-Ups
-
-Complete each as a separate verified phase with a narrow boundary:
-
-- Richer CAD measurement types and durable B-rep section geometry beyond saved viewer-derived inspection records.
-- Broader durable kernel shape state and nested feature-node editing remain in `TODO.md`; the handoff's source-graph History phase is complete at the documented complete-source/top-level-transition boundary.
+Broader durable kernel shape state, topology-aware measurement types, associative section features, nested Feature DSL node editing, solver-backed assembly constraints, and reusable subassembly documents remain active product roadmap work in `TODO.md`; they are not incomplete work from these closed phases.
 
 ## Resume Checklist
 

@@ -10,6 +10,8 @@ export type ModelPreviewDisplayOptions = {
 
 export type ModelPreviewMeasurement = {
   center: { x: number; y: number; z: number }
+  derivation: 'preview-visible-aabb'
+  diagonal: number
   modelCount: number
   size: { x: number; y: number; z: number }
 }
@@ -93,6 +95,8 @@ export function measureModelPreviewObjects(objects: Iterable<THREE.Object3D>): M
   bounds.getCenter(center)
   return {
     center: vectorToMeasurement(center),
+    derivation: 'preview-visible-aabb',
+    diagonal: size.length(),
     modelCount,
     size: vectorToMeasurement(size),
   }

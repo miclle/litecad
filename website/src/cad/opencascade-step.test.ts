@@ -8,6 +8,7 @@ import {
   createOpenCascadeLoader,
   runFeatureDSLPreviewWithKernel,
   runFeatureDSLExportWithKernel,
+  runSectionGeometryWithKernel,
   runStepAssemblyExportWithKernel,
 } from './opencascade-step'
 
@@ -677,6 +678,40 @@ describe('runStepAssemblyExportWithKernel', () => {
     expect(unlink).toHaveBeenCalledWith('/litecad-assembly-input-0.step')
     expect(unlink).toHaveBeenCalledWith('/litecad-assembly-input-1.step')
   })
+})
+
+describe('runSectionGeometryWithKernel', () => {
+  it('exports exact section edges and returns a typed empty result when the plane misses', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+    const source = await runFeatureDSLExportWithKernel(openCascade, {
+      filename: 'section-source.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [{ id: 'base', type: 'box', origin: [0, 0, 0], size: [60, 24, 8] }],
+      },
+    })
+
+    const ready = await runSectionGeometryWithKernel(openCascade, {
+      filename: 'center-x-section.step',
+      sources: [{ filename: 'section-source.step', stepText: source.exportedStepText }],
+      plane: { origin: [30, 0, 0], normal: [1, 0, 0] },
+    })
+    expect(ready.status).toBe('ready')
+    expect(ready.edgeCount).toBe(4)
+    expect(ready.exportedStepText).toContain('END-ISO-10303-21')
+
+    const empty = await runSectionGeometryWithKernel(openCascade, {
+      filename: 'empty-section.step',
+      sources: [{ filename: 'section-source.step', stepText: source.exportedStepText }],
+      plane: { origin: [200, 0, 0], normal: [1, 0, 0] },
+    })
+    expect(empty).toEqual({ status: 'empty', edgeCount: 0, exportedStepText: '' })
+  }, 30000)
 })
 
 describe('runFeatureDSLExportWithKernel', () => {

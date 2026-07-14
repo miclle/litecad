@@ -2,6 +2,7 @@ import { createCadKernelWorkerHandler } from './kernel-worker-handler'
 import {
   runOpenCascadeFeatureDSLExport,
   runOpenCascadeFeatureDSLPreview,
+  runOpenCascadeSectionGeometry,
   runOpenCascadeStepAssemblyExport,
   runOpenCascadeStepPreview,
   runOpenCascadeStepRoundTrip,
@@ -10,6 +11,7 @@ import {
 const handler = createCadKernelWorkerHandler({
   runFeatureDSLExport: runOpenCascadeFeatureDSLExport,
   runFeatureDSLPreview: runOpenCascadeFeatureDSLPreview,
+  runSectionGeometry: runOpenCascadeSectionGeometry,
   runStepAssemblyExport: runOpenCascadeStepAssemblyExport,
   runStepPreview: runOpenCascadeStepPreview,
   runStepRoundTrip: runOpenCascadeStepRoundTrip,

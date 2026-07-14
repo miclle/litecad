@@ -21,9 +21,9 @@ For a short cross-machine status snapshot and the recommended next branch, see [
   - Decide whether reusable subassemblies become separately versioned documents or remain organizational groups inside one project document.
   - Decide whether cross-model merge/boolean operations create one editable CAD part or remain export-only compounds.
   - Decide how richer assemblies preserve or normalize colors, names, units, and source STEP product structure.
-- Continue beyond the first project-saved inspection records for preview-layer edge display, center-plane visual sectioning, and visible-model bounds measurement controls.
-  - Add richer CAD measurement types beyond saved visible-bounds snapshots.
-  - Add durable B-rep section geometry instead of only saved viewer clipping-plane definitions.
+- Continue inspection semantics beyond saved preview-visible-AABB measurements and project-owned OCCT section-edge STEP artifacts.
+  - Add topology-aware point/edge/face distance, radius, diameter, angle, area, and volume measurements only with stable geometric references and explicit derivation/accuracy semantics.
+  - Decide whether kernel section artifacts become associative document features that regenerate when source revisions, occurrence placement, or the section plane changes; current artifacts are immutable generation-time results.
   - Decide how saved inspection records should interact with Undo/Redo, export annotations, and shared project state.
 - Expand export beyond the current direct browser download plus stored artifact history path.
   - Define export artifact retention, cleanup, quota, and storage migration policy before launch.
@@ -44,7 +44,7 @@ For a short cross-machine status snapshot and the recommended next branch, see [
 
 - Decide whether product-facing URLs should keep exposing prefixed entity IDs such as `project_...`, or introduce project slugs / slug-plus-short-id routes while preserving prefixed IDs as internal canonical identifiers.
 - Decide whether project deletion remains soft-delete only in user-facing workflows or needs restore/purge operations, retention docs, and admin tooling before launch.
-- Define storage lifecycle policy for uploaded source bytes, derived preview artifacts, generated geometry snapshots, thumbnails, and backend export artifacts.
+- Define storage lifecycle policy for uploaded source bytes, derived preview artifacts, generated geometry snapshots, thumbnails, backend export artifacts, and section geometry artifacts.
 
 ## Documentation And Operations
 

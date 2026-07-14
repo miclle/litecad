@@ -23,6 +23,15 @@ export type CadKernelStepAssemblyExportInput = {
   sources: CadKernelStepAssemblyExportSource[]
 }
 
+export type CadKernelSectionGeometryInput = {
+  filename: string
+  sources: CadKernelStepAssemblyExportSource[]
+  plane: {
+    origin: readonly number[]
+    normal: readonly number[]
+  }
+}
+
 export type CadKernelFeatureDSLPreviewInput = CadKernelFeatureDSLInput
 
 export type CadKernelFeatureDSLExportInput = CadKernelFeatureDSLInput
@@ -46,6 +55,12 @@ export type CadKernelFeatureDSLExportResult = {
 }
 
 export type CadKernelStepAssemblyExportResult = {
+  exportedStepText: string
+}
+
+export type CadKernelSectionGeometryResult = {
+  status: 'ready' | 'empty'
+  edgeCount: number
   exportedStepText: string
 }
 
@@ -84,6 +99,11 @@ export async function runOpenCascadeStepRoundTrip(input: CadKernelStepRoundTripI
 export async function runOpenCascadeStepAssemblyExport(input: CadKernelStepAssemblyExportInput) {
   const openCascade = await loadOpenCascade()
   return runStepAssemblyExportWithKernel(openCascade, input)
+}
+
+export async function runOpenCascadeSectionGeometry(input: CadKernelSectionGeometryInput) {
+  const openCascade = await loadOpenCascade()
+  return runSectionGeometryWithKernel(openCascade, input)
 }
 
 export async function runOpenCascadeStepPreview(input: CadKernelStepPreviewInput) {
@@ -190,6 +210,54 @@ export async function runStepAssemblyExportWithKernel(
   }
 }
 
+export async function runSectionGeometryWithKernel(
+  openCascade: OpenCascadeModule,
+  input: CadKernelSectionGeometryInput,
+): Promise<CadKernelSectionGeometryResult> {
+  if (input.sources.length === 0) {
+    throw new Error('Section geometry requires at least one source')
+  }
+  const planeValues = [...input.plane.origin, ...input.plane.normal]
+  if (
+    input.plane.origin.length !== 3 ||
+    input.plane.normal.length !== 3 ||
+    planeValues.some((value) => !Number.isFinite(value)) ||
+    input.plane.normal.every((value) => value === 0)
+  ) {
+    throw new Error('Section geometry requires a finite plane origin and non-zero normal')
+  }
+  cleanupVirtualFile(openCascade, outputStepPath)
+  const sourceShapes: any[] = []
+
+  try {
+    for (const [index, source] of input.sources.entries()) {
+      const sourcePath = stepSectionInputPath(index)
+      cleanupVirtualFile(openCascade, sourcePath)
+      writeVirtualFile(openCascade, sourcePath, source.stepText)
+      sourceShapes.push(applyCADOperationsToShape(openCascade, importStepShapeFromFile(openCascade, sourcePath, source), source.operations))
+    }
+    const sourceShape = sourceShapes.length === 1 ? sourceShapes[0] : compoundShapes(openCascade, sourceShapes)
+    const plane = new openCascade.gp_Pln_3(
+      new openCascade.gp_Pnt_3(input.plane.origin[0], input.plane.origin[1], input.plane.origin[2]),
+      new openCascade.gp_Dir_4(input.plane.normal[0], input.plane.normal[1], input.plane.normal[2]),
+    )
+    const sectionBuilder = new openCascade.BRepAlgoAPI_Section_5(sourceShape, plane, false)
+    sectionBuilder.Build(new openCascade.Message_ProgressRange_1())
+    if (!sectionBuilder.IsDone()) {
+      throw new Error('OpenCascade section operation failed')
+    }
+    const sectionShape = sectionBuilder.Shape()
+    const edgeCount = countShapeEdges(openCascade, sectionShape)
+    if (edgeCount === 0) {
+      return { status: 'empty', edgeCount: 0, exportedStepText: '' }
+    }
+    return { status: 'ready', edgeCount, exportedStepText: exportShapeToStep(openCascade, sectionShape) }
+  } finally {
+    input.sources.forEach((_source, index) => cleanupVirtualFile(openCascade, stepSectionInputPath(index)))
+    cleanupVirtualFile(openCascade, outputStepPath)
+  }
+}
+
 export function applyCADOperationsToShape(
   openCascade: OpenCascadeModule,
   sourceShape: any,
@@ -277,6 +345,23 @@ function compoundShapes(openCascade: OpenCascadeModule, shapes: readonly any[]) 
 
 function stepAssemblyInputPath(index: number) {
   return `/litecad-assembly-input-${index}.step`
+}
+
+function stepSectionInputPath(index: number) {
+  return `/litecad-section-input-${index}.step`
+}
+
+function countShapeEdges(openCascade: OpenCascadeModule, shape: any) {
+  const explorer = new openCascade.TopExp_Explorer_1()
+  let edgeCount = 0
+  for (
+    explorer.Init(shape, openCascade.TopAbs_ShapeEnum.TopAbs_EDGE, openCascade.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    explorer.More();
+    explorer.Next()
+  ) {
+    edgeCount += 1
+  }
+  return edgeCount
 }
 
 function cleanupVirtualFile(openCascade: OpenCascadeModule, path: string) {

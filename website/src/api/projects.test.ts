@@ -4,10 +4,12 @@ import client from './client'
 import {
   createProjectExportArtifact,
   createProjectInspectionRecord,
+  createProjectSectionArtifact,
   deleteProject,
   deleteProjectCADNode,
   deleteProjectCADOccurrence,
   deleteProjectInspectionRecord,
+  deleteProjectSectionArtifact,
   duplicateProjectCADOccurrence,
   createProjectCADAssemblyGroup,
   deleteProjectCADAssemblyGroup,
@@ -24,8 +26,10 @@ import {
   fetchProjectModelRevisionSource,
   fetchProjectModelRevisions,
   downloadProjectExportArtifact,
+  downloadProjectSectionArtifact,
   fetchProjectExportArtifacts,
   fetchProjectInspectionRecords,
+  fetchProjectSectionArtifacts,
   fetchProjectParametricArtifact,
   fetchProjectParametricArtifacts,
   addProjectCADModelBoxUnion,
@@ -141,9 +145,11 @@ describe('project API', () => {
       unit: 'millimetre',
       visible_model_ids: ['mdl_a'],
       measurement: {
+        derivation: 'preview-visible-aabb' as const,
         model_count: 1,
         center: { x: 1, y: 2, z: 3 },
         size: { x: 10, y: 20, z: 30 },
+        diagonal: 37.416573867739416,
       },
     }
 
@@ -154,6 +160,33 @@ describe('project API', () => {
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/inspection-records')
     expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/inspection-records', payload)
     expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/inspection-records/pir_01test')
+  })
+
+  test('manages project section artifacts', () => {
+    const payload = {
+      cad_document_revision: 3,
+      unit: 'millimetre',
+      status: 'ready' as const,
+      filename: 'center-x-section.step',
+      content_type: 'model/step' as const,
+      target_count: 1,
+      source_revision_ids: ['mvr_a'],
+      occurrence_ids: ['occ_a'],
+      plane_origin: { x: 30, y: 0, z: 0 },
+      plane_normal: { x: 1, y: 0, z: 0 },
+      edge_count: 4,
+      step_text: 'ISO-10303-21;',
+    }
+
+    fetchProjectSectionArtifacts('prj_01test')
+    createProjectSectionArtifact('prj_01test', payload)
+    downloadProjectSectionArtifact('prj_01test', 'pse_01test')
+    deleteProjectSectionArtifact('prj_01test', 'pse_01test')
+
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/section-artifacts')
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/section-artifacts', payload)
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/section-artifacts/pse_01test/download', { responseType: 'blob' })
+    expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/section-artifacts/pse_01test')
   })
 
   test('fetches an immutable project model revision source as a blob', () => {

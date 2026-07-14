@@ -7,6 +7,45 @@ type ExportedStepTextResult = {
   exportedStepText: string
 }
 
+export type BuildStepAssemblySourcesOptions = {
+  targets: StepExportTarget[]
+	fetchSourceText: (modelId: string, modelRevisionId: string) => Promise<string>
+  runFeatureDSLExport: (input: CadKernelFeatureDSLExportInput) => Promise<CadKernelWorkerFeatureDSLExportResult>
+}
+
+export async function buildStepAssemblySources({
+  targets,
+  fetchSourceText,
+  runFeatureDSLExport,
+}: BuildStepAssemblySourcesOptions): Promise<CadKernelStepAssemblyExportInput['sources']> {
+  return Promise.all(
+		targets.map(async (target) => {
+      if (target.sourceFormat === 'step') {
+        return {
+          filename: target.sourceFilename,
+			stepText: await fetchSourceText(target.modelId, target.modelRevisionId),
+          operations: target.operations,
+        }
+			}
+			const sourceText = await fetchSourceText(target.modelId, target.modelRevisionId)
+			const result = await runFeatureDSLExport(
+				buildFeatureDSLKernelInput(
+					{
+						filename: target.sourceFilename,
+						parameterValues: target.parameterValues ?? {},
+					},
+					sourceText,
+				),
+			)
+			return {
+				filename: target.sourceFilename,
+				stepText: result.exportedStepText,
+				operations: target.operations,
+      }
+    }),
+  )
+}
+
 export type ExportStepTargetOptions = {
   target: StepExportTarget
 	fetchSourceText: (modelId: string, modelRevisionId: string) => Promise<string>
@@ -79,32 +118,7 @@ export async function exportMergedStepTargets({
   runFeatureDSLExport,
   publishDownload,
 }: ExportMergedStepTargetsOptions) {
-	const sources = await Promise.all(
-		targets.map(async (target) => {
-      if (target.sourceFormat === 'step') {
-        return {
-          filename: target.sourceFilename,
-			stepText: await fetchSourceText(target.modelId, target.modelRevisionId),
-          operations: target.operations,
-        }
-			}
-			const sourceText = await fetchSourceText(target.modelId, target.modelRevisionId)
-			const result = await runFeatureDSLExport(
-				buildFeatureDSLKernelInput(
-					{
-						filename: target.sourceFilename,
-						parameterValues: target.parameterValues ?? {},
-					},
-					sourceText,
-				),
-			)
-			return {
-				filename: target.sourceFilename,
-				stepText: result.exportedStepText,
-				operations: target.operations,
-      }
-    }),
-  )
+  const sources = await buildStepAssemblySources({ targets, fetchSourceText, runFeatureDSLExport })
   const result = await runStepAssemblyExport({
     filename: downloadFilename,
     sources,

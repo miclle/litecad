@@ -75,6 +75,7 @@ export type ModelPreviewProps = {
   selectedNodeId?: string
   selectedModelId?: string
 	selectedOccurrenceId?: string
+  sectionPlaneOrigin?: { x: number; y: number; z: number }
   unitLabel?: string
   variant?: 'workspace' | 'thumbnail'
   visibleModelIds?: readonly string[]
@@ -139,12 +140,14 @@ export function useModelPreviewScene({
   selectedNodeId,
   selectedModelId,
 	selectedOccurrenceId,
+  sectionPlaneOrigin,
   variant = 'workspace',
   visibleModelIds,
 }: ModelPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const deferResizeRef = useRef(deferResize)
   const displayOptionsRef = useRef(displayOptions)
+  const sectionPlaneOriginRef = useRef(sectionPlaneOrigin)
   const onSnapshotCaptureRef = useRef<ModelPreviewProps['onSnapshotCapture']>(onSnapshotCapture)
   const {
     acceptLoadedObject,
@@ -212,16 +215,17 @@ export function useModelPreviewScene({
   }, [displayOptions])
 
   useEffect(() => {
+    sectionPlaneOriginRef.current = sectionPlaneOrigin
+    sceneRuntimeRef.current?.updateDisplayOptions(displayOptionsRef.current)
+  }, [sectionPlaneOrigin])
+
+  useEffect(() => {
     onSnapshotCaptureRef.current = onSnapshotCapture
   }, [onSnapshotCapture])
 
   useEffect(() => {
     onMeasurementChangeRef.current = onMeasurementChange
   }, [onMeasurementChange])
-
-  useEffect(() => {
-    onMeasurementChangeRef.current?.(measurement)
-  }, [measurement])
 
   useEffect(() => {
     const container = containerRef.current
@@ -405,16 +409,14 @@ export function useModelPreviewScene({
       renderer.render(scene, camera)
     }
     const syncMeasurement = () => {
-      if (!displayOptionsRef.current.measurement) {
-        setMeasurement(undefined)
-        return
-      }
-      setMeasurement(measureModelPreviewObjects(previewObjectsByModelIDRef.current.values()))
+      const nextMeasurement = measureModelPreviewObjects(previewObjectsByModelIDRef.current.values())
+      onMeasurementChangeRef.current?.(nextMeasurement)
+      setMeasurement(displayOptionsRef.current.measurement ? nextMeasurement : undefined)
     }
     const syncDisplayOptions = (options: ModelPreviewDisplayOptions = displayOptionsRef.current) => {
       displayOptionsRef.current = options
       renderer.localClippingEnabled = options.section
-      sectionPlane.constant = previewCenter.x
+      sectionPlane.constant = sectionPlaneOriginRef.current?.x ?? previewCenter.x
       sectionPlaneHelper.visible = options.section
       sectionPlaneHelper.size = Math.max(previewRadius * 2.35, 1)
       sectionPlaneHelper.updateMatrixWorld(true)
@@ -1067,6 +1069,7 @@ export function useModelPreviewScene({
       syncPreviewObjectTransformsRef.current = () => undefined
       syncSelectedPreviewObjectRef.current = () => undefined
       sceneRuntimeRef.current = undefined
+      onMeasurementChangeRef.current?.(undefined)
       setMeasurement(undefined)
       invalidateGeneration()
       scene.remove(previewGroup)

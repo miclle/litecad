@@ -23,6 +23,9 @@ import type {
   ProjectInspectionRecordPayload,
   ProjectInspectionRecordResponse,
   ProjectInspectionRecordsResponse,
+  ProjectSectionArtifactPayload,
+  ProjectSectionArtifactResponse,
+  ProjectSectionArtifactsResponse,
   ProjectThumbnailSnapshotResponse,
   ProjectModelPreviewArtifactResponse,
   ProjectModelResponse,
@@ -275,4 +278,20 @@ export function createProjectInspectionRecord(projectId: string, payload: Projec
 
 export function deleteProjectInspectionRecord(projectId: string, recordId: string) {
   return client.delete(`/projects/${projectId}/inspection-records/${recordId}`)
+}
+
+export function fetchProjectSectionArtifacts(projectId: string) {
+  return client.get<ProjectSectionArtifactsResponse>(`/projects/${projectId}/section-artifacts`)
+}
+
+export function createProjectSectionArtifact(projectId: string, payload: ProjectSectionArtifactPayload) {
+  return client.post<ProjectSectionArtifactResponse>(`/projects/${projectId}/section-artifacts`, payload)
+}
+
+export function downloadProjectSectionArtifact(projectId: string, artifactId: string) {
+  return client.get<Blob>(`/projects/${projectId}/section-artifacts/${artifactId}/download`, { responseType: 'blob' })
+}
+
+export function deleteProjectSectionArtifact(projectId: string, artifactId: string) {
+  return client.delete(`/projects/${projectId}/section-artifacts/${artifactId}`)
 }

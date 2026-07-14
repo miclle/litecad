@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   runFeatureDSLExportInWorker,
   runFeatureDSLPreviewInWorker,
+  runSectionGeometryInWorker,
   runStepAssemblyExportInWorker,
   runStepPreviewInWorker,
   runStepRoundTripInWorker,
@@ -272,6 +273,35 @@ describe('runFeatureDSLExportInWorker', () => {
 
     await expect(resultPromise).resolves.toEqual({
       exportedStepText: 'ISO-10303-21;\nEND-ISO-10303-21;',
+    })
+    expect(worker.terminated).toBe(true)
+  })
+})
+
+describe('runSectionGeometryInWorker', () => {
+  it('posts a section-geometry request and resolves ready B-rep metadata', async () => {
+    const worker = new FakeWorker()
+    const resultPromise = runSectionGeometryInWorker(
+      {
+        filename: 'center-x-section.step',
+        sources: [{ filename: 'part.step', stepText: 'ISO-10303-21;' }],
+        plane: { origin: [30, 0, 0], normal: [1, 0, 0] },
+      },
+      () => worker,
+    )
+
+    const request = worker.postedMessages[0]
+    expect(request).toMatchObject({ type: 'section-geometry', payload: { filename: 'center-x-section.step' } })
+    worker.reply({
+      id: (request as { id: string }).id,
+      type: 'section-geometry-result',
+      result: { status: 'ready', edgeCount: 4, exportedStepText: 'ISO-10303-21;' },
+    })
+
+    await expect(resultPromise).resolves.toEqual({
+      status: 'ready',
+      edgeCount: 4,
+      exportedStepText: 'ISO-10303-21;',
     })
     expect(worker.terminated).toBe(true)
   })

@@ -64,6 +64,8 @@ describe('model preview tools', () => {
     expect(measurement?.size.y).toBeCloseTo(4)
     expect(measurement?.size.z).toBeCloseTo(6)
     expect(measurement?.center.x).toBeCloseTo(5)
+		expect(measurement?.derivation).toBe('preview-visible-aabb')
+		expect(measurement?.diagonal).toBeCloseTo(Math.sqrt(12 ** 2 + 4 ** 2 + 6 ** 2))
   })
 
   test('formats measurement values by scale', () => {

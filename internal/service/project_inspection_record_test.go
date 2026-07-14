@@ -20,9 +20,11 @@ func TestProjectInspectionRecordLifecycle(t *testing.T) {
 		Unit:                "millimetre",
 		VisibleModelIDs:     []string{"mdl_a", "mdl_b"},
 		Measurement: &ProjectInspectionMeasurement{
+			Derivation: "preview-visible-aabb",
 			ModelCount: 2,
 			Center:     ProjectInspectionVector{X: 3, Y: 4, Z: 5},
 			Size:       ProjectInspectionVector{X: 10, Y: 20, Z: 30},
+			Diagonal:   37.416573867739416,
 		},
 	})
 	if err != nil {

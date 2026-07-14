@@ -1,4 +1,4 @@
-import { act } from 'react'
+import { act, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { fireEvent } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -15,10 +15,26 @@ vi.mock('./model-preview', () => ({
     (props: {
       displayOptions: { measurement: boolean; section: boolean; showEdges: boolean }
       measurementOverlayClassName?: string
+      onMeasurementChange?: (measurement: {
+        center: { x: number; y: number; z: number }
+        derivation: 'preview-visible-aabb'
+        diagonal: number
+        modelCount: number
+        size: { x: number; y: number; z: number }
+      }) => void
       selectedModelId: string
       selectedNodeId: string
-    }) => (
-      <div
+    }) => {
+      useEffect(() => {
+        props.onMeasurementChange?.({
+          center: { x: 30, y: 12, z: 4 },
+          derivation: 'preview-visible-aabb',
+          diagonal: 65,
+          modelCount: 1,
+          size: { x: 60, y: 24, z: 8 },
+        })
+      }, [props.onMeasurementChange])
+      return <div
         data-edges={String(props.displayOptions.showEdges)}
         data-measurement={String(props.displayOptions.measurement)}
         data-measurement-overlay-class={props.measurementOverlayClassName}
@@ -27,7 +43,7 @@ vi.mock('./model-preview', () => ({
         data-selected-model={props.selectedModelId}
         data-selected-node={props.selectedNodeId}
       />
-    ),
+    },
   ),
 }))
 
@@ -71,40 +87,51 @@ describe('ProjectCanvas', () => {
     expect(preview?.getAttribute('data-measurement')).toBe('true')
   })
 
-  test('saves, restores, and deletes inspection records', async () => {
+  test('generates, restores, downloads, and deletes section geometry artifacts', async () => {
     const user = userEvent.setup()
-    const onSaveSectionRecord = vi.fn()
-    const onRestoreInspectionRecord = vi.fn()
-    const onDeleteInspectionRecord = vi.fn()
+    const onGenerateSectionArtifact = vi.fn()
+    const onRestoreSectionArtifact = vi.fn()
+    const onDownloadSectionArtifact = vi.fn()
+    const onDeleteSectionArtifact = vi.fn()
     renderCanvas({
-      inspectionRecords: [
+      canGenerateSectionGeometry: true,
+      sectionArtifacts: [
         {
-          id: 'pir_section',
+          id: 'pse_section',
           project_id: 'prj_demo',
-          kind: 'section',
-          name: 'Saved section',
           cad_document_revision: 4,
           unit: 'mm',
-          visible_model_ids: ['mdl_step'],
-          section: { mode: 'center-plane', plane_normal: { x: -1, y: 0, z: 0 }, plane_constant: 0 },
+          status: 'ready',
+          filename: 'center-x-section.step',
+          content_type: 'model/step',
+          target_count: 1,
+          source_revision_ids: ['mvr_step'],
+          occurrence_ids: ['occ_step'],
+          plane_origin: { x: 30, y: 12, z: 4 },
+          plane_normal: { x: 1, y: 0, z: 0 },
+          edge_count: 4,
+          byte_size: 1024,
           created_at: '2026-07-14T00:00:00Z',
           updated_at: '2026-07-14T00:00:00Z',
         },
       ],
-      onDeleteInspectionRecord,
-      onRestoreInspectionRecord,
-      onSaveSectionRecord,
+      onDeleteSectionArtifact,
+      onDownloadSectionArtifact,
+      onGenerateSectionArtifact,
+      onRestoreSectionArtifact,
       previewAssets: [{ modelId: 'mdl_step', name: 'gearbox.step', previewFormat: 'obj', previewUrl: '/gearbox.obj' }],
     })
 
     await user.click(document.querySelector('button[aria-label="Section"]') as HTMLButtonElement)
-    await user.click(document.querySelector('button[aria-label="Save section"]') as HTMLButtonElement)
-    await user.click(document.querySelector('button[aria-label="Restore Saved section"]') as HTMLButtonElement)
-    await user.click(document.querySelector('button[aria-label="Delete Saved section"]') as HTMLButtonElement)
+    await user.click(document.querySelector('button[aria-label="Generate section geometry"]') as HTMLButtonElement)
+    await user.click(document.querySelector('button[aria-label="Restore center-x-section.step"]') as HTMLButtonElement)
+    await user.click(document.querySelector('button[aria-label="Download center-x-section.step"]') as HTMLButtonElement)
+    await user.click(document.querySelector('button[aria-label="Delete center-x-section.step"]') as HTMLButtonElement)
 
-    expect(onSaveSectionRecord).toHaveBeenCalled()
-    expect(onRestoreInspectionRecord).toHaveBeenCalledWith(expect.objectContaining({ id: 'pir_section' }))
-    expect(onDeleteInspectionRecord).toHaveBeenCalledWith('pir_section')
+    expect(onGenerateSectionArtifact).toHaveBeenCalledWith({ x: 30, y: 12, z: 4 })
+    expect(onRestoreSectionArtifact).toHaveBeenCalledWith(expect.objectContaining({ id: 'pse_section' }))
+    expect(onDownloadSectionArtifact).toHaveBeenCalledWith('pse_section')
+    expect(onDeleteSectionArtifact).toHaveBeenCalledWith('pse_section')
     expect(document.querySelector('[data-model-preview]')?.getAttribute('data-section')).toBe('true')
   })
 

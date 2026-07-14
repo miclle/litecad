@@ -17,9 +17,11 @@ func TestProjectInspectionRecordRoutesCreateListAndDelete(t *testing.T) {
 		"unit":                  "millimetre",
 		"visible_model_ids":     []string{"mdl_a"},
 		"measurement": map[string]any{
+			"derivation":  "preview-visible-aabb",
 			"model_count": 1,
 			"center":      map[string]float64{"x": 1, "y": 2, "z": 3},
 			"size":        map[string]float64{"x": 10, "y": 20, "z": 30},
+			"diagonal":    37.416573867739416,
 		},
 	}, cookie)
 	if create.Code != http.StatusCreated {

@@ -41,7 +41,7 @@ test('opens the project workbench shell and History without browser errors', asy
   expect(browserErrors).toEqual([])
 })
 
-test('keeps the measurement panel clear of view orientation controls and persists inspection records', async ({ page }) => {
+test('persists derived measurements and browser-kernel section geometry', async ({ page }) => {
   const browserErrors = captureBrowserErrors(page)
   const fixture = await installProjectAPIFixture(page)
   fixture.seedSavedModel()
@@ -51,6 +51,7 @@ test('keeps the measurement panel clear of view orientation controls and persist
   await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
   await page.getByRole('button', { name: 'Measure', exact: true }).click()
   await expect(page.getByLabel('Measurement summary')).toBeVisible()
+  await expect(page.getByText('Diagonal', { exact: true })).toBeVisible()
 
   const orientationBounds = await page.getByLabel('View orientation controls').boundingBox()
   const measurementBounds = await page.getByLabel('Measurement summary').boundingBox()
@@ -62,16 +63,27 @@ test('keeps the measurement panel clear of view orientation controls and persist
   await expect(page.getByRole('button', { name: 'Save measurement' })).toBeEnabled()
   await page.getByRole('button', { name: 'Save measurement' }).click()
   await page.getByRole('button', { name: 'Section', exact: true }).click()
-  await page.getByRole('button', { name: 'Save section' }).click()
-  await expect.poll(() => fixture.state.inspectionRecords.length).toBe(2)
+  await page.getByRole('button', { name: 'Generate section geometry' }).click()
+  await expect.poll(() => fixture.state.inspectionRecords.length).toBe(1)
+  await expect.poll(() => fixture.state.sectionArtifacts.length, { timeout: 30_000 }).toBe(1)
+  expect(fixture.state.inspectionRecords[0]?.measurement?.derivation).toBe('preview-visible-aabb')
+  expect(fixture.state.inspectionRecords[0]?.measurement?.diagonal).toBeGreaterThan(0)
+  expect(fixture.state.sectionArtifacts[0]).toMatchObject({ status: 'ready', edge_count: 4, target_count: 1 })
+  expect(fixture.state.sectionArtifacts[0]?.step_text).toContain('END-ISO-10303-21')
 
   await page.reload()
   await expect(page.getByText('Visible bounds')).toBeVisible()
-  await expect(page.getByText('Center X section')).toBeVisible()
-  await page.getByRole('button', { name: 'Restore Center X section' }).click()
+  const sectionFilename = fixture.state.sectionArtifacts[0]?.filename ?? ''
+  await expect(page.getByText(sectionFilename)).toBeVisible()
+  await page.getByRole('button', { name: `Restore ${sectionFilename}` }).click()
   await expect(page.getByRole('button', { name: 'Section', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: `Download ${sectionFilename}` }).click()
+  expect((await downloadPromise).suggestedFilename()).toBe(sectionFilename)
   await page.getByRole('button', { name: 'Delete Visible bounds' }).click()
-  await expect.poll(() => fixture.state.inspectionRecords.map((record) => record.name)).toEqual(['Center X section'])
+  await page.getByRole('button', { name: `Delete ${sectionFilename}` }).click()
+  await expect.poll(() => fixture.state.inspectionRecords).toEqual([])
+  await expect.poll(() => fixture.state.sectionArtifacts).toEqual([])
 
   expect(browserErrors).toEqual([])
 })

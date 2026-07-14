@@ -50,15 +50,37 @@ type FixtureInspectionRecord = {
   unit: string
   visible_model_ids: string[]
   measurement?: {
+    derivation: 'preview-visible-aabb'
     model_count: number
     center: { x: number; y: number; z: number }
     size: { x: number; y: number; z: number }
+    diagonal: number
   }
   section?: {
     mode: 'center-plane'
     plane_normal: { x: number; y: number; z: number }
     plane_constant: number
   }
+  created_at: string
+  updated_at: string
+}
+
+type FixtureSectionArtifact = {
+  id: string
+  project_id: string
+  cad_document_revision: number
+  unit: string
+  status: 'ready' | 'empty'
+  filename: string
+  content_type: 'model/step'
+  target_count: number
+  source_revision_ids: string[]
+  occurrence_ids: string[]
+  plane_origin: { x: number; y: number; z: number }
+  plane_normal: { x: number; y: number; z: number }
+  edge_count: number
+  byte_size: number
+  step_text: string
   created_at: string
   updated_at: string
 }
@@ -99,6 +121,8 @@ export type ProjectAPIFixtureState = {
   exportArtifactCreateCount: number
   inspectionRecords: FixtureInspectionRecord[]
   inspectionRecordCreateCount: number
+  sectionArtifacts: FixtureSectionArtifact[]
+  sectionArtifactCreateCount: number
 	occurrences: FixtureOccurrence[]
 	assemblyGroups: FixtureAssemblyGroup[]
 	assemblyUndoStack: FixtureAssemblySnapshot[]
@@ -151,6 +175,8 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
     exportArtifactCreateCount: 0,
     inspectionRecords: [],
     inspectionRecordCreateCount: 0,
+    sectionArtifacts: [],
+    sectionArtifactCreateCount: 0,
 		occurrences: [],
 		assemblyGroups: [],
 		assemblyUndoStack: [],
@@ -428,6 +454,9 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     [`/api/v1/projects/${projectId}/inspection-records`]: {
       records: state.inspectionRecords,
     },
+    [`/api/v1/projects/${projectId}/section-artifacts`]: {
+      artifacts: state.sectionArtifacts.map(({ step_text: _stepText, ...artifact }) => artifact),
+    },
     [`/api/v1/projects/${projectId}/cad-document`]: { document: smokeCADDocument(state) },
     [`/api/v1/projects/${projectId}/cad-document/history`]: { entries: state.historyEntries },
   }
@@ -662,10 +691,60 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     await route.fulfill({ json: { record }, status: 201 })
     return
   }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/section-artifacts`) {
+    const requestBody = request.postDataJSON() as Partial<FixtureSectionArtifact>
+    state.sectionArtifactCreateCount += 1
+    const stepText = requestBody.step_text ?? ''
+    const artifact: FixtureSectionArtifact = {
+      id: `pse_smoke_${state.sectionArtifactCreateCount}`,
+      project_id: projectId,
+      cad_document_revision: requestBody.cad_document_revision ?? state.cadRevision,
+      unit: requestBody.unit ?? 'millimetre',
+      status: requestBody.status ?? 'empty',
+      filename: requestBody.filename ?? 'center-x-section.step',
+      content_type: requestBody.content_type ?? 'model/step',
+      target_count: requestBody.target_count ?? 1,
+      source_revision_ids: requestBody.source_revision_ids ?? [],
+      occurrence_ids: requestBody.occurrence_ids ?? [],
+      plane_origin: requestBody.plane_origin ?? { x: 0, y: 0, z: 0 },
+      plane_normal: requestBody.plane_normal ?? { x: 1, y: 0, z: 0 },
+      edge_count: requestBody.edge_count ?? 0,
+      byte_size: new TextEncoder().encode(stepText).length,
+      step_text: stepText,
+      created_at: now,
+      updated_at: now,
+    }
+    state.sectionArtifacts = [artifact, ...state.sectionArtifacts]
+    const { step_text: _stepText, ...publicArtifact } = artifact
+    await route.fulfill({ json: { artifact: publicArtifact }, status: 201 })
+    return
+  }
   const inspectionRecordRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/inspection-records/([^/]+)$`))
   if (request.method() === 'DELETE' && inspectionRecordRoute) {
     const recordID = decodeURIComponent(inspectionRecordRoute[1] ?? '')
     state.inspectionRecords = state.inspectionRecords.filter((record) => record.id !== recordID)
+    await route.fulfill({ status: 204 })
+    return
+  }
+  const sectionArtifactDownloadRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/section-artifacts/([^/]+)/download$`))
+  if (request.method() === 'GET' && sectionArtifactDownloadRoute) {
+    const artifactID = decodeURIComponent(sectionArtifactDownloadRoute[1] ?? '')
+    const artifact = state.sectionArtifacts.find((candidate) => candidate.id === artifactID)
+    if (!artifact || artifact.status !== 'ready') {
+      await route.fulfill({ json: { message: 'section artifact geometry unavailable' }, status: 409 })
+      return
+    }
+    await route.fulfill({
+      body: artifact.step_text,
+      contentType: 'model/step',
+      headers: { 'Content-Disposition': `attachment; filename="${artifact.filename}"` },
+    })
+    return
+  }
+  const sectionArtifactRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/section-artifacts/([^/]+)$`))
+  if (request.method() === 'DELETE' && sectionArtifactRoute) {
+    const artifactID = decodeURIComponent(sectionArtifactRoute[1] ?? '')
+    state.sectionArtifacts = state.sectionArtifacts.filter((artifact) => artifact.id !== artifactID)
     await route.fulfill({ status: 204 })
     return
   }

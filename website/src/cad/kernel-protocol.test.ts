@@ -64,6 +64,31 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('accepts section geometry requests with a finite non-zero plane normal', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-section',
+        type: 'section-geometry',
+        payload: {
+          filename: 'center-x-section.step',
+          sources: [{ filename: 'part.step', stepText: 'ISO-10303-21;END-ISO-10303-21;' }],
+          plane: { origin: [30, 0, 0], normal: [1, 0, 0] },
+        },
+      }),
+    ).toBe(true)
+    expect(
+      isCadKernelRequest({
+        id: 'job-section-invalid',
+        type: 'section-geometry',
+        payload: {
+          filename: 'center-x-section.step',
+          sources: [{ filename: 'part.step', stepText: 'ISO-10303-21;END-ISO-10303-21;' }],
+          plane: { origin: [30, 0, 0], normal: [0, 0, 0] },
+        },
+      }),
+    ).toBe(false)
+  })
+
   test('accepts STEP preview requests with replayable CAD operations', () => {
     expect(
       isCadKernelRequest({

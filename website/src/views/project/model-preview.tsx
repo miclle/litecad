@@ -53,6 +53,15 @@ export function ModelPreview(props: ModelPreviewProps) {
                 </dd>
               </div>
             ))}
+            <div className="col-span-3 flex items-center justify-between rounded border border-[#e2e8f0] bg-[#f8fafc] px-2 py-1.5">
+              <dt className="font-mono uppercase text-[#64748b]" title={t('project.preview.boundsDerivation')}>
+                {t('project.preview.diagonal')}
+              </dt>
+              <dd className="font-mono text-[#0f172a]">
+                {formatModelPreviewMeasurementValue(measurement.diagonal)}
+                <span className="ml-1 text-[#94a3b8]">{unitLabel}</span>
+              </dd>
+            </div>
           </dl>
         </div>
       ) : null}

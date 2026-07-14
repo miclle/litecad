@@ -83,7 +83,7 @@ Recommended concepts:
 - `previewMesh`: derived render data produced from the current shape state.
 - `exportArtifact`: generated STEP/GLB/STL/etc. output from the current document state.
 
-The first browser-kernel proof of concept has proven import, tessellation, constrained per-model edit replay, direct per-occurrence STEP export, selected multi-occurrence compound STEP export, backend-stored generated STEP export artifact history, and preview-layer inspection aids for edge display, center-plane visual sectioning, visible-model bounds measurement, and project-saved measurement/section inspection records. LiteCAD now persists immutable source/metadata model revisions, one CAD document schema v3 assembly whose occurrences own name, order, parent group, suppression, revision binding, and placement, nested organizational groups with hierarchical suppression, validated unresolved mate records, and reversible command History for occurrence/group/constraint-record authoring, supported geometry edits, parameter/revision restores, and complete saved LiteCAD Feature DSL source-graph replacements with stable top-level node transitions. A durable database schema for serialized kernel shape state, rich parametric B-rep feature semantics, solver-backed assembly constraints, reusable subassembly documents, and durable B-rep section geometry is still future design work.
+The first browser-kernel proof of concept has proven import, tessellation, constrained per-model edit replay, direct per-occurrence STEP export, selected multi-occurrence compound STEP export, backend-stored generated STEP export artifact history, preview-layer inspection aids for edge display, center-plane visual sectioning, visible-model bounds plus diagonal measurement, project-saved measurement/section inspection records, and project-owned OCCT section-edge STEP artifacts. LiteCAD now persists immutable source/metadata model revisions, one CAD document schema v3 assembly whose occurrences own name, order, parent group, suppression, revision binding, and placement, nested organizational groups with hierarchical suppression, validated unresolved mate records, and reversible command History for occurrence/group/constraint-record authoring, supported geometry edits, parameter/revision restores, and complete saved LiteCAD Feature DSL source-graph replacements with stable top-level node transitions. A durable database schema for reusable serialized kernel shape state, rich parametric B-rep feature semantics, solver-backed assembly constraints, reusable subassembly documents, and associative section features is still future design work.
 
 ## Generated Parametric Source Status
 
@@ -305,11 +305,31 @@ Tests and verification:
 - Documentation sweep across README, TODO, AGENTS.md, and `.agents/rules/`.
 - Commit the dependency removal separately.
 
+### Phase 6: Persistent Kernel Section Geometry
+
+Generate exact section edges in the existing browser OCCT worker and persist immutable project artifacts without treating preview clipping or mesh bounds as B-rep metrology.
+
+Phase 6 acceptance status: complete on 2026-07-14. `section-geometry` rebuilds STEP or LiteCAD Feature DSL occurrence shapes from pinned revisions, replays supported operations and placement, applies an OCCT B-rep section plane, and returns either STEP edge geometry or a typed empty result. Owner-scoped APIs persist the document revision, plane, units, source revision IDs, occurrence IDs, edge count, byte size, status, and ready artifact bytes. The workbench lists artifacts across reloads and supports plane restore, STEP download, and deletion. Visible-bounds measurement also reports an explicitly `preview-visible-aabb`-derived diagonal.
+
+Boundary:
+
+- A ready artifact is an immutable generation-time STEP serialization of OCCT intersection edges; it is not a section solid, reusable serialized document shape, or associative feature that automatically regenerates.
+- An empty intersection is stored as a typed empty result with zero edges and no STEP bytes.
+- Visible X/Y/Z dimensions and diagonal are derived from the combined visible preview AABB, not stable topology references or general exact B-rep metrology.
+- Source revision and occurrence provenance are explicit so future regeneration or stale-result UX can be designed without silently changing existing artifacts.
+
+Tests and verification:
+
+- Go service and handler coverage validates ready/empty artifacts, ownership, metadata, list/download/delete, and payload limits.
+- Real OCCT worker tests section a 60 x 24 x 8 box into four edges and verify an out-of-range plane returns empty.
+- Deterministic Playwright covers generate, persist across reload, restore, download, and delete through the workbench.
+- In-app browser verification against the real local backend generated a four-edge artifact from a LiteCAD box, reloaded/restored/deleted it, and found no console warnings or errors.
+
 ## Open Questions
 
 - Which OCCT WASM package has the right long-term size, licensing, maintenance, and binding coverage for richer edit operations beyond the current `replicad-opencascadejs` spike?
 - Should kernel-generated document state persist as OCCT-native serialized shapes, a LiteCAD operation graph, or both?
-- What retention, quota, cleanup, and external object-storage policy should backend-stored export artifacts use before launch?
+- What retention, quota, cleanup, and external object-storage policy should backend-stored export and section geometry artifacts use before launch?
 - What maximum file size should the browser worker support before the UI asks the user to use a server-side or queued conversion path?
 - How should solver-backed mates/constraints, reusable subassembly documents, colors, names, units, and source STEP product structure extend the current schema v3 organizational group model?
 
@@ -323,10 +343,10 @@ As of this roadmap, the current shipped path is:
 - GLB and self-contained GLTF uploads can be published as preview artifacts after backend validation.
 - STL is converted to OBJ preview data in Go.
 - The project workbench renders browser-kernel STEP meshes and backend-provided GLB/GLTF/STL preview artifacts in Three.js.
-- The project workbench can overlay mesh edges, visually clip the current preview through a center plane, display visible-model bounding-box dimensions, and save project inspection records for visible-bounds measurement snapshots and center-plane section definitions. These records are viewer-derived inspection records, not durable B-rep section geometry.
+- The project workbench can overlay mesh edges, visually clip the current preview through a center plane, display visible-model AABB dimensions plus diagonal, save viewer-derived measurement/section definitions, and persist exact OCCT section-edge STEP artifacts with source-revision/occurrence provenance. The inspection records and visual clipping remain viewer-derived; ready section artifacts are immutable generation-time kernel intersections rather than associative document features.
 - The project workbench stores and reloads a LiteCAD editable document schema v3 with one durable assembly, nested organizational groups with hierarchical suppression, validated unresolved mate records, one or more immutable-revision-bound model occurrences that own name, order, parent group, suppression, and placement, uploaded source model node compatibility projections, independently selectable STEP component child nodes, node-delete, and constrained box-union operations.
 - Database-backed History stores reversible occurrence-create/update/move/delete, transform, node-delete, box-union, and saved parametric model parameter commands, the active Undo/Redo head, and discarded alternate paths; every CAD document mutation uses an expected document revision.
 - STEP preview derives mesh data by replaying box-union geometry in the browser CAD worker before tessellation, then applies durable occurrence placement in the Three.js scene.
 - Direct per-occurrence STEP export and selected multi-occurrence compound STEP export replay geometry operations followed by occurrence placement in the browser CAD worker and download the worker-produced STEP text.
 - Saved `.lcad.json` project model sources preview through `feature-dsl-preview`, export through `feature-dsl-export`, and update existing viewer-scene meshes after local parameter edits.
-- No durable kernel shape serialization, rich parametric B-rep feature model, solver-backed assembly constraints, reusable subassembly documents, durable B-rep section geometry, preserved source STEP product structure, or cross-model CAD merge semantics exist yet.
+- No reusable durable kernel shape serialization, rich parametric B-rep feature model, solver-backed assembly constraints, reusable subassembly documents, associative section features, preserved source STEP product structure, or cross-model CAD merge semantics exist yet.

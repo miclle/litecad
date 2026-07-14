@@ -4,12 +4,49 @@ import { createCadKernelWorkerHandler } from './kernel-worker-handler'
 import type {
   CadKernelFeatureDSLExportResult,
   CadKernelFeatureDSLPreviewResult,
+  CadKernelSectionGeometryResult,
   CadKernelStepAssemblyExportResult,
   CadKernelStepPreviewResult,
   CadKernelStepRoundTripResult,
 } from './opencascade-step'
 
 describe('CAD kernel worker handler', () => {
+  test('runs a section geometry request and returns its B-rep status', async () => {
+    const result: CadKernelSectionGeometryResult = {
+      status: 'ready',
+      edgeCount: 4,
+      exportedStepText: 'ISO-10303-21;',
+    }
+    const runSectionGeometry = vi.fn(async () => result)
+    const postMessage = vi.fn()
+    const handler = createCadKernelWorkerHandler({
+      runFeatureDSLExport: vi.fn(),
+      runFeatureDSLPreview: vi.fn(),
+      runSectionGeometry,
+      runStepAssemblyExport: vi.fn(),
+      runStepPreview: vi.fn(),
+      runStepRoundTrip: vi.fn(),
+      postMessage,
+    })
+
+    await handler({
+      id: 'job-section',
+      type: 'section-geometry',
+      payload: {
+        filename: 'center-x-section.step',
+        sources: [{ filename: 'part.step', stepText: 'ISO-10303-21;' }],
+        plane: { origin: [30, 0, 0], normal: [1, 0, 0] },
+      },
+    })
+
+    expect(runSectionGeometry).toHaveBeenCalledWith({
+      filename: 'center-x-section.step',
+      sources: [{ filename: 'part.step', stepText: 'ISO-10303-21;' }],
+      plane: { origin: [30, 0, 0], normal: [1, 0, 0] },
+    })
+    expect(postMessage).toHaveBeenCalledWith({ id: 'job-section', type: 'section-geometry-result', result })
+  })
+
   test('runs a valid STEP round-trip request and posts the result', async () => {
     const result: CadKernelStepRoundTripResult = {
       mesh: {

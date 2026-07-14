@@ -7,6 +7,7 @@ import { ProjectWorkbenchComposition } from './project-workbench-composition'
 import type { useCADDocumentCommands } from './use-cad-document-commands'
 import type { useProjectAssistantController } from './use-project-assistant-controller'
 import type { useProjectInspectionRecordsController } from './use-project-inspection-records-controller'
+import type { useProjectSectionArtifactsController } from './use-project-section-artifacts-controller'
 import type { useProjectModelUploadController } from './use-project-model-upload-controller'
 import type { useProjectStepExportController } from './use-project-step-export-controller'
 import type { useProjectThumbnailSnapshotController } from './use-project-thumbnail-snapshot-controller'
@@ -165,6 +166,7 @@ function renderComposition(callbacks: ReturnType<typeof callbackSpies>) {
         }}
         projectModelUpload={projectModelUpload()}
         projectInspectionRecords={projectInspectionRecords(callbacks)}
+        projectSectionArtifacts={projectSectionArtifacts()}
         projectStepExport={projectStepExport()}
         projectThumbnailSnapshot={projectThumbnailSnapshot()}
         shellState={shellState(callbacks)}
@@ -327,6 +329,21 @@ function projectInspectionRecords(_callbacks: ReturnType<typeof callbackSpies>) 
     saveSectionRecord: vi.fn(),
     selectedRestoredRecord: undefined,
   } as unknown as ReturnType<typeof useProjectInspectionRecordsController>
+}
+
+function projectSectionArtifacts() {
+  return {
+    deleteSectionArtifact: vi.fn(),
+    downloadSectionArtifact: vi.fn(),
+    generateSectionArtifact: vi.fn(),
+    isSectionArtifactMutationPending: false,
+    isSectionArtifactsError: false,
+    isSectionArtifactsLoading: false,
+    restoreSectionArtifact: vi.fn(),
+    sectionArtifacts: [],
+    sectionArtifactError: '',
+    visibleSectionTargetCount: 0,
+  } as unknown as ReturnType<typeof useProjectSectionArtifactsController>
 }
 
 function projectStepExport() {

@@ -12,6 +12,7 @@ import type { useCADDocumentCommands } from './use-cad-document-commands'
 import type { useProjectAssistantController } from './use-project-assistant-controller'
 import type { useProjectModelUploadController } from './use-project-model-upload-controller'
 import type { useProjectInspectionRecordsController } from './use-project-inspection-records-controller'
+import type { useProjectSectionArtifactsController } from './use-project-section-artifacts-controller'
 import type { useProjectStepExportController } from './use-project-step-export-controller'
 import type { useProjectThumbnailSnapshotController } from './use-project-thumbnail-snapshot-controller'
 import type { useProjectWorkbenchDraftCommands } from './use-project-workbench-draft-commands'
@@ -43,6 +44,7 @@ export type ProjectWorkbenchCompositionProps = {
   projectCADHistory: ProjectCADHistoryState
   projectModelUpload: ReturnType<typeof useProjectModelUploadController>
   projectInspectionRecords: ReturnType<typeof useProjectInspectionRecordsController>
+  projectSectionArtifacts: ReturnType<typeof useProjectSectionArtifactsController>
   projectStepExport: ReturnType<typeof useProjectStepExportController>
   projectThumbnailSnapshot: ReturnType<typeof useProjectThumbnailSnapshotController>
   shellState: ReturnType<typeof useProjectWorkbenchShellState>
@@ -63,6 +65,7 @@ export function ProjectWorkbenchComposition({
   projectCADHistory,
   projectModelUpload,
   projectInspectionRecords,
+  projectSectionArtifacts,
   projectStepExport,
   projectThumbnailSnapshot,
   shellState,
@@ -115,6 +118,7 @@ export function ProjectWorkbenchComposition({
         <ProjectCanvas
           activeCADTool={activeCADTool}
           animateViewCubeOrientation={viewControls.animateViewCubeOrientation}
+          canGenerateSectionGeometry={projectSectionArtifacts.visibleSectionTargetCount > 0}
           canvasRightOffset={shellState.canvasRightOffset}
           canvasStatusBody={modelState.canvasStatusBody}
           canvasStatusLabel={modelState.canvasStatusLabel}
@@ -133,13 +137,16 @@ export function ProjectWorkbenchComposition({
           onModelTranslationChange={draftCommands.updateTransformDraftFromTranslation}
           onResetIsometric={() => viewControls.applyCanvasOrientation(initialViewOrientation)}
           onDeleteInspectionRecord={projectInspectionRecords.deleteInspectionRecord}
+          onDeleteSectionArtifact={projectSectionArtifacts.deleteSectionArtifact}
+          onDownloadSectionArtifact={projectSectionArtifacts.downloadSectionArtifact}
+          onGenerateSectionArtifact={projectSectionArtifacts.generateSectionArtifact}
           onRestoreInspectionRecord={(record) => {
             if (record.kind === 'section') {
               viewControls.applyCanvasOrientation(viewControls.viewOrientation)
             }
           }}
+          onRestoreSectionArtifact={projectSectionArtifacts.restoreSectionArtifact}
           onSaveMeasurementRecord={projectInspectionRecords.saveMeasurementRecord}
-          onSaveSectionRecord={projectInspectionRecords.saveSectionRecord}
 			onSelectModel={(modelID, nodeID, occurrenceID) => {
 				if (occurrenceID) {
 					selectModel(modelID, nodeID, occurrenceID)
@@ -156,6 +163,8 @@ export function ProjectWorkbenchComposition({
           previewAssets={modelState.previewAssets}
           inspectionRecords={projectInspectionRecords.inspectionRecords}
           isInspectionRecordsLoading={projectInspectionRecords.isInspectionRecordsLoading}
+          isSectionArtifactMutationPending={projectSectionArtifacts.isSectionArtifactMutationPending}
+          isSectionArtifactsLoading={projectSectionArtifacts.isSectionArtifactsLoading}
           projectCADDocument={modelState.projectCADDocument}
           projectId={project.id}
           selectedDocumentNode={selectedDocumentNode}
@@ -167,6 +176,8 @@ export function ProjectWorkbenchComposition({
           selectedModelSupportsFuseBox={inspectorState.selectedModelSupportsFuseBox}
           selectedNodeId={effectiveSelectedDocumentNodeID}
           selectedSourceModel={selectedSourceModel}
+          sectionArtifactError={projectSectionArtifacts.sectionArtifactError}
+          sectionArtifacts={projectSectionArtifacts.sectionArtifacts}
           shouldShowCanvasStatus={modelState.shouldShowCanvasStatus}
           unitLabel={inspectorState.documentUnitLabel}
           viewOrientation={viewControls.viewOrientation}

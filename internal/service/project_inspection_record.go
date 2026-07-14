@@ -31,9 +31,11 @@ type ProjectInspectionVector struct {
 
 // ProjectInspectionMeasurement stores a visible-bounds measurement snapshot.
 type ProjectInspectionMeasurement struct {
+	Derivation string                  `json:"derivation"`
 	ModelCount int                     `json:"model_count"`
 	Center     ProjectInspectionVector `json:"center"`
 	Size       ProjectInspectionVector `json:"size"`
+	Diagonal   float64                 `json:"diagonal"`
 }
 
 // ProjectInspectionSection stores a clipping-plane definition, not section geometry.
@@ -195,12 +197,15 @@ func isValidProjectInspectionRecordInput(input CreateProjectInspectionRecordInpu
 }
 
 func isValidProjectInspectionMeasurement(measurement ProjectInspectionMeasurement) bool {
-	return measurement.ModelCount > 0 &&
+	return measurement.Derivation == "preview-visible-aabb" &&
+		measurement.ModelCount > 0 &&
 		isFiniteProjectInspectionVector(measurement.Center) &&
 		isFiniteProjectInspectionVector(measurement.Size) &&
+		isFiniteNumber(measurement.Diagonal) &&
 		measurement.Size.X >= 0 &&
 		measurement.Size.Y >= 0 &&
-		measurement.Size.Z >= 0
+		measurement.Size.Z >= 0 &&
+		measurement.Diagonal >= 0
 }
 
 func isValidProjectInspectionSection(section ProjectInspectionSection) bool {

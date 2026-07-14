@@ -352,6 +352,21 @@ export type CadKernelStepAssemblyExportRequest = {
   }
 }
 
+export type CadKernelSectionPlane = {
+  origin: readonly number[]
+  normal: readonly number[]
+}
+
+export type CadKernelSectionGeometryRequest = {
+  id: string
+  type: 'section-geometry'
+  payload: {
+    filename: string
+    sources: CadKernelStepAssemblyExportSource[]
+    plane: CadKernelSectionPlane
+  }
+}
+
 export type CadKernelFeatureDSLPreviewRequest = {
   id: string
   type: 'feature-dsl-preview'
@@ -368,6 +383,7 @@ export type CadKernelRequest =
   | CadKernelStepRoundTripRequest
   | CadKernelStepPreviewRequest
   | CadKernelStepAssemblyExportRequest
+  | CadKernelSectionGeometryRequest
   | CadKernelFeatureDSLPreviewRequest
   | CadKernelFeatureDSLExportRequest
 
@@ -399,6 +415,16 @@ export type CadKernelStepAssemblyExportResponse = {
   }
 }
 
+export type CadKernelSectionGeometryResponse = {
+  id: string
+  type: 'section-geometry-result'
+  result: {
+    status: 'ready' | 'empty'
+    edgeCount: number
+    exportedStepText: string
+  }
+}
+
 export type CadKernelFeatureDSLPreviewResponse = {
   id: string
   type: 'feature-dsl-preview-result'
@@ -426,6 +452,7 @@ export type CadKernelResponse =
   | CadKernelStepRoundTripResponse
   | CadKernelStepPreviewResponse
   | CadKernelStepAssemblyExportResponse
+  | CadKernelSectionGeometryResponse
   | CadKernelFeatureDSLPreviewResponse
   | CadKernelFeatureDSLExportResponse
   | CadKernelErrorResponse
@@ -438,6 +465,7 @@ export function isCadKernelRequest(value: unknown): value is CadKernelRequest {
     (value.type !== 'step-round-trip' &&
       value.type !== 'step-preview' &&
       value.type !== 'step-assembly-export' &&
+      value.type !== 'section-geometry' &&
       value.type !== 'feature-dsl-preview' &&
       value.type !== 'feature-dsl-export') ||
     typeof value.id !== 'string'
@@ -455,6 +483,16 @@ export function isCadKernelRequest(value: unknown): value is CadKernelRequest {
       Array.isArray(payload.sources) &&
       payload.sources.length > 0 &&
       payload.sources.every(isCadKernelAssemblyExportSource)
+    )
+  }
+  if (value.type === 'section-geometry') {
+    return (
+      isRecord(payload) &&
+      typeof payload.filename === 'string' &&
+      Array.isArray(payload.sources) &&
+      payload.sources.length > 0 &&
+      payload.sources.every(isCadKernelAssemblyExportSource) &&
+      isCadKernelSectionPlane(payload.plane)
     )
   }
 
@@ -849,6 +887,15 @@ function isCadKernelAssemblyExportSource(value: unknown): value is CadKernelStep
     typeof value.filename === 'string' &&
     typeof value.stepText === 'string' &&
     isCadKernelOperations(value.operations)
+  )
+}
+
+function isCadKernelSectionPlane(value: unknown): value is CadKernelSectionPlane {
+  return (
+    isRecord(value) &&
+    isFiniteNumberTuple(value.origin, 3) &&
+    isFiniteNumberTuple(value.normal, 3) &&
+    value.normal.some((entry) => entry !== 0)
   )
 }
 

@@ -143,9 +143,11 @@ export interface ProjectInspectionVector {
 }
 
 export interface ProjectInspectionMeasurement {
+  derivation: 'preview-visible-aabb'
   model_count: number
   center: ProjectInspectionVector
   size: ProjectInspectionVector
+  diagonal: number
 }
 
 export interface ProjectInspectionSection {
@@ -184,6 +186,48 @@ export interface ProjectInspectionRecordResponse {
 
 export interface ProjectInspectionRecordsResponse {
   records: ProjectInspectionRecord[]
+}
+
+export interface ProjectSectionArtifact {
+  id: string
+  project_id: string
+  cad_document_revision: number
+  unit: string
+  status: 'ready' | 'empty'
+  filename: string
+  content_type: 'model/step'
+  target_count: number
+  source_revision_ids: string[]
+  occurrence_ids: string[]
+  plane_origin: ProjectInspectionVector
+  plane_normal: ProjectInspectionVector
+  edge_count: number
+  byte_size: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectSectionArtifactPayload {
+  cad_document_revision: number
+  unit: string
+  status: 'ready' | 'empty'
+  filename: string
+  content_type: 'model/step'
+  target_count: number
+  source_revision_ids: string[]
+  occurrence_ids: string[]
+  plane_origin: ProjectInspectionVector
+  plane_normal: ProjectInspectionVector
+  edge_count: number
+  step_text: string
+}
+
+export interface ProjectSectionArtifactResponse {
+  artifact: ProjectSectionArtifact
+}
+
+export interface ProjectSectionArtifactsResponse {
+  artifacts: ProjectSectionArtifact[]
 }
 
 export interface ProjectGeometryTreeNode {

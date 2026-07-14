@@ -339,10 +339,12 @@ Commit message: `docs(cad): decide openscad browser runtime`
 
 **Boundary:** The durable section result must contain actual kernel-derived geometry or a clearly typed empty result, not only a saved viewer clipping-plane definition. Richer measurements must identify their derivation and must not imply exact B-rep metrology beyond what the kernel computes.
 
+**Completion note (2026-07-14):** The worker now computes OCCT section edges from pinned source revisions, supported operation replay, and occurrence placement. Project-owned APIs persist ready STEP or typed empty artifacts with plane/document/source provenance and list/download/delete lifecycle. The workbench generates, reloads, restores, downloads, and deletes artifacts, and visible bounds include an explicitly preview-AABB-derived diagonal. Focused Go/Vitest/Playwright coverage, real-backend in-app browser verification, `task check`, `task test` (77 files / 385 frontend tests plus Go race/coverage), and `task test-browser` (14/14) passed before commit.
+
 ## Completion Gate
 
-- [ ] `docs/current-work-handoff.md` has no unfinished items copied from the original Larger Follow-Ups list.
-- [ ] Every phase has at least one commit.
-- [ ] Every phase has fresh `task check`, `task test`, and `task test-browser` evidence when applicable.
-- [ ] Every UI phase has in-app browser verification evidence.
-- [ ] `TODO.md`, `README.md`, `AGENTS.md`, `.agents/rules/`, and roadmap docs match the actual shipped behavior.
+- [x] `docs/current-work-handoff.md` has no unfinished items copied from the original Larger Follow-Ups list.
+- [x] Every completed phase before Phase 6 has at least one commit; Phase 6 is committed after this final gate passes.
+- [x] Every completed phase has fresh `task check`, `task test`, and `task test-browser` evidence when applicable; Phase 6 passed the same gates immediately before commit.
+- [x] Every UI phase has in-app browser verification evidence.
+- [x] `TODO.md`, `README.md`, `AGENTS.md`, `.agents/rules/`, and roadmap docs match the actual shipped behavior.

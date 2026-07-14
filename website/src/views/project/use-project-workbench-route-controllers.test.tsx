@@ -8,6 +8,7 @@ import { useProjectWorkbenchRouteControllers } from './use-project-workbench-rou
 import { useCADDocumentCommands } from './use-cad-document-commands'
 import { useProjectAssistantController } from './use-project-assistant-controller'
 import { useProjectModelUploadController } from './use-project-model-upload-controller'
+import { useProjectSectionArtifactsController } from './use-project-section-artifacts-controller'
 import { useProjectStepExportController } from './use-project-step-export-controller'
 import { useProjectThumbnailSnapshotController } from './use-project-thumbnail-snapshot-controller'
 import { useProjectWorkbenchDraftCommands } from './use-project-workbench-draft-commands'
@@ -27,6 +28,7 @@ vi.mock('src/api/projects', () => ({
 vi.mock('./use-cad-document-commands', () => ({ useCADDocumentCommands: vi.fn() }))
 vi.mock('./use-project-assistant-controller', () => ({ useProjectAssistantController: vi.fn() }))
 vi.mock('./use-project-model-upload-controller', () => ({ useProjectModelUploadController: vi.fn() }))
+vi.mock('./use-project-section-artifacts-controller', () => ({ useProjectSectionArtifactsController: vi.fn() }))
 vi.mock('./use-project-step-export-controller', () => ({ useProjectStepExportController: vi.fn() }))
 vi.mock('./use-project-thumbnail-snapshot-controller', () => ({ useProjectThumbnailSnapshotController: vi.fn() }))
 vi.mock('./use-project-workbench-draft-commands', () => ({ useProjectWorkbenchDraftCommands: vi.fn() }))
@@ -42,6 +44,7 @@ const mockedFetchProjectCADHistory = vi.mocked(fetchProjectCADHistory)
 const mockedUseCADDocumentCommands = vi.mocked(useCADDocumentCommands)
 const mockedUseProjectAssistantController = vi.mocked(useProjectAssistantController)
 const mockedUseProjectModelUploadController = vi.mocked(useProjectModelUploadController)
+const mockedUseProjectSectionArtifactsController = vi.mocked(useProjectSectionArtifactsController)
 const mockedUseProjectStepExportController = vi.mocked(useProjectStepExportController)
 const mockedUseProjectThumbnailSnapshotController = vi.mocked(useProjectThumbnailSnapshotController)
 const mockedUseProjectWorkbenchDraftCommands = vi.mocked(useProjectWorkbenchDraftCommands)
@@ -83,6 +86,14 @@ describe('useProjectWorkbenchRouteControllers', () => {
       assemblyDownloadFilename: 'Route Project-litecad-assembly-r7.step',
       projectId: 'prj_route',
       targets: [],
+    })
+    expect(mockedUseProjectSectionArtifactsController).toHaveBeenCalledWith({
+      cadDocumentRevision: 7,
+      filename: 'Route Project-litecad-section-r7.step',
+      projectId: 'prj_route',
+      targets: [],
+      unit: 'millimetre',
+      visiblePreviewIds: [],
     })
     expect(mockedUseProjectWorkbenchKeyboardCommands).toHaveBeenCalledWith({
       changeHistory: expect.any(Function),
@@ -176,6 +187,7 @@ function installControllerMocks(overrides: { setParametricRunError?: ReturnType<
     hiddenModelIDs,
   } as ReturnType<typeof useProjectWorkbenchVisibilityState>)
   mockedUseProjectModelUploadController.mockReturnValue({} as ReturnType<typeof useProjectModelUploadController>)
+  mockedUseProjectSectionArtifactsController.mockReturnValue({} as ReturnType<typeof useProjectSectionArtifactsController>)
   mockedUseProjectWorkbenchModelState.mockReturnValue(modelState as unknown as ReturnType<typeof useProjectWorkbenchModelState>)
   mockedUseProjectStepExportController.mockReturnValue({ errorByModelID: {}, statusByModelID: {} } as ReturnType<typeof useProjectStepExportController>)
   mockedUseProjectAssistantController.mockReturnValue(projectAssistant as unknown as ReturnType<typeof useProjectAssistantController>)

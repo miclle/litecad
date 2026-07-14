@@ -45,9 +45,11 @@ export function useProjectInspectionRecordsController({
       unit,
       visible_model_ids: [...visibleModelIds],
       measurement: {
+        derivation: measurement.derivation,
         model_count: measurement.modelCount,
         center: measurement.center,
         size: measurement.size,
+        diagonal: measurement.diagonal,
       },
     })
   }
