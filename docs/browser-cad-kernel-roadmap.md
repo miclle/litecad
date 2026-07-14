@@ -16,7 +16,7 @@ Import STEP or another CAD source
   -> export the current shape back to STEP or another CAD exchange format
 ```
 
-The current implementation covers the first browser-kernel loop for STEP models: STEP workbench preview replays constrained box-union geometry during worker tessellation and applies durable flat assembly occurrence placement in the Three.js scene. STEP export derives model order, immutable revision binding, and placement from those occurrences, and the workbench can download selected models either as separate files or as one browser-kernel compound STEP file. GLTF/GLB/STL preview artifacts remain viewer outputs rather than editable CAD documents.
+The current implementation covers the first browser-kernel loop for STEP models: STEP workbench preview replays constrained box-union geometry during worker tessellation and creates one Three.js scene instance per unsuppressed durable flat assembly occurrence. One immutable model revision may have multiple independently named, ordered, suppressed, and placed occurrences. STEP export derives occurrence order, immutable revision binding, name, and placement from those occurrences, and the workbench can download selected occurrences either as separate files or as one browser-kernel compound STEP file. GLTF/GLB/STL preview artifacts remain viewer outputs rather than editable CAD documents.
 
 ## Architectural Decision
 
@@ -81,7 +81,7 @@ Recommended concepts:
 - `previewMesh`: derived render data produced from the current shape state.
 - `exportArtifact`: generated STEP/GLB/STL/etc. output from the current document state.
 
-The first browser-kernel proof of concept has proven import, tessellation, constrained per-model edit replay, direct per-model STEP export, selected multi-model compound STEP export, and preview-layer inspection aids for edge display, center-plane visual sectioning, and visible-model bounds measurement. LiteCAD now persists immutable source/metadata model revisions, one CAD document schema v2 flat assembly whose occurrences own revision bindings and placement, and reversible command History for supported edits and revision restores. A durable database schema for kernel shape state, rich parametric B-rep feature semantics, nested assemblies and constraints, durable CAD measurement/section records, and backend export artifact history is still future design work.
+The first browser-kernel proof of concept has proven import, tessellation, constrained per-model edit replay, direct per-occurrence STEP export, selected multi-occurrence compound STEP export, and preview-layer inspection aids for edge display, center-plane visual sectioning, and visible-model bounds measurement. LiteCAD now persists immutable source/metadata model revisions, one CAD document schema v2 flat assembly whose occurrences own name, order, suppression, revision binding, and placement, and reversible command History for occurrence authoring, supported geometry edits, and revision restores. A durable database schema for kernel shape state, rich parametric B-rep feature semantics, nested assemblies and constraints, durable CAD measurement/section records, and backend export artifact history is still future design work.
 
 ## Generated Parametric Source Status
 
@@ -203,6 +203,8 @@ The fourth Phase 3 increment is complete on 2026-07-10: LiteCAD stores each supp
 
 The fifth Phase 3 increment is complete on 2026-07-14: CAD document schema v2 adds one explicit durable flat assembly. Stable occurrences pin immutable model revisions and are the sole persistent owners of top-level placement; root nodes retain compatibility projections for existing workbench APIs. Existing schema v1 documents upgrade transactionally and idempotently, preserving transforms and component children. Occurrence transform/delete and model revision transitions remain inside the existing document revision and database History envelope.
 
+The sixth Phase 3 increment is complete on 2026-07-14: one model revision can now have multiple durable flat occurrences without cloning its source node. Owner-scoped expected-revision APIs and reversible History commands cover duplicate, rename, reorder, suppression, placement, and deletion. The workbench tree, selection state, Three.js scene identity, visibility, and STEP export are occurrence-native; suppressed occurrences remain persisted and reversible but are excluded from preview and export. This does not add nested subassemblies, mates, constraints, or preserved source STEP product structure.
+
 Current Phase 3 status:
 
 - `ProjectCADDocument` persists editable document JSON separately from uploaded source bytes, read-only geometry snapshots, and derived preview artifacts.
@@ -213,7 +215,7 @@ Current Phase 3 status:
 - Every edit, Undo, and Redo requires the caller's expected document revision. A stale revision returns `409 Conflict`, and every successful state transition increments the document revision monotonically.
 - A new edit after Undo marks the old redo path as discarded while retaining its records for History inspection.
 - Every project model has immutable source/metadata revisions; saved `.scad` and `.lcad.json` parameter edits create child revisions, revision list/detail/restore APIs are owner-scoped, and both edits and restores use revision-ID History transitions. They remain source-model versions rather than durable kernel feature graph mutations.
-- CAD document schema v2 stores one project assembly and one stable occurrence per active root model. The workbench tree renders the assembly root, occurrences reference immutable model revisions, occurrence placement is the only persisted top-level transform owner, and owner-scoped revision-source downloads ensure export reads the pinned source bytes even if another browser changes the model's current revision.
+- CAD document schema v2 stores one project assembly and one or more stable occurrences per active root model. The workbench tree renders the assembly root and occurrence authoring controls; occurrences reference immutable model revisions and independently own name, order, suppression, and placement. Occurrence placement is the only persisted top-level transform owner, and owner-scoped revision-source downloads ensure export reads the pinned source bytes even if another browser changes the model's current revision.
 - `useCADDocumentCommands(...)` owns the workbench's serialized edit queue, latest cached revision lookup, transform autosave timers, shared mutation pending gate, and `409 Conflict` document/history refresh. Focused mounted-hook tests cover conflict refresh without accepting stale state and the shared History/delete action gate.
 - The project workbench keys STEP preview queries by geometry-operation signature, sends box-union operations to the worker for tessellation, and applies occurrence placement at the Three.js object/node layer.
 - The CAD kernel worker protocol accepts replayable transform and box-union operations. Production STEP export sends geometry operations first and the durable occurrence placement last. `opencascade-step.ts` converts row-major 4x4 transform matrices into OCCT `gp_Trsf.SetValues(...)`, applies transforms with `BRepBuilderAPI_Transform`, creates box features with `BRepPrimAPI_MakeBox`, and fuses them with `BRepAlgoAPI_Fuse`.
@@ -246,7 +248,7 @@ Tests and verification:
 
 Export the browser-edited B-rep document to STEP.
 
-Phase 4 acceptance status: complete on 2026-07-08. LiteCAD now supports direct per-model STEP downloads and selected multi-model compound STEP downloads from the current browser-kernel document state. The first milestone intentionally uses client-side download rather than backend export artifact storage because the project is not launched and the current product need is to export the edited model without adding another runtime component.
+Phase 4 acceptance status: complete on 2026-07-08 and extended by flat occurrence authoring on 2026-07-14. LiteCAD now supports direct per-occurrence STEP downloads and selected multi-occurrence compound STEP downloads from the current browser-kernel document state. The first milestone intentionally uses client-side download rather than backend export artifact storage because the project is not launched and the current product need is to export the edited model without adding another runtime component.
 
 Current Phase 4 status:
 
@@ -318,8 +320,8 @@ As of this roadmap, the current shipped path is:
 - STL is converted to OBJ preview data in Go.
 - The project workbench renders browser-kernel STEP meshes and backend-provided GLB/GLTF/STL preview artifacts in Three.js.
 - The project workbench can overlay mesh edges, visually clip the current preview through a center plane, and display visible-model bounding-box dimensions. These are viewer-derived inspection tools, not persisted CAD measurement entities or durable B-rep section geometry.
-- The project workbench stores and reloads a LiteCAD editable document schema v2 with one durable flat assembly, immutable-revision-bound model occurrences that own placement, uploaded source model node compatibility projections, independently selectable STEP component child nodes, node-delete, and constrained box-union operations.
-- Database-backed History stores reversible transform, node-delete, box-union, and saved parametric model parameter commands, the active Undo/Redo head, and discarded alternate paths; every CAD document mutation uses an expected document revision.
+- The project workbench stores and reloads a LiteCAD editable document schema v2 with one durable flat assembly, one or more immutable-revision-bound model occurrences that own name, order, suppression, and placement, uploaded source model node compatibility projections, independently selectable STEP component child nodes, node-delete, and constrained box-union operations.
+- Database-backed History stores reversible occurrence-create/update/move/delete, transform, node-delete, box-union, and saved parametric model parameter commands, the active Undo/Redo head, and discarded alternate paths; every CAD document mutation uses an expected document revision.
 - STEP preview derives mesh data by replaying box-union geometry in the browser CAD worker before tessellation, then applies durable occurrence placement in the Three.js scene.
 - Direct per-occurrence STEP export and selected multi-occurrence compound STEP export replay geometry operations followed by occurrence placement in the browser CAD worker and download the worker-produced STEP text.
 - Saved `.lcad.json` project model sources preview through `feature-dsl-preview`, export through `feature-dsl-export`, and update existing viewer-scene meshes after local parameter edits.

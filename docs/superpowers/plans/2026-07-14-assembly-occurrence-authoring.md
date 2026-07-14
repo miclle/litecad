@@ -77,12 +77,12 @@
 - Consumes: durable occurrence IDs, suppression, placement, and occurrence mutation APIs.
 - Produces: occurrence-keyed tree selection, preview object identity, local visibility, transform autosave, and compact duplicate/rename/order/suppress/delete controls.
 
-- [ ] Add failing tests proving two occurrences of one model produce two tree rows and two preview assets with distinct occurrence IDs and placements.
-- [ ] Add failing selection/resource tests proving scene maps and raycast results distinguish occurrences while component picks retain source node identity.
-- [ ] Render only unsuppressed occurrences in preview; key visibility and transforms by occurrence ID.
-- [ ] Add tree and Inspector controls using Lucide icons, tooltips, an inline name field, move buttons, a suppression toggle, duplicate, and occurrence delete.
-- [ ] Route transform drag/autosave through the selected occurrence endpoint; keep component-node transforms on the existing node endpoint.
-- [ ] Run targeted Vitest suites and commit `feat(workbench): edit assembly occurrences`.
+- [x] Add failing tests proving two occurrences of one model produce two tree rows and two preview assets with distinct occurrence IDs and placements.
+- [x] Add failing selection/resource tests proving scene maps and raycast results distinguish occurrences while component picks retain source node identity.
+- [x] Render only unsuppressed occurrences in preview; key visibility and transforms by occurrence ID.
+- [x] Add tree and Inspector controls using Lucide icons, tooltips, an inline name field, move buttons, a suppression toggle, duplicate, and occurrence delete.
+- [x] Route transform drag/autosave through the selected occurrence endpoint; keep component-node transforms on the existing node endpoint.
+- [x] Run targeted Vitest suites and commit `feat(workbench): edit assembly occurrences`.
 
 ### Task 4: Export, browser workflow, migration evidence, and docs
 
@@ -102,9 +102,9 @@
 - Consumes: ordered unsuppressed occurrences and pinned immutable revision sources.
 - Produces: separate/compound STEP output containing repeated instances in occurrence order, plus verified shipped documentation.
 
-- [ ] Add failing export tests proving duplicate occurrences emit two targets with distinct names/placements and suppressed occurrences emit none.
-- [ ] Extend the deterministic browser workflow to duplicate, rename, move, suppress/restore, place, export, Undo/Redo, and reload an occurrence.
-- [ ] Exercise a persisted pre-authoring schema v2 fixture and prove lazy sync does not collapse or rewrite its default occurrence identity.
-- [ ] Update all truth surfaces to describe shipped flat occurrence authoring and retain explicit future boundaries.
-- [ ] Run `task check`, `task test`, `task test-browser`, `task build`, `git diff --check`, and a desktop plus narrow screenshot/console pass.
-- [ ] Mark this plan complete, review the full diff, and commit `docs: record occurrence authoring semantics` if documentation warrants a separate commit.
+- [x] Add failing export tests proving duplicate occurrences emit two targets with distinct names/placements and suppressed occurrences emit none.
+- [x] Extend the deterministic browser workflow to duplicate, rename, move, suppress/restore, place, export, Undo/Redo, and reload an occurrence.
+- [x] Exercise a persisted pre-authoring schema v2 fixture and prove lazy sync does not collapse or rewrite its occurrence identities.
+- [x] Update all truth surfaces to describe shipped flat occurrence authoring and retain explicit future boundaries.
+- [x] Run `task check`, `task test`, `task test-browser`, `task build`, `git diff --check`, and a desktop plus narrow screenshot/console pass.
+- [x] Mark this plan complete, review the full diff, and commit `docs: record occurrence authoring semantics` as a separate commit.
