@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,10 +72,11 @@ type SaveParametricArtifactAsProjectModelInput struct {
 
 // UpdateParametricModelParametersInput is the data required to persist parameter changes for a saved parametric model.
 type UpdateParametricModelParametersInput struct {
-	OwnerUserID     string
-	ProjectID       string
-	ModelID         string
-	ParameterValues map[string]any
+	OwnerUserID      string
+	ProjectID        string
+	ModelID          string
+	ParameterValues  map[string]any
+	ExpectedRevision int
 }
 
 // ProjectParametricArtifact is a project-owned generated CAD source artifact.
@@ -231,6 +230,12 @@ func (s *Service) SaveParametricArtifactAsProjectModel(ctx context.Context, inpu
 		var existing entity.ProjectModel
 		err := s.db.WithContext(ctx).First(&existing, "id = ? AND project_id = ?", artifact.PreviewModelID, project.ID).Error
 		if err == nil {
+			if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+				_, err := ensureProjectModelRevision(ctx, tx, &existing)
+				return err
+			}); err != nil {
+				return ProjectModel{}, err
+			}
 			return publicProjectModel(existing), nil
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -263,6 +268,9 @@ func (s *Service) SaveParametricArtifactAsProjectModel(ctx context.Context, inpu
 		if err := tx.Create(&modelEntity).Error; err != nil {
 			return fmt.Errorf("store parametric project model: %w", err)
 		}
+		if _, err := ensureProjectModelRevision(ctx, tx, &modelEntity); err != nil {
+			return err
+		}
 		artifact.PreviewModelID = modelEntity.ID
 		if err := tx.Save(&artifact).Error; err != nil {
 			return fmt.Errorf("link parametric artifact model: %w", err)
@@ -286,6 +294,9 @@ func (s *Service) UpdateParametricModelParameters(ctx context.Context, input Upd
 	if modelID == "" || len(input.ParameterValues) == 0 {
 		return ProjectModel{}, ErrInvalidProjectParametricArtifactInput
 	}
+	if input.ExpectedRevision <= 0 {
+		return ProjectModel{}, ErrInvalidCADDocumentInput
+	}
 
 	var model entity.ProjectModel
 	if err := s.db.WithContext(ctx).First(&model, "id = ? AND project_id = ?", modelID, project.ID).Error; err != nil {
@@ -308,10 +319,6 @@ func (s *Service) UpdateParametricModelParameters(ctx context.Context, input Upd
 			metadata = storedMetadata
 		}
 	}
-	beforeMetadata, err := cloneStepMetadata(metadata)
-	if err != nil {
-		return ProjectModel{}, ErrInvalidProjectParametricArtifactInput
-	}
 	mergedValues := map[string]any{}
 	for name, value := range defaultValues {
 		mergedValues[name] = value
@@ -325,10 +332,6 @@ func (s *Service) UpdateParametricModelParameters(ctx context.Context, input Upd
 			return ProjectModel{}, err
 		}
 		mergedValues[name] = normalizedValue
-	}
-	parameterValuesJSON, err := json.Marshal(mergedValues)
-	if err != nil {
-		return ProjectModel{}, ErrInvalidProjectParametricArtifactInput
 	}
 	if model.Format == "scad" {
 		metadata.AssetType = "scad"
@@ -349,36 +352,38 @@ func (s *Service) UpdateParametricModelParameters(ctx context.Context, input Upd
 	if err != nil {
 		return ProjectModel{}, ErrInvalidProjectParametricArtifactInput
 	}
-	checksumBytes := sha256.Sum256(model.SourceData)
-	revisionID, err := id.NewPrefixed("pmr")
-	if err != nil {
-		return ProjectModel{}, err
-	}
-
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		model.MetadataJSON = metadataJSON
-		if err := tx.Save(&model).Error; err != nil {
-			return fmt.Errorf("update parametric model metadata: %w", err)
-		}
-		revision := entity.ProjectParametricRevision{
-			ID:                  revisionID,
-			ProjectID:           project.ID,
-			ModelID:             model.ID,
-			ParameterValuesJSON: parameterValuesJSON,
-			SourceChecksum:      hex.EncodeToString(checksumBytes[:]),
-			Summary:             "Updated parametric parameters",
-		}
-		if err := tx.Create(&revision).Error; err != nil {
-			return fmt.Errorf("create parametric revision: %w", err)
-		}
 		document, state, err := s.getOrCreateProjectCADDocumentEntity(ctx, tx, project)
 		if err != nil {
 			return err
 		}
+		if document.Revision != input.ExpectedRevision {
+			return ErrCADDocumentConflict
+		}
+		beforeRevision, err := ensureProjectModelRevision(ctx, tx, &model)
+		if err != nil {
+			return err
+		}
+		model.MetadataJSON = metadataJSON
+		afterRevision, err := createProjectModelRevision(ctx, tx, model, "Updated parametric parameters")
+		if err != nil {
+			return err
+		}
+		model.CurrentRevisionID = afterRevision.ID
+		model.CurrentRevisionSequence = afterRevision.Sequence
+		if err := tx.Model(&model).Updates(map[string]any{
+			"metadata_json":       model.MetadataJSON,
+			"current_revision_id": model.CurrentRevisionID,
+		}).Error; err != nil {
+			return fmt.Errorf("update parametric model revision: %w", err)
+		}
+		if err := setCADDocumentModelRevision(&state, model.ID, afterRevision.ID); err != nil {
+			return err
+		}
 		if _, err := appendProjectCADHistoryEntry(ctx, tx, &document, "parameter-change", model.ID, "Update parameters for "+model.OriginalFilename, cadParameterChangeHistoryCommand{
-			ModelID:        model.ID,
-			BeforeMetadata: beforeMetadata,
-			AfterMetadata:  metadata,
+			ModelID:          model.ID,
+			BeforeRevisionID: beforeRevision.ID,
+			AfterRevisionID:  afterRevision.ID,
 		}); err != nil {
 			return err
 		}
@@ -391,18 +396,6 @@ func (s *Service) UpdateParametricModelParameters(ctx context.Context, input Upd
 		return ProjectModel{}, err
 	}
 	return publicProjectModel(model), nil
-}
-
-func cloneStepMetadata(metadata StepMetadata) (StepMetadata, error) {
-	metadataJSON, err := json.Marshal(metadata)
-	if err != nil {
-		return StepMetadata{}, err
-	}
-	var clone StepMetadata
-	if err := json.Unmarshal(metadataJSON, &clone); err != nil {
-		return StepMetadata{}, err
-	}
-	return clone, nil
 }
 
 func (s *Service) loadProjectParametricArtifact(ctx context.Context, projectID, artifactID string) (entity.ProjectParametricArtifact, error) {

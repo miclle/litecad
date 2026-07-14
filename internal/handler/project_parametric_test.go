@@ -134,7 +134,8 @@ func TestProjectParametricArtifactRoutes(t *testing.T) {
 	}
 
 	updateModelParameters := patchJSONWithCookie(t, router, "/api/v1/projects/"+projectResponse.Project.ID+"/models/"+saveResponse.Model.ID+"/parametric-parameters", map[string]any{
-		"parameter_values": map[string]any{"width": 72},
+		"parameter_values":  map[string]any{"width": 72},
+		"expected_revision": 1,
 	}, sessionCookie)
 	if updateModelParameters.Code != http.StatusOK {
 		t.Fatalf("update model parameters status = %d, body = %s", updateModelParameters.Code, updateModelParameters.Body.String())

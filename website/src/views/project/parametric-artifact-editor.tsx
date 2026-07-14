@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Box, Save } from 'lucide-react'
+import { AlertTriangle, Box, History, Save } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -7,7 +7,7 @@ import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from 
 import { Input } from '@/components/ui/input'
 import { parseOpenSCADParameters } from 'src/cad/openscad-parameters'
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
-import type { ProjectParametricArtifact } from 'src/types/project'
+import type { ProjectModelRevision, ProjectParametricArtifact } from 'src/types/project'
 import {
   defaultOpenSCADParameterValues,
   useParametricArtifactPreview,
@@ -22,9 +22,14 @@ type ParametricArtifactEditorProps = {
   compileFeatureDSL?: ParametricFeatureDSLArtifactCompile
   debounceMs?: number
   initialParameterValues?: Record<string, unknown>
+  currentRevisionID?: string
+  currentRevisionSequence?: number
+  isRevisionRestorePending?: boolean
+  modelRevisions?: ProjectModelRevision[]
   onParameterValuesChange?: (parameterValues: Record<string, OpenSCADParameterValue>) => void
   onSaveAsModel?: (parameterValues: Record<string, OpenSCADParameterValue>) => void
   onSaveParameters?: (parameterValues: Record<string, OpenSCADParameterValue>) => void
+  onRestoreRevision?: (revisionID: string) => void
   saveLabel?: string
 }
 
@@ -48,9 +53,14 @@ export function ParametricArtifactEditor({
   compileFeatureDSL,
   debounceMs,
   initialParameterValues,
+  currentRevisionID,
+  currentRevisionSequence,
+  isRevisionRestorePending = false,
+  modelRevisions = [],
   onParameterValuesChange,
   onSaveAsModel,
   onSaveParameters,
+  onRestoreRevision,
   saveLabel,
 }: ParametricArtifactEditorProps) {
   const { t } = useTranslation()
@@ -196,6 +206,36 @@ export function ParametricArtifactEditor({
           {artifact.title}
         </h2>
       </div>
+
+      {currentRevisionID && modelRevisions.length > 0 ? (
+        <div className="mt-2 flex min-w-0 items-center gap-2 border-y border-[#e2e8f0] py-2">
+          <History className="size-3.5 shrink-0 text-[#64748b]" />
+          <label className="shrink-0 text-[11px] font-medium text-[#475569]" htmlFor={`model-revision-${artifact.id}`}>
+            {t('project.parametric.version')}
+          </label>
+          <select
+            aria-label={t('project.parametric.version')}
+            className="h-7 min-w-0 flex-1 border border-[#d6dbe3] bg-white px-2 text-[11px] text-[#0f172a] outline-none focus:border-[#0074d9]"
+            disabled={isRevisionRestorePending}
+            id={`model-revision-${artifact.id}`}
+            onChange={(event) => {
+              if (event.target.value !== currentRevisionID) {
+                onRestoreRevision?.(event.target.value)
+              }
+            }}
+            value={currentRevisionID}
+          >
+            {modelRevisions.map((revision) => (
+              <option key={revision.id} value={revision.id}>
+                {t('project.parametric.versionOption', { sequence: revision.sequence })}
+              </option>
+            ))}
+          </select>
+          <span className="shrink-0 font-mono text-[10px] text-[#64748b]">
+            {t('project.parametric.currentVersion', { sequence: currentRevisionSequence })}
+          </span>
+        </div>
+      ) : null}
 
       <FieldSet className="mt-3 min-w-0 gap-3">
         {preview.parameters.length > 0 ? (

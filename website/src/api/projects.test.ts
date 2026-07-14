@@ -14,6 +14,7 @@ import {
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
+  fetchProjectModelRevisions,
   fetchProjectParametricArtifact,
   fetchProjectParametricArtifacts,
   addProjectCADModelBoxUnion,
@@ -21,6 +22,7 @@ import {
   saveProjectParametricArtifactModel,
   sendProjectAgentConversationMessage,
   redoProjectCADDocument,
+  restoreProjectModelRevision,
   undoProjectCADDocument,
   updateProjectCADNodeTransform,
   updateProjectCADModelTransform,
@@ -210,7 +212,9 @@ describe('project API', () => {
     createProjectParametricArtifact('prj_01test', payload)
     updateProjectParametricArtifact('prj_01test', 'pma_01test', { ...payload, compile_status: 'success' })
     saveProjectParametricArtifactModel('prj_01test', 'pma_01test')
-    updateProjectParametricModelParameters('prj_01test', 'mdl_01test', { parameter_values: { width: 12 } })
+    updateProjectParametricModelParameters('prj_01test', 'mdl_01test', { parameter_values: { width: 12 }, expected_revision: 13 })
+    fetchProjectModelRevisions('prj_01test', 'mdl_01test')
+    restoreProjectModelRevision('prj_01test', 'mdl_01test', 'mvr_01test', 14)
 
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts')
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts/pma_01test')
@@ -222,6 +226,11 @@ describe('project API', () => {
     expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts/pma_01test/save-model', {})
     expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/models/mdl_01test/parametric-parameters', {
       parameter_values: { width: 12 },
+      expected_revision: 13,
+    })
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/models/mdl_01test/revisions')
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/models/mdl_01test/revisions/mvr_01test/restore', {
+      expected_revision: 14,
     })
   })
 

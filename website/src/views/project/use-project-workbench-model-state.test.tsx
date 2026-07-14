@@ -107,6 +107,8 @@ function glbModel(): ProjectModel {
     byte_size: 120,
     parse_status: 'parsed',
     parse_error: '',
+    current_revision_id: 'mvr_glb',
+    revision_sequence: 1,
     metadata: {
       asset_type: 'glb',
       version: '',

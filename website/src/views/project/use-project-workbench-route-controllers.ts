@@ -112,6 +112,7 @@ export function useProjectWorkbenchRouteControllers({
       projectAssistant.setParametricRunError(t('project.parametric.saveFailed'))
     },
     onModelSelected: projectSelection.selectModel,
+    onConflict: shellState.handleCADDocumentConflict,
     projectId,
   })
   const projectThumbnailSnapshot = useProjectThumbnailSnapshotController({

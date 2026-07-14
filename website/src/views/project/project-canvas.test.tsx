@@ -172,6 +172,8 @@ function projectModel(): ProjectModel {
     byte_size: 100,
     parse_status: 'parsed',
     parse_error: '',
+    current_revision_id: 'mvr_step',
+    revision_sequence: 1,
     metadata: {
       asset_type: 'step',
       version: '',

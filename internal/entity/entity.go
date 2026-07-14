@@ -44,20 +44,22 @@ type Project struct {
 
 // ProjectModel is an uploaded CAD source file attached to a project.
 type ProjectModel struct {
-	ID               string         `gorm:"size:32;primaryKey" json:"id"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	DeletedAt        gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
-	ProjectID        string         `gorm:"size:32;index;not null" json:"project_id"`
-	OriginalFilename string         `gorm:"size:255;not null" json:"original_filename"`
-	Format           string         `gorm:"size:16;index;not null" json:"format"`
-	ContentType      string         `gorm:"size:120" json:"content_type"`
-	ByteSize         int64          `gorm:"not null" json:"byte_size"`
-	ParseStatus      string         `gorm:"size:32;index;not null;default:pending" json:"parse_status"`
-	ParseError       string         `gorm:"type:text" json:"parse_error"`
-	MetadataJSON     []byte         `gorm:"column:metadata_json" json:"-"`
-	SourceData       []byte         `gorm:"not null" json:"-"`
-	Project          Project        `gorm:"foreignKey:ProjectID" json:"project"`
+	ID                      string         `gorm:"size:32;primaryKey" json:"id"`
+	CreatedAt               time.Time      `json:"created_at"`
+	UpdatedAt               time.Time      `json:"updated_at"`
+	DeletedAt               gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	ProjectID               string         `gorm:"size:32;index;not null" json:"project_id"`
+	OriginalFilename        string         `gorm:"size:255;not null" json:"original_filename"`
+	Format                  string         `gorm:"size:16;index;not null" json:"format"`
+	ContentType             string         `gorm:"size:120" json:"content_type"`
+	ByteSize                int64          `gorm:"not null" json:"byte_size"`
+	ParseStatus             string         `gorm:"size:32;index;not null;default:pending" json:"parse_status"`
+	ParseError              string         `gorm:"type:text" json:"parse_error"`
+	MetadataJSON            []byte         `gorm:"column:metadata_json" json:"-"`
+	SourceData              []byte         `gorm:"not null" json:"-"`
+	CurrentRevisionID       string         `gorm:"size:32;index" json:"current_revision_id"`
+	CurrentRevisionSequence int            `gorm:"-" json:"-"`
+	Project                 Project        `gorm:"foreignKey:ProjectID" json:"project"`
 }
 
 // ProjectModelPreviewArtifact stores a browser-previewable mesh derived from a source model.

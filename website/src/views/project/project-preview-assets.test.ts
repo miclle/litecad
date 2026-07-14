@@ -21,6 +21,8 @@ const baseModel = {
   byte_size: 1024,
   parse_status: 'parsed',
   parse_error: '',
+  current_revision_id: 'mvr_base',
+  revision_sequence: 1,
   metadata: {
     asset_type: 'step',
     version: '',

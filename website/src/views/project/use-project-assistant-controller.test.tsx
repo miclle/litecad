@@ -248,6 +248,8 @@ describe('useProjectAssistantController', () => {
             byte_size: 120,
             parse_status: 'parsed',
             parse_error: '',
+            current_revision_id: 'mvr_sphere',
+            revision_sequence: 1,
             metadata: {
               asset_type: 'lcad',
               source_kind: 'litecad-feature-dsl',
@@ -329,6 +331,8 @@ function activeSphereModel(): ProjectModel {
     byte_size: 120,
     parse_status: 'parsed',
     parse_error: '',
+    current_revision_id: 'mvr_sphere',
+    revision_sequence: 1,
     metadata: {
       asset_type: 'lcad',
       source_kind: 'litecad-feature-dsl',

@@ -91,6 +91,8 @@ const groups: ProjectModelTreeGroup[] = [
       byte_size: 120,
       parse_status: 'parsed',
       parse_error: '',
+      current_revision_id: 'mvr_model_one',
+      revision_sequence: 1,
       metadata: {
         asset_type: 'step',
         version: '',

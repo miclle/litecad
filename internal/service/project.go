@@ -95,17 +95,19 @@ type UploadProjectModelInput struct {
 
 // ProjectModel is the public shape for an uploaded CAD source file.
 type ProjectModel struct {
-	ID               string       `json:"id"`
-	ProjectID        string       `json:"project_id"`
-	OriginalFilename string       `json:"original_filename"`
-	Format           string       `json:"format"`
-	ContentType      string       `json:"content_type"`
-	ByteSize         int64        `json:"byte_size"`
-	ParseStatus      string       `json:"parse_status"`
-	ParseError       string       `json:"parse_error"`
-	Metadata         StepMetadata `json:"metadata"`
-	CreatedAt        string       `json:"created_at"`
-	UpdatedAt        string       `json:"updated_at"`
+	ID                string       `json:"id"`
+	ProjectID         string       `json:"project_id"`
+	OriginalFilename  string       `json:"original_filename"`
+	Format            string       `json:"format"`
+	ContentType       string       `json:"content_type"`
+	ByteSize          int64        `json:"byte_size"`
+	ParseStatus       string       `json:"parse_status"`
+	ParseError        string       `json:"parse_error"`
+	Metadata          StepMetadata `json:"metadata"`
+	CurrentRevisionID string       `json:"current_revision_id"`
+	RevisionSequence  int          `json:"revision_sequence"`
+	CreatedAt         string       `json:"created_at"`
+	UpdatedAt         string       `json:"updated_at"`
 }
 
 // ProjectModelSource is an owned CAD source file and its public metadata.
@@ -277,8 +279,14 @@ func (s *Service) UploadProjectModel(ctx context.Context, input UploadProjectMod
 		SourceData:       append([]byte(nil), data...),
 	}
 	applyModelMetadata(&model)
-	if err := s.db.WithContext(ctx).Create(&model).Error; err != nil {
-		return ProjectModel{}, fmt.Errorf("store project model: %w", err)
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&model).Error; err != nil {
+			return fmt.Errorf("store project model: %w", err)
+		}
+		_, err := ensureProjectModelRevision(ctx, tx, &model)
+		return err
+	}); err != nil {
+		return ProjectModel{}, err
 	}
 	return publicProjectModel(model), nil
 }
@@ -308,10 +316,11 @@ func (s *Service) ListProjectModels(ctx context.Context, ownerUserID, projectID 
 	}
 
 	result := make([]ProjectModel, 0, len(models))
-	for _, model := range models {
-		if shouldBackfillModelMetadata(model) {
-			applyModelMetadata(&model)
-			if err := s.db.WithContext(ctx).Model(&model).Updates(map[string]any{
+	for index := range models {
+		model := &models[index]
+		if shouldBackfillModelMetadata(*model) {
+			applyModelMetadata(model)
+			if err := s.db.WithContext(ctx).Model(model).Updates(map[string]any{
 				"parse_status":  model.ParseStatus,
 				"parse_error":   model.ParseError,
 				"metadata_json": model.MetadataJSON,
@@ -319,7 +328,13 @@ func (s *Service) ListProjectModels(ctx context.Context, ownerUserID, projectID 
 				return nil, fmt.Errorf("update project model metadata: %w", err)
 			}
 		}
-		result = append(result, publicProjectModel(model))
+		if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			_, err := ensureProjectModelRevision(ctx, tx, model)
+			return err
+		}); err != nil {
+			return nil, err
+		}
+		result = append(result, publicProjectModel(*model))
 	}
 	return result, nil
 }
@@ -343,6 +358,12 @@ func (s *Service) GetProjectModelSource(ctx context.Context, ownerUserID, projec
 			return ProjectModelSource{}, ErrProjectNotFound
 		}
 		return ProjectModelSource{}, fmt.Errorf("get project model source: %w", err)
+	}
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, err := ensureProjectModelRevision(ctx, tx, &model)
+		return err
+	}); err != nil {
+		return ProjectModelSource{}, err
 	}
 
 	return ProjectModelSource{
@@ -483,17 +504,19 @@ func publicProjectModel(model entity.ProjectModel) ProjectModel {
 		_ = json.Unmarshal(model.MetadataJSON, &metadata)
 	}
 	return ProjectModel{
-		ID:               model.ID,
-		ProjectID:        model.ProjectID,
-		OriginalFilename: model.OriginalFilename,
-		Format:           model.Format,
-		ContentType:      model.ContentType,
-		ByteSize:         model.ByteSize,
-		ParseStatus:      model.ParseStatus,
-		ParseError:       model.ParseError,
-		Metadata:         metadata,
-		CreatedAt:        model.CreatedAt.Format(timeFormatRFC3339),
-		UpdatedAt:        model.UpdatedAt.Format(timeFormatRFC3339),
+		ID:                model.ID,
+		ProjectID:         model.ProjectID,
+		OriginalFilename:  model.OriginalFilename,
+		Format:            model.Format,
+		ContentType:       model.ContentType,
+		ByteSize:          model.ByteSize,
+		ParseStatus:       model.ParseStatus,
+		ParseError:        model.ParseError,
+		Metadata:          metadata,
+		CurrentRevisionID: model.CurrentRevisionID,
+		RevisionSequence:  model.CurrentRevisionSequence,
+		CreatedAt:         model.CreatedAt.Format(timeFormatRFC3339),
+		UpdatedAt:         model.UpdatedAt.Format(timeFormatRFC3339),
 	}
 }
 

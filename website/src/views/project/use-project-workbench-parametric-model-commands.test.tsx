@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   saveProjectParametricArtifactModel,
+  restoreProjectModelRevision,
   updateProjectParametricArtifact,
   updateProjectParametricModelParameters,
 } from 'src/api/projects'
@@ -13,11 +14,13 @@ import type { ProjectModel, ProjectParametricArtifact } from 'src/types/project'
 
 vi.mock('src/api/projects', () => ({
   saveProjectParametricArtifactModel: vi.fn(),
+  restoreProjectModelRevision: vi.fn(),
   updateProjectParametricArtifact: vi.fn(),
   updateProjectParametricModelParameters: vi.fn(),
 }))
 
 const mockedSaveProjectParametricArtifactModel = vi.mocked(saveProjectParametricArtifactModel)
+const mockedRestoreProjectModelRevision = vi.mocked(restoreProjectModelRevision)
 const mockedUpdateProjectParametricArtifact = vi.mocked(updateProjectParametricArtifact)
 const mockedUpdateProjectParametricModelParameters = vi.mocked(updateProjectParametricModelParameters)
 
@@ -93,6 +96,7 @@ describe('useProjectWorkbenchParametricModelCommands', () => {
       data: { model: projectModel('model_parameters') },
     } as Awaited<ReturnType<typeof updateProjectParametricModelParameters>>)
     const queryClient = new QueryClient()
+    queryClient.setQueryData(['projects', 'prj_commands', 'cad-document'], { revision: 7 })
     const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')
     const onModelSelected = vi.fn()
     const { result } = renderHook(
@@ -115,10 +119,39 @@ describe('useProjectWorkbenchParametricModelCommands', () => {
     await waitFor(() => expect(onModelSelected).toHaveBeenCalledWith('model_parameters'))
     expect(mockedUpdateProjectParametricModelParameters).toHaveBeenCalledWith('prj_commands', 'model_parameters', {
       parameter_values: { radius: 8 },
+      expected_revision: 7,
     })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'models'] })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'cad-document'] })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'cad-document', 'history'] })
+  })
+
+  it('restores an immutable model revision and refreshes its source and History', async () => {
+    const model = projectModel('model_parameters')
+    mockedRestoreProjectModelRevision.mockResolvedValue({ data: { model } } as Awaited<ReturnType<typeof restoreProjectModelRevision>>)
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(['projects', 'prj_commands', 'cad-document'], { revision: 9 })
+    const removeQueries = vi.spyOn(queryClient, 'removeQueries')
+    const onModelSelected = vi.fn()
+    const { result } = renderHook(
+      () =>
+        useProjectWorkbenchParametricModelCommands({
+          onArtifactSaveError: vi.fn(),
+          onModelSelected,
+          projectId: 'prj_commands',
+        }),
+      { wrapper: queryWrapper(queryClient) },
+    )
+
+    act(() => {
+      result.current.restoreModelRevision({ modelID: 'model_parameters', revisionID: 'mvr_first' })
+    })
+
+    await waitFor(() => expect(onModelSelected).toHaveBeenCalledWith('model_parameters'))
+    expect(mockedRestoreProjectModelRevision).toHaveBeenCalledWith('prj_commands', 'model_parameters', 'mvr_first', 9)
+    expect(removeQueries).toHaveBeenCalledWith({
+      queryKey: ['projects', 'prj_commands', 'models', 'model_parameters', 'parametric-source'],
+    })
   })
 })
 
@@ -158,6 +191,8 @@ function projectModel(id: string): ProjectModel {
     byte_size: 120,
     parse_status: 'parsed',
     parse_error: '',
+    current_revision_id: `mvr_${id}`,
+    revision_sequence: 1,
     metadata: {
       asset_type: 'feature-dsl',
       version: '1.0',

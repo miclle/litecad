@@ -1,7 +1,7 @@
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { fetchProjectModelSource } from 'src/api/projects'
+import { fetchProjectModelRevisions, fetchProjectModelSource } from 'src/api/projects'
 import { runFeatureDSLPreviewInWorker, type CadKernelWorkerPreviewResult } from 'src/cad/kernel-worker-client'
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
 import type { ProjectModel, ProjectParametricArtifact } from 'src/types/project'
@@ -25,10 +25,16 @@ export function useProjectParametricModels({
   const [parameterOverridesByModelID, setParameterOverridesByModelID] = useState<
     Record<string, Record<string, OpenSCADParameterValue>>
   >({})
+  const modelRevisionByIDRef = useRef(new Map<string, string>())
   const selectedSourceModelID = selectedSourceModel?.id ?? ''
   const selectedSourceQuery = useQuery({
     queryKey: ['projects', projectId, 'models', selectedSourceModelID, 'parametric-source'],
     queryFn: async () => (await fetchProjectModelSource(projectId, selectedSourceModelID)).data.text(),
+    enabled: projectId !== '' && isParametricProjectModelFormat(selectedSourceModel?.format) && !selectedArtifact,
+  })
+  const selectedModelRevisionsQuery = useQuery({
+    queryKey: ['projects', projectId, 'models', selectedSourceModelID, 'revisions'],
+    queryFn: async () => (await fetchProjectModelRevisions(projectId, selectedSourceModelID)).data.revisions,
     enabled: projectId !== '' && isParametricProjectModelFormat(selectedSourceModel?.format) && !selectedArtifact,
   })
   const selectedSavedArtifact = useMemo<ProjectParametricArtifact | undefined>(() => {
@@ -64,6 +70,25 @@ export function useProjectParametricModels({
       }),
     [parameterOverridesByModelID, projectModels],
   )
+
+  useEffect(() => {
+    const nextRevisionByID = new Map(projectModels.map((model) => [model.id, model.current_revision_id]))
+    const previousRevisionByID = modelRevisionByIDRef.current
+    modelRevisionByIDRef.current = nextRevisionByID
+    setParameterOverridesByModelID((currentOverrides) => {
+      const nextOverrides = { ...currentOverrides }
+      let changed = false
+      for (const modelID of Object.keys(currentOverrides)) {
+        const previousRevision = previousRevisionByID.get(modelID)
+        const nextRevision = nextRevisionByID.get(modelID)
+        if (!nextRevision || (previousRevision && previousRevision !== nextRevision)) {
+          delete nextOverrides[modelID]
+          changed = true
+        }
+      }
+      return changed ? nextOverrides : currentOverrides
+    })
+  }, [projectModels])
   const featureDSLPreviewModels = useMemo(
     () => previewModels.filter((model) => model.format === 'lcad'),
     [previewModels],
@@ -141,6 +166,8 @@ export function useProjectParametricModels({
     parameterOverridesByModelID,
     previewModels,
     selectedSavedArtifact,
+    selectedModelRevisions: selectedModelRevisionsQuery.data ?? [],
+    selectedModelRevisionsPending: selectedModelRevisionsQuery.isPending,
     updatePreviewParameters,
   }
 }

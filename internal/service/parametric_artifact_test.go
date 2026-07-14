@@ -330,9 +330,10 @@ func TestSaveLiteCADFeatureDSLArtifactPreservesNonGeometryParameters(t *testing.
 	}
 
 	updated, err := svc.UpdateParametricModelParameters(ctx, UpdateParametricModelParametersInput{
-		OwnerUserID: user.ID,
-		ProjectID:   project.ID,
-		ModelID:     model.ID,
+		OwnerUserID:      user.ID,
+		ProjectID:        project.ID,
+		ModelID:          model.ID,
+		ExpectedRevision: projectCADRevision(t, svc, ctx, user.ID, project.ID),
 		ParameterValues: map[string]any{
 			"width":         float64(120),
 			"include_holes": true,
@@ -1411,11 +1412,13 @@ func TestUpdateParametricModelParametersPersistsRevision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveParametricArtifactAsProjectModel returned error: %v", err)
 	}
+	initialRevisionID := model.CurrentRevisionID
 
 	updated, err := svc.UpdateParametricModelParameters(ctx, UpdateParametricModelParametersInput{
-		OwnerUserID: user.ID,
-		ProjectID:   project.ID,
-		ModelID:     model.ID,
+		OwnerUserID:      user.ID,
+		ProjectID:        project.ID,
+		ModelID:          model.ID,
+		ExpectedRevision: projectCADRevision(t, svc, ctx, user.ID, project.ID),
 		ParameterValues: map[string]any{
 			"width":    float64(72),
 			"centered": false,
@@ -1427,23 +1430,29 @@ func TestUpdateParametricModelParametersPersistsRevision(t *testing.T) {
 	if updated.Metadata.ParameterValues["width"] != float64(72) || updated.Metadata.ParameterValues["height"] != float64(12) || updated.Metadata.ParameterValues["centered"] != false {
 		t.Fatalf("updated parameter metadata = %+v", updated.Metadata.ParameterValues)
 	}
+	if updated.CurrentRevisionID == initialRevisionID || updated.RevisionSequence != 2 {
+		t.Fatalf("updated revision = %q/%d, want sequence 2 after %q", updated.CurrentRevisionID, updated.RevisionSequence, initialRevisionID)
+	}
 
-	var revisions []entity.ProjectParametricRevision
-	if err := svc.db.WithContext(ctx).Where("project_id = ? AND model_id = ?", project.ID, model.ID).Find(&revisions).Error; err != nil {
+	var revisions []entity.ProjectModelRevision
+	if err := svc.db.WithContext(ctx).Where("project_id = ? AND model_id = ?", project.ID, model.ID).Order("sequence ASC").Find(&revisions).Error; err != nil {
 		t.Fatalf("load revisions: %v", err)
 	}
-	if len(revisions) != 1 {
-		t.Fatalf("revision count = %d, want 1", len(revisions))
+	if len(revisions) != 2 {
+		t.Fatalf("revision count = %d, want 2", len(revisions))
 	}
-	if revisions[0].SourceChecksum == "" {
-		t.Fatal("revision should store source checksum")
+	if revisions[0].ContentChecksum == "" || revisions[1].ContentChecksum == "" {
+		t.Fatal("revisions should store content checksums")
 	}
-	var revisionValues map[string]any
-	if err := json.Unmarshal(revisions[0].ParameterValuesJSON, &revisionValues); err != nil {
-		t.Fatalf("decode revision parameter values: %v", err)
+	var initialMetadata, updatedMetadata StepMetadata
+	if err := json.Unmarshal(revisions[0].MetadataJSON, &initialMetadata); err != nil {
+		t.Fatalf("decode initial revision metadata: %v", err)
 	}
-	if revisionValues["width"] != float64(72) || revisionValues["height"] != float64(12) || revisionValues["centered"] != false {
-		t.Fatalf("revision parameter values = %+v", revisionValues)
+	if err := json.Unmarshal(revisions[1].MetadataJSON, &updatedMetadata); err != nil {
+		t.Fatalf("decode updated revision metadata: %v", err)
+	}
+	if initialMetadata.ParameterValues["width"] != float64(40) || updatedMetadata.ParameterValues["width"] != float64(72) {
+		t.Fatalf("revision parameter values = initial %+v, updated %+v", initialMetadata.ParameterValues, updatedMetadata.ParameterValues)
 	}
 }
 
@@ -1486,11 +1495,13 @@ func TestUpdateParametricModelParametersCreatesReversibleHistoryEntry(t *testing
 	if err != nil {
 		t.Fatalf("SaveParametricArtifactAsProjectModel returned error: %v", err)
 	}
+	initialRevisionID := model.CurrentRevisionID
 
 	updated, err := svc.UpdateParametricModelParameters(ctx, UpdateParametricModelParametersInput{
-		OwnerUserID: user.ID,
-		ProjectID:   project.ID,
-		ModelID:     model.ID,
+		OwnerUserID:      user.ID,
+		ProjectID:        project.ID,
+		ModelID:          model.ID,
+		ExpectedRevision: projectCADRevision(t, svc, ctx, user.ID, project.ID),
 		ParameterValues: map[string]any{
 			"width": float64(72),
 		},
@@ -1536,6 +1547,9 @@ func TestUpdateParametricModelParametersCreatesReversibleHistoryEntry(t *testing
 	if len(modelsAfterUndo) != 1 || modelsAfterUndo[0].Metadata.ParameterValues["width"] != float64(40) {
 		t.Fatalf("models after undo = %+v, want width restored to 40", modelsAfterUndo)
 	}
+	if modelsAfterUndo[0].CurrentRevisionID != initialRevisionID || modelsAfterUndo[0].RevisionSequence != 1 {
+		t.Fatalf("model after undo revision = %q/%d, want %q/1", modelsAfterUndo[0].CurrentRevisionID, modelsAfterUndo[0].RevisionSequence, initialRevisionID)
+	}
 
 	_, err = svc.RedoProjectCADDocument(ctx, ModifyProjectCADHistoryInput{
 		OwnerUserID:      user.ID,
@@ -1551,6 +1565,9 @@ func TestUpdateParametricModelParametersCreatesReversibleHistoryEntry(t *testing
 	}
 	if len(modelsAfterRedo) != 1 || modelsAfterRedo[0].Metadata.ParameterValues["width"] != float64(72) {
 		t.Fatalf("models after redo = %+v, want width restored to 72", modelsAfterRedo)
+	}
+	if modelsAfterRedo[0].CurrentRevisionID != updated.CurrentRevisionID || modelsAfterRedo[0].RevisionSequence != 2 {
+		t.Fatalf("model after redo revision = %q/%d, want %q/2", modelsAfterRedo[0].CurrentRevisionID, modelsAfterRedo[0].RevisionSequence, updated.CurrentRevisionID)
 	}
 }
 
@@ -1605,9 +1622,10 @@ func TestUpdateLiteCADFeatureDSLModelParametersPersistsRevision(t *testing.T) {
 	}
 
 	updated, err := svc.UpdateParametricModelParameters(ctx, UpdateParametricModelParametersInput{
-		OwnerUserID: user.ID,
-		ProjectID:   project.ID,
-		ModelID:     model.ID,
+		OwnerUserID:      user.ID,
+		ProjectID:        project.ID,
+		ModelID:          model.ID,
+		ExpectedRevision: projectCADRevision(t, svc, ctx, user.ID, project.ID),
 		ParameterValues: map[string]any{
 			"width":  float64(72),
 			"height": float64(12),
@@ -1620,11 +1638,11 @@ func TestUpdateLiteCADFeatureDSLModelParametersPersistsRevision(t *testing.T) {
 		t.Fatalf("updated parameter metadata = %+v", updated.Metadata.ParameterValues)
 	}
 
-	var revisions []entity.ProjectParametricRevision
+	var revisions []entity.ProjectModelRevision
 	if err := svc.db.WithContext(ctx).Where("project_id = ? AND model_id = ?", project.ID, model.ID).Find(&revisions).Error; err != nil {
 		t.Fatalf("load revisions: %v", err)
 	}
-	if len(revisions) != 1 || revisions[0].SourceChecksum == "" {
+	if len(revisions) != 2 || revisions[0].ContentChecksum == "" || revisions[1].ContentChecksum == "" {
 		t.Fatalf("revisions = %+v", revisions)
 	}
 }

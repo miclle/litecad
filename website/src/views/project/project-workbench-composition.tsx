@@ -178,6 +178,9 @@ export function ProjectWorkbenchComposition({
           onSaveModelParameters={(modelID, parameterValues) =>
             parametricModelCommands.saveModelParameters({ modelID, parameterValues })
           }
+          onRestoreModelRevision={(modelID, revisionID) =>
+            parametricModelCommands.restoreModelRevision({ modelID, revisionID })
+          }
           onToggleModelVisibility={visibilityState.toggleModelVisibility}
           onTransformChange={draftCommands.updateTransformDraftField}
           previewAssetModelIds={modelState.previewAssetModelIDs}
@@ -185,6 +188,10 @@ export function ProjectWorkbenchComposition({
           selectedGeneratedArtifact={selectedParametricArtifact}
           selectedNodeId={effectiveSelectedDocumentNodeID}
           selectedSavedArtifact={modelState.parametricModels.selectedSavedArtifact}
+          selectedSavedModelRevisionID={selectedSourceModel?.current_revision_id}
+          selectedSavedModelRevisionSequence={selectedSourceModel?.revision_sequence}
+          selectedModelRevisions={modelState.parametricModels.selectedModelRevisions}
+          isRevisionRestorePending={parametricModelCommands.isRestoringModelRevision}
           unitLabel={inspectorState.documentUnitLabel}
           uploadError={projectModelUpload.uploadError}
         />

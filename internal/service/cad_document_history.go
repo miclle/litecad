@@ -39,9 +39,9 @@ type cadDeleteNodeHistoryCommand struct {
 }
 
 type cadParameterChangeHistoryCommand struct {
-	ModelID        string       `json:"model_id"`
-	BeforeMetadata StepMetadata `json:"before_metadata"`
-	AfterMetadata  StepMetadata `json:"after_metadata"`
+	ModelID          string `json:"model_id"`
+	BeforeRevisionID string `json:"before_revision_id"`
+	AfterRevisionID  string `json:"after_revision_id"`
 }
 
 type cadDeletedDocumentNode struct {
@@ -337,28 +337,39 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 			}
 			state.Operations = removeCADOperation(state.Operations, command.Operation.ID)
 		}
-	case "parameter-change":
+	case "parameter-change", "model-revision-restore":
 		var command cadParameterChangeHistoryCommand
 		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
 			return fmt.Errorf("decode parameter change history command: %w", err)
 		}
-		metadata := command.BeforeMetadata
+		revisionID := command.BeforeRevisionID
 		if forward {
-			metadata = command.AfterMetadata
+			revisionID = command.AfterRevisionID
 		}
-		metadataJSON, err := json.Marshal(metadata)
-		if err != nil {
-			return fmt.Errorf("serialize parameter change metadata: %w", err)
+		var revision entity.ProjectModelRevision
+		if err := tx.WithContext(ctx).First(&revision, "id = ? AND model_id = ? AND project_id = ?", revisionID, command.ModelID, entry.ProjectID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrProjectNotFound
+			}
+			return fmt.Errorf("load parameter change revision: %w", err)
 		}
 		result := tx.WithContext(ctx).
 			Model(&entity.ProjectModel{}).
 			Where("id = ? AND project_id = ?", command.ModelID, entry.ProjectID).
-			Update("metadata_json", metadataJSON)
+			Updates(map[string]any{
+				"current_revision_id": revision.ID,
+				"source_data":         revision.SourceData,
+				"metadata_json":       revision.MetadataJSON,
+				"byte_size":           len(revision.SourceData),
+			})
 		if result.Error != nil {
 			return fmt.Errorf("apply parameter change history command: %w", result.Error)
 		}
 		if result.RowsAffected != 1 {
 			return ErrProjectNotFound
+		}
+		if err := setCADDocumentModelRevision(state, command.ModelID, revision.ID); err != nil {
+			return err
 		}
 	default:
 		return ErrInvalidCADDocumentInput

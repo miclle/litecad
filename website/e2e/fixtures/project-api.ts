@@ -15,6 +15,9 @@ export type ProjectAPIFixtureState = {
   artifactUpdateCount: number
   historyEntries: unknown[]
   modelParameterUpdateCount: number
+  modelRevisionRestoreCount: number
+  modelRevisionSequence: number
+  currentModelRevisionID: string
   savedParameterValues: Record<string, unknown>
   cadRevision: number
   translationX: number
@@ -42,6 +45,9 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
     artifactUpdateCount: 0,
     historyEntries: [],
     modelParameterUpdateCount: 0,
+    modelRevisionRestoreCount: 0,
+    modelRevisionSequence: 1,
+    currentModelRevisionID: 'mvr_smoke_1',
     savedParameterValues: {},
     cadRevision: 2,
     translationX: 0,
@@ -183,6 +189,8 @@ function smokeSavedModel(state: ProjectAPIFixtureState) {
     id: state.savedModelID,
     original_filename: state.savedModelFilename,
     byte_size: state.parametricArtifactSourceCode.length,
+    current_revision_id: state.currentModelRevisionID,
+    revision_sequence: state.modelRevisionSequence,
     metadata: {
       ...baseSmokeSavedModel.metadata,
       product_names: [state.parametricArtifactTitle],
@@ -206,6 +214,7 @@ function smokeCADDocument(state: ProjectAPIFixtureState) {
             {
               id: `node_${modelID}`,
               model_id: modelID,
+              model_revision_id: state.currentModelRevisionID,
               source_model_id: '',
               parent_node_id: '',
               name: state.parametricArtifactTitle,
@@ -352,6 +361,62 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     await route.fulfill({ json: { model: smokeSavedModel(state) } })
     return
   }
+  if (request.method() === 'GET' && pathname === `/api/v1/projects/${projectId}/models/${state.savedModelID}/revisions`) {
+    const currentModel = smokeSavedModel(state)
+    const revisions = [
+      {
+        id: state.currentModelRevisionID,
+        project_id: projectId,
+        model_id: state.savedModelID,
+        parent_revision_id: state.modelRevisionSequence > 1 ? 'mvr_smoke_1' : '',
+        sequence: state.modelRevisionSequence,
+        byte_size: state.parametricArtifactSourceCode.length,
+        metadata: currentModel.metadata,
+        content_checksum: `checksum-${state.modelRevisionSequence}`,
+        summary: state.modelRevisionSequence > 1 ? 'Updated parametric parameters' : 'Initial model source',
+        is_current: true,
+        created_at: now,
+      },
+    ]
+    if (state.modelRevisionSequence > 1) {
+      revisions.push({
+        ...revisions[0],
+        id: 'mvr_smoke_1',
+        parent_revision_id: '',
+        sequence: 1,
+        metadata: { ...currentModel.metadata, parameter_values: {} },
+        content_checksum: 'checksum-1',
+        summary: 'Initial model source',
+        is_current: false,
+      })
+    }
+    await route.fulfill({ json: { revisions } })
+    return
+  }
+  if (
+    request.method() === 'POST' &&
+    pathname === `/api/v1/projects/${projectId}/models/${state.savedModelID}/revisions/mvr_smoke_1/restore`
+  ) {
+    state.savedParameterValues = {}
+    state.currentModelRevisionID = 'mvr_smoke_1'
+    state.modelRevisionSequence = 1
+    state.modelRevisionRestoreCount += 1
+    state.cadRevision += 1
+    state.historyEntries = [
+      {
+        id: 'hist_smoke_revision_restore',
+        sequence: 2,
+        status: 'applied',
+        command_type: 'model-revision-restore',
+        target_id: state.savedModelID,
+        summary: `Restore ${state.savedModelFilename} revision 1`,
+        created_at: now,
+      },
+    ]
+    state.models = [smokeSavedModel(state)]
+    await route.fulfill({ json: { model: smokeSavedModel(state) } })
+    return
+  }
   if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/thumbnail`) {
     await route.fulfill({
       json: {
@@ -442,6 +507,9 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     const requestBody = request.postDataJSON() as { parameter_values?: Record<string, unknown> }
     state.savedParameterValues = requestBody.parameter_values ?? {}
     state.modelParameterUpdateCount += 1
+    state.modelRevisionSequence += 1
+    state.currentModelRevisionID = `mvr_smoke_${state.modelRevisionSequence}`
+    state.cadRevision += 1
     state.historyEntries = [
       {
         id: 'hist_smoke_parameter_change',

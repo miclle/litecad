@@ -3,7 +3,7 @@ import { Box, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
-import type { ProjectParametricArtifact } from 'src/types/project'
+import type { ProjectModelRevision, ProjectParametricArtifact } from 'src/types/project'
 import type { CADTranslation } from './cad-document-transforms'
 import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { ProjectInspector, type InspectorDetail, type ProjectInspectorSelection } from './project-inspector'
@@ -25,6 +25,7 @@ type ProjectWorkbenchSidebarProps = {
   onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
   onSaveGeneratedArtifactAsModel: (artifact: ProjectParametricArtifact, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onSaveModelParameters: (modelId: string, parameterValues: Record<string, OpenSCADParameterValue>) => void
+  onRestoreModelRevision?: (modelId: string, revisionId: string) => void
   onToggleModelVisibility: (modelId: string) => void
   onTransformChange: (nodeId: string, axis: keyof CADTranslation, value: string) => void
   previewAssetModelIds: ReadonlySet<string>
@@ -32,6 +33,10 @@ type ProjectWorkbenchSidebarProps = {
   selectedGeneratedArtifact?: ProjectParametricArtifact
   selectedNodeId: string
   selectedSavedArtifact?: ProjectParametricArtifact
+  selectedSavedModelRevisionID?: string
+  selectedSavedModelRevisionSequence?: number
+  selectedModelRevisions?: ProjectModelRevision[]
+  isRevisionRestorePending?: boolean
   unitLabel: string
   uploadError: string
 }
@@ -52,6 +57,7 @@ export function ProjectWorkbenchSidebar({
   onResizePointerDown,
   onSaveGeneratedArtifactAsModel,
   onSaveModelParameters,
+  onRestoreModelRevision,
   onToggleModelVisibility,
   onTransformChange,
   previewAssetModelIds,
@@ -59,6 +65,10 @@ export function ProjectWorkbenchSidebar({
   selectedGeneratedArtifact,
   selectedNodeId,
   selectedSavedArtifact,
+  selectedSavedModelRevisionID,
+  selectedSavedModelRevisionSequence,
+  selectedModelRevisions = [],
+  isRevisionRestorePending = false,
   unitLabel,
   uploadError,
 }: ProjectWorkbenchSidebarProps) {
@@ -137,9 +147,14 @@ export function ProjectWorkbenchSidebar({
             ) : selectedSavedArtifact ? (
               <ParametricArtifactEditor
                 artifact={selectedSavedArtifact}
+                currentRevisionID={selectedSavedModelRevisionID}
+                currentRevisionSequence={selectedSavedModelRevisionSequence}
                 initialParameterValues={selectedSavedArtifact.parameter_values}
+                isRevisionRestorePending={isRevisionRestorePending}
+                modelRevisions={selectedModelRevisions}
                 onParameterValuesChange={(parameterValues) => onParameterValuesChange(selectedSavedArtifact.preview_model_id, parameterValues)}
                 onSaveParameters={(parameterValues) => onSaveModelParameters(selectedSavedArtifact.preview_model_id, parameterValues)}
+                onRestoreRevision={(revisionID) => onRestoreModelRevision?.(selectedSavedArtifact.preview_model_id, revisionID)}
               />
             ) : (
               <ProjectInspector

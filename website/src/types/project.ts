@@ -52,6 +52,8 @@ export interface ProjectModel {
   parse_status: 'pending' | 'parsed' | 'error'
   parse_error: string
   metadata: StepMetadata
+  current_revision_id: string
+  revision_sequence: number
   created_at: string
   updated_at: string
 }
@@ -146,6 +148,7 @@ export interface CADBoxFeature {
 export interface CADDocumentNode {
   id: string
   model_id: string
+  model_revision_id?: string
   source_model_id?: string
   parent_node_id: string
   name: string
@@ -174,7 +177,7 @@ export interface CADHistoryEntry {
   sequence: number
   parent_entry_id?: string
   status: 'applied' | 'undone' | 'discarded'
-  command_type: 'transform' | 'box-union' | 'delete-node' | 'parameter-change'
+  command_type: 'transform' | 'box-union' | 'delete-node' | 'parameter-change' | 'model-revision-restore'
   target_id: string
   summary: string
   created_at: string
@@ -327,6 +330,25 @@ export interface ProjectParametricArtifactsResponse {
 
 export interface ProjectParametricModelParametersPayload {
   parameter_values: Record<string, unknown>
+  expected_revision: number
+}
+
+export interface ProjectModelRevision {
+  id: string
+  project_id: string
+  model_id: string
+  parent_revision_id?: string
+  sequence: number
+  byte_size: number
+  metadata: StepMetadata
+  content_checksum: string
+  summary: string
+  is_current: boolean
+  created_at: string
+}
+
+export interface ProjectModelRevisionsResponse {
+  revisions: ProjectModelRevision[]
 }
 
 export interface CreateProjectPayload {

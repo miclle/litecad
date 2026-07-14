@@ -59,13 +59,14 @@ type CADHistoryState struct {
 
 // CADDocumentNode maps one source model into the editable document graph.
 type CADDocumentNode struct {
-	ID            string       `json:"id"`
-	ModelID       string       `json:"model_id"`
-	SourceModelID string       `json:"source_model_id"`
-	ParentNodeID  string       `json:"parent_node_id"`
-	Name          string       `json:"name"`
-	SourceFormat  string       `json:"source_format"`
-	Transform     CADTransform `json:"transform"`
+	ID              string       `json:"id"`
+	ModelID         string       `json:"model_id"`
+	ModelRevisionID string       `json:"model_revision_id,omitempty"`
+	SourceModelID   string       `json:"source_model_id"`
+	ParentNodeID    string       `json:"parent_node_id"`
+	Name            string       `json:"name"`
+	SourceFormat    string       `json:"source_format"`
+	Transform       CADTransform `json:"transform"`
 }
 
 // CADOperation records a LiteCAD edit operation in replay order.
@@ -550,12 +551,12 @@ func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, project
 		state.Unit = "millimetre"
 	}
 	nodeByID := make(map[string]struct{}, len(state.Nodes))
-	nodeByModelID := make(map[string]struct{}, len(state.Nodes))
+	nodeIndexByModelID := make(map[string]int, len(state.Nodes))
 	deletedNodeByID := deletedCADDocumentNodeIDs(state)
-	for _, node := range state.Nodes {
+	for index, node := range state.Nodes {
 		nodeByID[node.ID] = struct{}{}
-		if node.ModelID != "" {
-			nodeByModelID[node.ModelID] = struct{}{}
+		if node.ModelID != "" && node.ParentNodeID == "" {
+			nodeIndexByModelID[node.ModelID] = index
 		}
 	}
 
@@ -590,7 +591,14 @@ func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, project
 				return cadDocumentState{}, false, fmt.Errorf("update CAD document model metadata: %w", err)
 			}
 		}
-		if _, ok := nodeByModelID[model.ID]; ok {
+		if _, err := ensureProjectModelRevision(ctx, tx, &model); err != nil {
+			return cadDocumentState{}, false, err
+		}
+		if nodeIndex, ok := nodeIndexByModelID[model.ID]; ok {
+			if state.Nodes[nodeIndex].ModelRevisionID != model.CurrentRevisionID {
+				state.Nodes[nodeIndex].ModelRevisionID = model.CurrentRevisionID
+				changed = true
+			}
 			publicModel := publicProjectModel(model)
 			state, changed = syncCADDocumentComponentNodes(state, nodeByID, deletedNodeByID, publicModel, changed)
 			continue
@@ -602,7 +610,7 @@ func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, project
 		sourceNode := cadDocumentNodeFromModel(publicModel)
 		state.Nodes = append(state.Nodes, sourceNode)
 		nodeByID[sourceNode.ID] = struct{}{}
-		nodeByModelID[model.ID] = struct{}{}
+		nodeIndexByModelID[model.ID] = len(state.Nodes) - 1
 		changed = true
 		state, changed = syncCADDocumentComponentNodes(state, nodeByID, deletedNodeByID, publicModel, changed)
 	}
@@ -680,13 +688,24 @@ func decodeCADDocumentState(data []byte) (cadDocumentState, error) {
 
 func cadDocumentNodeFromModel(model ProjectModel) CADDocumentNode {
 	return CADDocumentNode{
-		ID:            "node_" + model.ID,
-		ModelID:       model.ID,
-		SourceModelID: model.ID,
-		Name:          model.OriginalFilename,
-		SourceFormat:  model.Format,
-		Transform:     identityCADTransform(),
+		ID:              "node_" + model.ID,
+		ModelID:         model.ID,
+		ModelRevisionID: model.CurrentRevisionID,
+		SourceModelID:   model.ID,
+		Name:            model.OriginalFilename,
+		SourceFormat:    model.Format,
+		Transform:       identityCADTransform(),
 	}
+}
+
+func setCADDocumentModelRevision(state *cadDocumentState, modelID, revisionID string) error {
+	for index := range state.Nodes {
+		if state.Nodes[index].ModelID == modelID && state.Nodes[index].ParentNodeID == "" {
+			state.Nodes[index].ModelRevisionID = revisionID
+			return nil
+		}
+	}
+	return ErrInvalidCADDocumentInput
 }
 
 func publicProjectCADDocument(document entity.ProjectCADDocument, state cadDocumentState) ProjectCADDocument {

@@ -3,12 +3,12 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fetchProjectModelSource } from 'src/api/projects'
+import { fetchProjectModelRevisions, fetchProjectModelSource } from 'src/api/projects'
 import { runFeatureDSLPreviewInWorker } from 'src/cad/kernel-worker-client'
 import type { ProjectModel } from 'src/types/project'
 import { useProjectParametricModels } from './use-project-parametric-models'
 
-vi.mock('src/api/projects', () => ({ fetchProjectModelSource: vi.fn() }))
+vi.mock('src/api/projects', () => ({ fetchProjectModelRevisions: vi.fn(), fetchProjectModelSource: vi.fn() }))
 vi.mock('src/cad/kernel-worker-client', () => ({ runFeatureDSLPreviewInWorker: vi.fn() }))
 
 const projectId = 'project_parametric'
@@ -27,6 +27,8 @@ const model: ProjectModel = {
   byte_size: sourceCode.length,
   parse_status: 'parsed',
   parse_error: '',
+  current_revision_id: 'mvr_lcad',
+  revision_sequence: 1,
   metadata: {
     asset_type: 'parametric-model',
     source_kind: 'litecad-feature-dsl',
@@ -56,6 +58,9 @@ describe('useProjectParametricModels', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(fetchProjectModelSource).mockResolvedValue({ data: new Blob([sourceCode]) } as Awaited<ReturnType<typeof fetchProjectModelSource>>)
+    vi.mocked(fetchProjectModelRevisions).mockResolvedValue(
+      { data: { revisions: [] } } as unknown as Awaited<ReturnType<typeof fetchProjectModelRevisions>>,
+    )
     vi.mocked(runFeatureDSLPreviewInWorker).mockResolvedValue({
       mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0] },
       meshSummary: { vertexCount: 1, triangleCount: 0, hasNormals: true },
@@ -101,5 +106,32 @@ describe('useProjectParametricModels', () => {
     expect(result.current.previewModels[0]?.metadata.parameter_values).toEqual({ width: 24 })
     expect(model.metadata.parameter_values).toEqual({ width: 20 })
     await waitFor(() => expect(result.current.kernelMeshesByModelID[model.id]).toBeDefined())
+  })
+
+  it('drops local preview overrides when the active model revision changes', async () => {
+    const { wrapper } = createHarness()
+    const { result, rerender } = renderHook(
+      ({ projectModel }) =>
+        useProjectParametricModels({
+          projectId,
+          projectModels: [projectModel],
+          selectedArtifact: undefined,
+          selectedSourceModel: projectModel,
+        }),
+      { wrapper, initialProps: { projectModel: model } },
+    )
+
+    act(() => result.current.updatePreviewParameters(model.id, { width: 24 }))
+    expect(result.current.previewModels[0]?.metadata.parameter_values).toEqual({ width: 24 })
+
+    const restoredModel = {
+      ...model,
+      current_revision_id: 'mvr_restored',
+      revision_sequence: 2,
+      metadata: { ...model.metadata, parameter_values: { width: 12 } },
+    }
+    rerender({ projectModel: restoredModel })
+
+    await waitFor(() => expect(result.current.previewModels[0]?.metadata.parameter_values).toEqual({ width: 12 }))
   })
 })

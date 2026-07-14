@@ -17,6 +17,7 @@ import type {
   ProjectThumbnailSnapshotResponse,
   ProjectModelPreviewArtifactResponse,
   ProjectModelResponse,
+  ProjectModelRevisionsResponse,
   ProjectModelsResponse,
   ProjectParametricArtifactPayload,
   ProjectParametricArtifactResponse,
@@ -141,6 +142,16 @@ export function updateProjectParametricModelParameters(
   payload: ProjectParametricModelParametersPayload,
 ) {
   return client.patch<ProjectModelResponse>(`/projects/${projectId}/models/${modelId}/parametric-parameters`, payload)
+}
+
+export function fetchProjectModelRevisions(projectId: string, modelId: string) {
+  return client.get<ProjectModelRevisionsResponse>(`/projects/${projectId}/models/${modelId}/revisions`)
+}
+
+export function restoreProjectModelRevision(projectId: string, modelId: string, revisionId: string, expectedRevision: number) {
+  return client.post<ProjectModelResponse>(`/projects/${projectId}/models/${modelId}/revisions/${revisionId}/restore`, {
+    expected_revision: expectedRevision,
+  })
 }
 
 export function createProject(payload: CreateProjectPayload) {

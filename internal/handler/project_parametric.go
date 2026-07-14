@@ -26,7 +26,8 @@ type projectParametricArtifactsResponse struct {
 }
 
 type projectParametricModelParametersRequest struct {
-	ParameterValues map[string]any `json:"parameter_values" binding:"required"`
+	ParameterValues  map[string]any `json:"parameter_values" binding:"required"`
+	ExpectedRevision int            `json:"expected_revision" binding:"required,min=1"`
 }
 
 // ListProjectParametricArtifacts returns generated parametric CAD source artifacts for a project.
@@ -128,10 +129,11 @@ func (ctrl *Ctrl) UpdateProjectParametricModelParameters(c *fox.Context, req *pr
 		return projectModelResponse{}, err
 	}
 	model, err := ctrl.service.UpdateParametricModelParameters(c.Request.Context(), service.UpdateParametricModelParametersInput{
-		OwnerUserID:     user.ID,
-		ProjectID:       c.Param("projectID"),
-		ModelID:         c.Param("modelID"),
-		ParameterValues: req.ParameterValues,
+		OwnerUserID:      user.ID,
+		ProjectID:        c.Param("projectID"),
+		ModelID:          c.Param("modelID"),
+		ParameterValues:  req.ParameterValues,
+		ExpectedRevision: req.ExpectedRevision,
 	})
 	if err != nil {
 		return projectModelResponse{}, projectError(err)
