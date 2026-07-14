@@ -6,13 +6,14 @@ This note is the short cross-machine handoff for the current LiteCAD development
 
 ## Current Mainline
 
-- `main` and `origin/main` are at `438a2a8 docs: add current work handoff`.
+- `main` and `origin/main` are at `74cf462 feat(cad): add tapered feature dsl extrude (#3)`.
 - `feat/assembly-occurrence-authoring` has been fast-forward merged into `main` and pushed.
 - The old feature branch has already been cleaned up locally in this checkout.
+- `feat/feature-dsl-tapered-extrude` was squash-merged through PR #3 and the branch has been cleaned up.
 
 ## Recently Completed
 
-The current `feat/feature-dsl-tapered-extrude` branch adds restricted LiteCAD Feature DSL tapered extrusion end to end:
+Restricted LiteCAD Feature DSL tapered extrusion is now merged into `main`:
 
 - Backend DSL validation and capability registry accept `tapered_extrude` for rectangular, circular, and elliptical XY sketches.
 - Assistant prompt/tool schema guidance includes `tapered_extrude` and positive `top_scale`.
@@ -33,7 +34,7 @@ This remains a flat assembly model. It does not implement nested subassemblies, 
 
 ## Last Verification
 
-The current `feat/feature-dsl-tapered-extrude` branch was verified with:
+The merged tapered-extrude work was verified with:
 
 ```bash
 task check
@@ -47,34 +48,9 @@ Results:
 - `task test` passed: Go tests passed and Vitest reported 75 test files / 361 tests passing. Vitest still prints the existing localStorage and `MaxListenersExceededWarning` warnings during the full run.
 - `task test-browser` passed: 14/14 Playwright workbench tests.
 
-## Current Branch
+## Recommended Next Work
 
-Ready for review/merge from:
-
-```bash
-feat/feature-dsl-tapered-extrude
-```
-
-Completed implementation slice: add a restricted LiteCAD Feature DSL taper capability end to end.
-
-Boundary:
-
-- Support only rectangular, circular, and elliptical sketch taper/extrude paths.
-- Require positive height and positive taper scale.
-- Keep axis/direction semantics narrow and explicit.
-- Do not support arbitrary freeform profiles, negative or mirrored scale, arbitrary B-rep draft-face selection, or source STEP feature-history edits.
-
-Completed surfaces for this slice:
-
-- Backend LiteCAD DSL validation and capability registry.
-- Assistant prompt/tool schema guidance.
-- Browser worker preview.
-- Browser worker STEP export.
-- Focused Go and frontend worker tests.
-- Browser workflow verification through the deterministic Playwright workbench suite.
-- README, TODO, AGENTS, `.agents/rules/`, and `docs/browser-cad-kernel-roadmap.md` updates in the same branch.
-
-After this branch is merged, choose the next DSL slice only after defining an equally narrow backend-validation, prompt-schema, worker-preview/export, tests, and docs boundary.
+Choose the next Feature DSL slice only after defining an equally narrow backend-validation, prompt-schema, worker-preview/export, tests, and docs boundary.
 
 ## Larger Follow-Ups
 
