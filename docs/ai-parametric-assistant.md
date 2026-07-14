@@ -52,7 +52,7 @@ Each project can own multiple Assistant conversations. New conversations start w
 
 ## Historical Implementation Summary
 
-The completed implementation summary lives in [docs/superpowers/plans/2026-07-11-ai-parametric-assistant.md](superpowers/plans/2026-07-11-ai-parametric-assistant.md). It records the OpenSCAD runtime deferral, the LiteCAD Feature DSL shipped path, and the historical commit trail; current follow-up work lives in [TODO.md](../TODO.md).
+The completed implementation summary lives in [superpowers/plans/2026-07-11-ai-parametric-assistant.md](superpowers/plans/2026-07-11-ai-parametric-assistant.md). It records the OpenSCAD runtime deferral, the LiteCAD Feature DSL shipped path, and the historical commit trail; current follow-up work lives in [TODO.md](../TODO.md).
 
 ## Provider Controls
 
