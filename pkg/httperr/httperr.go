@@ -2,7 +2,10 @@
 // render with the embedded status code.
 package httperr
 
-import "net/http"
+import (
+	"encoding/json"
+	"net/http"
+)
 
 // StatusError is an error carrying the HTTP status code that should be sent to
 // the client.
@@ -21,6 +24,17 @@ func (e *StatusError) StatusCode() int {
 	return e.Code
 }
 
+// MarshalJSON lets fox render StatusError as a structured API error response.
+func (e *StatusError) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}{
+		Code:    e.Code,
+		Message: e.Message,
+	})
+}
+
 // NewBadRequest returns a 400 StatusError carrying message.
 func NewBadRequest(message string) *StatusError {
 	return &StatusError{Code: http.StatusBadRequest, Message: message}
@@ -29,6 +43,11 @@ func NewBadRequest(message string) *StatusError {
 // NewRequestEntityTooLarge returns a 413 StatusError carrying message.
 func NewRequestEntityTooLarge(message string) *StatusError {
 	return &StatusError{Code: http.StatusRequestEntityTooLarge, Message: message}
+}
+
+// NewUnprocessableEntity returns a 422 StatusError carrying message.
+func NewUnprocessableEntity(message string) *StatusError {
+	return &StatusError{Code: http.StatusUnprocessableEntity, Message: message}
 }
 
 // NewUnauthorized returns a 401 StatusError carrying message.
@@ -44,6 +63,11 @@ func NewConflict(message string) *StatusError {
 // NewServiceUnavailable returns a 503 StatusError carrying message.
 func NewServiceUnavailable(message string) *StatusError {
 	return &StatusError{Code: http.StatusServiceUnavailable, Message: message}
+}
+
+// NewBadGateway returns a 502 StatusError carrying message.
+func NewBadGateway(message string) *StatusError {
+	return &StatusError{Code: http.StatusBadGateway, Message: message}
 }
 
 // NewInternalServerError returns a 500 StatusError carrying message.

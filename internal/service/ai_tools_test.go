@@ -686,8 +686,8 @@ func TestAIParametricRunRejectsInvalidToolOutput(t *testing.T) {
 		ProjectID:      project.ID,
 		ConversationID: conversation.ID,
 		Message:        "Make a parametric mounting bracket",
-	}); !errors.Is(err, ErrInvalidAIChatInput) {
-		t.Fatalf("RunProjectAgentParametric error = %v, want ErrInvalidAIChatInput", err)
+	}); !errors.Is(err, ErrAIProviderInvalidOutput) {
+		t.Fatalf("RunProjectAgentParametric error = %v, want ErrAIProviderInvalidOutput", err)
 	}
 
 	artifacts, err := svc.ListProjectParametricArtifacts(ctx, user.ID, project.ID)
@@ -750,8 +750,8 @@ func TestAIParametricRunPersistsNativeToolFailureWithoutArtifact(t *testing.T) {
 		ProjectID:      project.ID,
 		ConversationID: conversation.ID,
 		Message:        "Make a native parametric mounting bracket",
-	}); !errors.Is(err, ErrInvalidAIChatInput) {
-		t.Fatalf("RunProjectAgentParametric error = %v, want ErrInvalidAIChatInput", err)
+	}); !errors.Is(err, ErrAIProviderInvalidOutput) {
+		t.Fatalf("RunProjectAgentParametric error = %v, want ErrAIProviderInvalidOutput", err)
 	}
 
 	artifacts, err := svc.ListProjectParametricArtifacts(ctx, user.ID, project.ID)
@@ -808,8 +808,8 @@ func TestAIParametricRunDoesNotPersistOnProviderFailure(t *testing.T) {
 		ProjectID:      project.ID,
 		ConversationID: conversation.ID,
 		Message:        "Make a parametric mounting bracket",
-	}); err == nil {
-		t.Fatal("RunProjectAgentParametric should return provider failure")
+	}); !errors.Is(err, ErrAIProviderRequestFailed) {
+		t.Fatalf("RunProjectAgentParametric error = %v, want ErrAIProviderRequestFailed", err)
 	}
 
 	artifacts, err := svc.ListProjectParametricArtifacts(ctx, user.ID, project.ID)
@@ -862,7 +862,7 @@ func TestAIParametricRunDoesNotPersistWhenNativeToolAndFallbackBothFail(t *testi
 		ProjectID:      project.ID,
 		ConversationID: conversation.ID,
 		Message:        "Make a parametric mounting bracket",
-	}); err == nil || !strings.Contains(err.Error(), "native tool call failed") || !strings.Contains(err.Error(), "json fallback failed") {
+	}); !errors.Is(err, ErrAIProviderRequestFailed) || !strings.Contains(err.Error(), "native tool call failed") || !strings.Contains(err.Error(), "json fallback failed") {
 		t.Fatalf("RunProjectAgentParametric error = %v, want combined native and fallback provider failure", err)
 	}
 

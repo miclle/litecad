@@ -112,3 +112,5 @@ LITECAD_SMOKE_BASE_URL="https://litecad.example.com" task smoke-ai-provider
 ```
 
 The smoke script creates a temporary account and project on the running server, asks for a 30 mm sphere with 5 mm through holes along X, Y, and Z, verifies that the backend creates a generated-source artifact, and then soft-deletes the temporary project. It defaults to two provider attempts; override `LITECAD_SMOKE_ATTEMPTS` when diagnosing provider flakiness. It validates live provider reachability and artifact creation; it does not replace `task test-browser` for browser-worker compile/save/canvas coverage.
+
+Assistant generation failures are intentionally split by cause. HTTP `503` means the server has no AI provider configured. HTTP `502` means the configured provider could not complete the request, such as a timeout, network failure, or provider tool-call incompatibility. HTTP `422` means the provider answered, but the returned model draft did not pass LiteCAD validation; retry with a more specific prompt or adjust provider prompt/model compatibility.

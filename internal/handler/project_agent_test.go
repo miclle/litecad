@@ -3,11 +3,12 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
 	"strings"
+	"testing"
 
 	"github.com/miclle/litecad/internal/service"
-	"net/http"
-	"testing"
 )
 
 type testAIClient struct {
@@ -16,6 +17,16 @@ type testAIClient struct {
 
 func (c testAIClient) Chat(ctx context.Context, messages []service.AIChatMessage) (string, error) {
 	return c.reply, nil
+}
+
+type failingToolAIClient struct{}
+
+func (c failingToolAIClient) Chat(ctx context.Context, messages []service.AIChatMessage) (string, error) {
+	return "", errors.New("json fallback unavailable")
+}
+
+func (c failingToolAIClient) ChatWithTools(ctx context.Context, messages []service.AIChatMessage, tools []service.AIChatTool) (service.AIChatToolCall, error) {
+	return service.AIChatToolCall{}, errors.New("native tools unavailable")
 }
 
 func TestProjectAgentRouteReturnsAIReply(t *testing.T) {
@@ -370,5 +381,121 @@ func TestProjectAgentParametricRunRouteCreatesArtifact(t *testing.T) {
 	}
 	if runResponse.Telemetry.ToolMode != "json_fallback" || runResponse.Telemetry.SourceKind != "openscad" || runResponse.Telemetry.DurationMS < 0 {
 		t.Fatalf("run telemetry = %+v", runResponse.Telemetry)
+	}
+}
+
+func TestProjectAgentParametricRunRouteReturnsProviderFailure(t *testing.T) {
+	router := newTestRouterWithAI(t, failingToolAIClient{})
+
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name":     "Ada Lovelace",
+		"email":    "agent-parametric-provider-failure@example.com",
+		"password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+	create := postJSONWithCookie(t, router, "/api/v1/projects", map[string]string{
+		"name": "Provider failure project",
+	}, sessionCookie)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", create.Code, create.Body.String())
+	}
+	var createResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	conversation := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations", map[string]string{
+		"title": "Provider failure run",
+	}, sessionCookie)
+	if conversation.Code != http.StatusOK {
+		t.Fatalf("conversation status = %d, body = %s", conversation.Code, conversation.Body.String())
+	}
+	var conversationResponse struct {
+		Conversation struct {
+			ID string `json:"id"`
+		} `json:"conversation"`
+	}
+	if err := json.Unmarshal(conversation.Body.Bytes(), &conversationResponse); err != nil {
+		t.Fatalf("decode conversation response: %v", err)
+	}
+
+	run := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations/"+conversationResponse.Conversation.ID+"/parametric-runs", map[string]string{
+		"message": "Make a parametric mounting bracket",
+	}, sessionCookie)
+	if run.Code != http.StatusBadGateway {
+		t.Fatalf("parametric run status = %d, want %d, body = %s", run.Code, http.StatusBadGateway, run.Body.String())
+	}
+	var errorResponse struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(run.Body.Bytes(), &errorResponse); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if !strings.Contains(errorResponse.Message, "AI provider request failed") {
+		t.Fatalf("error response = %+v", errorResponse)
+	}
+}
+
+func TestProjectAgentParametricRunRouteReturnsInvalidProviderOutput(t *testing.T) {
+	router := newTestRouterWithAI(t, testAIClient{reply: "I created the model for you."})
+
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name":     "Ada Lovelace",
+		"email":    "agent-parametric-invalid-output@example.com",
+		"password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+	create := postJSONWithCookie(t, router, "/api/v1/projects", map[string]string{
+		"name": "Invalid provider output project",
+	}, sessionCookie)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", create.Code, create.Body.String())
+	}
+	var createResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	conversation := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations", map[string]string{
+		"title": "Invalid provider output run",
+	}, sessionCookie)
+	if conversation.Code != http.StatusOK {
+		t.Fatalf("conversation status = %d, body = %s", conversation.Code, conversation.Body.String())
+	}
+	var conversationResponse struct {
+		Conversation struct {
+			ID string `json:"id"`
+		} `json:"conversation"`
+	}
+	if err := json.Unmarshal(conversation.Body.Bytes(), &conversationResponse); err != nil {
+		t.Fatalf("decode conversation response: %v", err)
+	}
+
+	run := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations/"+conversationResponse.Conversation.ID+"/parametric-runs", map[string]string{
+		"message": "Make a parametric mounting bracket",
+	}, sessionCookie)
+	if run.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("parametric run status = %d, want %d, body = %s", run.Code, http.StatusUnprocessableEntity, run.Body.String())
+	}
+	var errorResponse struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(run.Body.Bytes(), &errorResponse); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if !strings.Contains(errorResponse.Message, "could not validate") {
+		t.Fatalf("error response = %+v", errorResponse)
 	}
 }

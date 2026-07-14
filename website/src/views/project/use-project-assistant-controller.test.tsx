@@ -11,7 +11,7 @@ import {
   sendProjectAgentConversationMessage,
 } from 'src/api/projects'
 import type { ProjectModel } from 'src/types/project'
-import { useProjectAssistantController } from './use-project-assistant-controller'
+import { projectAssistantErrorMessage, useProjectAssistantController } from './use-project-assistant-controller'
 
 vi.mock('src/api/projects', () => ({
   createProjectAgentConversation: vi.fn(),
@@ -170,7 +170,7 @@ describe('useProjectAssistantController', () => {
     await waitFor(() => expect(result.current.pendingKind).toBe('parametric'))
     expect(result.current.parametricProgress).toEqual({ attempt: 1, prompt: 'Make a mounting bracket' })
     act(() => rejectFirstRun(new Error('tool output invalid')))
-    await waitFor(() => expect(result.current.parametricRunError).toBe('Assistant could not answer right now. Check the AI provider configuration and try again.'))
+    await waitFor(() => expect(result.current.parametricRunError).toBe('Assistant could not answer right now. Retry the request or check the server logs.'))
     expect(result.current.parametricProgress).toBeUndefined()
     expect(result.current.retryParametricPrompt).toBe('Make a mounting bracket')
 
@@ -187,6 +187,19 @@ describe('useProjectAssistantController', () => {
     act(() => rejectThirdRun(new Error('tool output invalid')))
     await waitFor(() => expect(result.current.parametricProgress).toBeUndefined())
     expect(runProjectAgentParametric).toHaveBeenCalledTimes(3)
+  })
+
+  it('uses a provider-specific error for failed AI provider requests', () => {
+    expect(projectAssistantErrorMessage({ response: { status: 502 } }, (key) => key)).toBe(
+      'project.assistant.providerRequestFailed',
+    )
+    expect(projectAssistantErrorMessage({ response: { status: 422 } }, (key) => key)).toBe(
+      'project.assistant.providerInvalidOutput',
+    )
+    expect(projectAssistantErrorMessage({ response: { status: 500, data: 'backend failure' } }, (key) => key)).toBe(
+      'backend failure',
+    )
+    expect(projectAssistantErrorMessage(new Error('network failed'), (key) => key)).toBe('project.assistant.answerFailed')
   })
 
   it('sends the selected model as revision context for parametric generation', async () => {

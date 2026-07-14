@@ -40,6 +40,10 @@ func projectError(err error) error {
 		return httperr.NewBadRequest("invalid parametric artifact")
 	case errors.Is(err, service.ErrAIUnavailable):
 		return httperr.NewServiceUnavailable("AI provider is not configured")
+	case errors.Is(err, service.ErrAIProviderRequestFailed):
+		return httperr.NewBadGateway("AI provider request failed. Retry generation; if it keeps failing, check provider model compatibility and timeout settings.")
+	case errors.Is(err, service.ErrAIProviderInvalidOutput):
+		return httperr.NewUnprocessableEntity("AI provider returned a model draft LiteCAD could not validate. Retry generation with a more specific prompt.")
 	case errors.Is(err, service.ErrProjectNotFound):
 		return httperr.NewNotFound("project not found")
 	default:

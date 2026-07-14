@@ -26,9 +26,16 @@ type AssistantTranslator = (key: string) => string
 
 export function projectAssistantErrorMessage(error: unknown, t: AssistantTranslator = defaultAssistantTranslator) {
   const status = (error as { response?: { status?: number } }).response?.status
-  const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message
+  const data = (error as { response?: { data?: unknown } }).response?.data
+  const message = typeof data === 'string' ? data : (data as { message?: string } | undefined)?.message
   if (status === 503) {
     return t('project.assistant.notConfigured')
+  }
+  if (status === 502) {
+    return t('project.assistant.providerRequestFailed')
+  }
+  if (status === 422) {
+    return t('project.assistant.providerInvalidOutput')
   }
   if (message) {
     return message
@@ -41,7 +48,13 @@ function defaultAssistantTranslator(key: string) {
     return 'Assistant is not configured yet. Add the server-side AI provider settings, then try again.'
   }
   if (key === 'project.assistant.answerFailed') {
-    return 'Assistant could not answer right now. Check the AI provider configuration and try again.'
+    return 'Assistant could not answer right now. Retry the request or check the server logs.'
+  }
+  if (key === 'project.assistant.providerRequestFailed') {
+    return 'The AI provider request failed. Retry generation; if it keeps failing, check model compatibility and timeout settings.'
+  }
+  if (key === 'project.assistant.providerInvalidOutput') {
+    return 'The AI provider returned a model draft LiteCAD could not validate. Retry generation with a more specific prompt.'
   }
   return key
 }

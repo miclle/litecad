@@ -1,6 +1,7 @@
 package httperr
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -37,5 +38,22 @@ func TestStatusErrorImplementsError(t *testing.T) {
 	}
 	if target == nil || target.Code != http.StatusBadRequest {
 		t.Fatalf("unexpected target: %+v", target)
+	}
+}
+
+func TestStatusErrorMarshalsStructuredMessage(t *testing.T) {
+	data, err := json.Marshal(NewBadGateway("upstream failed"))
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	var body struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+	if body.Code != http.StatusBadGateway || body.Message != "upstream failed" {
+		t.Fatalf("body = %+v", body)
 	}
 }

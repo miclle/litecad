@@ -31,6 +31,10 @@ const (
 var (
 	// ErrAIUnavailable indicates the AI provider is not configured for this server.
 	ErrAIUnavailable = errors.New("ai unavailable")
+	// ErrAIProviderRequestFailed indicates the configured AI provider could not complete a request.
+	ErrAIProviderRequestFailed = errors.New("ai provider request failed")
+	// ErrAIProviderInvalidOutput indicates the provider returned a model draft LiteCAD could not validate.
+	ErrAIProviderInvalidOutput = errors.New("ai provider invalid output")
 	// ErrInvalidAIChatInput indicates a malformed CAD Agent message request.
 	ErrInvalidAIChatInput = errors.New("invalid ai chat input")
 )

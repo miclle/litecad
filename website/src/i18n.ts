@@ -265,7 +265,11 @@ const resources = {
           collapseCode: 'Collapse',
           initialMessage: 'I can stay beside the model while you inspect sources, metadata, and design notes.',
           notConfigured: 'Assistant is not configured yet. Add the server-side AI provider settings, then try again.',
-          answerFailed: 'Assistant could not answer right now. Check the AI provider configuration and try again.',
+          providerRequestFailed:
+            'The AI provider request failed. Retry generation; if it keeps failing, check model compatibility and timeout settings.',
+          providerInvalidOutput:
+            'The AI provider returned a model draft LiteCAD could not validate. Retry generation with a more specific prompt.',
+          answerFailed: 'Assistant could not answer right now. Retry the request or check the server logs.',
           status: {
             generatingModel: 'Generating model',
             creatingChat: 'Creating chat',
@@ -648,7 +652,9 @@ const resources = {
           collapseCode: '折叠',
           initialMessage: '我可以在你检查源文件、元数据和设计笔记时，始终陪在模型旁边。',
           notConfigured: 'Assistant 尚未配置。请添加服务端 AI provider 设置后重试。',
-          answerFailed: 'Assistant 现在无法回答。请检查 AI provider 配置后重试。',
+          providerRequestFailed: 'AI provider 请求失败。请重试生成；如果持续失败，请检查模型兼容性和超时设置。',
+          providerInvalidOutput: 'AI provider 返回的模型草稿未通过 LiteCAD 校验。请用更具体的描述重试生成。',
+          answerFailed: 'Assistant 现在无法回答。请重试请求，或检查服务端日志。',
           status: {
             generatingModel: '正在生成模型',
             creatingChat: '正在创建对话',

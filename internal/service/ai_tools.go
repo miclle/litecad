@@ -427,7 +427,7 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 			fallbackCall, fallbackReply, fallbackErr := s.runAIParametricJSONFallback(ctx, providerMessages, "native tool call failed: "+err.Error())
 			if fallbackErr != nil {
 				logAIParametricRunFailure(ctx, "native_tool_failed_json_fallback_failed", fallbackErr)
-				return ProjectAgentParametricRun{}, fmt.Errorf("send ai parametric chat: native tool call failed: %v; json fallback failed: %w", err, fallbackErr)
+				return ProjectAgentParametricRun{}, fmt.Errorf("%w: native tool call failed: %v; json fallback failed: %v", ErrAIProviderRequestFailed, err, fallbackErr)
 			}
 			call = fallbackCall
 			reply = fallbackReply
@@ -440,7 +440,7 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 					if persistErr := s.persistProjectAgentParametricFailure(ctx, project.ID, conversation.ID, userMessage); persistErr != nil {
 						return ProjectAgentParametricRun{}, persistErr
 					}
-					return ProjectAgentParametricRun{}, err
+					return ProjectAgentParametricRun{}, fmt.Errorf("%w: native tool arguments invalid: %v; repair failed: %v", ErrAIProviderInvalidOutput, err, fallbackErr)
 				}
 				call = fallbackCall
 				reply = fallbackReply
@@ -453,13 +453,13 @@ func (s *Service) RunProjectAgentParametric(ctx context.Context, input ProjectAg
 		call, reply, err = s.runAIParametricJSONFallback(ctx, providerMessages, "")
 		if err != nil {
 			if errors.Is(err, errAIParametricProviderChatFailed) {
-				return ProjectAgentParametricRun{}, err
+				return ProjectAgentParametricRun{}, fmt.Errorf("%w: %v", ErrAIProviderRequestFailed, err)
 			}
 			logAIParametricRunFailure(ctx, "json_fallback_failed", err)
 			if persistErr := s.persistProjectAgentParametricFailure(ctx, project.ID, conversation.ID, userMessage); persistErr != nil {
 				return ProjectAgentParametricRun{}, persistErr
 			}
-			return ProjectAgentParametricRun{}, err
+			return ProjectAgentParametricRun{}, fmt.Errorf("%w: %v", ErrAIProviderInvalidOutput, err)
 		}
 	}
 	telemetry := ProjectAgentParametricTelemetry{

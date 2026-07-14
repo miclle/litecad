@@ -138,7 +138,9 @@ test('shows Assistant parametric progress and failure recovery guidance', async 
 
   const assistantForm = page.locator('form')
   await expect(page.getByText('Generation needs attention')).toBeVisible()
-  await expect(assistantForm.getByText('Provider returned invalid LiteCAD feature DSL for browser smoke.')).toBeVisible()
+  await expect(
+    assistantForm.getByText('The AI provider returned a model draft LiteCAD could not validate. Retry generation with a more specific prompt.'),
+  ).toBeVisible()
   await expect(
     assistantForm.getByText(
       'No canvas changes were made. Retry sends the same prompt again; edit the prompt below if the request needs more detail.',
