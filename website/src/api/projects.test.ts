@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 import client from './client'
 import {
+  createProjectExportArtifact,
   deleteProject,
   deleteProjectCADNode,
 	deleteProjectCADOccurrence,
@@ -18,6 +19,8 @@ import {
   fetchProjectModelSource,
 	fetchProjectModelRevisionSource,
   fetchProjectModelRevisions,
+  downloadProjectExportArtifact,
+  fetchProjectExportArtifacts,
   fetchProjectParametricArtifact,
   fetchProjectParametricArtifacts,
   addProjectCADModelBoxUnion,
@@ -92,6 +95,26 @@ describe('project API', () => {
     fetchProjectModelSource('prj_01test', 'mdl_01test')
 
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/models/mdl_01test/source', { responseType: 'blob' })
+  })
+
+  test('manages project export artifacts', () => {
+    const payload = {
+      filename: 'assembly.step',
+      content_type: 'model/step' as const,
+      export_kind: 'merged' as const,
+      target_count: 2,
+      source_revision_ids: ['mvr_a', 'mvr_b'],
+      occurrence_ids: ['occ_a', 'occ_b'],
+      step_text: 'ISO-10303-21;',
+    }
+
+    fetchProjectExportArtifacts('prj_01test')
+    createProjectExportArtifact('prj_01test', payload)
+    downloadProjectExportArtifact('prj_01test', 'pex_01test')
+
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/export-artifacts')
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/export-artifacts', payload)
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/export-artifacts/pex_01test/download', { responseType: 'blob' })
   })
 
 	test('fetches an immutable project model revision source as a blob', () => {

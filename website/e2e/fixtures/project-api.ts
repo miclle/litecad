@@ -13,6 +13,21 @@ type FixtureOccurrence = {
 	transform: { matrix: number[] }
 }
 
+type FixtureExportArtifact = {
+  id: string
+  project_id: string
+  filename: string
+  content_type: 'model/step'
+  export_kind: 'single' | 'merged'
+  target_count: number
+  source_revision_ids: string[]
+  occurrence_ids: string[]
+  byte_size: number
+  step_text: string
+  created_at: string
+  updated_at: string
+}
+
 export type ProjectAPIFixtureState = {
   messages: unknown[]
   models: unknown[]
@@ -38,6 +53,8 @@ export type ProjectAPIFixtureState = {
   canUndo: boolean
   canRedo: boolean
   uploadCount: number
+  exportArtifacts: FixtureExportArtifact[]
+  exportArtifactCreateCount: number
 	occurrences: FixtureOccurrence[]
 	occurrenceUndoStack: FixtureOccurrence[][]
 	occurrenceRedoStack: FixtureOccurrence[][]
@@ -75,6 +92,8 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
     canUndo: false,
     canRedo: false,
     uploadCount: 0,
+    exportArtifacts: [],
+    exportArtifactCreateCount: 0,
 		occurrences: [],
 		occurrenceUndoStack: [],
 		occurrenceRedoStack: [],
@@ -312,6 +331,9 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     },
     [`/api/v1/projects/${projectId}/agent/conversations/agc_smoke/messages`]: { messages: state.messages },
     [`/api/v1/projects/${projectId}/parametric-artifacts`]: { artifacts: [] },
+    [`/api/v1/projects/${projectId}/export-artifacts`]: {
+      artifacts: state.exportArtifacts.map(({ step_text: _stepText, ...artifact }) => artifact),
+    },
     [`/api/v1/projects/${projectId}/cad-document`]: { document: smokeCADDocument(state) },
     [`/api/v1/projects/${projectId}/cad-document/history`]: { entries: state.historyEntries },
   }
@@ -485,6 +507,54 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
           height: 180,
           updated_at: now,
         },
+      },
+    })
+    return
+  }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/export-artifacts`) {
+    const requestBody = request.postDataJSON() as {
+      filename?: string
+      content_type?: 'model/step'
+      export_kind?: 'single' | 'merged'
+      target_count?: number
+      source_revision_ids?: string[]
+      occurrence_ids?: string[]
+      step_text?: string
+    }
+    state.exportArtifactCreateCount += 1
+    const stepText = requestBody.step_text ?? ''
+    const artifact: FixtureExportArtifact = {
+      id: `pex_smoke_${state.exportArtifactCreateCount}`,
+      project_id: projectId,
+      filename: requestBody.filename ?? 'litecad-export.step',
+      content_type: requestBody.content_type ?? 'model/step',
+      export_kind: requestBody.export_kind ?? 'merged',
+      target_count: requestBody.target_count ?? 1,
+      source_revision_ids: requestBody.source_revision_ids ?? [],
+      occurrence_ids: requestBody.occurrence_ids ?? [],
+      byte_size: new TextEncoder().encode(stepText).length,
+      step_text: stepText,
+      created_at: now,
+      updated_at: now,
+    }
+    state.exportArtifacts = [artifact, ...state.exportArtifacts]
+    const { step_text: _stepText, ...publicArtifact } = artifact
+    await route.fulfill({ json: { artifact: publicArtifact }, status: 201 })
+    return
+  }
+  const exportDownloadRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/export-artifacts/([^/]+)/download$`))
+  if (request.method() === 'GET' && exportDownloadRoute) {
+    const artifactID = decodeURIComponent(exportDownloadRoute[1] ?? '')
+    const artifact = state.exportArtifacts.find((candidate) => candidate.id === artifactID)
+    if (!artifact) {
+      await route.fulfill({ json: { message: 'export artifact not found' }, status: 404 })
+      return
+    }
+    await route.fulfill({
+      body: artifact.step_text,
+      contentType: 'model/step',
+      headers: {
+        'Content-Disposition': `attachment; filename="${artifact.filename}"`,
       },
     })
     return

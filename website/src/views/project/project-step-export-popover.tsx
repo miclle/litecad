@@ -13,10 +13,15 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import type { ProjectExportArtifact } from 'src/types/project'
 import type { StepExportMode, StepExportTarget } from './project-step-export'
 
 type ProjectStepExportPopoverProps = {
   disabled: boolean
+  exportArtifacts: readonly ProjectExportArtifact[]
+  isExportHistoryError: boolean
+  isExportHistoryLoading: boolean
+  onDownloadExportArtifact: (artifactId: string) => Promise<unknown>
   onExport: (mode: StepExportMode) => Promise<unknown>
   onOpenChange: (open: boolean) => void
   onSelectAll: () => void
@@ -28,6 +33,10 @@ type ProjectStepExportPopoverProps = {
 
 export function ProjectStepExportPopover({
   disabled,
+  exportArtifacts,
+  isExportHistoryError,
+  isExportHistoryLoading,
+  onDownloadExportArtifact,
   onExport,
   onOpenChange,
   onSelectAll,
@@ -38,6 +47,8 @@ export function ProjectStepExportPopover({
 }: ProjectStepExportPopoverProps) {
   const { t } = useTranslation()
   const [error, setError] = useState('')
+  const [historyError, setHistoryError] = useState('')
+  const [pendingHistoryArtifactID, setPendingHistoryArtifactID] = useState('')
   const [isPending, setIsPending] = useState(false)
 	const selectedCount = targets.filter((target) => selectedTargetIds.has(target.occurrenceId)).length
 
@@ -52,6 +63,18 @@ export function ProjectStepExportPopover({
       onOpenChange(true)
     } finally {
       setIsPending(false)
+    }
+  }
+
+  const downloadHistoryArtifact = async (artifactId: string) => {
+    setHistoryError('')
+    setPendingHistoryArtifactID(artifactId)
+    try {
+      await onDownloadExportArtifact(artifactId)
+    } catch {
+      setHistoryError(t('project.export.historyDownloadFailed'))
+    } finally {
+      setPendingHistoryArtifactID('')
     }
   }
 
@@ -121,6 +144,41 @@ export function ProjectStepExportPopover({
           </div>
           {error ? <p className="mt-2 text-xs leading-5 text-[#8a2f24]">{error}</p> : null}
           <div className="my-1 h-px bg-[#e2e8f0]" />
+          <section className="py-2">
+            <p className="font-mono text-[11px] uppercase text-[#64748b]">{t('project.export.history')}</p>
+            <div className="mt-2 grid max-h-36 gap-1 overflow-y-auto pr-1">
+              {isExportHistoryLoading ? <p className="text-xs leading-5 text-[#64748b]">{t('project.export.historyLoading')}</p> : null}
+              {isExportHistoryError ? <p className="text-xs leading-5 text-[#8a2f24]">{t('project.export.historyFailed')}</p> : null}
+              {!isExportHistoryLoading && !isExportHistoryError && exportArtifacts.length === 0 ? (
+                <p className="text-xs leading-5 text-[#64748b]">{t('project.export.historyEmpty')}</p>
+              ) : null}
+              {exportArtifacts.map((artifact) => (
+                <div className="flex items-center gap-2 rounded border border-[#e2e8f0] px-2 py-1.5" key={artifact.id}>
+                  <FileText className="size-4 shrink-0 text-[#64748b]" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-[#1f2937]" title={artifact.filename}>
+                      {artifact.filename}
+                    </p>
+                    <p className="text-[11px] text-[#64748b]">
+                      {t('project.export.targetCount', { count: artifact.target_count })} · {formatExportArtifactBytes(artifact.byte_size)}
+                    </p>
+                  </div>
+                  <Button
+                    aria-label={t('project.export.historyDownload', { filename: artifact.filename })}
+                    disabled={pendingHistoryArtifactID === artifact.id}
+                    onClick={() => downloadHistoryArtifact(artifact.id)}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Download />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            {historyError ? <p className="mt-2 text-xs leading-5 text-[#8a2f24]">{historyError}</p> : null}
+          </section>
+          <div className="my-1 h-px bg-[#e2e8f0]" />
           <div className="grid grid-cols-2 gap-1.5">
             <Button disabled={isPending || selectedCount === 0} onClick={() => exportSelection('merged')} size="sm" type="button">
               <Download data-icon="inline-start" />
@@ -141,4 +199,14 @@ export function ProjectStepExportPopover({
       </PopoverContent>
     </Popover>
   )
+}
+
+function formatExportArtifactBytes(byteSize: number) {
+  if (byteSize < 1024) {
+    return `${byteSize} B`
+  }
+  if (byteSize < 1024 * 1024) {
+    return `${Number(byteSize / 1024).toFixed(1)} KB`
+  }
+  return `${Number(byteSize / (1024 * 1024)).toFixed(1)} MB`
 }

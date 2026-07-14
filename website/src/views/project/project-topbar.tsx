@@ -14,7 +14,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import type { CADHistoryEntry, Project } from 'src/types/project'
+import type { CADHistoryEntry, Project, ProjectExportArtifact } from 'src/types/project'
 import { ProjectHistoryPopover } from './project-history-popover'
 import { ProjectStepExportPopover } from './project-step-export-popover'
 import type { StepExportMode, StepExportTarget } from './project-step-export'
@@ -48,6 +48,10 @@ type ProjectTopbarProps = {
   isProjectInfoOpen: boolean
   isStepExportOpen: boolean
   isUploading: boolean
+  exportArtifacts: readonly ProjectExportArtifact[]
+  isExportHistoryError: boolean
+  isExportHistoryLoading: boolean
+  onDownloadExportArtifact: (artifactId: string) => Promise<unknown>
   onFetchNextHistoryPage: () => void
   onHistoryAction: (action: 'undo' | 'redo') => void
   onHistoryOpenChange: (open: boolean) => void
@@ -101,6 +105,10 @@ export function ProjectTopbar({
   isProjectInfoOpen,
   isStepExportOpen,
   isUploading,
+  exportArtifacts,
+  isExportHistoryError,
+  isExportHistoryLoading,
+  onDownloadExportArtifact,
   onFetchNextHistoryPage,
   onHistoryAction,
   onHistoryOpenChange,
@@ -219,6 +227,10 @@ export function ProjectTopbar({
         />
         <ProjectStepExportPopover
           disabled={stepExportDisabled}
+          exportArtifacts={exportArtifacts}
+          isExportHistoryError={isExportHistoryError}
+          isExportHistoryLoading={isExportHistoryLoading}
+          onDownloadExportArtifact={onDownloadExportArtifact}
           onExport={onStepExport}
           onOpenChange={onStepExportOpenChange}
           onSelectAll={onStepExportSelectAll}

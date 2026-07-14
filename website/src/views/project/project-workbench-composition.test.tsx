@@ -311,8 +311,12 @@ function projectModelUpload() {
 
 function projectStepExport() {
   return {
+    downloadExportArtifact: vi.fn(),
     errorByModelID: {},
+    exportArtifacts: [],
     exportSelection: vi.fn(),
+    isExportHistoryError: false,
+    isExportHistoryLoading: false,
     selectAllTargets: vi.fn(),
     selectedTargetIDs: new Set<string>(),
     statusByModelID: {},

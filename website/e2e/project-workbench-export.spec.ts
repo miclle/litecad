@@ -36,5 +36,18 @@ test('exports a selected LiteCAD model as merged STEP', async ({ page }) => {
   const download = await downloadPromise
 
   expect(download.suggestedFilename()).toBe('Workbench Smoke-litecad-assembly-r2.step')
+  await expect.poll(() => fixture.state.exportArtifacts.length).toBe(1)
+
+  await page.reload()
+  await expect(assemblyRoot).toContainText('Workbench Smoke')
+  await page.getByRole('button', { name: 'Export STEP' }).click()
+  await expect(page.getByText('Export history')).toBeVisible()
+  await expect(page.getByText('Workbench Smoke-litecad-assembly-r2.step')).toBeVisible()
+
+  const historyDownloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download Workbench Smoke-litecad-assembly-r2.step' }).click()
+  const historyDownload = await historyDownloadPromise
+
+  expect(historyDownload.suggestedFilename()).toBe('Workbench Smoke-litecad-assembly-r2.step')
   expect(browserErrors).toEqual([])
 })

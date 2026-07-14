@@ -24,8 +24,8 @@ For a short cross-machine status snapshot and the recommended next branch, see [
   - Add durable CAD measurement entities instead of only transient bounding-box dimensions derived from visible preview meshes.
   - Add saved section definitions and durable B-rep section geometry instead of only a viewer clipping plane.
   - Decide how measurement and section records interact with document revisions, Undo/Redo, export, and shared project state.
-- Expand export beyond the current direct browser download path.
-  - Decide whether later STEP export milestones need backend-stored export artifact history in addition to direct browser downloads.
+- Expand export beyond the current direct browser download plus stored artifact history path.
+  - Define export artifact retention, cleanup, quota, and storage migration policy before launch.
   - Add richer export workflows only after durable kernel shape state and richer assembly semantics define what should be exported.
   - Keep current selected multi-occurrence STEP output described as an OCCT compound derived from durable flat occurrences, not preserved nested STEP assembly structure.
 - Continue the AI Parametric Assistant described in [docs/ai-parametric-assistant.md](docs/ai-parametric-assistant.md) beyond the current executable LiteCAD-native OCCT feature DSL and first feature-graph pass. The implemented DSL includes primitives and cuts, rectangular/circular/elliptical sketch extrudes, restricted rectangular/circular/elliptical `tapered_extrude` with positive height and `top_scale`, reusable sketches, `revolve`, straight-path `sweep`, multi-section `loft`, recursive boolean trees, `fillet`, conservative `chamfer`, repeat, feature-local transforms, and structured numeric expressions. Multi-session Assistant conversations, native OpenAI-compatible `build_parametric_model` tool calls with strict JSON fallback after native tool-call failures, provider `timeout_seconds` and `max_output_tokens` controls, safe persisted Assistant failure messages for invalid provider tool output, localized parametric generation progress and failure-retry guidance, response run telemetry, persisted artifact-level generation telemetry for list/detail reads, LiteCAD DSL schema validation for generated tool output, pending artifact draft creation, an Inspector-side draft editor with parsed parameter controls including boolean/string UI metadata, browser-kernel preview for pending LiteCAD DSL drafts before save, automatic save-as-`.lcad.json` project model persistence for successful LiteCAD DSL artifacts, saved `.lcad.json` locally immediate preview updates inside the existing viewer scene through `feature-dsl-preview`, saved `.scad`/`.lcad.json` parameter edits with immutable source/metadata revisions, Inspector restore, reversible History, and saved `.lcad.json` STEP export through `feature-dsl-export` are implemented.
@@ -44,7 +44,7 @@ For a short cross-machine status snapshot and the recommended next branch, see [
 
 - Decide whether product-facing URLs should keep exposing prefixed entity IDs such as `project_...`, or introduce project slugs / slug-plus-short-id routes while preserving prefixed IDs as internal canonical identifiers.
 - Decide whether project deletion remains soft-delete only in user-facing workflows or needs restore/purge operations, retention docs, and admin tooling before launch.
-- Define storage lifecycle policy for uploaded source bytes, derived preview artifacts, generated geometry snapshots, thumbnails, and any future backend export artifacts.
+- Define storage lifecycle policy for uploaded source bytes, derived preview artifacts, generated geometry snapshots, thumbnails, and backend export artifacts.
 
 ## Documentation And Operations
 

@@ -234,6 +234,10 @@ export function ProjectWorkbenchComposition({
           isProjectInfoOpen={shellState.isProjectInfoOpen}
           isStepExportOpen={shellState.isStepExportOpen}
           isUploading={projectModelUpload.isUploading}
+          exportArtifacts={projectStepExport.exportArtifacts}
+          isExportHistoryError={projectStepExport.isExportHistoryError}
+          isExportHistoryLoading={projectStepExport.isExportHistoryLoading}
+          onDownloadExportArtifact={projectStepExport.downloadExportArtifact}
           onFetchNextHistoryPage={projectCADHistory.fetchNextPage}
           onHistoryAction={cadDocumentCommands.changeHistory}
           onHistoryOpenChange={shellState.setIsHistoryOpen}

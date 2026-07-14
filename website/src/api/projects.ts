@@ -15,6 +15,9 @@ import type {
   ProjectCADDocumentResponse,
   ProjectCADHistoryResponse,
   ProjectGeometryDocumentResponse,
+  ProjectExportArtifactPayload,
+  ProjectExportArtifactResponse,
+  ProjectExportArtifactsResponse,
   ProjectThumbnailSnapshotResponse,
   ProjectModelPreviewArtifactResponse,
   ProjectModelResponse,
@@ -235,4 +238,16 @@ export function fetchProjectModelRevisionSource(projectId: string, modelId: stri
 
 export function fetchProjectModelPreviewArtifact(projectId: string, modelId: string) {
   return client.get<ProjectModelPreviewArtifactResponse>(`/projects/${projectId}/models/${modelId}/preview-artifact`)
+}
+
+export function fetchProjectExportArtifacts(projectId: string) {
+  return client.get<ProjectExportArtifactsResponse>(`/projects/${projectId}/export-artifacts`)
+}
+
+export function createProjectExportArtifact(projectId: string, payload: ProjectExportArtifactPayload) {
+  return client.post<ProjectExportArtifactResponse>(`/projects/${projectId}/export-artifacts`, payload)
+}
+
+export function downloadProjectExportArtifact(projectId: string, artifactId: string) {
+  return client.get<Blob>(`/projects/${projectId}/export-artifacts/${artifactId}/download`, { responseType: 'blob' })
 }

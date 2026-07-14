@@ -104,6 +104,38 @@ export interface ProjectModelPreviewArtifactResponse {
   preview: ProjectModelPreviewArtifact
 }
 
+export interface ProjectExportArtifact {
+  id: string
+  project_id: string
+  filename: string
+  content_type: 'model/step'
+  export_kind: 'single' | 'merged'
+  target_count: number
+  source_revision_ids: string[]
+  occurrence_ids: string[]
+  byte_size: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectExportArtifactPayload {
+  filename: string
+  content_type: 'model/step'
+  export_kind: 'single' | 'merged'
+  target_count: number
+  source_revision_ids: string[]
+  occurrence_ids: string[]
+  step_text: string
+}
+
+export interface ProjectExportArtifactResponse {
+  artifact: ProjectExportArtifact
+}
+
+export interface ProjectExportArtifactsResponse {
+  artifacts: ProjectExportArtifact[]
+}
+
 export interface ProjectGeometryTreeNode {
   model_id: string
   parent_model_id: string
