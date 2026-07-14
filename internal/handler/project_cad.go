@@ -26,6 +26,18 @@ type modifyProjectCADHistoryRequest struct {
 	ExpectedRevision int `json:"expected_revision" binding:"required,min=1"`
 }
 
+type updateProjectCADOccurrenceRequest struct {
+	Name             *string               `json:"name"`
+	Suppressed       *bool                 `json:"suppressed"`
+	Transform        *service.CADTransform `json:"transform"`
+	ExpectedRevision int                   `json:"expected_revision" binding:"required,min=1"`
+}
+
+type moveProjectCADOccurrenceRequest struct {
+	TargetIndex      int `json:"target_index" binding:"min=0"`
+	ExpectedRevision int `json:"expected_revision" binding:"required,min=1"`
+}
+
 type projectCADHistoryResponse struct {
 	Entries            []service.CADHistoryEntrySummary `json:"entries"`
 	NextBeforeSequence int64                            `json:"next_before_sequence,omitempty"`
@@ -38,6 +50,68 @@ func (ctrl *Ctrl) GetProjectCADDocument(c *fox.Context) (projectCADDocumentRespo
 		return projectCADDocumentResponse{}, err
 	}
 	document, err := ctrl.service.GetProjectCADDocument(c.Request.Context(), user.ID, c.Param("projectID"))
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// DuplicateProjectCADOccurrence creates another flat assembly instance of the same source model revision.
+func (ctrl *Ctrl) DuplicateProjectCADOccurrence(c *fox.Context, req *modifyProjectCADHistoryRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.DuplicateProjectCADOccurrence(c.Request.Context(), service.DuplicateProjectCADOccurrenceInput{
+		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), OccurrenceID: c.Param("occurrenceID"), ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// UpdateProjectCADOccurrence updates instance-owned name, suppression, or placement values.
+func (ctrl *Ctrl) UpdateProjectCADOccurrence(c *fox.Context, req *updateProjectCADOccurrenceRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.UpdateProjectCADOccurrence(c.Request.Context(), service.UpdateProjectCADOccurrenceInput{
+		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), OccurrenceID: c.Param("occurrenceID"),
+		Name: req.Name, Suppressed: req.Suppressed, Transform: req.Transform, ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// MoveProjectCADOccurrence changes one flat occurrence's assembly order.
+func (ctrl *Ctrl) MoveProjectCADOccurrence(c *fox.Context, req *moveProjectCADOccurrenceRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.MoveProjectCADOccurrence(c.Request.Context(), service.MoveProjectCADOccurrenceInput{
+		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), OccurrenceID: c.Param("occurrenceID"),
+		TargetIndex: req.TargetIndex, ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// DeleteProjectCADOccurrence removes one assembly instance without deleting its source definition.
+func (ctrl *Ctrl) DeleteProjectCADOccurrence(c *fox.Context, req *modifyProjectCADHistoryRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.DeleteProjectCADOccurrence(c.Request.Context(), service.DeleteProjectCADOccurrenceInput{
+		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), OccurrenceID: c.Param("occurrenceID"), ExpectedRevision: req.ExpectedRevision,
+	})
 	if err != nil {
 		return projectCADDocumentResponse{}, projectError(err)
 	}

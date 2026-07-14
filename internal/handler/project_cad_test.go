@@ -466,3 +466,120 @@ func TestProjectCADHistoryRoutesPersistUndoRedoAndRejectStaleEdits(t *testing.T)
 		t.Fatalf("redo status = %d, body = %s", redo.Code, redo.Body.String())
 	}
 }
+
+func TestProjectCADOccurrenceRoutesAuthorAndRestoreInstances(t *testing.T) {
+	router := newTestRouter(t)
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name": "Assembly Owner", "email": "assembly-occurrences@example.com", "password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+	create := postJSONWithCookie(t, router, "/api/v1/projects", map[string]string{"name": "Fixture assembly"}, sessionCookie)
+	var createResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	upload := postMultipartFileWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/models", "model", "fixture.step",
+		[]byte("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"), sessionCookie)
+	if upload.Code != http.StatusCreated {
+		t.Fatalf("upload status = %d, body = %s", upload.Code, upload.Body.String())
+	}
+
+	document := getWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document", sessionCookie)
+	type occurrenceResponse struct {
+		Document struct {
+			Revision int `json:"revision"`
+			Assembly struct {
+				Occurrences []struct {
+					ID         string `json:"id"`
+					Name       string `json:"name"`
+					Suppressed bool   `json:"suppressed"`
+					Transform  struct {
+						Matrix [16]float64 `json:"matrix"`
+					} `json:"transform"`
+				} `json:"occurrences"`
+			} `json:"assembly"`
+		} `json:"document"`
+	}
+	decode := func(body []byte) occurrenceResponse {
+		t.Helper()
+		var response occurrenceResponse
+		if err := json.Unmarshal(body, &response); err != nil {
+			t.Fatalf("decode occurrence response: %v", err)
+		}
+		return response
+	}
+	initial := decode(document.Body.Bytes())
+	occurrenceID := initial.Document.Assembly.Occurrences[0].ID
+	baseURL := "/api/v1/projects/" + createResponse.Project.ID + "/cad-document/occurrences/"
+
+	duplicate := postJSONWithCookie(t, router, baseURL+occurrenceID+"/duplicate", map[string]any{
+		"expected_revision": initial.Document.Revision,
+	}, sessionCookie)
+	if duplicate.Code != http.StatusOK {
+		t.Fatalf("duplicate status = %d, body = %s", duplicate.Code, duplicate.Body.String())
+	}
+	duplicated := decode(duplicate.Body.Bytes())
+	if len(duplicated.Document.Assembly.Occurrences) != 2 {
+		t.Fatalf("duplicate occurrences = %+v", duplicated.Document.Assembly.Occurrences)
+	}
+	duplicateID := duplicated.Document.Assembly.Occurrences[1].ID
+
+	stale := postJSONWithCookie(t, router, baseURL+duplicateID+"/duplicate", map[string]any{
+		"expected_revision": initial.Document.Revision,
+	}, sessionCookie)
+	if stale.Code != http.StatusConflict {
+		t.Fatalf("stale duplicate status = %d, body = %s", stale.Code, stale.Body.String())
+	}
+
+	transform := [16]float64{1, 0, 0, 25, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}
+	update := patchJSONWithCookie(t, router, baseURL+duplicateID, map[string]any{
+		"expected_revision": duplicated.Document.Revision,
+		"name":              "Fixture right", "suppressed": true, "transform": map[string]any{"matrix": transform},
+	}, sessionCookie)
+	if update.Code != http.StatusOK {
+		t.Fatalf("update status = %d, body = %s", update.Code, update.Body.String())
+	}
+	updated := decode(update.Body.Bytes())
+	if got := updated.Document.Assembly.Occurrences[1]; got.Name != "Fixture right" || !got.Suppressed || got.Transform.Matrix != transform {
+		t.Fatalf("updated occurrence = %+v", got)
+	}
+
+	move := postJSONWithCookie(t, router, baseURL+duplicateID+"/move", map[string]any{
+		"expected_revision": updated.Document.Revision, "target_index": 0,
+	}, sessionCookie)
+	if move.Code != http.StatusOK {
+		t.Fatalf("move status = %d, body = %s", move.Code, move.Body.String())
+	}
+	moved := decode(move.Body.Bytes())
+	if moved.Document.Assembly.Occurrences[0].ID != duplicateID {
+		t.Fatalf("moved occurrences = %+v", moved.Document.Assembly.Occurrences)
+	}
+
+	deleted := deleteJSONWithCookie(t, router, baseURL+duplicateID, map[string]any{
+		"expected_revision": moved.Document.Revision,
+	}, sessionCookie)
+	if deleted.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, body = %s", deleted.Code, deleted.Body.String())
+	}
+	deletedResponse := decode(deleted.Body.Bytes())
+	if len(deletedResponse.Document.Assembly.Occurrences) != 1 {
+		t.Fatalf("deleted occurrences = %+v", deletedResponse.Document.Assembly.Occurrences)
+	}
+
+	undo := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/cad-document/history/undo", map[string]any{
+		"expected_revision": deletedResponse.Document.Revision,
+	}, sessionCookie)
+	if undo.Code != http.StatusOK {
+		t.Fatalf("undo delete status = %d, body = %s", undo.Code, undo.Body.String())
+	}
+	if got := decode(undo.Body.Bytes()).Document.Assembly.Occurrences; len(got) != 2 || got[0].ID != duplicateID {
+		t.Fatalf("restored occurrences = %+v", got)
+	}
+}

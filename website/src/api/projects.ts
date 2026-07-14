@@ -4,6 +4,7 @@ import type {
   UpdateProjectPayload,
   CADBoxFeature,
   CADTransform,
+	UpdateCADAssemblyOccurrencePayload,
   CreateProjectAgentConversationPayload,
   ProjectAgentConversationResponse,
   ProjectAgentConversationsResponse,
@@ -42,6 +43,37 @@ export function fetchProjectGeometryDocument(projectId: string) {
 
 export function fetchProjectCADDocument(projectId: string) {
   return client.get<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document`)
+}
+
+export function duplicateProjectCADOccurrence(projectId: string, occurrenceId: string, expectedRevision: number) {
+	return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/occurrences/${occurrenceId}/duplicate`, {
+		expected_revision: expectedRevision,
+	})
+}
+
+export function updateProjectCADOccurrence(
+	projectId: string,
+	occurrenceId: string,
+	payload: UpdateCADAssemblyOccurrencePayload,
+	expectedRevision: number,
+) {
+	return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/occurrences/${occurrenceId}`, {
+		...payload,
+		expected_revision: expectedRevision,
+	})
+}
+
+export function moveProjectCADOccurrence(projectId: string, occurrenceId: string, targetIndex: number, expectedRevision: number) {
+	return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/occurrences/${occurrenceId}/move`, {
+		target_index: targetIndex,
+		expected_revision: expectedRevision,
+	})
+}
+
+export function deleteProjectCADOccurrence(projectId: string, occurrenceId: string, expectedRevision: number) {
+	return client.delete<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/occurrences/${occurrenceId}`, {
+		data: { expected_revision: expectedRevision },
+	})
 }
 
 export function updateProjectCADModelTransform(projectId: string, modelId: string, transform: CADTransform, expectedRevision: number) {

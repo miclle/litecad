@@ -4,6 +4,8 @@ import client from './client'
 import {
   deleteProject,
   deleteProjectCADNode,
+	deleteProjectCADOccurrence,
+	duplicateProjectCADOccurrence,
   fetchProjectCADDocument,
   fetchProjectCADHistory,
   createProjectAgentConversation,
@@ -26,6 +28,8 @@ import {
   restoreProjectModelRevision,
   undoProjectCADDocument,
   updateProjectCADNodeTransform,
+	updateProjectCADOccurrence,
+	moveProjectCADOccurrence,
   updateProjectCADModelTransform,
   updateProject,
   updateProjectParametricArtifact,
@@ -147,6 +151,32 @@ describe('project API', () => {
       data: { expected_revision: 9 },
     })
   })
+
+	test('authors durable CAD assembly occurrences', () => {
+		const transform = {
+			matrix: [1, 0, 0, 24, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] as const,
+		}
+
+		duplicateProjectCADOccurrence('prj_01test', 'occ_01test', 4)
+		updateProjectCADOccurrence('prj_01test', 'occ_01test', { name: 'Fixture right', suppressed: true, transform }, 5)
+		moveProjectCADOccurrence('prj_01test', 'occ_01test', 0, 6)
+		deleteProjectCADOccurrence('prj_01test', 'occ_01test', 7)
+
+		expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/occurrences/occ_01test/duplicate', { expected_revision: 4 })
+		expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/cad-document/occurrences/occ_01test', {
+			name: 'Fixture right',
+			suppressed: true,
+			transform,
+			expected_revision: 5,
+		})
+		expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/occurrences/occ_01test/move', {
+			target_index: 0,
+			expected_revision: 6,
+		})
+		expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/cad-document/occurrences/occ_01test', {
+			data: { expected_revision: 7 },
+		})
+	})
 
   test('adds a project CAD model box-union feature', () => {
     const box = {

@@ -65,6 +65,7 @@ type CADAssemblyOccurrence struct {
 	ModelID         string       `json:"model_id"`
 	ModelRevisionID string       `json:"model_revision_id"`
 	Name            string       `json:"name"`
+	Suppressed      bool         `json:"suppressed"`
 	Transform       CADTransform `json:"transform"`
 }
 
@@ -345,15 +346,21 @@ func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Proje
 		deletedNode := state.Nodes[nodeIndex]
 		var deletedOccurrence *CADAssemblyOccurrence
 		deletedOccurrenceIndex := -1
+		deletedOccurrences := []cadDeletedAssemblyOccurrence{}
 		if deletedNode.ParentNodeID == "" {
-			for index := range state.Assembly.Occurrences {
-				if state.Assembly.Occurrences[index].NodeID == deletedNode.ID {
-					occurrence := state.Assembly.Occurrences[index]
-					deletedOccurrence = &occurrence
-					deletedOccurrenceIndex = index
-					state.Assembly.Occurrences = append(state.Assembly.Occurrences[:index], state.Assembly.Occurrences[index+1:]...)
-					break
+			nextOccurrences := make([]CADAssemblyOccurrence, 0, len(state.Assembly.Occurrences))
+			for index, occurrence := range state.Assembly.Occurrences {
+				if occurrence.NodeID != deletedNode.ID {
+					nextOccurrences = append(nextOccurrences, occurrence)
+					continue
 				}
+				deletedOccurrences = append(deletedOccurrences, cadDeletedAssemblyOccurrence{Occurrence: occurrence, Index: index})
+			}
+			state.Assembly.Occurrences = nextOccurrences
+			if len(deletedOccurrences) > 0 {
+				occurrence := deletedOccurrences[0].Occurrence
+				deletedOccurrence = &occurrence
+				deletedOccurrenceIndex = deletedOccurrences[0].Index
 			}
 		}
 		deletedNodes := []cadDeletedDocumentNode{{Node: deletedNode, Index: nodeIndex}}
@@ -401,6 +408,7 @@ func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Proje
 			Nodes:           deletedNodes,
 			Occurrence:      deletedOccurrence,
 			OccurrenceIndex: deletedOccurrenceIndex,
+			Occurrences:     deletedOccurrences,
 			Operation:       operation,
 			OperationIndex:  operationIndex,
 		}); err != nil {
@@ -710,15 +718,13 @@ func upgradeCADDocumentState(project entity.Project, schemaVersion int, state ca
 }
 
 func syncCADAssemblyOccurrence(state cadDocumentState, node CADDocumentNode, model entity.ProjectModel, changed bool) (cadDocumentState, bool) {
+	found := false
 	for index := range state.Assembly.Occurrences {
 		occurrence := &state.Assembly.Occurrences[index]
 		if occurrence.ModelID != model.ID {
 			continue
 		}
-		if occurrence.ID != "occurrence_"+model.ID {
-			occurrence.ID = "occurrence_" + model.ID
-			changed = true
-		}
+		found = true
 		if occurrence.NodeID != node.ID {
 			occurrence.NodeID = node.ID
 			changed = true
@@ -727,7 +733,7 @@ func syncCADAssemblyOccurrence(state cadDocumentState, node CADDocumentNode, mod
 			occurrence.ModelRevisionID = model.CurrentRevisionID
 			changed = true
 		}
-		if occurrence.Name != model.OriginalFilename {
+		if strings.TrimSpace(occurrence.Name) == "" {
 			occurrence.Name = model.OriginalFilename
 			changed = true
 		}
@@ -735,6 +741,8 @@ func syncCADAssemblyOccurrence(state cadDocumentState, node CADDocumentNode, mod
 			occurrence.Transform = identityCADTransform()
 			changed = true
 		}
+	}
+	if found {
 		return state, changed
 	}
 	state.Assembly.Occurrences = append(state.Assembly.Occurrences, CADAssemblyOccurrence{
@@ -871,7 +879,9 @@ func publicProjectCADDocument(document entity.ProjectCADDocument, state cadDocum
 	}
 	occurrenceByNodeID := make(map[string]CADAssemblyOccurrence, len(occurrences))
 	for _, occurrence := range occurrences {
-		occurrenceByNodeID[occurrence.NodeID] = occurrence
+		if _, exists := occurrenceByNodeID[occurrence.NodeID]; !exists {
+			occurrenceByNodeID[occurrence.NodeID] = occurrence
+		}
 	}
 	for index := range nodes {
 		if occurrence, ok := occurrenceByNodeID[nodes[index].ID]; ok {

@@ -31,13 +31,14 @@ type cadBoxUnionHistoryCommand struct {
 }
 
 type cadDeleteNodeHistoryCommand struct {
-	Node            CADDocumentNode          `json:"node"`
-	NodeIndex       int                      `json:"node_index"`
-	Nodes           []cadDeletedDocumentNode `json:"nodes,omitempty"`
-	Occurrence      *CADAssemblyOccurrence   `json:"occurrence,omitempty"`
-	OccurrenceIndex int                      `json:"occurrence_index,omitempty"`
-	Operation       CADOperation             `json:"operation"`
-	OperationIndex  int                      `json:"operation_index"`
+	Node            CADDocumentNode                `json:"node"`
+	NodeIndex       int                            `json:"node_index"`
+	Nodes           []cadDeletedDocumentNode       `json:"nodes,omitempty"`
+	Occurrence      *CADAssemblyOccurrence         `json:"occurrence,omitempty"`
+	OccurrenceIndex int                            `json:"occurrence_index,omitempty"`
+	Occurrences     []cadDeletedAssemblyOccurrence `json:"occurrences,omitempty"`
+	Operation       CADOperation                   `json:"operation"`
+	OperationIndex  int                            `json:"operation_index"`
 }
 
 type cadParameterChangeHistoryCommand struct {
@@ -49,6 +50,32 @@ type cadParameterChangeHistoryCommand struct {
 type cadDeletedDocumentNode struct {
 	Node  CADDocumentNode `json:"node"`
 	Index int             `json:"index"`
+}
+
+type cadDeletedAssemblyOccurrence struct {
+	Occurrence CADAssemblyOccurrence `json:"occurrence"`
+	Index      int                   `json:"index"`
+}
+
+type cadOccurrenceCreateHistoryCommand struct {
+	Occurrence CADAssemblyOccurrence `json:"occurrence"`
+	Index      int                   `json:"index"`
+}
+
+type cadOccurrenceUpdateHistoryCommand struct {
+	Before CADAssemblyOccurrence `json:"before"`
+	After  CADAssemblyOccurrence `json:"after"`
+}
+
+type cadOccurrenceMoveHistoryCommand struct {
+	OccurrenceID string `json:"occurrence_id"`
+	BeforeIndex  int    `json:"before_index"`
+	AfterIndex   int    `json:"after_index"`
+}
+
+type cadOccurrenceDeleteHistoryCommand struct {
+	Occurrence CADAssemblyOccurrence `json:"occurrence"`
+	Index      int                   `json:"index"`
 }
 
 // ModifyProjectCADHistoryInput moves one project document through persisted history.
@@ -324,6 +351,10 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 		if len(deletedNodes) == 0 {
 			deletedNodes = []cadDeletedDocumentNode{{Node: command.Node, Index: command.NodeIndex}}
 		}
+		deletedOccurrences := command.Occurrences
+		if len(deletedOccurrences) == 0 && command.Occurrence != nil {
+			deletedOccurrences = []cadDeletedAssemblyOccurrence{{Occurrence: *command.Occurrence, Index: command.OccurrenceIndex}}
+		}
 		if forward {
 			for _, deletedNode := range deletedNodes {
 				nodeIndex := cadDocumentNodeIndex(state.Nodes, deletedNode.Node.ID)
@@ -332,12 +363,8 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 				}
 				state.Nodes = append(state.Nodes[:nodeIndex], state.Nodes[nodeIndex+1:]...)
 			}
-			if command.Node.ParentNodeID == "" && command.Node.ModelID != "" {
-				occurrenceID := "occurrence_" + command.Node.ModelID
-				if command.Occurrence != nil {
-					occurrenceID = command.Occurrence.ID
-				}
-				occurrenceIndex := cadAssemblyOccurrenceIndex(state.Assembly.Occurrences, occurrenceID)
+			for _, deletedOccurrence := range deletedOccurrences {
+				occurrenceIndex := cadAssemblyOccurrenceIndex(state.Assembly.Occurrences, deletedOccurrence.Occurrence.ID)
 				if occurrenceIndex < 0 {
 					return ErrInvalidCADDocumentInput
 				}
@@ -348,8 +375,10 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 			for _, deletedNode := range deletedNodes {
 				state.Nodes = insertCADDocumentNode(state.Nodes, deletedNode.Index, deletedNode.Node)
 			}
-			if command.Occurrence != nil {
-				state.Assembly.Occurrences = insertCADAssemblyOccurrence(state.Assembly.Occurrences, command.OccurrenceIndex, *command.Occurrence)
+			if len(deletedOccurrences) > 0 {
+				for _, deletedOccurrence := range deletedOccurrences {
+					state.Assembly.Occurrences = insertCADAssemblyOccurrence(state.Assembly.Occurrences, deletedOccurrence.Index, deletedOccurrence.Occurrence)
+				}
 			} else if command.Node.ParentNodeID == "" && command.Node.ModelID != "" {
 				occurrence, err := legacyCADAssemblyOccurrence(ctx, tx, entry.ProjectID, command.Node)
 				if err != nil {
@@ -359,6 +388,60 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 				state.Assembly.Occurrences = insertCADAssemblyOccurrence(state.Assembly.Occurrences, occurrenceIndex, occurrence)
 			}
 			state.Operations = removeCADOperation(state.Operations, command.Operation.ID)
+		}
+	case "occurrence-create":
+		var command cadOccurrenceCreateHistoryCommand
+		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
+			return fmt.Errorf("decode occurrence create history command: %w", err)
+		}
+		if forward {
+			state.Assembly.Occurrences = insertCADAssemblyOccurrence(state.Assembly.Occurrences, command.Index, command.Occurrence)
+		} else {
+			index := cadAssemblyOccurrenceIndex(state.Assembly.Occurrences, command.Occurrence.ID)
+			if index < 0 {
+				return ErrInvalidCADDocumentInput
+			}
+			state.Assembly.Occurrences = append(state.Assembly.Occurrences[:index], state.Assembly.Occurrences[index+1:]...)
+		}
+	case "occurrence-update":
+		var command cadOccurrenceUpdateHistoryCommand
+		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
+			return fmt.Errorf("decode occurrence update history command: %w", err)
+		}
+		value := command.Before
+		if forward {
+			value = command.After
+		}
+		index := cadAssemblyOccurrenceIndex(state.Assembly.Occurrences, value.ID)
+		if index < 0 {
+			return ErrInvalidCADDocumentInput
+		}
+		state.Assembly.Occurrences[index] = value
+	case "occurrence-move":
+		var command cadOccurrenceMoveHistoryCommand
+		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
+			return fmt.Errorf("decode occurrence move history command: %w", err)
+		}
+		targetIndex := command.BeforeIndex
+		if forward {
+			targetIndex = command.AfterIndex
+		}
+		if err := moveCADAssemblyOccurrence(state, command.OccurrenceID, targetIndex); err != nil {
+			return err
+		}
+	case "occurrence-delete":
+		var command cadOccurrenceDeleteHistoryCommand
+		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
+			return fmt.Errorf("decode occurrence delete history command: %w", err)
+		}
+		if forward {
+			index := cadAssemblyOccurrenceIndex(state.Assembly.Occurrences, command.Occurrence.ID)
+			if index < 0 {
+				return ErrInvalidCADDocumentInput
+			}
+			state.Assembly.Occurrences = append(state.Assembly.Occurrences[:index], state.Assembly.Occurrences[index+1:]...)
+		} else {
+			state.Assembly.Occurrences = insertCADAssemblyOccurrence(state.Assembly.Occurrences, command.Index, command.Occurrence)
 		}
 	case "parameter-change", "model-revision-restore":
 		var command cadParameterChangeHistoryCommand

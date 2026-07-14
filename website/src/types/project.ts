@@ -162,7 +162,14 @@ export interface CADAssemblyOccurrence {
   model_id: string
   model_revision_id: string
   name: string
+	suppressed: boolean
   transform: CADTransform
+}
+
+export interface UpdateCADAssemblyOccurrencePayload {
+	name?: string
+	suppressed?: boolean
+	transform?: CADTransform
 }
 
 export interface CADAssembly {
@@ -192,7 +199,16 @@ export interface CADHistoryEntry {
   sequence: number
   parent_entry_id?: string
   status: 'applied' | 'undone' | 'discarded'
-  command_type: 'transform' | 'box-union' | 'delete-node' | 'parameter-change' | 'model-revision-restore'
+  command_type:
+		| 'transform'
+		| 'box-union'
+		| 'delete-node'
+		| 'parameter-change'
+		| 'model-revision-restore'
+		| 'occurrence-create'
+		| 'occurrence-update'
+		| 'occurrence-move'
+		| 'occurrence-delete'
   target_id: string
   summary: string
   created_at: string
