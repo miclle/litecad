@@ -304,6 +304,17 @@
 
 **Boundary:** This phase completes the handoff item by making and documenting the license/runtime decision. Implementation only proceeds if the chosen runtime is license-compatible and testable in the browser build.
 
+- [x] **Step 1: Inspect the existing OpenSCAD boundary and single-binary serving path**
+- [x] **Step 2: Evaluate official and npm candidates for license, provenance, maintenance, size, browser loading, and output behavior**
+- [x] **Step 3: Reject bundling under the current MIT distribution policy and record explicit reconsideration gates**
+- [x] **Step 4: Synchronize README, TODO, AGENTS, architecture rules, roadmap, and handoff**
+- [x] **Step 5: Run full verification**
+- [x] **Step 6: Commit Phase 4**
+
+Decision record: `docs/openscad-browser-runtime-decision.md`
+
+Commit message: `docs(cad): decide openscad browser runtime`
+
 ### Phase 5: Nested Assembly, Mate, Constraint, And Hierarchical Suppression Semantics
 
 **Files:**

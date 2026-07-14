@@ -7,7 +7,7 @@ This note is the short cross-machine handoff for the current LiteCAD development
 ## Current Mainline
 
 - `origin/main` is at `526ce24 docs: refresh current work handoff`.
-- Local `main` is intentionally ahead of `origin/main` with the phased handoff follow-ups. The committed phases begin with `f7e4995 feat(cad): persist export artifact history` and `bacb659 feat(cad): persist inspection records`.
+- Local `main` is intentionally ahead of `origin/main` with the phased handoff follow-ups. The committed phases begin with `f7e4995 feat(cad): persist export artifact history`, `bacb659 feat(cad): persist inspection records`, and `2691219 feat(cad): record feature dsl graph history`.
 - The old assembly and tapered-extrude feature branches have already been merged and cleaned up.
 - Continue in the current checkout unless the user explicitly asks to publish; do not push these local phase commits implicitly.
 
@@ -34,11 +34,17 @@ This note is the short cross-machine handoff for the current LiteCAD development
 - History reports stable top-level node IDs as added, updated, or removed; Undo/Redo replays the before/after model revisions across reloads and devices.
 - This is complete-source graph versioning. It is not nested boolean-operand editing, sketch constraints, durable serialized OCCT shape state, imported STEP feature history, or full B-rep feature history.
 
+### OpenSCAD Browser Runtime Decision
+
+- `docs/openscad-browser-runtime-decision.md` records an explicit rejection of the current OpenSCAD browser runtime candidates for bundled production use.
+- The official OpenSCAD and OpenSCAD WASM distributions are GPL-2.0; LiteCAD is retaining its MIT single-binary distribution policy.
+- The inspected 2026-07-13 official browser snapshot contains 10,861,236 raw bytes across JavaScript and WASM, while the current embedded production server has no precompressed asset path.
+- The official runtime can produce STL through a headless browser call, but it does not provide LiteCAD's OCCT mesh-buffer or STEP-export contracts. OpenSCAD therefore remains a parameter-editable source-draft format without browser preview, normal Save as model, or project export.
+- The docs-only decision phase passed full `task check`, `task test`, and `task test-browser`; it did not change UI, so no in-app browser verification was required.
+
 ## Last Verification
 
-The saved Feature DSL graph phase passed focused Go service/handler tests, focused Vitest component/controller/protocol tests, TypeScript build, and the deterministic Playwright workflow covering compile, save, History node details, Undo/Redo, and reload persistence.
-
-In-app browser verification passed against a local mock API/Vite stack in the Chinese UI: the graph editor compiled a valid feature-node edit and enabled Apply, rejected a parameter-envelope edit with a localized inline error, kept the 244px Inspector content width free of horizontal overflow, rendered `base · 已更新` and `slot · 已新增` in History, and showed no unrelated error state.
+The OpenSCAD runtime decision phase inspected the current worker and single-binary serving path, official OpenSCAD source/snapshots, the official WASM port, and `openscad-wasm@0.0.4`. The resulting repository decision rejects bundling the current GPL-2.0 candidates and records concrete reconsideration gates. No source dependency, generated runtime, or UI behavior changed.
 
 Full phase gates passed:
 
@@ -54,13 +60,12 @@ task test-browser
 
 ## Recommended Next Work
 
-Take the OpenSCAD browser runtime question as a decision phase before adding another runtime path. Produce a repository decision record that evaluates license compatibility, upstream maintenance, compressed/uncompressed WASM size, worker loading and single-binary serving, browser support, compile/export behavior, and whether LiteCAD should explicitly reject OpenSCAD browser compilation for now. Do not bundle a runtime without an accepted result.
+Implement the smallest real nested-assembly slice: nested occurrence grouping, hierarchical suppression propagation, API validation, tree display, preview/export filtering, History, Undo/Redo, reload persistence, and a documented mate/constraint record boundary without pretending to solve geometry.
 
 ## Larger Follow-Ups
 
 Complete each as a separate verified phase with a narrow boundary:
 
-- License-compatible OpenSCAD browser runtime selection and implementation or an explicit documented rejection.
 - Nested assembly, mate, constraint, and hierarchical suppression semantics beyond the current flat occurrence model.
 - Richer CAD measurement types and durable B-rep section geometry beyond saved viewer-derived inspection records.
 - Durable serialized kernel shape/feature state and nested feature-node editing beyond complete-source Feature DSL revisions with top-level node transitions.

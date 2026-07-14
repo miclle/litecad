@@ -38,7 +38,7 @@ Each project can own multiple Assistant conversations. New conversations start w
 6. LiteCAD stores a project-owned parametric artifact draft and opens it in the Inspector with editable parameters; durable generation telemetry remains persisted for list/detail reads.
 7. The Inspector parses OpenSCAD top-level parameters or LiteCAD DSL parameter defaults.
 8. A successfully compiled LiteCAD DSL artifact is automatically saved as a durable `.lcad.json` source model and selected in the main canvas.
-9. Saved `.lcad.json` model parameters can be edited later with immediate local feedback and automatic debounced immutable revision persistence. The Inspector lists source-model revisions and can restore an earlier version through CAD History; `.scad` parameter persistence remains a storage capability until an OpenSCAD browser runtime is selected.
+9. Saved `.lcad.json` model parameters can be edited later with immediate local feedback and automatic debounced immutable revision persistence. The Inspector lists source-model revisions and can restore an earlier version through CAD History; `.scad` parameter persistence remains a storage capability because the [OpenSCAD browser runtime decision](openscad-browser-runtime-decision.md) rejects bundling the current GPL-2.0 candidates into LiteCAD's MIT single-binary distribution.
 
 ## Generated Model Workflow
 
