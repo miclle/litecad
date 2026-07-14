@@ -6,7 +6,9 @@ import { useProjectStepExportController } from './use-project-step-export-contro
 
 const targets: StepExportTarget[] = [
   {
+	occurrenceId: 'occurrence_mdl_a',
     modelId: 'mdl_a',
+	modelRevisionId: 'mvr_a',
     sourceFormat: 'step',
     displayName: 'A',
     sourceFilename: 'a.step',
@@ -14,7 +16,9 @@ const targets: StepExportTarget[] = [
     operations: [],
   },
   {
+	occurrenceId: 'occurrence_mdl_b',
     modelId: 'mdl_b',
+	modelRevisionId: 'mvr_b',
     sourceFormat: 'step',
     displayName: 'B',
     sourceFilename: 'b.step',
@@ -35,13 +39,13 @@ describe('useProjectStepExportController', () => {
       { initialProps: { nextTargets: targets } },
     )
 
-    await waitFor(() => expect([...result.current.selectedTargetIDs].sort()).toEqual(['mdl_a', 'mdl_b']))
+		await waitFor(() => expect([...result.current.selectedTargetIDs].sort()).toEqual(['occurrence_mdl_a', 'occurrence_mdl_b']))
 
-    act(() => result.current.toggleTarget('mdl_b'))
-    expect([...result.current.selectedTargetIDs]).toEqual(['mdl_a'])
+		act(() => result.current.toggleTarget('occurrence_mdl_b'))
+		expect([...result.current.selectedTargetIDs]).toEqual(['occurrence_mdl_a'])
 
     rerender({ nextTargets: targets.slice(0, 1) })
-    await waitFor(() => expect([...result.current.selectedTargetIDs]).toEqual(['mdl_a']))
+		await waitFor(() => expect([...result.current.selectedTargetIDs]).toEqual(['occurrence_mdl_a']))
   })
 
   it('exports selected models separately and records per-model status', async () => {

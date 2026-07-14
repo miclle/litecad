@@ -31,11 +31,13 @@ type cadBoxUnionHistoryCommand struct {
 }
 
 type cadDeleteNodeHistoryCommand struct {
-	Node           CADDocumentNode          `json:"node"`
-	NodeIndex      int                      `json:"node_index"`
-	Nodes          []cadDeletedDocumentNode `json:"nodes,omitempty"`
-	Operation      CADOperation             `json:"operation"`
-	OperationIndex int                      `json:"operation_index"`
+	Node            CADDocumentNode          `json:"node"`
+	NodeIndex       int                      `json:"node_index"`
+	Nodes           []cadDeletedDocumentNode `json:"nodes,omitempty"`
+	Occurrence      *CADAssemblyOccurrence   `json:"occurrence,omitempty"`
+	OccurrenceIndex int                      `json:"occurrence_index,omitempty"`
+	Operation       CADOperation             `json:"operation"`
+	OperationIndex  int                      `json:"operation_index"`
 }
 
 type cadParameterChangeHistoryCommand struct {
@@ -292,15 +294,15 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
 			return fmt.Errorf("decode transform history command: %w", err)
 		}
-		nodeIndex := cadDocumentNodeIndex(state.Nodes, command.NodeID)
-		if nodeIndex < 0 {
-			return ErrInvalidCADDocumentInput
-		}
 		if forward {
-			state.Nodes[nodeIndex].Transform = command.After
+			if _, err := setCADDocumentNodeTransform(state, command.NodeID, command.After); err != nil {
+				return err
+			}
 			state.Operations = insertCADOperation(state.Operations, command.OperationIndex, command.Operation)
 		} else {
-			state.Nodes[nodeIndex].Transform = command.Before
+			if _, err := setCADDocumentNodeTransform(state, command.NodeID, command.Before); err != nil {
+				return err
+			}
 			state.Operations = removeCADOperation(state.Operations, command.Operation.ID)
 		}
 	case "box-union":
@@ -330,10 +332,31 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 				}
 				state.Nodes = append(state.Nodes[:nodeIndex], state.Nodes[nodeIndex+1:]...)
 			}
+			if command.Node.ParentNodeID == "" && command.Node.ModelID != "" {
+				occurrenceID := "occurrence_" + command.Node.ModelID
+				if command.Occurrence != nil {
+					occurrenceID = command.Occurrence.ID
+				}
+				occurrenceIndex := cadAssemblyOccurrenceIndex(state.Assembly.Occurrences, occurrenceID)
+				if occurrenceIndex < 0 {
+					return ErrInvalidCADDocumentInput
+				}
+				state.Assembly.Occurrences = append(state.Assembly.Occurrences[:occurrenceIndex], state.Assembly.Occurrences[occurrenceIndex+1:]...)
+			}
 			state.Operations = insertCADOperation(state.Operations, command.OperationIndex, command.Operation)
 		} else {
 			for _, deletedNode := range deletedNodes {
 				state.Nodes = insertCADDocumentNode(state.Nodes, deletedNode.Index, deletedNode.Node)
+			}
+			if command.Occurrence != nil {
+				state.Assembly.Occurrences = insertCADAssemblyOccurrence(state.Assembly.Occurrences, command.OccurrenceIndex, *command.Occurrence)
+			} else if command.Node.ParentNodeID == "" && command.Node.ModelID != "" {
+				occurrence, err := legacyCADAssemblyOccurrence(ctx, tx, entry.ProjectID, command.Node)
+				if err != nil {
+					return err
+				}
+				occurrenceIndex := cadAssemblyOccurrenceInsertIndex(state.Nodes, command.Node.ID)
+				state.Assembly.Occurrences = insertCADAssemblyOccurrence(state.Assembly.Occurrences, occurrenceIndex, occurrence)
 			}
 			state.Operations = removeCADOperation(state.Operations, command.Operation.ID)
 		}
@@ -386,6 +409,58 @@ func cadDocumentNodeIndex(nodes []CADDocumentNode, nodeID string) int {
 	return -1
 }
 
+func cadAssemblyOccurrenceIndex(occurrences []CADAssemblyOccurrence, occurrenceID string) int {
+	for index := range occurrences {
+		if occurrences[index].ID == occurrenceID {
+			return index
+		}
+	}
+	return -1
+}
+
+func cadAssemblyOccurrenceInsertIndex(nodes []CADDocumentNode, nodeID string) int {
+	index := 0
+	for _, node := range nodes {
+		if node.ID == nodeID {
+			return index
+		}
+		if node.ParentNodeID == "" && node.ModelID != "" {
+			index++
+		}
+	}
+	return index
+}
+
+func legacyCADAssemblyOccurrence(ctx context.Context, tx *gorm.DB, projectID string, node CADDocumentNode) (CADAssemblyOccurrence, error) {
+	var model entity.ProjectModel
+	if err := tx.WithContext(ctx).First(&model, "id = ? AND project_id = ?", node.ModelID, projectID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return CADAssemblyOccurrence{}, ErrProjectNotFound
+		}
+		return CADAssemblyOccurrence{}, fmt.Errorf("load legacy delete occurrence model: %w", err)
+	}
+	revision, err := ensureProjectModelRevision(ctx, tx, &model)
+	if err != nil {
+		return CADAssemblyOccurrence{}, err
+	}
+	transform := node.Transform
+	if transform.Matrix == ([16]float64{}) {
+		transform = identityCADTransform()
+	}
+	name := node.Name
+	if name == "" {
+		name = model.OriginalFilename
+	}
+	return CADAssemblyOccurrence{
+		ID:              "occurrence_" + model.ID,
+		NodeID:          node.ID,
+		ModelID:         model.ID,
+		ModelRevisionID: revision.ID,
+		Name:            name,
+		Transform:       transform,
+	}, nil
+}
+
 func removeCADOperation(operations []CADOperation, operationID string) []CADOperation {
 	for index := range operations {
 		if operations[index].ID == operationID {
@@ -413,4 +488,14 @@ func insertCADDocumentNode(nodes []CADDocumentNode, index int, node CADDocumentN
 	copy(nodes[index+1:], nodes[index:])
 	nodes[index] = node
 	return nodes
+}
+
+func insertCADAssemblyOccurrence(occurrences []CADAssemblyOccurrence, index int, occurrence CADAssemblyOccurrence) []CADAssemblyOccurrence {
+	if index < 0 || index > len(occurrences) {
+		index = len(occurrences)
+	}
+	occurrences = append(occurrences, CADAssemblyOccurrence{})
+	copy(occurrences[index+1:], occurrences[index:])
+	occurrences[index] = occurrence
+	return occurrences
 }

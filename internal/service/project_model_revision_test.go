@@ -161,6 +161,13 @@ func TestProjectModelRevisionListAndRestore(t *testing.T) {
 	if len(revisions) != 2 || revisions[0].Sequence != 2 || !revisions[0].IsCurrent || revisions[1].Sequence != 1 || revisions[1].IsCurrent {
 		t.Fatalf("revisions = %+v", revisions)
 	}
+	revisionSource, err := svc.GetProjectModelRevisionSource(ctx, user.ID, project.ID, model.ID, revisions[1].ID)
+	if err != nil {
+		t.Fatalf("GetProjectModelRevisionSource returned error: %v", err)
+	}
+	if revisionSource.Revision.ID != revisions[1].ID || string(revisionSource.Data) != artifact.SourceCode {
+		t.Fatalf("revision source = %+v / %q, want initial immutable source", revisionSource.Revision, revisionSource.Data)
+	}
 
 	expectedRevision := projectCADRevision(t, svc, ctx, user.ID, project.ID)
 	restored, err := svc.RestoreProjectModelRevision(ctx, RestoreProjectModelRevisionInput{

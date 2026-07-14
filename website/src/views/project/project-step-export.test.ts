@@ -38,10 +38,24 @@ const baseModel = {
 const cadDocument = {
   project_id: 'prj_01test',
   id: 'doc_01test',
-  schema_version: 1,
+  schema_version: 2,
   revision: 7,
   history: { head_id: 'hist_07test', can_undo: true, can_redo: false },
   unit: 'millimetre',
+	assembly: {
+		id: 'assembly_prj_01test',
+		name: 'Test assembly',
+		occurrences: [
+			{
+				id: 'occurrence_mdl_step',
+				node_id: 'node_mdl_step',
+				model_id: 'mdl_step',
+				model_revision_id: 'mvr_base',
+				name: 'bracket.step',
+				transform: { matrix: [1, 0, 0, 24, 0, 1, 0, -6, 0, 0, 1, 3, 0, 0, 0, 1] },
+			},
+		],
+	},
   nodes: [
     {
       id: 'node_mdl_step',
@@ -110,6 +124,20 @@ describe('project STEP export helpers', () => {
     } satisfies ProjectModel
     const exportDocument = {
       ...cadDocument,
+		assembly: {
+			...cadDocument.assembly,
+			occurrences: [
+				...cadDocument.assembly.occurrences,
+				{
+					id: 'occurrence_mdl_lcad',
+					node_id: 'node_mdl_lcad',
+					model_id: 'mdl_lcad',
+					model_revision_id: 'mvr_base',
+					name: 'feature-dsl-bracket-litecad.lcad.json',
+					transform: { matrix: [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+				},
+			],
+		},
       nodes: [
         ...cadDocument.nodes,
         {
@@ -126,7 +154,9 @@ describe('project STEP export helpers', () => {
 
     expect(buildStepExportTargets([stepModel, lcadModel, stlModel], exportDocument)).toEqual([
       {
+		occurrenceId: 'occurrence_mdl_step',
         modelId: 'mdl_step',
+		modelRevisionId: 'mvr_base',
         sourceFormat: 'step',
         displayName: 'Mount bracket',
         sourceFilename: 'bracket.step',
@@ -139,21 +169,30 @@ describe('project STEP export helpers', () => {
             box: { origin: [10, 0, 0], size: [5, 5, 5] },
           },
           {
-            id: 'op_transform',
+			id: 'occurrence_mdl_step_placement',
             type: 'transform',
             modelId: 'mdl_step',
-            matrix: [1, 0, 0, 12, 0, 1, 0, -4, 0, 0, 1, 8, 0, 0, 0, 1],
+			matrix: [1, 0, 0, 24, 0, 1, 0, -6, 0, 0, 1, 3, 0, 0, 0, 1],
           },
         ],
       },
       {
+		occurrenceId: 'occurrence_mdl_lcad',
         modelId: 'mdl_lcad',
+		modelRevisionId: 'mvr_base',
         sourceFormat: 'lcad',
         displayName: 'Feature DSL bracket',
         sourceFilename: 'feature-dsl-bracket-litecad.lcad.json',
         downloadFilename: 'feature-dsl-bracket-litecad.lcad-litecad-r7.step',
         parameterValues: { width: 96 },
-        operations: [],
+		operations: [
+			{
+				id: 'occurrence_mdl_lcad_placement',
+				type: 'transform',
+				modelId: 'mdl_lcad',
+				matrix: [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+			},
+		],
       },
     ])
   })
@@ -171,6 +210,19 @@ describe('project STEP export helpers', () => {
     } satisfies ProjectModel
     const document = {
       ...cadDocument,
+		assembly: {
+			...cadDocument.assembly,
+			occurrences: [
+				{
+					id: 'occurrence_mdl_retained',
+					node_id: 'node_mdl_retained',
+					model_id: 'mdl_retained',
+					model_revision_id: 'mvr_base',
+					name: 'retained.step',
+					transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+				},
+			],
+		},
       nodes: [
         {
           id: 'node_mdl_retained',
@@ -209,7 +261,9 @@ describe('project STEP export helpers', () => {
   test('builds default and filtered export selections', () => {
     const targets = [
       {
+		occurrenceId: 'occurrence_mdl_a',
         modelId: 'mdl_a',
+		modelRevisionId: 'mvr_a',
         sourceFormat: 'step',
         displayName: 'A',
         sourceFilename: 'a.step',
@@ -217,7 +271,9 @@ describe('project STEP export helpers', () => {
         operations: [],
       },
       {
+		occurrenceId: 'occurrence_mdl_b',
         modelId: 'mdl_b',
+		modelRevisionId: 'mvr_b',
         sourceFormat: 'step',
         displayName: 'B',
         sourceFilename: 'b.step',
@@ -226,8 +282,8 @@ describe('project STEP export helpers', () => {
       },
     ] satisfies StepExportTarget[]
 
-    expect([...defaultSelectedStepExportTargetIDs(targets)]).toEqual(['mdl_a', 'mdl_b'])
-    expect(selectedStepExportTargets(targets, new Set(['mdl_b']))).toEqual([targets[1]])
+		expect([...defaultSelectedStepExportTargetIDs(targets)]).toEqual(['occurrence_mdl_a', 'occurrence_mdl_b'])
+		expect(selectedStepExportTargets(targets, new Set(['occurrence_mdl_b']))).toEqual([targets[1]])
   })
 
   test('creates a browser-downloadable STEP blob', async () => {

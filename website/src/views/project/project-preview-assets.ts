@@ -31,6 +31,10 @@ export type ProjectPreviewSummaryInput = {
 }
 
 export type ProjectModelTreeGroup = {
+	assemblyId: string
+	assemblyName: string
+	occurrenceId: string
+	modelRevisionId: string
   model: ProjectModel
   sourceNodeId: string
   displayName: string
@@ -47,7 +51,9 @@ export function visibleProjectModels(models: ProjectModel[], cadDocument?: Proje
   if (!cadDocument) {
     return models
   }
-  const visibleSourceModelIds = new Set(cadDocument.nodes.filter((node) => node.model_id).map((node) => node.model_id))
+	const visibleSourceModelIds = new Set(
+		cadDocument.assembly?.occurrences.map((occurrence) => occurrence.model_id) ?? cadDocument.nodes.filter((node) => node.model_id).map((node) => node.model_id),
+	)
   return models.filter((model) => visibleSourceModelIds.has(model.id))
 }
 
@@ -63,14 +69,22 @@ export function buildProjectModelTree(models: ProjectModel[], cadDocument?: Proj
     componentNodesByParentID.set(node.parent_node_id, nodes)
   }
 
-  const visibleModels = visibleProjectModels(models, cadDocument)
+	const modelByID = new Map(models.map((model) => [model.id, model]))
+	const visibleModels = cadDocument?.assembly
+		? cadDocument.assembly.occurrences.flatMap((occurrence) => {
+				const model = modelByID.get(occurrence.model_id)
+				return model ? [model] : []
+			})
+		: visibleProjectModels(models, cadDocument)
+	const occurrenceByModelID = new Map(cadDocument?.assembly?.occurrences.map((occurrence) => [occurrence.model_id, occurrence]) ?? [])
   const displayNameCounts = new Map<string, number>()
   for (const model of visibleModels) {
     displayNameCounts.set(getModelDisplayName(model), (displayNameCounts.get(getModelDisplayName(model)) ?? 0) + 1)
   }
   const displayNameIndexes = new Map<string, number>()
 
-  return visibleModels.map((model) => {
+	return visibleModels.map((model) => {
+		const occurrence = occurrenceByModelID.get(model.id)
     const parentNodeID = `node_${model.id}`
     const documentChildren = componentNodesByParentID.get(parentNodeID) ?? []
     const metadataChildren =
@@ -87,8 +101,12 @@ export function buildProjectModelTree(models: ProjectModel[], cadDocument?: Proj
     const duplicateCount = displayNameCounts.get(baseDisplayName) ?? 0
     displayNameIndexes.set(baseDisplayName, duplicateIndex)
 
-    return {
-      model,
+		return {
+			assemblyId: cadDocument?.assembly?.id ?? '',
+			assemblyName: cadDocument?.assembly?.name ?? '',
+			occurrenceId: occurrence?.id ?? '',
+			modelRevisionId: occurrence?.model_revision_id ?? model.current_revision_id,
+			model,
       sourceNodeId: parentNodeID,
       displayName: duplicateCount > 1 ? `${baseDisplayName} · ${duplicateIndex}` : baseDisplayName,
       children: metadataChildren.length > 1 ? metadataChildren : [],

@@ -9,6 +9,10 @@ afterEach(cleanup)
 
 const groups: ProjectModelTreeGroup[] = [
   {
+	assemblyId: 'assembly_project_one',
+	assemblyName: 'Robot project',
+	occurrenceId: 'occurrence_model_one',
+	modelRevisionId: 'mvr_model_one',
     model: {
       id: 'model_one',
       project_id: 'project_one',
@@ -65,5 +69,6 @@ describe('ProjectModelTree', () => {
     expect(onSelect).toHaveBeenNthCalledWith(1, 'model_one', 'node_model_one')
     expect(onSelect).toHaveBeenNthCalledWith(2, 'model_one', 'node_child_one')
     expect(onToggleVisibility).toHaveBeenCalledWith('model_one')
+		expect(screen.getByTestId('assembly-root').textContent).toContain('Robot project')
   })
 })

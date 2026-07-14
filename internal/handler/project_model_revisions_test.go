@@ -66,6 +66,10 @@ func TestProjectModelRevisionRoutesListRestoreAndRejectStaleRevision(t *testing.
 	if detail.Code != http.StatusOK {
 		t.Fatalf("detail status = %d, body = %s", detail.Code, detail.Body.String())
 	}
+	revisionSource := getWithCookie(t, router, "/api/v1/projects/"+projectID+"/models/"+uploadResponse.Model.ID+"/revisions/"+listResponse.Revisions[1].ID+"/source", cookie)
+	if revisionSource.Code != http.StatusOK || revisionSource.Body.String() != string(source) {
+		t.Fatalf("revision source status/body = %d/%q, want initial source", revisionSource.Code, revisionSource.Body.String())
+	}
 
 	restoreURL := "/api/v1/projects/" + projectID + "/models/" + uploadResponse.Model.ID + "/revisions/" + listResponse.Revisions[1].ID + "/restore"
 	restore := postJSONWithCookie(t, router, restoreURL, map[string]any{"expected_revision": 2}, cookie)
@@ -84,5 +88,9 @@ func TestProjectModelRevisionRoutesListRestoreAndRejectStaleRevision(t *testing.
 	foreignList := getWithCookie(t, router, "/api/v1/projects/"+projectID+"/models/"+uploadResponse.Model.ID+"/revisions", otherCookie)
 	if foreignList.Code != http.StatusNotFound {
 		t.Fatalf("foreign list status = %d, body = %s", foreignList.Code, foreignList.Body.String())
+	}
+	foreignSource := getWithCookie(t, router, "/api/v1/projects/"+projectID+"/models/"+uploadResponse.Model.ID+"/revisions/"+listResponse.Revisions[1].ID+"/source", otherCookie)
+	if foreignSource.Code != http.StatusNotFound {
+		t.Fatalf("foreign source status = %d, body = %s", foreignSource.Code, foreignSource.Body.String())
 	}
 }

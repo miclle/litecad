@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { fetchProjectModelSource } from 'src/api/projects'
+import { fetchProjectModelRevisionSource } from 'src/api/projects'
 import {
   runFeatureDSLExportInWorker,
   runStepAssemblyExportInWorker,
@@ -19,7 +19,7 @@ import {
 type ProjectStepExportDependencies = {
   exportMergedTargets: typeof exportMergedStepTargets
   exportSingleTarget: typeof exportStepTarget
-  fetchSourceText: (projectId: string, modelId: string) => Promise<string>
+	fetchSourceText: (projectId: string, modelId: string, modelRevisionId: string) => Promise<string>
   publishDownload: typeof publishStepExportDownload
   runFeatureDSLExport: typeof runFeatureDSLExportInWorker
   runStepAssemblyExport: typeof runStepAssemblyExportInWorker
@@ -36,8 +36,8 @@ type UseProjectStepExportControllerOptions = {
 const defaultDependencies: ProjectStepExportDependencies = {
   exportMergedTargets: exportMergedStepTargets,
   exportSingleTarget: exportStepTarget,
-  fetchSourceText: async (projectId, modelId) => {
-    const source = (await fetchProjectModelSource(projectId, modelId)).data
+	fetchSourceText: async (projectId, modelId, modelRevisionId) => {
+		const source = (await fetchProjectModelRevisionSource(projectId, modelId, modelRevisionId)).data
     return source.text()
   },
   publishDownload: publishStepExportDownload,
@@ -65,8 +65,8 @@ export function useProjectStepExportController({
       if (!hasTouchedSelectionRef.current) {
         return defaultSelectedStepExportTargetIDs(targets)
       }
-      const availableIDs = new Set(targets.map((target) => target.modelId))
-      return new Set([...currentIDs].filter((modelID) => availableIDs.has(modelID)))
+		const availableIDs = new Set(targets.map((target) => target.occurrenceId))
+		return new Set([...currentIDs].filter((occurrenceID) => availableIDs.has(occurrenceID)))
     })
   }, [targets])
 
@@ -75,14 +75,14 @@ export function useProjectStepExportController({
     setSelectedTargetIDs(defaultSelectedStepExportTargetIDs(targets))
   }
 
-  const toggleTarget = (modelID: string) => {
+	const toggleTarget = (occurrenceID: string) => {
     hasTouchedSelectionRef.current = true
     setSelectedTargetIDs((currentIDs) => {
       const nextIDs = new Set(currentIDs)
-      if (nextIDs.has(modelID)) {
-        nextIDs.delete(modelID)
-      } else {
-        nextIDs.add(modelID)
+		if (nextIDs.has(occurrenceID)) {
+			nextIDs.delete(occurrenceID)
+		} else {
+			nextIDs.add(occurrenceID)
       }
       return nextIDs
     })
@@ -92,7 +92,7 @@ export function useProjectStepExportController({
     if (selectedTargets.length === 0) {
       throw new Error(t('project.export.noSelection'))
     }
-    const fetchSourceText = (modelId: string) => resolvedDependencies.fetchSourceText(projectId, modelId)
+		const fetchSourceText = (modelId: string, modelRevisionId: string) => resolvedDependencies.fetchSourceText(projectId, modelId, modelRevisionId)
 
     if (mode === 'merged') {
       await resolvedDependencies.exportMergedTargets({

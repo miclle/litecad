@@ -14,6 +14,7 @@ import {
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
+	fetchProjectModelRevisionSource,
   fetchProjectModelRevisions,
   fetchProjectParametricArtifact,
   fetchProjectParametricArtifacts,
@@ -88,6 +89,12 @@ describe('project API', () => {
 
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/models/mdl_01test/source', { responseType: 'blob' })
   })
+
+	test('fetches an immutable project model revision source as a blob', () => {
+		fetchProjectModelRevisionSource('prj_01test', 'mdl_01test', 'mvr_01test')
+
+		expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/models/mdl_01test/revisions/mvr_01test/source', { responseType: 'blob' })
+	})
 
   test('fetches project model preview artifact metadata', () => {
     fetchProjectModelPreviewArtifact('prj_01test', 'mdl_01test')

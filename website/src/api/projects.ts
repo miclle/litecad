@@ -197,6 +197,10 @@ export function fetchProjectModelSource(projectId: string, modelId: string) {
   return client.get<Blob>(`/projects/${projectId}/models/${modelId}/source`, { responseType: 'blob' })
 }
 
+export function fetchProjectModelRevisionSource(projectId: string, modelId: string, revisionId: string) {
+	return client.get<Blob>(`/projects/${projectId}/models/${modelId}/revisions/${revisionId}/source`, { responseType: 'blob' })
+}
+
 export function fetchProjectModelPreviewArtifact(projectId: string, modelId: string) {
   return client.get<ProjectModelPreviewArtifactResponse>(`/projects/${projectId}/models/${modelId}/preview-artifact`)
 }

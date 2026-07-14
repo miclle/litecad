@@ -66,6 +66,7 @@ func (ctrl *Ctrl) RegisterRoutes(r *fox.Engine) {
 	api.PATCH("/projects/:projectID/models/:modelID/parametric-parameters", ctrl.UpdateProjectParametricModelParameters)
 	api.GET("/projects/:projectID/models/:modelID/revisions", ctrl.ListProjectModelRevisions)
 	api.GET("/projects/:projectID/models/:modelID/revisions/:revisionID", ctrl.GetProjectModelRevision)
+	api.GET("/projects/:projectID/models/:modelID/revisions/:revisionID/source", ctrl.GetProjectModelRevisionSource)
 	api.POST("/projects/:projectID/models/:modelID/revisions/:revisionID/restore", ctrl.RestoreProjectModelRevision)
 	api.GET("/projects/:projectID/models/:modelID/source", ctrl.GetProjectModelSource)
 	api.GET("/projects/:projectID/models/:modelID/preview-artifact", ctrl.GetProjectModelPreviewArtifact)

@@ -6,7 +6,9 @@ import type { StepExportTarget } from './project-step-export'
 describe('exportStepTarget', () => {
   test('exports the current STEP target through the worker and publishes a download', async () => {
     const target: StepExportTarget = {
+		occurrenceId: 'occurrence_mdl_step',
       modelId: 'mdl_step',
+		modelRevisionId: 'mvr_step',
       sourceFormat: 'step',
       displayName: 'Mount bracket',
       sourceFilename: 'bracket.step',
@@ -37,7 +39,7 @@ describe('exportStepTarget', () => {
       publishDownload,
     })
 
-    expect(fetchSourceText).toHaveBeenCalledWith('mdl_step')
+		expect(fetchSourceText).toHaveBeenCalledWith('mdl_step', 'mvr_step')
     expect(runStepRoundTrip).toHaveBeenCalledWith({
       filename: 'bracket.step',
       stepText: 'ISO-10303-21;',
@@ -53,13 +55,15 @@ describe('exportStepTarget', () => {
 
   test('exports a LiteCAD feature DSL target through the feature DSL worker and publishes a STEP download', async () => {
     const target: StepExportTarget = {
+		occurrenceId: 'occurrence_mdl_lcad',
       modelId: 'mdl_lcad',
+		modelRevisionId: 'mvr_lcad',
       sourceFormat: 'lcad',
       displayName: 'Feature DSL bracket',
       sourceFilename: 'feature-dsl-bracket-litecad.lcad.json',
       downloadFilename: 'feature-dsl-bracket-litecad.lcad-litecad-r7.step',
       parameterValues: { width: 96 },
-      operations: [],
+		operations: [{ id: 'occurrence_mdl_lcad_placement', type: 'transform', modelId: 'mdl_lcad', matrix: [1, 0, 0, 8, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }],
     }
     const source = JSON.stringify({
       version: 1,
@@ -68,7 +72,11 @@ describe('exportStepTarget', () => {
       features: [{ id: 'base', type: 'box', origin: [0, 0, 0], size: ['width', 40, 6] }],
     })
     const fetchSourceText = vi.fn(async () => source)
-    const runStepRoundTrip = vi.fn()
+		const runStepRoundTrip = vi.fn(async () => ({
+			mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
+			meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
+			exportedStepText: 'ISO-10303-21;\nPLACED-FEATURE-DSL-STEP;\nEND-ISO-10303-21;',
+		}))
     const runFeatureDSLExport = vi.fn(async () => ({
       exportedStepText: 'ISO-10303-21;\nFEATURE-DSL-STEP;\nEND-ISO-10303-21;',
     }))
@@ -82,8 +90,12 @@ describe('exportStepTarget', () => {
       publishDownload,
     })
 
-    expect(fetchSourceText).toHaveBeenCalledWith('mdl_lcad')
-    expect(runStepRoundTrip).not.toHaveBeenCalled()
+		expect(fetchSourceText).toHaveBeenCalledWith('mdl_lcad', 'mvr_lcad')
+		expect(runStepRoundTrip).toHaveBeenCalledWith({
+			filename: 'feature-dsl-bracket-litecad.step',
+			stepText: 'ISO-10303-21;\nFEATURE-DSL-STEP;\nEND-ISO-10303-21;',
+			operations: target.operations,
+		})
     expect(runFeatureDSLExport).toHaveBeenCalledWith({
       filename: 'feature-dsl-bracket-litecad.lcad.json',
       document: JSON.parse(source),
@@ -91,7 +103,7 @@ describe('exportStepTarget', () => {
     })
     expect(publishDownload).toHaveBeenCalledWith({
       filename: 'feature-dsl-bracket-litecad.lcad-litecad-r7.step',
-      stepText: 'ISO-10303-21;\nFEATURE-DSL-STEP;\nEND-ISO-10303-21;',
+			stepText: 'ISO-10303-21;\nPLACED-FEATURE-DSL-STEP;\nEND-ISO-10303-21;',
     })
     expect(result.exportedStepText).toContain('FEATURE-DSL-STEP')
   })
@@ -101,7 +113,9 @@ describe('exportStepTargetsSeparately', () => {
   test('exports each selected target as its own STEP download', async () => {
     const targets: StepExportTarget[] = [
       {
+		occurrenceId: 'occurrence_mdl_a',
         modelId: 'mdl_a',
+		modelRevisionId: 'mvr_a',
         sourceFormat: 'step',
         displayName: 'A',
         sourceFilename: 'a.step',
@@ -109,7 +123,9 @@ describe('exportStepTargetsSeparately', () => {
         operations: [],
       },
       {
+		occurrenceId: 'occurrence_mdl_b',
         modelId: 'mdl_b',
+		modelRevisionId: 'mvr_b',
         sourceFormat: 'step',
         displayName: 'B',
         sourceFilename: 'b.step',
@@ -128,8 +144,8 @@ describe('exportStepTargetsSeparately', () => {
 
     await exportStepTargetsSeparately({ targets, fetchSourceText, runStepRoundTrip, runFeatureDSLExport, publishDownload })
 
-    expect(fetchSourceText).toHaveBeenCalledWith('mdl_a')
-    expect(fetchSourceText).toHaveBeenCalledWith('mdl_b')
+		expect(fetchSourceText).toHaveBeenCalledWith('mdl_a', 'mvr_a')
+		expect(fetchSourceText).toHaveBeenCalledWith('mdl_b', 'mvr_b')
     expect(publishDownload).toHaveBeenCalledWith({ filename: 'a-litecad-r7.step', stepText: 'a.step-exported' })
     expect(publishDownload).toHaveBeenCalledWith({ filename: 'b-litecad-r7.step', stepText: 'b.step-exported' })
   })
@@ -139,7 +155,9 @@ describe('exportMergedStepTargets', () => {
   test('fetches selected source STEP texts and publishes one merged STEP download', async () => {
     const targets: StepExportTarget[] = [
       {
+		occurrenceId: 'occurrence_mdl_a',
         modelId: 'mdl_a',
+		modelRevisionId: 'mvr_a',
         sourceFormat: 'step',
         displayName: 'A',
         sourceFilename: 'a.step',
@@ -147,7 +165,9 @@ describe('exportMergedStepTargets', () => {
         operations: [],
       },
       {
+		occurrenceId: 'occurrence_mdl_b',
         modelId: 'mdl_b',
+		modelRevisionId: 'mvr_b',
         sourceFormat: 'step',
         displayName: 'B',
         sourceFilename: 'b.step',
@@ -194,7 +214,9 @@ describe('exportMergedStepTargets', () => {
   test('converts LiteCAD feature DSL targets before publishing one merged STEP download', async () => {
     const targets: StepExportTarget[] = [
       {
+		occurrenceId: 'occurrence_mdl_step',
         modelId: 'mdl_step',
+		modelRevisionId: 'mvr_step',
         sourceFormat: 'step',
         displayName: 'Step',
         sourceFilename: 'step.step',
@@ -202,13 +224,15 @@ describe('exportMergedStepTargets', () => {
         operations: [],
       },
       {
+		occurrenceId: 'occurrence_mdl_lcad',
         modelId: 'mdl_lcad',
+		modelRevisionId: 'mvr_lcad',
         sourceFormat: 'lcad',
         displayName: 'DSL',
         sourceFilename: 'dsl.lcad.json',
         downloadFilename: 'dsl.lcad-litecad-r7.step',
         parameterValues: { width: 96 },
-        operations: [],
+		operations: [{ id: 'occurrence_mdl_lcad_placement', type: 'transform', modelId: 'mdl_lcad', matrix: [1, 0, 0, 8, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }],
       },
     ]
     const dslSource = JSON.stringify({
@@ -244,7 +268,7 @@ describe('exportMergedStepTargets', () => {
       filename: 'assembly-litecad-assembly-r7.step',
       sources: [
         { filename: 'step.step', stepText: 'STEP-SOURCE', operations: [] },
-        { filename: 'dsl.lcad.json', stepText: 'DSL-STEP', operations: [] },
+		{ filename: 'dsl.lcad.json', stepText: 'DSL-STEP', operations: targets[1]?.operations },
       ],
     })
     expect(publishDownload).toHaveBeenCalledWith({

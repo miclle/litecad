@@ -29,6 +29,13 @@ type ProjectModelRevision struct {
 	CreatedAt        string       `json:"created_at"`
 }
 
+// ProjectModelRevisionSource is one immutable source snapshot and its owning model metadata.
+type ProjectModelRevisionSource struct {
+	Model    ProjectModel
+	Revision ProjectModelRevision
+	Data     []byte
+}
+
 // RestoreProjectModelRevisionInput selects an immutable snapshot as the active model version.
 type RestoreProjectModelRevisionInput struct {
 	OwnerUserID      string
@@ -88,6 +95,44 @@ func (s *Service) GetProjectModelRevision(ctx context.Context, ownerUserID, proj
 		}
 	}
 	return ProjectModelRevision{}, ErrProjectNotFound
+}
+
+// GetProjectModelRevisionSource returns immutable source bytes for one owned model revision.
+func (s *Service) GetProjectModelRevisionSource(ctx context.Context, ownerUserID, projectID, modelID, revisionID string) (ProjectModelRevisionSource, error) {
+	project, err := s.loadOwnedProject(ctx, ownerUserID, projectID)
+	if err != nil {
+		return ProjectModelRevisionSource{}, err
+	}
+	modelID = strings.TrimSpace(modelID)
+	revisionID = strings.TrimSpace(revisionID)
+	if modelID == "" || revisionID == "" {
+		return ProjectModelRevisionSource{}, ErrProjectNotFound
+	}
+	var model entity.ProjectModel
+	if err := s.db.WithContext(ctx).First(&model, "id = ? AND project_id = ?", modelID, project.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ProjectModelRevisionSource{}, ErrProjectNotFound
+		}
+		return ProjectModelRevisionSource{}, fmt.Errorf("load project model revision source model: %w", err)
+	}
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, err := ensureProjectModelRevision(ctx, tx, &model)
+		return err
+	}); err != nil {
+		return ProjectModelRevisionSource{}, err
+	}
+	var revision entity.ProjectModelRevision
+	if err := s.db.WithContext(ctx).First(&revision, "id = ? AND model_id = ? AND project_id = ?", revisionID, model.ID, project.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ProjectModelRevisionSource{}, ErrProjectNotFound
+		}
+		return ProjectModelRevisionSource{}, fmt.Errorf("load project model revision source: %w", err)
+	}
+	return ProjectModelRevisionSource{
+		Model:    publicProjectModel(model),
+		Revision: publicProjectModelRevision(revision, revision.ID == model.CurrentRevisionID),
+		Data:     append([]byte(nil), revision.SourceData...),
+	}, nil
 }
 
 // RestoreProjectModelRevision switches the active model snapshot through CAD History.

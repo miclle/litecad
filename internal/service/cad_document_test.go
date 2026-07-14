@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/miclle/litecad/internal/entity"
 	"testing"
 )
@@ -19,7 +20,7 @@ func TestGetProjectCADDocumentCreatesPersistedIdentityDocument(t *testing.T) {
 	if document.ID == "" || document.ProjectID != project.ID {
 		t.Fatalf("document identity = %+v, want project document", document)
 	}
-	if document.SchemaVersion != 1 || document.Unit != "millimetre" {
+	if document.SchemaVersion != 2 || document.Unit != "millimetre" {
 		t.Fatalf("document metadata = schema %d unit %q", document.SchemaVersion, document.Unit)
 	}
 	if document.Revision != 1 {
@@ -33,6 +34,16 @@ func TestGetProjectCADDocumentCreatesPersistedIdentityDocument(t *testing.T) {
 	}
 	if document.Nodes[0].Transform.Matrix != identityCADTransform().Matrix {
 		t.Fatalf("document node transform = %+v, want identity", document.Nodes[0].Transform.Matrix)
+	}
+	if document.Assembly.ID != "assembly_"+project.ID || document.Assembly.Name != project.Name || len(document.Assembly.Occurrences) != 1 {
+		t.Fatalf("document assembly = %+v, want one project assembly occurrence", document.Assembly)
+	}
+	occurrence := document.Assembly.Occurrences[0]
+	if occurrence.ID != "occurrence_"+model.ID || occurrence.NodeID != document.Nodes[0].ID || occurrence.ModelID != model.ID || occurrence.ModelRevisionID != model.CurrentRevisionID {
+		t.Fatalf("document occurrence = %+v, want uploaded model binding", occurrence)
+	}
+	if occurrence.Transform.Matrix != identityCADTransform().Matrix {
+		t.Fatalf("document occurrence transform = %+v, want identity", occurrence.Transform.Matrix)
 	}
 	if len(document.Operations) != 0 {
 		t.Fatalf("document operations = %+v, want none", document.Operations)
@@ -52,6 +63,101 @@ func TestGetProjectCADDocumentCreatesPersistedIdentityDocument(t *testing.T) {
 	}
 	if len(stored.DocumentJSON) == 0 {
 		t.Fatal("stored CAD document should persist serialized document state")
+	}
+}
+
+func TestGetProjectCADDocumentCreatesOneOccurrencePerModel(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	user, project := createTestProjectForModel(t, svc, ctx)
+	first := uploadTestSTEPModel(t, svc, ctx, user.ID, project.ID, "first.step")
+	second := uploadTestSTEPModel(t, svc, ctx, user.ID, project.ID, "second.step")
+
+	document, err := svc.GetProjectCADDocument(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectCADDocument returned error: %v", err)
+	}
+	if len(document.Assembly.Occurrences) != 2 {
+		t.Fatalf("assembly occurrences = %+v, want two", document.Assembly.Occurrences)
+	}
+	for index, model := range []ProjectModel{first, second} {
+		occurrence := document.Assembly.Occurrences[index]
+		if occurrence.ID != "occurrence_"+model.ID || occurrence.ModelID != model.ID || occurrence.ModelRevisionID != model.CurrentRevisionID {
+			t.Fatalf("assembly occurrence %d = %+v, want model %+v", index, occurrence, model)
+		}
+	}
+}
+
+func TestGetProjectCADDocumentUpgradesV1TransformToAssemblyOccurrence(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	user, project := createTestProjectForModel(t, svc, ctx)
+	model := uploadTestSTEPModel(t, svc, ctx, user.ID, project.ID, "legacy.step")
+	legacyTransform := CADTransform{Matrix: [16]float64{
+		1, 0, 0, 24,
+		0, 1, 0, -6,
+		0, 0, 1, 3,
+		0, 0, 0, 1,
+	}}
+	legacyJSON, err := json.Marshal(cadDocumentState{
+		Unit: "millimetre",
+		Nodes: []CADDocumentNode{
+			{
+				ID:              "node_" + model.ID,
+				ModelID:         model.ID,
+				ModelRevisionID: model.CurrentRevisionID,
+				SourceModelID:   model.ID,
+				Name:            model.OriginalFilename,
+				SourceFormat:    model.Format,
+				Transform:       legacyTransform,
+			},
+			{
+				ID:            "node_" + model.ID + "_component_1",
+				SourceModelID: model.ID,
+				ParentNodeID:  "node_" + model.ID,
+				Name:          "Legacy component",
+				SourceFormat:  "step-component",
+				Transform:     identityCADTransform(),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal legacy document: %v", err)
+	}
+	legacy := entity.ProjectCADDocument{
+		ID:            "doc_legacy",
+		ProjectID:     project.ID,
+		SchemaVersion: 1,
+		Revision:      4,
+		DocumentJSON:  legacyJSON,
+	}
+	if err := svc.DB().Create(&legacy).Error; err != nil {
+		t.Fatalf("create legacy CAD document: %v", err)
+	}
+
+	upgraded, err := svc.GetProjectCADDocument(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("upgrade GetProjectCADDocument returned error: %v", err)
+	}
+	if upgraded.SchemaVersion != 2 || upgraded.Revision != 5 {
+		t.Fatalf("upgraded document schema/revision = %d/%d, want 2/5", upgraded.SchemaVersion, upgraded.Revision)
+	}
+	if len(upgraded.Assembly.Occurrences) != 1 || upgraded.Assembly.Occurrences[0].Transform.Matrix != legacyTransform.Matrix {
+		t.Fatalf("upgraded assembly = %+v, want preserved legacy transform", upgraded.Assembly)
+	}
+	if upgraded.Nodes[0].Transform.Matrix != legacyTransform.Matrix {
+		t.Fatalf("public compatibility node transform = %+v, want occurrence projection", upgraded.Nodes[0].Transform.Matrix)
+	}
+	if len(upgraded.Nodes) != 2 || upgraded.Nodes[1].ParentNodeID != upgraded.Nodes[0].ID || upgraded.Nodes[1].Name != "Legacy component" {
+		t.Fatalf("upgraded nodes = %+v, want preserved component child", upgraded.Nodes)
+	}
+
+	reloaded, err := svc.GetProjectCADDocument(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("reload upgraded document returned error: %v", err)
+	}
+	if reloaded.Revision != upgraded.Revision {
+		t.Fatalf("reloaded revision = %d, want stable upgraded revision %d", reloaded.Revision, upgraded.Revision)
 	}
 }
 

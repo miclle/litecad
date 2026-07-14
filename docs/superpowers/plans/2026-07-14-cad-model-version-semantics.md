@@ -1,6 +1,6 @@
 # CAD Model Version Semantics Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make immutable project model revisions the durable source of truth for generated CAD source changes and History restoration.
 
@@ -31,11 +31,11 @@
 **Interfaces:**
 - Produces: `ProjectModelRevision` with `ID`, `ProjectID`, `ModelID`, `ParentRevisionID`, `Sequence`, `SourceData`, `MetadataJSON`, `ContentChecksum`, `Summary`, and timestamps; `ProjectModel.CurrentRevisionID` references the active snapshot.
 
-- [ ] Add failing migration tests asserting the revision table and `project_models.current_revision_id` column exist.
-- [ ] Run `go test ./internal/database` and confirm the schema assertions fail.
-- [ ] Add the entity and migration registration, including unique `(model_id, sequence)` indexing.
-- [ ] Update test database migration helpers.
-- [ ] Re-run database tests and confirm they pass.
+- [x] Add failing migration tests asserting the revision table and `project_models.current_revision_id` column exist.
+- [x] Run `go test ./internal/database` and confirm the schema assertions fail.
+- [x] Add the entity and migration registration, including unique `(model_id, sequence)` indexing.
+- [x] Update test database migration helpers.
+- [x] Re-run database tests and confirm they pass.
 
 ### Task 2: Create and backfill revision 1
 
@@ -49,11 +49,11 @@
 - Produces: `ensureProjectModelRevision(...)`, `createProjectModelRevision(...)`, and public `ProjectModelRevision` DTOs.
 - Guarantees: uploads and saved generated models have revision 1; an existing row without `current_revision_id` is backfilled transactionally from its current source and metadata.
 
-- [ ] Add failing service tests for upload revision 1, generated-model revision 1, and idempotent legacy backfill.
-- [ ] Run the focused service tests and confirm no revision is currently created.
-- [ ] Implement revision creation and lazy transactional backfill, computing checksums from source plus metadata.
-- [ ] Return `current_revision_id` and `revision_sequence` in project model DTOs.
-- [ ] Re-run focused service tests and confirm they pass.
+- [x] Add failing service tests for upload revision 1, generated-model revision 1, and idempotent legacy backfill.
+- [x] Run the focused service tests and confirm no revision is currently created.
+- [x] Implement revision creation and lazy transactional backfill, computing checksums from source plus metadata.
+- [x] Return `current_revision_id` and `revision_sequence` in project model DTOs.
+- [x] Re-run focused service tests and confirm they pass.
 
 ### Task 3: Make parameter edits version transitions
 
@@ -67,11 +67,11 @@
 - Consumes: existing parameter edit requests.
 - Produces: a new immutable revision and a `parameter-change` History command containing `before_revision_id` and `after_revision_id`.
 
-- [ ] Add failing tests asserting one parameter edit creates sequence 2 without mutating revision 1.
-- [ ] Add failing Undo/Redo tests asserting `current_revision_id` switches between revisions 1 and 2 and source/metadata reads follow the active revision.
-- [ ] Replace the parameter-only revision write and metadata-copy History payload with revision creation and revision-ID transitions.
-- [ ] Update source/model reads to resolve the active revision while retaining model-row compatibility fields as a cache during this phase.
-- [ ] Re-run service and History tests and confirm they pass.
+- [x] Add failing tests asserting one parameter edit creates sequence 2 without mutating revision 1.
+- [x] Add failing Undo/Redo tests asserting `current_revision_id` switches between revisions 1 and 2 and source/metadata reads follow the active revision.
+- [x] Replace the parameter-only revision write and metadata-copy History payload with revision creation and revision-ID transitions.
+- [x] Update source/model reads to resolve the active revision while retaining model-row compatibility fields as a cache during this phase.
+- [x] Re-run service and History tests and confirm they pass.
 
 ### Task 4: Expose version history and restore
 
@@ -87,11 +87,11 @@
 - Produces: owner-scoped list/get revision endpoints and a restore endpoint requiring `expected_revision`.
 - UI: shows the current sequence and allows restoring a prior revision through the same History mechanism.
 
-- [ ] Add failing route tests for owner scoping, ordered revision listing, restore, and stale restore conflict.
-- [ ] Implement DTO routes and service methods without exposing GORM entities.
-- [ ] Add frontend API/type tests and a focused component test for revision display and restore.
-- [ ] Implement the compact revision selector in the existing Inspector editor.
-- [ ] Run focused backend and frontend tests.
+- [x] Add failing route tests for owner scoping, ordered revision listing, restore, and stale restore conflict.
+- [x] Implement DTO routes and service methods without exposing GORM entities.
+- [x] Add frontend API/type tests and a focused component test for revision display and restore.
+- [x] Implement the compact revision selector in the existing Inspector editor.
+- [x] Run focused backend and frontend tests.
 
 ### Task 5: Bind CAD document nodes to model revisions and update docs
 
@@ -109,9 +109,9 @@
 **Interfaces:**
 - Produces: `CADDocumentNode.model_revision_id` for model root nodes; component child nodes continue to reference their source root.
 
-- [ ] Add failing tests asserting new and synchronized model nodes carry the current revision ID and parameter changes update that reference through History.
-- [ ] Implement schema-version-aware document synchronization and upgrade existing document JSON in memory before persistence.
-- [ ] Update frontend types and preview source resolution to honor the active version returned by model APIs.
-- [ ] Document immutable source versions, derived worker geometry, and the remaining lack of serialized B-rep feature state.
-- [ ] Run `task check`, `task test`, `task test-browser`, and `task build`.
-- [ ] Review the complete diff and commit as `feat(cad): persist immutable model revisions`.
+- [x] Add failing tests asserting new and synchronized model nodes carry the current revision ID and parameter changes update that reference through History.
+- [x] Implement schema-version-aware document synchronization and upgrade existing document JSON in memory before persistence.
+- [x] Update frontend types and preview source resolution to honor the active version returned by model APIs.
+- [x] Document immutable source versions, derived worker geometry, and the remaining lack of serialized B-rep feature state.
+- [x] Run `task check`, `task test`, `task test-browser`, and `task build`.
+- [x] Review the complete diff and commit as `feat(cad): persist immutable model revisions`.

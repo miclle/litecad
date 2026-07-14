@@ -8,7 +8,9 @@ import { ProjectStepExportPopover } from './project-step-export-popover'
 
 const targets: StepExportTarget[] = [
   {
+	occurrenceId: 'occurrence_model_one',
     modelId: 'model_one',
+	modelRevisionId: 'mvr_model_one',
     sourceFormat: 'step',
     displayName: 'Bracket',
     sourceFilename: 'bracket.step',
@@ -30,7 +32,7 @@ describe('ProjectStepExportPopover', () => {
           onSelectAll={vi.fn()}
           onToggleTarget={vi.fn()}
           open
-          selectedTargetIds={new Set(['model_one'])}
+			selectedTargetIds={new Set(['occurrence_model_one'])}
           targets={targets}
         />
       </TooltipProvider>,

@@ -14,6 +14,7 @@ test('imports a project-owned CAD source into the model tree', async ({ page }) 
   })
 
   await expect.poll(() => fixture.state.uploadCount).toBe(1)
+	await expect(page.getByTestId('assembly-root')).toContainText('Workbench Smoke')
   await expect(page.getByRole('option', { name: 'Uploaded smoke' })).toBeVisible()
   expect(browserErrors).toEqual([])
 })

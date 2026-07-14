@@ -205,9 +205,26 @@ function smokeCADDocument(state: ProjectAPIFixtureState) {
   return {
     id: 'cad_document_smoke',
     project_id: projectId,
-    schema_version: 1,
+    schema_version: 2,
     revision: state.models.length > 0 ? state.cadRevision : 1,
     unit: 'mm',
+	assembly: {
+		id: `assembly_${projectId}`,
+		name: 'Workbench Smoke',
+		occurrences:
+			state.models.length > 0
+				? [
+						{
+							id: `occurrence_${modelID}`,
+							node_id: `node_${modelID}`,
+							model_id: modelID,
+							model_revision_id: state.currentModelRevisionID,
+							name: state.parametricArtifactTitle,
+							transform: { matrix: [1, 0, 0, state.translationX, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+						},
+					]
+				: [],
+	},
     nodes:
       state.models.length > 0
         ? [
@@ -533,6 +550,17 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     })
     return
   }
+	if (
+		request.method() === 'GET' &&
+		pathname === `/api/v1/projects/${projectId}/models/${state.savedModelID}/revisions/${state.currentModelRevisionID}/source`
+	) {
+		state.featureDSLSourceRequestCount += 1
+		await route.fulfill({
+			body: state.parametricArtifactSourceCode,
+			contentType: 'application/json',
+		})
+		return
+	}
   await route.fulfill({ json: { message: `Unhandled smoke request: ${request.method()} ${pathname}` }, status: 500 })
 }
 

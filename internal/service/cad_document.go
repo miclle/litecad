@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const cadDocumentSchemaVersion = 1
+const cadDocumentSchemaVersion = 2
 
 var (
 	// ErrInvalidCADDocumentInput indicates missing or malformed editable CAD document input.
@@ -43,11 +43,29 @@ type ProjectCADDocument struct {
 	SchemaVersion int               `json:"schema_version"`
 	Revision      int               `json:"revision"`
 	Unit          string            `json:"unit"`
+	Assembly      CADAssembly       `json:"assembly"`
 	Nodes         []CADDocumentNode `json:"nodes"`
 	Operations    []CADOperation    `json:"operations"`
 	History       CADHistoryState   `json:"history"`
 	CreatedAt     string            `json:"created_at"`
 	UpdatedAt     string            `json:"updated_at"`
+}
+
+// CADAssembly is the single durable flat assembly owned by a project document.
+type CADAssembly struct {
+	ID          string                  `json:"id"`
+	Name        string                  `json:"name"`
+	Occurrences []CADAssemblyOccurrence `json:"occurrences"`
+}
+
+// CADAssemblyOccurrence binds one source model revision to an assembly placement.
+type CADAssemblyOccurrence struct {
+	ID              string       `json:"id"`
+	NodeID          string       `json:"node_id"`
+	ModelID         string       `json:"model_id"`
+	ModelRevisionID string       `json:"model_revision_id"`
+	Name            string       `json:"name"`
+	Transform       CADTransform `json:"transform"`
 }
 
 // CADHistoryState describes the current server-side Undo/Redo position.
@@ -117,6 +135,7 @@ type AddProjectCADModelBoxUnionInput struct {
 
 type cadDocumentState struct {
 	Unit       string            `json:"unit"`
+	Assembly   CADAssembly       `json:"assembly"`
 	Nodes      []CADDocumentNode `json:"nodes"`
 	Operations []CADOperation    `json:"operations"`
 }
@@ -324,6 +343,19 @@ func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Proje
 		}
 
 		deletedNode := state.Nodes[nodeIndex]
+		var deletedOccurrence *CADAssemblyOccurrence
+		deletedOccurrenceIndex := -1
+		if deletedNode.ParentNodeID == "" {
+			for index := range state.Assembly.Occurrences {
+				if state.Assembly.Occurrences[index].NodeID == deletedNode.ID {
+					occurrence := state.Assembly.Occurrences[index]
+					deletedOccurrence = &occurrence
+					deletedOccurrenceIndex = index
+					state.Assembly.Occurrences = append(state.Assembly.Occurrences[:index], state.Assembly.Occurrences[index+1:]...)
+					break
+				}
+			}
+		}
 		deletedNodes := []cadDeletedDocumentNode{{Node: deletedNode, Index: nodeIndex}}
 		if deletedNode.ParentNodeID == "" {
 			for index := nodeIndex + 1; index < len(state.Nodes); index++ {
@@ -364,11 +396,13 @@ func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Proje
 		}
 		state.Operations = append(state.Operations, operation)
 		if _, err := appendProjectCADHistoryEntry(ctx, tx, &document, "delete-node", deletedNode.ID, "Delete "+deletedNode.Name, cadDeleteNodeHistoryCommand{
-			Node:           deletedNode,
-			NodeIndex:      nodeIndex,
-			Nodes:          deletedNodes,
-			Operation:      operation,
-			OperationIndex: operationIndex,
+			Node:            deletedNode,
+			NodeIndex:       nodeIndex,
+			Nodes:           deletedNodes,
+			Occurrence:      deletedOccurrence,
+			OccurrenceIndex: deletedOccurrenceIndex,
+			Operation:       operation,
+			OperationIndex:  operationIndex,
 		}); err != nil {
 			return err
 		}
@@ -406,8 +440,10 @@ func (s *Service) updateProjectCADNodeTransform(ctx context.Context, project ent
 		if nodeIndex < 0 {
 			return ErrProjectNotFound
 		}
-		beforeTransform := state.Nodes[nodeIndex].Transform
-		state.Nodes[nodeIndex].Transform = transform
+		beforeTransform, err := setCADDocumentNodeTransform(&state, nodeID, transform)
+		if err != nil {
+			return err
+		}
 
 		operationID, err := id.NewPrefixed("op")
 		if err != nil {
@@ -486,19 +522,22 @@ func (s *Service) getOrCreateProjectCADDocumentEntity(ctx context.Context, tx *g
 		if err != nil {
 			return entity.ProjectCADDocument{}, cadDocumentState{}, err
 		}
-		state, changed, err := s.syncCADDocumentNodes(ctx, tx, project.ID, state)
+		state, migrated := upgradeCADDocumentState(project, document.SchemaVersion, state)
+		state, changed, err := s.syncCADDocumentNodes(ctx, tx, project, state)
 		if err != nil {
 			return entity.ProjectCADDocument{}, cadDocumentState{}, err
 		}
-		if changed {
+		if migrated || changed || document.SchemaVersion != cadDocumentSchemaVersion {
 			document.Revision++
+			document.SchemaVersion = cadDocumentSchemaVersion
 			documentJSON, err := json.Marshal(state)
 			if err != nil {
 				return entity.ProjectCADDocument{}, cadDocumentState{}, fmt.Errorf("serialize CAD document: %w", err)
 			}
 			if err := tx.Model(&document).Updates(map[string]any{
-				"revision":      document.Revision,
-				"document_json": documentJSON,
+				"schema_version": document.SchemaVersion,
+				"revision":       document.Revision,
+				"document_json":  documentJSON,
 			}).Error; err != nil {
 				return entity.ProjectCADDocument{}, cadDocumentState{}, fmt.Errorf("sync CAD document: %w", err)
 			}
@@ -510,7 +549,8 @@ func (s *Service) getOrCreateProjectCADDocumentEntity(ctx context.Context, tx *g
 		return entity.ProjectCADDocument{}, cadDocumentState{}, fmt.Errorf("load CAD document: %w", err)
 	}
 
-	state, _, err := s.syncCADDocumentNodes(ctx, tx, project.ID, cadDocumentState{Unit: "millimetre"})
+	state, _ := upgradeCADDocumentState(project, 0, cadDocumentState{Unit: "millimetre"})
+	state, _, err = s.syncCADDocumentNodes(ctx, tx, project, state)
 	if err != nil {
 		return entity.ProjectCADDocument{}, cadDocumentState{}, err
 	}
@@ -538,10 +578,10 @@ func (s *Service) getOrCreateProjectCADDocumentEntity(ctx context.Context, tx *g
 	return document, state, nil
 }
 
-func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, projectID string, state cadDocumentState) (cadDocumentState, bool, error) {
+func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, project entity.Project, state cadDocumentState) (cadDocumentState, bool, error) {
 	var models []entity.ProjectModel
 	if err := tx.WithContext(ctx).
-		Where("project_id = ?", projectID).
+		Where("project_id = ?", project.ID).
 		Order("created_at ASC").
 		Find(&models).Error; err != nil {
 		return cadDocumentState{}, false, fmt.Errorf("load CAD document models: %w", err)
@@ -561,7 +601,19 @@ func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, project
 	}
 
 	changed := false
+	if state.Assembly.ID != "assembly_"+project.ID {
+		state.Assembly.ID = "assembly_" + project.ID
+		changed = true
+	}
+	if state.Assembly.Name != project.Name {
+		state.Assembly.Name = project.Name
+		changed = true
+	}
 	for index := range state.Nodes {
+		if state.Nodes[index].ParentNodeID == "" && state.Nodes[index].ModelRevisionID != "" {
+			state.Nodes[index].ModelRevisionID = ""
+			changed = true
+		}
 		if state.Nodes[index].SourceModelID != "" || state.Nodes[index].ParentNodeID == "" {
 			continue
 		}
@@ -595,10 +647,7 @@ func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, project
 			return cadDocumentState{}, false, err
 		}
 		if nodeIndex, ok := nodeIndexByModelID[model.ID]; ok {
-			if state.Nodes[nodeIndex].ModelRevisionID != model.CurrentRevisionID {
-				state.Nodes[nodeIndex].ModelRevisionID = model.CurrentRevisionID
-				changed = true
-			}
+			state, changed = syncCADAssemblyOccurrence(state, state.Nodes[nodeIndex], model, changed)
 			publicModel := publicProjectModel(model)
 			state, changed = syncCADDocumentComponentNodes(state, nodeByID, deletedNodeByID, publicModel, changed)
 			continue
@@ -612,9 +661,91 @@ func (s *Service) syncCADDocumentNodes(ctx context.Context, tx *gorm.DB, project
 		nodeByID[sourceNode.ID] = struct{}{}
 		nodeIndexByModelID[model.ID] = len(state.Nodes) - 1
 		changed = true
+		state, changed = syncCADAssemblyOccurrence(state, sourceNode, model, changed)
 		state, changed = syncCADDocumentComponentNodes(state, nodeByID, deletedNodeByID, publicModel, changed)
 	}
 	return state, changed, nil
+}
+
+func upgradeCADDocumentState(project entity.Project, schemaVersion int, state cadDocumentState) (cadDocumentState, bool) {
+	changed := false
+	if state.Assembly.ID == "" {
+		state.Assembly = CADAssembly{
+			ID:          "assembly_" + project.ID,
+			Name:        project.Name,
+			Occurrences: []CADAssemblyOccurrence{},
+		}
+		changed = true
+	}
+	if state.Assembly.Occurrences == nil {
+		state.Assembly.Occurrences = []CADAssemblyOccurrence{}
+		changed = true
+	}
+	if schemaVersion >= cadDocumentSchemaVersion {
+		return state, changed
+	}
+
+	for index := range state.Nodes {
+		node := &state.Nodes[index]
+		if node.ParentNodeID != "" || node.ModelID == "" {
+			continue
+		}
+		transform := node.Transform
+		if transform.Matrix == ([16]float64{}) {
+			transform = identityCADTransform()
+		}
+		state.Assembly.Occurrences = append(state.Assembly.Occurrences, CADAssemblyOccurrence{
+			ID:              "occurrence_" + node.ModelID,
+			NodeID:          node.ID,
+			ModelID:         node.ModelID,
+			ModelRevisionID: node.ModelRevisionID,
+			Name:            node.Name,
+			Transform:       transform,
+		})
+		node.ModelRevisionID = ""
+		node.Transform = identityCADTransform()
+		changed = true
+	}
+	return state, changed
+}
+
+func syncCADAssemblyOccurrence(state cadDocumentState, node CADDocumentNode, model entity.ProjectModel, changed bool) (cadDocumentState, bool) {
+	for index := range state.Assembly.Occurrences {
+		occurrence := &state.Assembly.Occurrences[index]
+		if occurrence.ModelID != model.ID {
+			continue
+		}
+		if occurrence.ID != "occurrence_"+model.ID {
+			occurrence.ID = "occurrence_" + model.ID
+			changed = true
+		}
+		if occurrence.NodeID != node.ID {
+			occurrence.NodeID = node.ID
+			changed = true
+		}
+		if occurrence.ModelRevisionID != model.CurrentRevisionID {
+			occurrence.ModelRevisionID = model.CurrentRevisionID
+			changed = true
+		}
+		if occurrence.Name != model.OriginalFilename {
+			occurrence.Name = model.OriginalFilename
+			changed = true
+		}
+		if occurrence.Transform.Matrix == ([16]float64{}) {
+			occurrence.Transform = identityCADTransform()
+			changed = true
+		}
+		return state, changed
+	}
+	state.Assembly.Occurrences = append(state.Assembly.Occurrences, CADAssemblyOccurrence{
+		ID:              "occurrence_" + model.ID,
+		NodeID:          node.ID,
+		ModelID:         model.ID,
+		ModelRevisionID: model.CurrentRevisionID,
+		Name:            model.OriginalFilename,
+		Transform:       identityCADTransform(),
+	})
+	return state, true
 }
 
 func deletedCADDocumentNodeIDs(state cadDocumentState) map[string]struct{} {
@@ -688,30 +819,65 @@ func decodeCADDocumentState(data []byte) (cadDocumentState, error) {
 
 func cadDocumentNodeFromModel(model ProjectModel) CADDocumentNode {
 	return CADDocumentNode{
-		ID:              "node_" + model.ID,
-		ModelID:         model.ID,
-		ModelRevisionID: model.CurrentRevisionID,
-		SourceModelID:   model.ID,
-		Name:            model.OriginalFilename,
-		SourceFormat:    model.Format,
-		Transform:       identityCADTransform(),
+		ID:            "node_" + model.ID,
+		ModelID:       model.ID,
+		SourceModelID: model.ID,
+		Name:          model.OriginalFilename,
+		SourceFormat:  model.Format,
+		Transform:     identityCADTransform(),
 	}
 }
 
-func setCADDocumentModelRevision(state *cadDocumentState, modelID, revisionID string) error {
-	for index := range state.Nodes {
-		if state.Nodes[index].ModelID == modelID && state.Nodes[index].ParentNodeID == "" {
-			state.Nodes[index].ModelRevisionID = revisionID
-			return nil
+func setCADDocumentNodeTransform(state *cadDocumentState, nodeID string, transform CADTransform) (CADTransform, error) {
+	for index := range state.Assembly.Occurrences {
+		if state.Assembly.Occurrences[index].NodeID == nodeID {
+			before := state.Assembly.Occurrences[index].Transform
+			state.Assembly.Occurrences[index].Transform = transform
+			return before, nil
 		}
 	}
-	return ErrInvalidCADDocumentInput
+	for index := range state.Nodes {
+		if state.Nodes[index].ID == nodeID {
+			before := state.Nodes[index].Transform
+			state.Nodes[index].Transform = transform
+			return before, nil
+		}
+	}
+	return CADTransform{}, ErrInvalidCADDocumentInput
+}
+
+func setCADDocumentModelRevision(state *cadDocumentState, modelID, revisionID string) error {
+	found := false
+	for index := range state.Assembly.Occurrences {
+		if state.Assembly.Occurrences[index].ModelID == modelID {
+			state.Assembly.Occurrences[index].ModelRevisionID = revisionID
+			found = true
+		}
+	}
+	if !found {
+		return ErrInvalidCADDocumentInput
+	}
+	return nil
 }
 
 func publicProjectCADDocument(document entity.ProjectCADDocument, state cadDocumentState) ProjectCADDocument {
 	nodes := append([]CADDocumentNode(nil), state.Nodes...)
 	if nodes == nil {
 		nodes = []CADDocumentNode{}
+	}
+	occurrences := append([]CADAssemblyOccurrence(nil), state.Assembly.Occurrences...)
+	if occurrences == nil {
+		occurrences = []CADAssemblyOccurrence{}
+	}
+	occurrenceByNodeID := make(map[string]CADAssemblyOccurrence, len(occurrences))
+	for _, occurrence := range occurrences {
+		occurrenceByNodeID[occurrence.NodeID] = occurrence
+	}
+	for index := range nodes {
+		if occurrence, ok := occurrenceByNodeID[nodes[index].ID]; ok {
+			nodes[index].ModelRevisionID = occurrence.ModelRevisionID
+			nodes[index].Transform = occurrence.Transform
+		}
 	}
 	operations := append([]CADOperation(nil), state.Operations...)
 	if operations == nil {
@@ -723,8 +889,13 @@ func publicProjectCADDocument(document entity.ProjectCADDocument, state cadDocum
 		SchemaVersion: document.SchemaVersion,
 		Revision:      document.Revision,
 		Unit:          state.Unit,
-		Nodes:         nodes,
-		Operations:    operations,
+		Assembly: CADAssembly{
+			ID:          state.Assembly.ID,
+			Name:        state.Assembly.Name,
+			Occurrences: occurrences,
+		},
+		Nodes:      nodes,
+		Operations: operations,
 		History: CADHistoryState{
 			HeadID:  document.HistoryHeadID,
 			CanUndo: document.HistoryHeadID != "",

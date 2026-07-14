@@ -804,6 +804,10 @@ describe('project preview assets', () => {
 
     expect(buildProjectModelTree([chassis, steering])).toEqual([
       {
+		assemblyId: '',
+		assemblyName: '',
+		occurrenceId: '',
+		modelRevisionId: 'mvr_base',
         model: chassis,
         displayName: 'chassis',
         sourceNodeId: 'node_mdl_chassis',
@@ -813,6 +817,10 @@ describe('project preview assets', () => {
         ],
       },
       {
+		assemblyId: '',
+		assemblyName: '',
+		occurrenceId: '',
+		modelRevisionId: 'mvr_base',
         model: steering,
         displayName: 'steering',
         sourceNodeId: 'node_mdl_steering',
@@ -869,6 +877,63 @@ describe('project preview assets', () => {
 
     expect(buildProjectModelTree([pulley, connector], cadDocument).map((group) => group.model.id)).toEqual(['mdl_pulley'])
   })
+
+	test('orders model groups by durable assembly occurrences and exposes revision bindings', () => {
+		const first = { ...baseModel, id: 'mdl_first', original_filename: 'first.step' } satisfies ProjectModel
+		const second = { ...baseModel, id: 'mdl_second', original_filename: 'second.step' } satisfies ProjectModel
+		const document = {
+			id: 'cad_doc_v2',
+			project_id: 'prj_01test',
+			schema_version: 2,
+			revision: 3,
+			unit: 'millimetre',
+			assembly: {
+				id: 'assembly_prj_01test',
+				name: 'Drive train',
+				occurrences: [
+					{
+						id: 'occurrence_mdl_second',
+						node_id: 'node_mdl_second',
+						model_id: 'mdl_second',
+						model_revision_id: 'mvr_second',
+						name: 'second.step',
+						transform: { matrix: [] },
+					},
+					{
+						id: 'occurrence_mdl_first',
+						node_id: 'node_mdl_first',
+						model_id: 'mdl_first',
+						model_revision_id: 'mvr_first',
+						name: 'first.step',
+						transform: { matrix: [] },
+					},
+				],
+			},
+			nodes: [first, second].map((model) => ({
+				id: `node_${model.id}`,
+				model_id: model.id,
+				source_model_id: model.id,
+				parent_node_id: '',
+				name: model.original_filename,
+				source_format: 'step',
+				transform: { matrix: [] },
+			})),
+			operations: [],
+			history: { head_id: '', can_undo: false, can_redo: false },
+			created_at: '2026-07-14T00:00:00Z',
+			updated_at: '2026-07-14T00:00:00Z',
+		} satisfies ProjectCADDocument
+
+		expect(buildProjectModelTree([first, second], document).map(({ model, occurrenceId, modelRevisionId, assemblyName }) => ({
+			modelId: model.id,
+			occurrenceId,
+			modelRevisionId,
+			assemblyName,
+		}))).toEqual([
+			{ modelId: 'mdl_second', occurrenceId: 'occurrence_mdl_second', modelRevisionId: 'mvr_second', assemblyName: 'Drive train' },
+			{ modelId: 'mdl_first', occurrenceId: 'occurrence_mdl_first', modelRevisionId: 'mvr_first', assemblyName: 'Drive train' },
+		])
+	})
 
   test('uses imported model names for tree source groups instead of STEP filenames', () => {
     const unnamed = {

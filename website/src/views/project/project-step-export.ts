@@ -1,9 +1,11 @@
 import type { CadKernelOperation } from 'src/cad/kernel-protocol'
 import type { ProjectCADDocument, ProjectModel } from 'src/types/project'
-import { cadKernelOperationsForModel, getModelDisplayName, parsedPreviewModels, visibleProjectModels } from './project-preview-assets'
+import { cadKernelGeometryOperationsForModel, getModelDisplayName, parsedPreviewModels } from './project-preview-assets'
 
 export type StepExportTarget = {
+	occurrenceId: string
   modelId: string
+	modelRevisionId: string
   sourceFormat: 'step' | 'lcad'
   displayName: string
   sourceFilename: string
@@ -20,25 +22,44 @@ export type StepExportDownload = {
 export type StepExportMode = 'separate' | 'merged'
 
 export function buildStepExportTargets(models: ProjectModel[], cadDocument: ProjectCADDocument | undefined): StepExportTarget[] {
-  return parsedPreviewModels(visibleProjectModels(models, cadDocument))
-    .filter((model) => model.format === 'step' || model.format === 'lcad')
-    .map((model) => ({
-      modelId: model.id,
+	if (!cadDocument?.assembly) {
+		return []
+	}
+	const modelByID = new Map(models.map((model) => [model.id, model]))
+	return cadDocument.assembly.occurrences
+		.flatMap((occurrence) => {
+			const model = modelByID.get(occurrence.model_id)
+			return model ? [{ model, occurrence }] : []
+		})
+		.filter(({ model }) => parsedPreviewModels([model]).length > 0)
+		.filter(({ model }) => model.format === 'step' || model.format === 'lcad')
+		.map(({ model, occurrence }) => ({
+			occurrenceId: occurrence.id,
+			modelId: model.id,
+			modelRevisionId: occurrence.model_revision_id,
       sourceFormat: model.format === 'lcad' ? 'lcad' : 'step',
       displayName: getModelDisplayName(model),
       sourceFilename: model.original_filename,
       downloadFilename: stepExportFilename(model.original_filename, cadDocument?.revision ?? 0),
       ...(model.format === 'lcad' ? { parameterValues: model.metadata.parameter_values ?? {} } : {}),
-      operations: model.format === 'step' ? cadKernelOperationsForModel(cadDocument, model.id) : [],
-    }))
+			operations: [
+				...(model.format === 'step' ? cadKernelGeometryOperationsForModel(cadDocument, model.id) : []),
+				{
+					id: `${occurrence.id}_placement`,
+					type: 'transform' as const,
+					modelId: model.id,
+					matrix: occurrence.transform.matrix,
+				},
+			] satisfies CadKernelOperation[],
+		}))
 }
 
 export function defaultSelectedStepExportTargetIDs(targets: readonly StepExportTarget[]) {
-  return new Set(targets.map((target) => target.modelId))
+	return new Set(targets.map((target) => target.occurrenceId))
 }
 
 export function selectedStepExportTargets(targets: readonly StepExportTarget[], selectedTargetIDs: ReadonlySet<string>) {
-  return targets.filter((target) => selectedTargetIDs.has(target.modelId))
+	return targets.filter((target) => selectedTargetIDs.has(target.occurrenceId))
 }
 
 export function stepExportFilename(sourceFilename: string, revision: number) {

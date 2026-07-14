@@ -156,6 +156,21 @@ export interface CADDocumentNode {
   transform: CADTransform
 }
 
+export interface CADAssemblyOccurrence {
+  id: string
+  node_id: string
+  model_id: string
+  model_revision_id: string
+  name: string
+  transform: CADTransform
+}
+
+export interface CADAssembly {
+  id: string
+  name: string
+  occurrences: CADAssemblyOccurrence[]
+}
+
 export interface CADOperation {
   id: string
   type: 'transform' | 'box-union' | 'delete-node'
@@ -194,6 +209,7 @@ export interface ProjectCADDocument {
   schema_version: number
   revision: number
   unit: string
+  assembly?: CADAssembly
   nodes: CADDocumentNode[]
   operations: CADOperation[]
   history: CADHistoryState

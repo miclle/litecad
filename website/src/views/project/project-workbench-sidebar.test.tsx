@@ -82,6 +82,10 @@ function renderSidebar(overrides: Partial<Parameters<typeof ProjectWorkbenchSide
 
 const groups: ProjectModelTreeGroup[] = [
   {
+	assemblyId: 'assembly_project_one',
+	assemblyName: 'Robot project',
+	occurrenceId: 'occurrence_model_one',
+	modelRevisionId: 'mvr_model_one',
     model: {
       id: 'model_one',
       project_id: 'project_one',

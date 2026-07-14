@@ -270,6 +270,59 @@ func TestUndoRedoProjectCADNodeDelete(t *testing.T) {
 	}
 }
 
+func TestUndoRedoLegacyRootDeleteHistoryRestoresAssemblyOccurrence(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	user, project := createTestProjectForModel(t, svc, ctx)
+	model := uploadTestSTEPModel(t, svc, ctx, user.ID, project.ID, "legacy-delete.step")
+	document, err := svc.GetProjectCADDocument(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectCADDocument returned error: %v", err)
+	}
+	updated, err := svc.DeleteProjectCADNode(ctx, DeleteProjectCADNodeInput{
+		OwnerUserID: user.ID, ProjectID: project.ID, NodeID: "node_" + model.ID, ExpectedRevision: document.Revision,
+	})
+	if err != nil {
+		t.Fatalf("delete root node: %v", err)
+	}
+	var entry entity.ProjectCADHistoryEntry
+	if err := svc.DB().First(&entry, "id = ?", updated.History.HeadID).Error; err != nil {
+		t.Fatalf("load delete history: %v", err)
+	}
+	var legacyCommand map[string]any
+	if err := json.Unmarshal(entry.CommandJSON, &legacyCommand); err != nil {
+		t.Fatalf("decode delete history: %v", err)
+	}
+	delete(legacyCommand, "occurrence")
+	delete(legacyCommand, "occurrence_index")
+	entry.CommandJSON, err = json.Marshal(legacyCommand)
+	if err != nil {
+		t.Fatalf("encode legacy delete history: %v", err)
+	}
+	if err := svc.DB().Model(&entry).Update("command_json", entry.CommandJSON).Error; err != nil {
+		t.Fatalf("store legacy delete history: %v", err)
+	}
+
+	undone, err := svc.UndoProjectCADDocument(ctx, ModifyProjectCADHistoryInput{
+		OwnerUserID: user.ID, ProjectID: project.ID, ExpectedRevision: updated.Revision,
+	})
+	if err != nil {
+		t.Fatalf("undo legacy root delete: %v", err)
+	}
+	if len(undone.Assembly.Occurrences) != 1 || undone.Assembly.Occurrences[0].ModelID != model.ID || undone.Assembly.Occurrences[0].ModelRevisionID != model.CurrentRevisionID {
+		t.Fatalf("undone legacy occurrence = %+v, want restored model revision", undone.Assembly.Occurrences)
+	}
+	redone, err := svc.RedoProjectCADDocument(ctx, ModifyProjectCADHistoryInput{
+		OwnerUserID: user.ID, ProjectID: project.ID, ExpectedRevision: undone.Revision,
+	})
+	if err != nil {
+		t.Fatalf("redo legacy root delete: %v", err)
+	}
+	if len(redone.Assembly.Occurrences) != 0 {
+		t.Fatalf("redone legacy occurrences = %+v, want none", redone.Assembly.Occurrences)
+	}
+}
+
 func TestNewEditAfterUndoDiscardsRedoButKeepsHistory(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

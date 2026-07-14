@@ -9,7 +9,7 @@ type ExportedStepTextResult = {
 
 export type ExportStepTargetOptions = {
   target: StepExportTarget
-  fetchSourceText: (modelId: string) => Promise<string>
+	fetchSourceText: (modelId: string, modelRevisionId: string) => Promise<string>
   runStepRoundTrip: (input: CadKernelStepRoundTripInput) => Promise<CadKernelWorkerResult>
   runFeatureDSLExport: (input: CadKernelFeatureDSLExportInput) => Promise<CadKernelWorkerFeatureDSLExportResult>
   publishDownload: (download: StepExportDownload) => void
@@ -21,7 +21,7 @@ export async function exportStepTarget({
   runStepRoundTrip,
   runFeatureDSLExport,
   publishDownload,
-}: ExportStepTargetOptions) {
+}: ExportStepTargetOptions): Promise<ExportedStepTextResult> {
   const result = await exportTargetToStepText({ target, fetchSourceText, runStepRoundTrip, runFeatureDSLExport })
 
   publishDownload({
@@ -34,7 +34,7 @@ export async function exportStepTarget({
 
 export type ExportStepTargetsSeparatelyOptions = {
   targets: StepExportTarget[]
-  fetchSourceText: (modelId: string) => Promise<string>
+	fetchSourceText: (modelId: string, modelRevisionId: string) => Promise<string>
   runStepRoundTrip: (input: CadKernelStepRoundTripInput) => Promise<CadKernelWorkerResult>
   runFeatureDSLExport: (input: CadKernelFeatureDSLExportInput) => Promise<CadKernelWorkerFeatureDSLExportResult>
   publishDownload: (download: StepExportDownload) => void
@@ -65,7 +65,7 @@ export async function exportStepTargetsSeparately({
 export type ExportMergedStepTargetsOptions = {
   targets: StepExportTarget[]
   downloadFilename: string
-  fetchSourceText: (modelId: string) => Promise<string>
+	fetchSourceText: (modelId: string, modelRevisionId: string) => Promise<string>
   runStepAssemblyExport: (input: CadKernelStepAssemblyExportInput) => Promise<{ exportedStepText: string }>
   runFeatureDSLExport: (input: CadKernelFeatureDSLExportInput) => Promise<CadKernelWorkerFeatureDSLExportResult>
   publishDownload: (download: StepExportDownload) => void
@@ -79,25 +79,29 @@ export async function exportMergedStepTargets({
   runFeatureDSLExport,
   publishDownload,
 }: ExportMergedStepTargetsOptions) {
-  const sources = await Promise.all(
-    targets.map(async (target) => {
+	const sources = await Promise.all(
+		targets.map(async (target) => {
       if (target.sourceFormat === 'step') {
         return {
           filename: target.sourceFilename,
-          stepText: await fetchSourceText(target.modelId),
+			stepText: await fetchSourceText(target.modelId, target.modelRevisionId),
           operations: target.operations,
         }
-      }
-      const result = await exportTargetToStepText({
-        target,
-        fetchSourceText,
-        runStepRoundTrip: stepRoundTripForSeparateExport,
-        runFeatureDSLExport,
-      })
-      return {
-        filename: target.sourceFilename,
-        stepText: result.exportedStepText,
-        operations: [],
+			}
+			const sourceText = await fetchSourceText(target.modelId, target.modelRevisionId)
+			const result = await runFeatureDSLExport(
+				buildFeatureDSLKernelInput(
+					{
+						filename: target.sourceFilename,
+						parameterValues: target.parameterValues ?? {},
+					},
+					sourceText,
+				),
+			)
+			return {
+				filename: target.sourceFilename,
+				stepText: result.exportedStepText,
+				operations: target.operations,
       }
     }),
   )
@@ -116,31 +120,32 @@ export async function exportMergedStepTargets({
 
 type ExportTargetToStepTextOptions = {
   target: StepExportTarget
-  fetchSourceText: (modelId: string) => Promise<string>
+	fetchSourceText: (modelId: string, modelRevisionId: string) => Promise<string>
   runStepRoundTrip: (input: CadKernelStepRoundTripInput) => Promise<CadKernelWorkerResult>
   runFeatureDSLExport: (input: CadKernelFeatureDSLExportInput) => Promise<CadKernelWorkerFeatureDSLExportResult>
 }
 
 async function exportTargetToStepText({ target, fetchSourceText, runStepRoundTrip, runFeatureDSLExport }: ExportTargetToStepTextOptions) {
-  const sourceText = await fetchSourceText(target.modelId)
-  if (target.sourceFormat === 'lcad') {
-    return runFeatureDSLExport(
-      buildFeatureDSLKernelInput(
+	const sourceText = await fetchSourceText(target.modelId, target.modelRevisionId)
+	if (target.sourceFormat === 'lcad') {
+		const generated = await runFeatureDSLExport(
+			buildFeatureDSLKernelInput(
         {
           filename: target.sourceFilename,
           parameterValues: target.parameterValues ?? {},
         },
         sourceText,
-      ),
-    )
-  }
+			),
+		)
+		return runStepRoundTrip({
+			filename: target.sourceFilename.replace(/\.lcad\.json$/i, '.step'),
+			stepText: generated.exportedStepText,
+			operations: target.operations,
+		})
+	}
   return runStepRoundTrip({
     filename: target.sourceFilename,
     stepText: sourceText,
     operations: target.operations,
   })
-}
-
-async function stepRoundTripForSeparateExport(): Promise<CadKernelWorkerResult> {
-  throw new Error('STEP round-trip export is unavailable for this target')
 }

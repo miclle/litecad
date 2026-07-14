@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/miclle/litecad/internal/entity"
 )
 
 func TestUpdateProjectCADNodeTransformPersistsChildNodeOperation(t *testing.T) {
@@ -181,6 +183,9 @@ END-ISO-10303-21;`),
 	if documentHasNode(updated, sourceNodeID) || documentHasNode(updated, childNodeID) {
 		t.Fatalf("deleted source or child node still present: %+v", updated.Nodes)
 	}
+	if len(updated.Assembly.Occurrences) != 0 {
+		t.Fatalf("deleted source occurrence still present: %+v", updated.Assembly.Occurrences)
+	}
 	if len(updated.Operations) != 1 || updated.Operations[0].Type != "delete-node" || updated.Operations[0].NodeID != sourceNodeID || updated.Operations[0].ModelID != model.ID {
 		t.Fatalf("operations = %+v, want source node delete operation", updated.Operations)
 	}
@@ -196,6 +201,9 @@ END-ISO-10303-21;`),
 	if !documentHasNode(undone, sourceNodeID) || !documentHasNode(undone, childNodeID) || len(undone.Operations) != 0 {
 		t.Fatalf("undone source delete document = %+v", undone)
 	}
+	if len(undone.Assembly.Occurrences) != 1 || undone.Assembly.Occurrences[0].ModelID != model.ID {
+		t.Fatalf("undone source occurrence = %+v, want restored model", undone.Assembly.Occurrences)
+	}
 
 	redone, err := svc.RedoProjectCADDocument(ctx, ModifyProjectCADHistoryInput{
 		OwnerUserID:      user.ID,
@@ -207,6 +215,9 @@ END-ISO-10303-21;`),
 	}
 	if documentHasNode(redone, sourceNodeID) || documentHasNode(redone, childNodeID) || len(redone.Operations) != 1 {
 		t.Fatalf("redone source delete document = %+v", redone)
+	}
+	if len(redone.Assembly.Occurrences) != 0 {
+		t.Fatalf("redone source occurrence = %+v, want none", redone.Assembly.Occurrences)
 	}
 }
 
@@ -261,6 +272,20 @@ func TestUpdateProjectCADModelTransformPersistsOperationAndScopesByOwner(t *test
 	}
 	if reloaded.Revision != 2 || reloaded.Nodes[0].Transform.Matrix != transform.Matrix || len(reloaded.Operations) != 1 {
 		t.Fatalf("reloaded document = %+v, want persisted transform operation", reloaded)
+	}
+	if len(reloaded.Assembly.Occurrences) != 1 || reloaded.Assembly.Occurrences[0].Transform.Matrix != transform.Matrix {
+		t.Fatalf("reloaded occurrence = %+v, want persisted placement", reloaded.Assembly.Occurrences)
+	}
+	var stored entity.ProjectCADDocument
+	if err := svc.DB().First(&stored, "project_id = ?", project.ID).Error; err != nil {
+		t.Fatalf("load stored CAD document: %v", err)
+	}
+	state, err := decodeCADDocumentState(stored.DocumentJSON)
+	if err != nil {
+		t.Fatalf("decode stored CAD document: %v", err)
+	}
+	if state.Nodes[0].ModelRevisionID != "" || state.Nodes[0].Transform.Matrix != identityCADTransform().Matrix || state.Assembly.Occurrences[0].Transform.Matrix != transform.Matrix {
+		t.Fatalf("stored occurrence ownership = node %+v occurrence %+v", state.Nodes[0], state.Assembly.Occurrences[0])
 	}
 
 	_, err = svc.UpdateProjectCADModelTransform(ctx, UpdateProjectCADModelTransformInput{

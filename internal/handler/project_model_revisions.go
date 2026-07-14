@@ -1,12 +1,37 @@
 package handler
 
 import (
+	"mime"
+	"net/http"
+	"strings"
+
 	"github.com/fox-gonic/fox"
 	"github.com/miclle/litecad/internal/service"
 )
 
 type projectModelRevisionsResponse struct {
 	Revisions []service.ProjectModelRevision `json:"revisions"`
+}
+
+// GetProjectModelRevisionSource returns immutable model source bytes for occurrence-pinned export.
+func (ctrl *Ctrl) GetProjectModelRevisionSource(c *fox.Context) error {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return err
+	}
+	source, err := ctrl.service.GetProjectModelRevisionSource(c.Request.Context(), user.ID, c.Param("projectID"), c.Param("modelID"), c.Param("revisionID"))
+	if err != nil {
+		return projectError(err)
+	}
+	contentType := strings.TrimSpace(source.Model.ContentType)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	if filename := strings.TrimSpace(source.Model.OriginalFilename); filename != "" {
+		c.Writer.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
+	}
+	c.Data(http.StatusOK, contentType, source.Data)
+	return nil
 }
 
 type projectModelRevisionResponse struct {

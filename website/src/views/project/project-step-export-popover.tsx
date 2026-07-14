@@ -20,7 +20,7 @@ type ProjectStepExportPopoverProps = {
   onExport: (mode: StepExportMode) => Promise<unknown>
   onOpenChange: (open: boolean) => void
   onSelectAll: () => void
-  onToggleTarget: (modelId: string) => void
+  onToggleTarget: (occurrenceId: string) => void
   open: boolean
   selectedTargetIds: ReadonlySet<string>
   targets: readonly StepExportTarget[]
@@ -39,7 +39,7 @@ export function ProjectStepExportPopover({
   const { t } = useTranslation()
   const [error, setError] = useState('')
   const [isPending, setIsPending] = useState(false)
-  const selectedCount = targets.filter((target) => selectedTargetIds.has(target.modelId)).length
+	const selectedCount = targets.filter((target) => selectedTargetIds.has(target.occurrenceId)).length
 
   const exportSelection = async (mode: StepExportMode) => {
     setError('')
@@ -104,14 +104,14 @@ export function ProjectStepExportPopover({
             {targets.map((target) => (
               <label
                 className="flex w-full cursor-pointer items-center gap-2 rounded px-2 py-2 text-left text-sm text-[#1f2937] transition hover:bg-[#f1f5f9]"
-                key={target.modelId}
+				key={target.occurrenceId}
                 title={target.downloadFilename}
               >
                 <input
-                  checked={selectedTargetIds.has(target.modelId)}
+					checked={selectedTargetIds.has(target.occurrenceId)}
                   className="size-4 accent-[#0f172a]"
                   disabled={isPending}
-                  onChange={() => onToggleTarget(target.modelId)}
+					onChange={() => onToggleTarget(target.occurrenceId)}
                   type="checkbox"
                 />
                 <FileText className="size-4 shrink-0 text-[#64748b]" />
