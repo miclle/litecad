@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test'
 
-import { captureBrowserErrors, installProjectAPIFixture, projectId, smokeFeatureDSLSource } from './fixtures/project-api'
+import {
+  captureBrowserErrors,
+  installProjectAPIFixture,
+  projectId,
+  smokeFeatureDSLSource,
+  sphereXYZThroughHoleFeatureDSLSource,
+} from './fixtures/project-api'
 
 test('runs the Assistant draft, save, parameter edit, and reload workflow', async ({ page }) => {
   test.slow()
@@ -66,6 +72,47 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
   await page.getByRole('option', { name: 'Smoke bracket' }).click()
   await expect(page.getByLabel('width value')).toHaveValue('90')
   await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+
+  expect(browserErrors).toEqual([])
+})
+
+test('generates a sphere with X Y Z through holes through the mock provider workflow', async ({ page }) => {
+  test.slow()
+  const browserErrors = captureBrowserErrors(page)
+  const fixture = await installProjectAPIFixture(page)
+  fixture.state.parametricArtifactTitle = 'Ball with XYZ through holes'
+  fixture.state.parametricArtifactSourceCode = sphereXYZThroughHoleFeatureDSLSource
+  fixture.state.savedModelID = 'mdl_sphere_xyz_lcad'
+  fixture.state.savedModelFilename = 'ball-xyz-through-holes.lcad.json'
+
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Toggle Assistant' }).click()
+  await expect(page.getByText('0 project sources attached')).toBeVisible()
+  await page
+    .getByLabel('Message Assistant')
+    .fill('创建一个直径 30mm 的球体，xyz 轴每根轴线上都有一个直径 5mm 的通孔')
+  await page.getByRole('button', { name: 'Generate parametric model' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Ball with XYZ through holes' })).toBeVisible()
+  await expect(page.getByLabel('SPHERE_DIAMETER parameter')).toBeVisible()
+  await expect(page.getByLabel('HOLE_DIAMETER parameter')).toBeVisible()
+  await expect(page.getByRole('option', { name: 'Ball with XYZ through holes' })).toBeVisible()
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+  await expect(page.locator('[data-model-preview] canvas').first()).toBeVisible()
+  await expect.poll(() => fixture.state.artifactUpdateCount).toBe(1)
+  await expect.poll(() => fixture.state.featureDSLSourceRequestCount).toBeGreaterThan(0)
+  expect(fixture.state.models).toHaveLength(1)
+  expect(fixture.state.models[0]).toMatchObject({
+    id: 'mdl_sphere_xyz_lcad',
+    original_filename: 'ball-xyz-through-holes.lcad.json',
+    format: 'lcad',
+    metadata: {
+      product_names: ['Ball with XYZ through holes'],
+      entity_count: 4,
+    },
+  })
 
   expect(browserErrors).toEqual([])
 })

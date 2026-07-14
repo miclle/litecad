@@ -137,7 +137,7 @@ ai:
   max_output_tokens: 2048
 ```
 
-Configuration supports `${NAME}` and `${NAME:-fallback}` environment variable expansion. Runtime database drivers are `postgres` and `mysql`. Leaving `ai.api_key` or `ai.model` empty disables CAD Agent sends.
+Configuration supports `${NAME}` and `${NAME:-fallback}` environment variable expansion. Runtime database drivers are `postgres` and `mysql`. Leaving `ai.api_key` or `ai.model` empty disables CAD Agent sends; the Assistant will keep the conversation visible and return a configuration error instead of creating a generated-source artifact. When `api_key` is an environment-variable reference, the LiteCAD server process must be started with that variable in its environment.
 AI provider calls default to a 90-second timeout and can be tuned with `ai.timeout_seconds`; `ai.max_output_tokens` caps generated output tokens.
 
 ## Development Commands
@@ -189,7 +189,9 @@ Run the browser-level workbench smoke after changing project routing, panels, or
 task test-browser
 ```
 
-The browser suite starts an isolated Vite server and uses a fresh closure-scoped API fixture for every test, so workflows do not share mutable models, messages, history, or counters. Independent specs cover signed-out project route protection, shell/panel rendering, source import, transform conflict recovery with Undo/Redo, Assistant draft/save/parameter reload, and LiteCAD DSL STEP export; focused frontend tests cover protected project routes, project creation navigation, project selection state, workbench layout shell slots, model upload refresh/error handling, thumbnail publication dedupe, and project detail loading/error states. The browser suite fails on unexpected browser console or page errors and does not require a local database.
+The browser suite starts an isolated Vite server and uses a fresh closure-scoped API fixture for every test, so workflows do not share mutable models, messages, history, or counters. Independent specs cover signed-out project route protection, shell/panel rendering, source import, transform conflict recovery with Undo/Redo, Assistant draft/save/parameter reload, a mock-provider prompt-to-artifact workflow for a LiteCAD DSL sphere with X/Y/Z through holes, and LiteCAD DSL STEP export; focused frontend tests cover protected project routes, project creation navigation, project selection state, workbench layout shell slots, model upload refresh/error handling, thumbnail publication dedupe, and project detail loading/error states. The browser suite fails on unexpected browser console or page errors and does not require a local database.
+
+`task test-browser` is deterministic and does not call a real OpenAI-compatible provider. Treat it as coverage for the LiteCAD browser/API workflow around generated drafts, saved models, and failure UI, not as proof that a deployment's external provider credentials, model name, network path, or live prompt behavior are working. When changing provider configuration, provider prompts, or production AI setup, also run a manual or environment-gated live-provider smoke against the running server and record whether it created an artifact, showed a provider configuration error, or failed validation.
 
 CI also runs Go tests, frontend lint/type/test/browser/build, actionlint, dependency review on pull requests, and golangci-lint.
 

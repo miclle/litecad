@@ -6,6 +6,10 @@ const now = '2026-07-10T00:00:00Z'
 export type ProjectAPIFixtureState = {
   messages: unknown[]
   models: unknown[]
+  parametricArtifactTitle: string
+  parametricArtifactSourceCode: string
+  savedModelID: string
+  savedModelFilename: string
   featureDSLSourceRequestCount: number
   artifactCompileStatus: string
   artifactUpdateCount: number
@@ -29,6 +33,10 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
   return {
     messages: [],
     models: [],
+    parametricArtifactTitle: 'Smoke bracket',
+    parametricArtifactSourceCode: smokeFeatureDSLSource,
+    savedModelID: 'mdl_smoke_lcad',
+    savedModelFilename: 'smoke-bracket-litecad.lcad.json',
     featureDSLSourceRequestCount: 0,
     artifactCompileStatus: 'pending',
     artifactUpdateCount: 0,
@@ -56,6 +64,41 @@ export const smokeFeatureDSLSource = JSON.stringify({
   },
   features: [{ id: 'base', type: 'box', origin: [0, 0, 0], size: ['width', 24, 8] }],
 })
+export const sphereXYZThroughHoleFeatureDSLSource = JSON.stringify({
+  version: 1,
+  unit: 'millimetre',
+  parameters: {
+    SPHERE_DIAMETER: { type: 'number', default: 30, min: 1, max: 100, step: 1 },
+    HOLE_DIAMETER: { type: 'number', default: 5, min: 0.5, max: 30, step: 0.5 },
+  },
+  features: [
+    { id: 'sphere', type: 'sphere', origin: [0, 0, 0], diameter: 'SPHERE_DIAMETER' },
+    {
+      id: 'hole_x',
+      type: 'cylinder_cut',
+      origin: [{ op: 'mul', args: ['SPHERE_DIAMETER', -0.5] }, 0, 0],
+      axis: [1, 0, 0],
+      diameter: 'HOLE_DIAMETER',
+      depth: 'SPHERE_DIAMETER',
+    },
+    {
+      id: 'hole_y',
+      type: 'cylinder_cut',
+      origin: [0, { op: 'mul', args: ['SPHERE_DIAMETER', -0.5] }, 0],
+      axis: [0, 1, 0],
+      diameter: 'HOLE_DIAMETER',
+      depth: 'SPHERE_DIAMETER',
+    },
+    {
+      id: 'hole_z',
+      type: 'cylinder_cut',
+      origin: [0, 0, { op: 'mul', args: ['SPHERE_DIAMETER', -0.5] }],
+      axis: [0, 0, 1],
+      diameter: 'HOLE_DIAMETER',
+      depth: 'SPHERE_DIAMETER',
+    },
+  ],
+})
 const smokeParametricArtifact = {
   id: 'pma_smoke',
   project_id: projectId,
@@ -71,6 +114,15 @@ const smokeParametricArtifact = {
   created_at: now,
   updated_at: now,
 }
+
+function parametricArtifact(state: ProjectAPIFixtureState) {
+  return {
+    ...smokeParametricArtifact,
+    title: state.parametricArtifactTitle,
+    source_code: state.parametricArtifactSourceCode,
+  }
+}
+
 const baseSmokeSavedModel = {
   id: 'mdl_smoke_lcad',
   project_id: projectId,
@@ -102,8 +154,13 @@ const baseSmokeSavedModel = {
 function smokeSavedModel(state: ProjectAPIFixtureState) {
   return {
     ...baseSmokeSavedModel,
+    id: state.savedModelID,
+    original_filename: state.savedModelFilename,
+    byte_size: state.parametricArtifactSourceCode.length,
     metadata: {
       ...baseSmokeSavedModel.metadata,
+      product_names: [state.parametricArtifactTitle],
+      entity_count: JSON.parse(state.parametricArtifactSourceCode).features?.length ?? baseSmokeSavedModel.metadata.entity_count,
       parameter_values: state.savedParameterValues,
     },
   }
@@ -125,7 +182,7 @@ function smokeCADDocument(state: ProjectAPIFixtureState) {
               model_id: modelID,
               source_model_id: '',
               parent_node_id: '',
-              name: 'Smoke bracket',
+              name: state.parametricArtifactTitle,
               source_format: (state.models[0] as { format?: string }).format ?? 'lcad',
               transform: { matrix: [1, 0, 0, state.translationX, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
             },
@@ -217,10 +274,10 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
       body: JSON.stringify({
         tool: 'build_parametric_model',
         input: {
-          title: smokeParametricArtifact.title,
+          title: parametricArtifact(state).title,
           version: 'v1',
           source_kind: 'litecad-feature-dsl',
-          code: smokeParametricArtifact.source_code,
+          code: parametricArtifact(state).source_code,
         },
       }),
       parts: [
@@ -248,7 +305,7 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     await route.fulfill({
       json: {
         message: assistantMessage,
-        artifact: { ...smokeParametricArtifact, compile_status: state.artifactCompileStatus },
+        artifact: { ...parametricArtifact(state), compile_status: state.artifactCompileStatus },
       },
     })
     return
@@ -257,7 +314,7 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     const requestBody = request.postDataJSON() as { compile_status?: string }
     state.artifactCompileStatus = requestBody.compile_status ?? state.artifactCompileStatus
     state.artifactUpdateCount += 1
-    await route.fulfill({ json: { artifact: { ...smokeParametricArtifact, compile_status: state.artifactCompileStatus } } })
+    await route.fulfill({ json: { artifact: { ...parametricArtifact(state), compile_status: state.artifactCompileStatus } } })
     return
   }
   if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/parametric-artifacts/${smokeParametricArtifact.id}/save-model`) {
@@ -355,7 +412,7 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     await route.fulfill({ json: { document: smokeCADDocument(state) } })
     return
   }
-  if (request.method() === 'PATCH' && pathname === `/api/v1/projects/${projectId}/models/${baseSmokeSavedModel.id}/parametric-parameters`) {
+  if (request.method() === 'PATCH' && pathname === `/api/v1/projects/${projectId}/models/${state.savedModelID}/parametric-parameters`) {
     const requestBody = request.postDataJSON() as { parameter_values?: Record<string, unknown> }
     state.savedParameterValues = requestBody.parameter_values ?? {}
     state.modelParameterUpdateCount += 1
@@ -365,8 +422,8 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
         sequence: 1,
         status: 'applied',
         command_type: 'parameter-change',
-        target_id: baseSmokeSavedModel.id,
-        summary: 'Update parameters for smoke-bracket-litecad.lcad.json',
+        target_id: state.savedModelID,
+        summary: `Update parameters for ${state.savedModelFilename}`,
         created_at: now,
       },
     ]
@@ -374,10 +431,10 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     await route.fulfill({ json: { model: smokeSavedModel(state) } })
     return
   }
-  if (request.method() === 'GET' && pathname === `/api/v1/projects/${projectId}/models/${baseSmokeSavedModel.id}/source`) {
+  if (request.method() === 'GET' && pathname === `/api/v1/projects/${projectId}/models/${state.savedModelID}/source`) {
     state.featureDSLSourceRequestCount += 1
     await route.fulfill({
-      body: smokeFeatureDSLSource,
+      body: state.parametricArtifactSourceCode,
       contentType: 'application/json',
     })
     return

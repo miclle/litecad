@@ -34,6 +34,7 @@ Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished wor
   - Remaining DSL data-model gaps include durable kernel feature graph state and CAD document History integration for generated feature graph nodes.
   - Decide whether Assistant revision requests should eventually overwrite a selected saved source model in place with History semantics, or keep the current safer corrected-draft/new-source-model workflow.
   - Unsupported primitive requests should fail explicitly rather than create substitute geometry.
+  - Add an operator or developer live-provider smoke checklist for real OpenAI-compatible credentials and model names; the existing `task test-browser` fixture suite does not prove live provider availability.
   - Add provider-stage telemetry, full provider analytics, richer long-run progress details, and provider-specific tuning before exposing longer generation workflows.
   - Add source-code editing and diff review for generated parametric artifacts only if product usage demands direct code control.
 
