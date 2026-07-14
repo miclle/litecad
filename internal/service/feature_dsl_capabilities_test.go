@@ -9,7 +9,7 @@ import (
 func TestLiteCADFeatureDSLCapabilities(t *testing.T) {
 	wantFeatures := []string{
 		"sketch", "box", "box_cut", "extrude", "extrude_cut", "cylinder", "cylinder_cut", "sphere",
-		"ellipsoid", "ellipse_extrude", "revolve", "sweep", "loft", "fillet", "chamfer", "boolean",
+		"ellipsoid", "ellipse_extrude", "tapered_extrude", "revolve", "sweep", "loft", "fillet", "chamfer", "boolean",
 	}
 	registry := LiteCADFeatureDSLCapabilities()
 	if !reflect.DeepEqual(registry.Features, wantFeatures) {

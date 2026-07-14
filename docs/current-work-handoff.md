@@ -6,11 +6,19 @@ This note is the short cross-machine handoff for the current LiteCAD development
 
 ## Current Mainline
 
-- `main` and `origin/main` are at `6da1c34 docs: record occurrence authoring semantics`.
+- `main` and `origin/main` are at `438a2a8 docs: add current work handoff`.
 - `feat/assembly-occurrence-authoring` has been fast-forward merged into `main` and pushed.
-- The feature branch still exists locally and on `origin`; it is safe to delete after confirming no external PR or review flow still needs the branch name.
+- The old feature branch has already been cleaned up locally in this checkout.
 
 ## Recently Completed
+
+The current `feat/feature-dsl-tapered-extrude` branch adds restricted LiteCAD Feature DSL tapered extrusion end to end:
+
+- Backend DSL validation and capability registry accept `tapered_extrude` for rectangular, circular, and elliptical XY sketches.
+- Assistant prompt/tool schema guidance includes `tapered_extrude` and positive `top_scale`.
+- Browser worker preview and STEP export compile `tapered_extrude` through an OCCT thru-sections loft between the base sketch and a centered positive-scale top profile.
+- Focused Go and frontend tests cover valid/invalid schema, capability/dispatch parity, protocol acceptance, and worker export.
+- README, TODO, AGENTS, `.agents/rules/`, and `docs/browser-cad-kernel-roadmap.md` are synchronized to the restricted shipped behavior.
 
 The durable flat assembly path now includes authoring, not only passive persistence:
 
@@ -25,7 +33,7 @@ This remains a flat assembly model. It does not implement nested subassemblies, 
 
 ## Last Verification
 
-The merged `main` was verified after the fast-forward merge with:
+The current `feat/feature-dsl-tapered-extrude` branch was verified with:
 
 ```bash
 task check
@@ -36,37 +44,37 @@ task test-browser
 Results:
 
 - `task check` passed.
-- `task test` passed: Go tests passed and Vitest reported 75 test files / 359 tests passing. Vitest still prints the existing `MaxListenersExceededWarning` warning during the full run.
+- `task test` passed: Go tests passed and Vitest reported 75 test files / 361 tests passing. Vitest still prints the existing localStorage and `MaxListenersExceededWarning` warnings during the full run.
 - `task test-browser` passed: 14/14 Playwright workbench tests.
 
-## Recommended Next Branch
+## Current Branch
 
-Start from latest `main`:
+Ready for review/merge from:
 
 ```bash
-git switch main
-git pull --ff-only
-git switch -c feat/feature-dsl-tapered-extrude
+feat/feature-dsl-tapered-extrude
 ```
 
-Recommended next implementation slice: add a restricted LiteCAD Feature DSL taper capability end to end.
+Completed implementation slice: add a restricted LiteCAD Feature DSL taper capability end to end.
 
-Suggested boundary:
+Boundary:
 
 - Support only rectangular, circular, and elliptical sketch taper/extrude paths.
 - Require positive height and positive taper scale.
 - Keep axis/direction semantics narrow and explicit.
 - Do not support arbitrary freeform profiles, negative or mirrored scale, arbitrary B-rep draft-face selection, or source STEP feature-history edits.
 
-Required surfaces for that slice:
+Completed surfaces for this slice:
 
 - Backend LiteCAD DSL validation and capability registry.
 - Assistant prompt/tool schema guidance.
 - Browser worker preview.
 - Browser worker STEP export.
 - Focused Go and frontend worker tests.
-- One deterministic browser workflow if the Assistant or saved model UX changes.
+- Browser workflow verification through the deterministic Playwright workbench suite.
 - README, TODO, AGENTS, `.agents/rules/`, and `docs/browser-cad-kernel-roadmap.md` updates in the same branch.
+
+After this branch is merged, choose the next DSL slice only after defining an equally narrow backend-validation, prompt-schema, worker-preview/export, tests, and docs boundary.
 
 ## Larger Follow-Ups
 

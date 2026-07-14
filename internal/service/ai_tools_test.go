@@ -394,7 +394,7 @@ func TestAIParametricRunCreatesPendingLiteCADFeatureDSLArtifact(t *testing.T) {
 	}
 
 	joined := joinAIMessageBodies(svc.aiClient.(*recordingAIClient).messages)
-	for _, want := range []string{"litecad-feature-dsl", "capability registry", "box", "extrude", "extrude_cut", "circle", "direction", "symmetric", "cylinder", "cylinder_cut", "sphere", "ellipsoid", "ellipse_extrude", "sketch", "revolve", "sweep", "loft", "fillet", "chamfer", "boolean", "holes", "non-zero axis", "repeat", "expression", "add", "string", "geometry", "centered through holes along X, Y, and Z", "[1,0,0]", "[0,1,0]", "[0,0,1]", "negative half the cut depth", "hollow full-turn revolve", "must not cross the revolve axis", "profile plane must contain the revolve axis"} {
+	for _, want := range []string{"litecad-feature-dsl", "capability registry", "box", "extrude", "extrude_cut", "circle", "direction", "symmetric", "cylinder", "cylinder_cut", "sphere", "ellipsoid", "ellipse_extrude", "tapered_extrude", "top_scale", "sketch", "revolve", "sweep", "loft", "fillet", "chamfer", "boolean", "holes", "non-zero axis", "repeat", "expression", "add", "string", "geometry", "centered through holes along X, Y, and Z", "[1,0,0]", "[0,1,0]", "[0,0,1]", "negative half the cut depth", "hollow full-turn revolve", "must not cross the revolve axis", "profile plane must contain the revolve axis"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("provider context should mention %q, got:\n%s", want, joined)
 		}

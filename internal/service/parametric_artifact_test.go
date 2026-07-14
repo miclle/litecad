@@ -1030,6 +1030,102 @@ func TestCreateLiteCADFeatureDSLArtifactAcceptsCircularExtrudeSketches(t *testin
 	}
 }
 
+func TestCreateLiteCADFeatureDSLArtifactAcceptsTaperedExtrudeSketches(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-tapered-extrude@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Tapered extrude generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	artifact, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Tapered bosses",
+		SourceKind:  "litecad-feature-dsl",
+		SourceCode: `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "base_width": { "type": "number", "default": 80, "min": 20, "max": 200 },
+    "base_depth": { "type": "number", "default": 40, "min": 10, "max": 120 },
+    "boss_diameter": { "type": "number", "default": 18, "min": 4, "max": 40 },
+    "oval_x": { "type": "number", "default": 30, "min": 8, "max": 80 },
+    "oval_y": { "type": "number", "default": 18, "min": 6, "max": 50 },
+    "height": { "type": "number", "default": 12, "min": 2, "max": 60 },
+    "top_scale": { "type": "number", "default": 0.55, "min": 0.1, "max": 2 }
+  },
+  "features": [
+    { "id": "wedge", "type": "tapered_extrude", "origin": [0, 0, 0], "sketch": { "type": "rectangle", "size": ["base_width", "base_depth"] }, "height": "height", "top_scale": "top_scale" },
+    { "id": "round_taper", "type": "tapered_extrude", "origin": [100, 0, 0], "sketch": { "type": "circle", "diameter": "boss_diameter" }, "height": 10, "top_scale": 0.5, "direction": "negative" },
+    { "id": "oval_taper", "type": "tapered_extrude", "origin": [130, 0, 0], "sketch": { "type": "ellipse", "diameter_x": "oval_x", "diameter_y": "oval_y" }, "height": 9, "top_scale": 0.75, "direction": "symmetric" }
+  ]
+}`,
+		CompileStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectParametricArtifact returned error: %v", err)
+	}
+	if artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", artifact)
+	}
+}
+
+func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedTaperedExtrude(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-lcad-bad-tapered-extrude@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Reject bad tapered extrude generated DSL source",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	for _, source := range []string{
+		`{"version":1,"unit":"millimetre","features":[{"id":"wedge","type":"tapered_extrude","origin":[0,0,0],"sketch":{"type":"rectangle","size":[80,40]},"height":6}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"wedge","type":"tapered_extrude","origin":[0,0,0],"sketch":{"type":"rectangle","size":[80,40]},"height":6,"top_scale":0}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"wedge","type":"tapered_extrude","origin":[0,0,0],"sketch":{"type":"rectangle","size":[80,40]},"height":6,"top_scale":-1}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"wedge","type":"tapered_extrude","origin":[0,0,0],"sketch":{"type":"rectangle","size":[80]},"height":6,"top_scale":0.5}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"wedge","type":"tapered_extrude","origin":[0,0,0],"sketch":{"type":"rectangle","size":[80,40]},"height":0,"top_scale":0.5}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"profile","type":"sketch","plane":"XZ","profile":{"type":"rectangle","size":[80,40]}},{"id":"wedge","type":"tapered_extrude","sketch":"profile","height":6,"top_scale":0.5}]}`,
+		`{"version":1,"unit":"millimetre","features":[{"id":"wedge","type":"tapered_extrude","origin":[0,0,0],"sketch":{"type":"rectangle","size":[80,40]},"height":6,"top_scale":0.5,"direction":"sideways"}]}`,
+	} {
+		_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+			OwnerUserID:   user.ID,
+			ProjectID:     project.ID,
+			Title:         "Bad tapered extrude",
+			SourceKind:    "litecad-feature-dsl",
+			SourceCode:    source,
+			CompileStatus: "pending",
+		})
+		if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+			t.Fatalf("CreateProjectParametricArtifact(%s) error = %v, want ErrInvalidProjectParametricArtifactInput", source, err)
+		}
+	}
+}
+
 func TestCreateLiteCADFeatureDSLArtifactRejectsMalformedCircularSketches(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

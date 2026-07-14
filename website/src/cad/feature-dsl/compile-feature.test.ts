@@ -7,6 +7,7 @@ describe('Feature DSL compiler dispatch', () => {
     ['box', 'primitive'],
     ['sphere', 'primitive'],
     ['extrude', 'sketch'],
+    ['tapered_extrude', 'sketch'],
     ['loft', 'sketch'],
     ['boolean', 'boolean'],
     ['fillet', 'modifier'],

@@ -15,6 +15,7 @@ import type {
   CadKernelFeatureDSLSketchPlane,
   CadKernelFeatureDSLSketchReference,
   CadKernelFeatureDSLSweepFeature,
+  CadKernelFeatureDSLTaperedExtrudeFeature,
   CadKernelFeatureDSLTransform,
 } from '../kernel-protocol'
 import { featureDSLCompilerFamily } from './compile-feature'
@@ -78,6 +79,11 @@ export function compileFeatureDSLShape(
           }
           case 'extrude': {
             const shape = buildFeatureDSLExtrudeShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
+            accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
+            break
+          }
+          case 'tapered_extrude': {
+            const shape = buildFeatureDSLTaperedExtrudeShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
             accumulatedShape = appendFeatureDSLShape(openCascade, accumulatedShape, applyFeatureDSLTransform(openCascade, shape, transform, origin))
             break
           }
@@ -200,6 +206,8 @@ function buildFeatureDSLStandaloneShape(
       shape = buildFeatureDSLBoxShape(openCascade, feature, parameters, origin, transform.scale)
     } else if (feature.type === 'extrude') {
       shape = buildFeatureDSLExtrudeShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
+    } else if (feature.type === 'tapered_extrude') {
+      shape = buildFeatureDSLTaperedExtrudeShape(openCascade, feature, sketches, parameters, feature.origin || feature.repeat ? origin : undefined, transform.scale)
     } else if (feature.type === 'cylinder') {
       shape = buildFeatureDSLCylinderShape(openCascade, feature, parameters, 'height', origin, transform.scale)
     } else if (feature.type === 'sphere') {
@@ -367,6 +375,61 @@ function buildFeatureDSLExtrudeShape(
   }
   const sketchSize = resolveFeatureDSLVector(sketch.profile.size, parameters)
   return buildFeatureDSLRectanglePrismShape(openCascade, feature.id, directedOrigin, sketchSize, height, 'extrude', scale)
+}
+
+function buildFeatureDSLTaperedExtrudeShape(
+  openCascade: OpenCascadeModule,
+  feature: CadKernelFeatureDSLTaperedExtrudeFeature,
+  sketches: Map<string, CadKernelFeatureDSLSketchDefinitionFeature>,
+  parameters: Record<string, number>,
+  repeatedOrigin?: readonly number[],
+  scale: readonly number[] = identityFeatureDSLScale(),
+) {
+  const sketch = resolveFeatureDSLSketchReference(feature.sketch, sketches)
+  if ((sketch.plane ?? 'XY') !== 'XY') {
+    throw new Error(`Feature ${feature.id} tapered_extrude sketch references currently require XY plane`)
+  }
+  const origin = repeatedOrigin ?? resolveFeatureDSLVector(feature.origin ?? sketch.origin ?? [0, 0, 0], parameters)
+  const height = resolveFeatureDSLScalar(feature.height, parameters)
+  const scaledHeight = scaleFeatureDSLLength(height, scale)
+  const topScale = resolveFeatureDSLScalar(feature.top_scale, parameters)
+  if (scaledHeight <= 0 || topScale <= 0) {
+    throw new Error(`Feature ${feature.id} tapered_extrude dimensions must be positive`)
+  }
+  const directedOrigin = resolveFeatureDSLDirectedOrigin(feature.id, origin, scaledHeight, feature.direction)
+  const topOrigin = resolveFeatureDSLTaperedTopOrigin(sketch.profile, parameters, directedOrigin, scaledHeight, topScale, scale)
+  const bottomWire = buildFeatureDSLSketchWire(openCascade, sketch.profile, parameters, directedOrigin, 'XY', scale)
+  const topWire = buildFeatureDSLSketchWire(openCascade, sketch.profile, parameters, topOrigin, 'XY', [
+    (scale[0] ?? 1) * topScale,
+    (scale[1] ?? 1) * topScale,
+    scale[2] ?? 1,
+  ])
+  const loftBuilder = new openCascade.BRepOffsetAPI_ThruSections(true, false, 0.001)
+  loftBuilder.AddWire(bottomWire)
+  loftBuilder.CheckCompatibility(true)
+  loftBuilder.AddWire(topWire)
+  loftBuilder.Build(new openCascade.Message_ProgressRange_1())
+  return loftBuilder.Shape()
+}
+
+function resolveFeatureDSLTaperedTopOrigin(
+  sketch: CadKernelFeatureDSLSketch,
+  parameters: Record<string, number>,
+  origin: readonly number[],
+  height: number,
+  topScale: number,
+  scale: readonly number[],
+) {
+  const topOrigin = [origin[0] ?? 0, origin[1] ?? 0, (origin[2] ?? 0) + height]
+  if (sketch.type !== 'rectangle') {
+    return topOrigin
+  }
+  const baseSize = scaleFeatureDSLPlanarSize(resolveFeatureDSLVector(sketch.size, parameters), scale)
+  return [
+    topOrigin[0] + ((baseSize[0] ?? 0) * (1 - topScale)) / 2,
+    topOrigin[1] + ((baseSize[1] ?? 0) * (1 - topScale)) / 2,
+    topOrigin[2],
+  ]
 }
 
 function buildFeatureDSLExtrudeCutShape(

@@ -1109,6 +1109,104 @@ describe('runFeatureDSLExportWithKernel', () => {
     expect(result.exportedStepText).toContain('END-ISO-10303-21')
   })
 
+  it('lofts a rectangular tapered extrude before writing STEP', async () => {
+    const bottomWire = { name: 'bottom-wire' }
+    const topWire = { name: 'top-wire' }
+    const taperedShape = { name: 'tapered-extrude-shape' }
+    const buildLoft = vi.fn()
+    const addWire = vi.fn()
+    const checkCompatibility = vi.fn()
+    const transfer = vi.fn()
+    const write = vi.fn()
+    const wireCalls: unknown[][] = []
+    const openCascade = {
+      FS: {
+        readFile: vi.fn(() => 'ISO-10303-21;\nEND-ISO-10303-21;'),
+        unlink: vi.fn(),
+      },
+      IFSelect_ReturnStatus: {
+        IFSelect_RetDone: 1,
+      },
+      STEPControl_StepModelType: {
+        STEPControl_AsIs: 0,
+      },
+      STEPControl_Writer_1: vi.fn(function writer(this: {
+        Transfer: typeof transfer
+        Write: typeof write
+      }) {
+        this.Transfer = transfer.mockReturnValue(1)
+        this.Write = write.mockReturnValue(1)
+      }),
+      gp_Pnt_3: vi.fn(function point(this: { x: number; y: number; z: number }, x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }),
+      BRepBuilderAPI_MakeEdge_3: vi.fn(function makeEdge(this: { Edge: () => unknown }, first: unknown, second: unknown) {
+        this.Edge = () => ({ kind: 'edge', first, second })
+      }),
+      BRepBuilderAPI_MakeWire_5: vi.fn(function makeWire(
+        this: { Wire: () => unknown },
+        first: unknown,
+        second: unknown,
+        third: unknown,
+        fourth: unknown,
+      ) {
+        wireCalls.push([first, second, third, fourth])
+        const wire = wireCalls.length === 1 ? bottomWire : topWire
+        this.Wire = () => wire
+      }),
+      BRepOffsetAPI_ThruSections: vi.fn(function loft(this: {
+        AddWire: typeof addWire
+        CheckCompatibility: typeof checkCompatibility
+        Build: typeof buildLoft
+        Shape: () => unknown
+      }) {
+        this.AddWire = addWire
+        this.CheckCompatibility = checkCompatibility
+        this.Build = buildLoft
+        this.Shape = () => taperedShape
+      }),
+      Message_ProgressRange_1: vi.fn(function progressRange() {}),
+    }
+
+    const result = await runFeatureDSLExportWithKernel(openCascade, {
+      filename: 'tapered-rectangle.step',
+      parameterValues: { width: 80, depth: 40, height: 12, top_scale: 0.5 },
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        parameters: {
+          width: { type: 'number', default: 80 },
+          depth: { type: 'number', default: 40 },
+          height: { type: 'number', default: 12 },
+          top_scale: { type: 'number', default: 0.5 },
+        },
+        features: [
+          {
+            id: 'wedge',
+            type: 'tapered_extrude',
+            origin: [2, 3, 4],
+            sketch: { type: 'rectangle', size: ['width', 'depth'] },
+            height: 'height',
+            top_scale: 'top_scale',
+          },
+        ],
+      },
+    })
+
+    expect(openCascade.gp_Pnt_3).toHaveBeenCalledWith(2, 3, 4)
+    expect(openCascade.gp_Pnt_3).toHaveBeenCalledWith(22, 13, 16)
+    expect(openCascade.gp_Pnt_3).toHaveBeenCalledWith(62, 33, 16)
+    expect(openCascade.BRepOffsetAPI_ThruSections).toHaveBeenCalledWith(true, false, 0.001)
+    expect(addWire).toHaveBeenNthCalledWith(1, bottomWire)
+    expect(addWire).toHaveBeenNthCalledWith(2, topWire)
+    expect(checkCompatibility).toHaveBeenCalledWith(true)
+    expect(buildLoft).toHaveBeenCalledOnce()
+    expect(transfer).toHaveBeenCalledWith(taperedShape, 0, true, expect.anything())
+    expect(result.exportedStepText).toContain('END-ISO-10303-21')
+  })
+
   it('builds additive cylinder features along a provided axis before writing STEP', async () => {
     const cylinderShape = { name: 'cylinder-shape' }
     const buildCylinder = vi.fn()

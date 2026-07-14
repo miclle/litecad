@@ -186,6 +186,18 @@ export type CadKernelFeatureDSLExtrudeFeature = {
   transform?: CadKernelFeatureDSLTransform
 }
 
+export type CadKernelFeatureDSLTaperedExtrudeFeature = {
+  id: string
+  type: 'tapered_extrude'
+  origin?: readonly CadKernelFeatureDSLExpression[]
+  sketch: CadKernelFeatureDSLSketchReference
+  height: CadKernelFeatureDSLExpression
+  top_scale: CadKernelFeatureDSLExpression
+  direction?: CadKernelFeatureDSLExtrudeDirection
+  repeat?: CadKernelFeatureDSLRepeat
+  transform?: CadKernelFeatureDSLTransform
+}
+
 export type CadKernelFeatureDSLExtrudeCutFeature = {
   id: string
   type: 'extrude_cut'
@@ -262,6 +274,7 @@ export type CadKernelFeatureDSLFeature =
   | CadKernelFeatureDSLBoxFeature
   | CadKernelFeatureDSLBoxCutFeature
   | CadKernelFeatureDSLExtrudeFeature
+  | CadKernelFeatureDSLTaperedExtrudeFeature
   | CadKernelFeatureDSLExtrudeCutFeature
   | CadKernelFeatureDSLCylinderFeature
   | CadKernelFeatureDSLCylinderCutFeature
@@ -513,6 +526,9 @@ function isFeatureDSLFeature(value: unknown): value is CadKernelFeatureDSLFeatur
   if (value.type === 'extrude') {
     return isFeatureDSLExtrudeFeature(value)
   }
+  if (value.type === 'tapered_extrude') {
+    return isFeatureDSLTaperedExtrudeFeature(value)
+  }
   if (value.type === 'extrude_cut') {
     return isFeatureDSLExtrudeCutFeature(value)
   }
@@ -568,6 +584,10 @@ function isFeatureDSLExtrudeFeature(value: Record<string, unknown>) {
     (value.direction === undefined || isFeatureDSLExtrudeDirection(value.direction)) &&
     (value.repeat === undefined || isFeatureDSLRepeat(value.repeat))
   )
+}
+
+function isFeatureDSLTaperedExtrudeFeature(value: Record<string, unknown>) {
+  return isFeatureDSLExtrudeFeature(value) && isFeatureDSLExpression(value.top_scale)
 }
 
 function isFeatureDSLExtrudeCutFeature(value: Record<string, unknown>) {

@@ -15,6 +15,7 @@ describe('Feature DSL capabilities', () => {
 
   it('rejects missing, extra, and unknown feature types', () => {
     expect(isSupportedFeatureDSLType('box')).toBe(true)
+    expect(isSupportedFeatureDSLType('tapered_extrude')).toBe(true)
     expect(isSupportedFeatureDSLType('unsupported')).toBe(false)
     expect(() => assertFeatureDSLCompilerCoverage(FEATURE_DSL_COMPILER_TYPES.filter((type) => type !== 'loft'))).toThrow(
       'Feature DSL compiler coverage mismatch: missing loft',
