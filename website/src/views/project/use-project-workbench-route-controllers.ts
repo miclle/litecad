@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { fetchProjectCADHistory } from 'src/api/projects'
 import type { Project } from 'src/types/project'
@@ -33,6 +34,7 @@ export function useProjectWorkbenchRouteControllers({
   project,
   projectId,
 }: UseProjectWorkbenchRouteControllersOptions): Omit<ProjectWorkbenchCompositionProps, 'fileInputRef' | 'project'> {
+  const { t } = useTranslation()
   const shellState = useProjectWorkbenchShellState()
   const viewControls = useProjectWorkbenchViewControls()
   const visibilityState = useProjectWorkbenchVisibilityState()
@@ -106,7 +108,7 @@ export function useProjectWorkbenchRouteControllers({
   const keyboardDeleteNode = effectiveSelectedDocumentNodeID ? cadNodeByID.get(effectiveSelectedDocumentNodeID) : undefined
   const parametricModelCommands = useProjectWorkbenchParametricModelCommands({
     onArtifactSaveError: () => {
-      projectAssistant.setParametricRunError('Generated source could not be added to the canvas. Try generating it again.')
+      projectAssistant.setParametricRunError(t('project.parametric.saveFailed'))
     },
     onModelSelected: projectSelection.selectModel,
     projectId,

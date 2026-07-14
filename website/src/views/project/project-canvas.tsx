@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
 import { Box, HardDrive, Layers, Ruler, ScanLine, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from '@/components/ui/field'
@@ -135,11 +136,12 @@ export function ProjectCanvas({
   viewOrientation,
   visibleModelIds,
 }: ProjectCanvasProps) {
+  const { t } = useTranslation()
   const [displayOptions, setDisplayOptions] = useState<ModelPreviewDisplayOptions>(defaultModelPreviewDisplayOptions)
   const previewTools: PreviewTool[] = [
-    { description: 'Overlay mesh edge lines', icon: Layers, key: 'showEdges', label: 'Edges' },
-    { description: 'Clip the preview at the model center', icon: ScanLine, key: 'section', label: 'Section' },
-    { description: 'Show visible bounds dimensions', icon: Ruler, key: 'measurement', label: 'Measure' },
+    { description: t('project.canvas.edgesDescription'), icon: Layers, key: 'showEdges', label: t('project.canvas.edges') },
+    { description: t('project.canvas.sectionDescription'), icon: ScanLine, key: 'section', label: t('project.canvas.section') },
+    { description: t('project.canvas.measureDescription'), icon: Ruler, key: 'measurement', label: t('project.canvas.measure') },
   ]
   const toggleDisplayOption = (key: keyof ModelPreviewDisplayOptions) => {
     setDisplayOptions((currentOptions) => ({ ...currentOptions, [key]: !currentOptions[key] }))
@@ -178,11 +180,11 @@ export function ProjectCanvas({
       ) : null}
 
       <div
-        aria-label="CAD tools"
+        aria-label={t('project.canvas.toolbar')}
         className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-md border border-[#dbe3ec] bg-white/94 p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur"
         role="toolbar"
       >
-        <span className="px-1.5 font-mono text-[10px] font-semibold uppercase text-[#64748b]">CAD tools</span>
+        <span className="px-1.5 font-mono text-[10px] font-semibold uppercase text-[#64748b]">{t('project.canvas.toolbar')}</span>
         {previewTools.map((tool) => {
           const Icon = tool.icon
           return (
@@ -207,7 +209,7 @@ export function ProjectCanvas({
                 <Icon data-icon="inline-start" />
                 <span className="truncate">{tool.label}</span>
               </TooltipTrigger>
-              <TooltipContent sideOffset={8}>{previewAssets.length === 0 ? 'Import a model first' : tool.description}</TooltipContent>
+              <TooltipContent sideOffset={8}>{previewAssets.length === 0 ? t('project.canvas.importFirst') : tool.description}</TooltipContent>
             </Tooltip>
           )
         })}
@@ -229,31 +231,29 @@ export function ProjectCanvas({
             }
           >
             <Box data-icon="inline-start" />
-            <span className="truncate">Fuse box</span>
+            <span className="truncate">{t('project.canvas.fuseBox')}</span>
           </TooltipTrigger>
           {!selectedDocumentNode ? (
-            <TooltipContent sideOffset={8}>Select a model first</TooltipContent>
+            <TooltipContent sideOffset={8}>{t('project.canvas.selectModelFirst')}</TooltipContent>
           ) : !selectedModelSupportsFuseBox ? (
-            <TooltipContent sideOffset={8}>STEP models only</TooltipContent>
+            <TooltipContent sideOffset={8}>{t('project.canvas.stepOnly')}</TooltipContent>
           ) : null}
         </Tooltip>
       </div>
 
       {activeCADTool === 'fuse-box' && selectedModelSupportsFuseBox && selectedModelBoxFeatureDraft && selectedSourceModel ? (
         <aside
-          aria-label="Fuse box tool"
+          aria-label={t('project.canvas.fuseBoxTool')}
           className="absolute right-4 top-40 z-20 w-[min(320px,calc(100vw-32px))] rounded-md border border-[#dbe3ec] bg-white/94 p-3 shadow-[0_14px_36px_rgba(15,23,42,0.12)] backdrop-blur"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="font-mono text-[11px] uppercase text-[#64748b]">Tool</p>
-              <h2 className="mt-1 text-sm font-semibold text-[#0f172a]">Fuse box</h2>
-              <p className="mt-1 text-xs leading-5 text-[#64748b]">
-                Add a rectangular union to the selected STEP model for preview and export.
-              </p>
+              <p className="font-mono text-[11px] uppercase text-[#64748b]">{t('project.canvas.tool')}</p>
+              <h2 className="mt-1 text-sm font-semibold text-[#0f172a]">{t('project.canvas.fuseBox')}</h2>
+              <p className="mt-1 text-xs leading-5 text-[#64748b]">{t('project.canvas.fuseBoxDescription')}</p>
             </div>
             <Button
-              aria-label="Close Fuse box tool"
+              aria-label={t('project.canvas.closeFuseBox')}
               className="shrink-0"
               onClick={onCloseCADTool}
               size="icon-sm"
@@ -274,19 +274,19 @@ export function ProjectCanvas({
 
           <FieldSet className="mt-3 gap-3">
             <FieldGroup className="gap-2">
-              <FieldTitle className="text-xs text-[#334155]">Origin</FieldTitle>
+              <FieldTitle className="text-xs text-[#334155]">{t('project.canvas.origin')}</FieldTitle>
               <div className="grid grid-cols-3 gap-1.5">
                 {(
                   [
-                    ['originX', 'Origin X'],
-                    ['originY', 'Origin Y'],
-                    ['originZ', 'Origin Z'],
+                    ['originX', t('project.canvas.originAxis', { axis: 'X' })],
+                    ['originY', t('project.canvas.originAxis', { axis: 'Y' })],
+                    ['originZ', t('project.canvas.originAxis', { axis: 'Z' })],
                   ] as const
                 ).map(([field, label]) => (
                   <NumericCADField
-                    ariaLabel={`${label} for ${selectedModelDisplayName}`}
+                    ariaLabel={t('project.canvas.fieldFor', { label, name: selectedModelDisplayName })}
                     key={field}
-                    label={label.replace('Origin ', '')}
+                    label={label.replace(t('project.canvas.origin'), '').trim()}
                     onChange={(value) => onUpdateBoxFeatureDraft(selectedSourceModel.id, field, value)}
                     unitLabel={unitLabel}
                     value={selectedModelBoxFeatureDraft[field]}
@@ -296,19 +296,19 @@ export function ProjectCanvas({
             </FieldGroup>
 
             <FieldGroup className="gap-2">
-              <FieldTitle className="text-xs text-[#334155]">Size</FieldTitle>
+              <FieldTitle className="text-xs text-[#334155]">{t('project.canvas.size')}</FieldTitle>
               <div className="grid grid-cols-3 gap-1.5">
                 {(
                   [
-                    ['sizeX', 'Size X'],
-                    ['sizeY', 'Size Y'],
-                    ['sizeZ', 'Size Z'],
+                    ['sizeX', t('project.canvas.sizeAxis', { axis: 'X' })],
+                    ['sizeY', t('project.canvas.sizeAxis', { axis: 'Y' })],
+                    ['sizeZ', t('project.canvas.sizeAxis', { axis: 'Z' })],
                   ] as const
                 ).map(([field, label]) => (
                   <NumericCADField
-                    ariaLabel={`${label} for ${selectedModelDisplayName}`}
+                    ariaLabel={t('project.canvas.fieldFor', { label, name: selectedModelDisplayName })}
                     key={field}
-                    label={label.replace('Size ', '')}
+                    label={label.replace(t('project.canvas.size'), '').trim()}
                     onChange={(value) => onUpdateBoxFeatureDraft(selectedSourceModel.id, field, value)}
                     unitLabel={unitLabel}
                     value={selectedModelBoxFeatureDraft[field]}
@@ -328,10 +328,10 @@ export function ProjectCanvas({
                 type="button"
               >
                 <Box data-icon="inline-start" />
-                {isSelectedModelBoxFeatureUpdating ? 'Applying' : 'Apply fuse'}
+                {isSelectedModelBoxFeatureUpdating ? t('project.canvas.applying') : t('project.canvas.applyFuse')}
               </Button>
               <Button onClick={onCloseCADTool} size="sm" type="button" variant="outline">
-                Cancel
+                {t('common.cancel')}
               </Button>
             </div>
           </FieldSet>

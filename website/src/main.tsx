@@ -7,6 +7,7 @@ import { queryClient } from 'src/lib/query-client'
 import App from './App'
 
 import 'src/globals.css'
+import 'src/i18n'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

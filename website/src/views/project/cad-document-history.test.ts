@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { cadHistoryActionForKey, cadHistoryStatusLabel } from './cad-document-history'
+import { cadHistoryActionForKey, cadHistoryStatusLabelKey } from './cad-document-history'
 
 function keyboardEvent(overrides: Partial<KeyboardEventInit> = {}, target?: HTMLElement) {
   const event = new KeyboardEvent('keydown', { key: 'z', ...overrides })
@@ -39,8 +39,8 @@ describe('CAD document history helpers', () => {
   })
 
   test('labels applied, undone, and discarded history entries', () => {
-    expect(cadHistoryStatusLabel('applied')).toBe('Applied')
-    expect(cadHistoryStatusLabel('undone')).toBe('Undone')
-    expect(cadHistoryStatusLabel('discarded')).toBe('Alternate path')
+    expect(cadHistoryStatusLabelKey('applied')).toBe('project.history.status.applied')
+    expect(cadHistoryStatusLabelKey('undone')).toBe('project.history.status.undone')
+    expect(cadHistoryStatusLabelKey('discarded')).toBe('project.history.status.discarded')
   })
 })

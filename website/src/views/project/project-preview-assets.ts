@@ -27,6 +27,7 @@ export type ProjectPreviewSummaryInput = {
   modelCount: number
   previewAssetCount: number
   latestPreviewFormat?: string
+  t?: (key: string, options?: Record<string, unknown>) => string
 }
 
 export type ProjectModelTreeGroup = {
@@ -286,20 +287,63 @@ export function getSourceDisplayName(model: ProjectModel) {
   return model.original_filename.replace(/\.[^.]+$/, '')
 }
 
-export function projectPreviewSummary({ modelCount, previewAssetCount, latestPreviewFormat = '' }: ProjectPreviewSummaryInput) {
+export function projectPreviewSummary({ modelCount, previewAssetCount, latestPreviewFormat = '', t = defaultProjectPreviewSummaryTranslator }: ProjectPreviewSummaryInput) {
   const isReady = previewAssetCount > 0
-  const sourceWord = modelCount === 1 ? 'source' : 'sources'
-  const meshWord = previewAssetCount === 1 ? 'mesh' : 'meshes'
-  const previewFormat = latestPreviewFormat ? latestPreviewFormat.toUpperCase() : 'Preview'
+  const meshWord = t('project.previewSummary.meshWord', { count: previewAssetCount })
+  const previewFormat = latestPreviewFormat ? latestPreviewFormat.toUpperCase() : t('project.previewSummary.previewFormat')
 
   return {
     isReady,
-    previewLabel: isReady ? `${previewAssetCount} ${previewFormat} ${meshWord}` : modelCount > 0 ? 'Preparing' : 'Empty',
-    sourceLabel: modelCount > 0 ? `${modelCount} ${sourceWord} stored` : 'Awaiting import',
-    sourceBody: isReady
-      ? `The project owns ${modelCount} uploaded source ${modelCount === 1 ? 'file' : 'files'} and ${previewAssetCount} browser-loadable preview ${meshWord}.`
+    previewLabel: isReady
+      ? t('project.previewSummary.meshCount', { count: previewAssetCount, format: previewFormat })
       : modelCount > 0
-        ? `The project owns ${modelCount} uploaded source ${modelCount === 1 ? 'file' : 'files'}. Mesh preview generation is pending.`
-        : 'The workbench starts empty until real CAD source files are imported.',
+        ? t('project.previewSummary.preparing')
+        : t('project.previewSummary.empty'),
+    sourceLabel: modelCount > 0 ? t('project.previewSummary.sourceStored', { count: modelCount }) : t('project.previewSummary.awaitingImport'),
+    sourceBody: isReady
+      ? t('project.previewSummary.readyBody', { count: modelCount, modelCount, previewAssetCount, meshWord })
+      : modelCount > 0
+        ? t('project.previewSummary.pendingBody', { count: modelCount })
+        : t('project.previewSummary.emptyBody'),
   }
+}
+
+function defaultProjectPreviewSummaryTranslator(key: string, options: Record<string, unknown> = {}) {
+  const count = Number(options.count ?? 0)
+  const modelCount = Number(options.modelCount ?? count)
+  const previewAssetCount = Number(options.previewAssetCount ?? 0)
+  const format = String(options.format ?? 'Preview')
+  const meshWord = String(options.meshWord ?? (count === 1 ? 'mesh' : 'meshes'))
+
+  if (key === 'project.previewSummary.meshWord') {
+    return count === 1 ? 'mesh' : 'meshes'
+  }
+  if (key === 'project.previewSummary.previewFormat') {
+    return 'Preview'
+  }
+  if (key === 'project.previewSummary.meshCount') {
+    return `${count} ${format} ${count === 1 ? 'mesh' : 'meshes'}`
+  }
+  if (key === 'project.previewSummary.preparing') {
+    return 'Preparing'
+  }
+  if (key === 'project.previewSummary.empty') {
+    return 'Empty'
+  }
+  if (key === 'project.previewSummary.sourceStored') {
+    return `${count} ${count === 1 ? 'source' : 'sources'} stored`
+  }
+  if (key === 'project.previewSummary.awaitingImport') {
+    return 'Awaiting import'
+  }
+  if (key === 'project.previewSummary.readyBody') {
+    return `The project owns ${modelCount} uploaded source ${modelCount === 1 ? 'file' : 'files'} and ${previewAssetCount} browser-loadable preview ${meshWord}.`
+  }
+  if (key === 'project.previewSummary.pendingBody') {
+    return `The project owns ${count} uploaded source ${count === 1 ? 'file' : 'files'}. Mesh preview generation is pending.`
+  }
+  if (key === 'project.previewSummary.emptyBody') {
+    return 'The workbench starts empty until real CAD source files are imported.'
+  }
+  return key
 }

@@ -4,6 +4,7 @@ import type { BoxFeatureDraft } from './cad-document-box-features'
 import type { ProjectInspectorSelection, TransformDraft } from './project-inspector'
 import { getModelDisplayName } from './project-preview-assets'
 import type { CADDocumentNode, Project, ProjectCADDocument, ProjectModel } from 'src/types/project'
+import { useTranslation } from 'react-i18next'
 
 type ProjectPreviewSummary = {
   previewLabel: string
@@ -46,15 +47,16 @@ export function useProjectWorkbenchInspectorState({
   transformDraftsByNodeId,
   transformErrorsByNodeId,
 }: ProjectWorkbenchInspectorStateOptions) {
+  const { i18n, t } = useTranslation()
   const documentUnitLabel = cadUnitLabel(projectCADDocument?.unit)
   const updatedAt = project
-    ? new Intl.DateTimeFormat('en-US', {
+    ? new Intl.DateTimeFormat(i18n.language === 'zh' ? 'zh-CN' : 'en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
       }).format(new Date(project.updated_at))
     : ''
-  const projectDescription = project?.description || 'No description yet. Import a CAD source file to begin the project record.'
+  const projectDescription = project?.description || t('project.inspector.noDescription')
   const selectedModelDisplayName =
     selectedDocumentNode?.source_format === 'step-component'
       ? selectedDocumentNode.name
@@ -75,25 +77,25 @@ export function useProjectWorkbenchInspectorState({
   const selectedModelStepExportStatus = selectedSourceModel ? stepExportStatusByModelId[selectedSourceModel.id] : ''
   const selectedModelDetails = selectedSourceModel
     ? [
-        { label: 'Format', value: selectedDocumentNode?.source_format === 'step-component' ? 'STEP-COMPONENT' : selectedSourceModel.format.toUpperCase() },
-        { label: 'Status', value: selectedSourceModel.parse_status },
-        { label: 'Unit', value: selectedSourceModel.metadata.length_unit || documentUnitLabel },
-        { label: 'Entities', value: selectedSourceModel.metadata.entity_count },
-        { label: 'Triangles', value: selectedSourceModel.metadata.triangle_count },
+        { label: t('project.inspector.details.format'), value: selectedDocumentNode?.source_format === 'step-component' ? 'STEP-COMPONENT' : selectedSourceModel.format.toUpperCase() },
+        { label: t('project.inspector.details.status'), value: selectedSourceModel.parse_status },
+        { label: t('project.inspector.details.unit'), value: selectedSourceModel.metadata.length_unit || documentUnitLabel },
+        { label: t('project.inspector.details.entities'), value: selectedSourceModel.metadata.entity_count },
+        { label: t('project.inspector.details.triangles'), value: selectedSourceModel.metadata.triangle_count },
       ]
     : []
   const documentDetails = [
-    { label: 'Updated', value: updatedAt },
-    { label: 'Preview', value: previewSummary.previewLabel },
+    { label: t('project.inspector.details.updated'), value: updatedAt },
+    { label: t('project.inspector.details.preview'), value: previewSummary.previewLabel },
     ...(latestModel
       ? [
           {
-            label: 'Schema',
+            label: t('project.inspector.details.schema'),
             value: latestModel.metadata.schema || latestModel.metadata.asset_type.toUpperCase() || latestModel.parse_status,
           },
-          { label: 'Unit', value: latestModel.metadata.length_unit || 'Unknown' },
-          { label: 'Entities', value: latestModel.metadata.entity_count },
-          { label: 'Triangles', value: latestTriangleCount },
+          { label: t('project.inspector.details.unit'), value: latestModel.metadata.length_unit || t('project.inspector.unknown') },
+          { label: t('project.inspector.details.entities'), value: latestModel.metadata.entity_count },
+          { label: t('project.inspector.details.triangles'), value: latestTriangleCount },
         ]
       : []),
   ]

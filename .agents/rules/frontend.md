@@ -9,6 +9,8 @@ These rules apply to files under `website/src/`.
 - Page components go in `website/src/views/`.
 - Reusable UI belongs in `website/src/components/` or a focused local component folder.
 - Route changes should update `website/src/router.tsx`, navigation, and NotFound behavior as needed.
+- User-facing shell and page copy should use `react-i18next` resources in `website/src/i18n.ts` for English and Chinese support. Reuse `LanguageSwitcher` or a shared wrapper for language selection instead of reading or writing language localStorage directly in pages.
+- Keep project/user/generated content untranslated: project names, uploaded filenames, STEP product/component names, Assistant messages, code/JSON snippets, and parametric model keys such as `DIAMETER` are data, not fixed UI copy.
 
 ## Server State
 

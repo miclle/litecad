@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRight, BadgeCheck, LockKeyhole, Mail, UserRound } from 'lucide-react'
 import axios from 'axios'
+import { useTranslation } from 'react-i18next'
 
 import { loginAccount, registerAccount } from 'src/api/auth'
 import type { AuthResponse } from 'src/types/auth'
@@ -12,6 +13,7 @@ type AuthLocationState = {
 }
 
 function AuthView() {
+  const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -25,6 +27,7 @@ function AuthView() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const authSteps = t('auth.steps', { returnObjects: true }) as string[]
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -40,23 +43,23 @@ function AuthView() {
     },
     onError: (error) => {
       if (axios.isAxiosError(error) && error.response?.status === 409) {
-        setErrorMessage('This email is already registered.')
+        setErrorMessage(t('auth.errors.registered'))
         return
       }
       if (axios.isAxiosError(error) && error.response?.status === 401) {
-        setErrorMessage('The email or password is incorrect.')
+        setErrorMessage(t('auth.errors.invalidLogin'))
         return
       }
-      setErrorMessage('Please check the account details and try again.')
+      setErrorMessage(t('auth.errors.generic'))
     },
   })
 
   const submitLabel = useMemo(() => {
     if (mutation.isPending) {
-      return isRegister ? 'Creating account' : 'Signing in'
+      return isRegister ? t('auth.creatingAccount') : t('auth.signingIn')
     }
-    return isRegister ? 'Create account' : 'Sign in'
-  }, [isRegister, mutation.isPending])
+    return isRegister ? t('auth.createAccount') : t('common.signIn')
+  }, [isRegister, mutation.isPending, t])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -70,18 +73,16 @@ function AuthView() {
         <section className="max-w-2xl">
           <div className="inline-flex items-center gap-2 border border-[#cfc6b2] bg-[#fcfaf3] px-3 py-2 font-mono text-xs uppercase text-[#7a6c52]">
             <LockKeyhole className="size-4" />
-            Account access
+            {t('auth.accessEyebrow')}
           </div>
           <h1 className="mt-6 text-4xl font-semibold leading-tight text-[#171814] sm:text-5xl">
-            {isRegister ? 'Create your LiteCAD workspace account.' : 'Return to your LiteCAD workspace.'}
+            {isRegister ? t('auth.registerTitle') : t('auth.loginTitle')}
           </h1>
           <p className="mt-5 text-base leading-7 text-[#55594f]">
-            {isRegister
-              ? 'Start with a named account so design briefs, model previews, and future exports have a clear owner.'
-              : 'Sign in to continue from the studio shell and keep account-scoped work ready for the next CAD loop.'}
+            {isRegister ? t('auth.registerBody') : t('auth.loginBody')}
           </p>
           <div className="mt-8 grid gap-px overflow-hidden rounded-md border border-[#d8cfbc] bg-[#d8cfbc] sm:grid-cols-3">
-            {['Identity', 'Session', 'Studio'].map((item, index) => (
+            {authSteps.map((item, index) => (
               <div className="bg-[#fcfaf3] p-4" key={item}>
                 <div className="flex items-center justify-between">
                   <BadgeCheck className="size-4 text-[#52625a]" />
@@ -96,23 +97,25 @@ function AuthView() {
         <section className="rounded-md border border-[#d8cfbc] bg-[#fcfaf3] p-5 shadow-sm">
           <div className="flex items-start justify-between gap-4 border-b border-[#d9d3c2] pb-4">
             <div>
-              <p className="font-mono text-xs uppercase text-[#7a6c52]">{isRegister ? 'Register' : 'Login'}</p>
+              <p className="font-mono text-xs uppercase text-[#7a6c52]">
+                {isRegister ? t('auth.registerEyebrow') : t('auth.loginEyebrow')}
+              </p>
               <h2 className="mt-2 text-2xl font-semibold text-[#171814]">
-                {isRegister ? 'New account' : 'Existing account'}
+                {isRegister ? t('auth.newAccount') : t('auth.existingAccount')}
               </h2>
             </div>
             <Link
               className="rounded-sm border border-[#cfc6b2] px-3 py-1.5 text-sm font-medium text-[#303329] no-underline transition hover:border-[#52625a]"
               to={isRegister ? '/login' : '/register'}
             >
-              {isRegister ? 'Sign in' : 'Register'}
+              {isRegister ? t('common.signIn') : t('common.register')}
             </Link>
           </div>
 
           <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
             {isRegister && (
               <label className="grid gap-2 text-sm font-medium text-[#303329]">
-                Name
+                {t('auth.name')}
                 <span className="flex h-12 items-center gap-3 rounded-md border border-[#cfc6b2] bg-white px-3 focus-within:border-[#52625a]">
                   <UserRound className="size-4 text-[#7a6c52]" />
                   <input
@@ -128,7 +131,7 @@ function AuthView() {
             )}
 
             <label className="grid gap-2 text-sm font-medium text-[#303329]">
-              Email
+              {t('auth.email')}
               <span className="flex h-12 items-center gap-3 rounded-md border border-[#cfc6b2] bg-white px-3 focus-within:border-[#52625a]">
                 <Mail className="size-4 text-[#7a6c52]" />
                 <input
@@ -143,7 +146,7 @@ function AuthView() {
             </label>
 
             <label className="grid gap-2 text-sm font-medium text-[#303329]">
-              Password
+              {t('auth.password')}
               <span className="flex h-12 items-center gap-3 rounded-md border border-[#cfc6b2] bg-white px-3 focus-within:border-[#52625a]">
                 <LockKeyhole className="size-4 text-[#7a6c52]" />
                 <input

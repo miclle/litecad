@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { CadKernelFeatureDSLInput } from 'src/cad/kernel-protocol'
 import { runFeatureDSLPreviewInWorker, type CadKernelWorkerFeatureDSLPreviewResult } from 'src/cad/kernel-worker-client'
@@ -44,6 +45,7 @@ export function useParametricArtifactPreview({
   debounceMs = 250,
   parameterValues,
 }: UseParametricArtifactPreviewOptions): ParametricArtifactPreviewState {
+  const { t } = useTranslation()
   const parameters = useMemo(() => parseParametricArtifactParameters(artifact), [artifact])
   const parameterSignature = useMemo(() => stableJSONStringify(parameterValues), [parameterValues])
   const inputSignature = artifact
@@ -91,7 +93,7 @@ export function useParametricArtifactPreview({
             if (sequenceRef.current !== sequence) {
               return
             }
-            setState({ error: error instanceof Error ? error.message : String(error), inputSignature, result: undefined, status: 'error' })
+            setState({ error: localizeParametricPreviewError(error, t), inputSignature, result: undefined, status: 'error' })
           })
       }, Math.max(0, debounceMs))
 
@@ -115,7 +117,7 @@ export function useParametricArtifactPreview({
           if (sequenceRef.current !== sequence) {
             return
           }
-          setState({ error: error instanceof Error ? error.message : String(error), inputSignature, result: undefined, status: 'error' })
+          setState({ error: localizeParametricPreviewError(error, t), inputSignature, result: undefined, status: 'error' })
         })
     }, Math.max(0, debounceMs))
 
@@ -136,6 +138,7 @@ export function useParametricArtifactPreview({
     debounceMs,
     inputSignature,
     parameterSignature,
+    t,
   ])
 
   if (!artifact) {
@@ -143,7 +146,7 @@ export function useParametricArtifactPreview({
   }
   if (artifact.source_kind === 'litecad-feature-dsl' && artifact.compile_status === 'error') {
     return {
-      error: artifact.compile_error || 'LiteCAD feature DSL preview failed',
+      error: artifact.compile_error || t('project.parametric.dslPreviewFailed'),
       inputSignature,
       isCurrent: true,
       parameters,
@@ -212,4 +215,15 @@ function stableJSONStringify(value: Record<string, OpenSCADParameterValue>) {
     ordered[key] = value[key]
   }
   return JSON.stringify(ordered)
+}
+
+function localizeParametricPreviewError(error: unknown, t: (key: string) => string) {
+  const message = error instanceof Error ? error.message : String(error)
+  if (message === 'Invalid LiteCAD feature DSL source') {
+    return t('project.parametric.invalidDslSource')
+  }
+  if (message === 'LiteCAD feature DSL preview failed') {
+    return t('project.parametric.dslPreviewFailed')
+  }
+  return message
 }

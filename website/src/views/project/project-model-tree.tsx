@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Box, Eye, EyeOff, FileText } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import type { ProjectModelTreeGroup } from './project-preview-assets'
@@ -29,17 +30,19 @@ export function ProjectModelTree({
   selectedNodeId,
   uploadError,
 }: ProjectModelTreeProps) {
+  const { t } = useTranslation()
+
   return (
     <section>
       <div className="flex items-center justify-between gap-3">
-        <p className="font-mono text-[11px] uppercase text-[#64748b]">Model</p>
+        <p className="font-mono text-[11px] uppercase text-[#64748b]">{t('project.modelTree.heading')}</p>
         {headerAction}
       </div>
 
-      <div aria-label="Project models" className="mt-3 grid gap-2" role="listbox">
-        {isLoading ? <div className="px-2 py-2 font-mono text-[11px] uppercase text-[#64748b]">Loading model tree</div> : null}
+      <div aria-label={t('project.modelTree.aria')} className="mt-3 grid gap-2" role="listbox">
+        {isLoading ? <div className="px-2 py-2 font-mono text-[11px] uppercase text-[#64748b]">{t('project.modelTree.loading')}</div> : null}
         {!isLoading && groups.length === 0 ? (
-          <div className="px-2 py-3 text-sm leading-6 text-[#64748b]">Import a CAD model to populate the project tree.</div>
+          <div className="px-2 py-3 text-sm leading-6 text-[#64748b]">{t('project.modelTree.empty')}</div>
         ) : null}
         {groups.map((group) => {
           const { model } = group
@@ -75,17 +78,19 @@ export function ProjectModelTree({
                     />
                     <span className="min-w-0 flex-1 truncate">{group.displayName}</span>
                     {group.children.length > 0 ? (
-                      <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">{group.children.length} models</span>
+                      <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">
+                        {t('project.sidebar.modelCount', { count: group.children.length })}
+                      </span>
                     ) : null}
                   </button>
                   {hasPreviewAsset ? (
                     <Button
-                      aria-label={isModelHidden ? `Show ${group.displayName}` : `Hide ${group.displayName}`}
+                      aria-label={t(isModelHidden ? 'project.modelTree.show' : 'project.modelTree.hide', { name: group.displayName })}
                       aria-pressed={!isModelHidden}
                       className={`opacity-0 group-hover/model-row:opacity-100 focus-visible:opacity-100 ${isModelHidden ? 'opacity-100' : ''}`}
                       onClick={() => onToggleVisibility(model.id)}
                       size="icon-xs"
-                      title={isModelHidden ? 'Show model' : 'Hide model'}
+                      title={t(isModelHidden ? 'project.modelTree.showModel' : 'project.modelTree.hideModel')}
                       type="button"
                       variant="ghost"
                     >
@@ -93,7 +98,7 @@ export function ProjectModelTree({
                     </Button>
                   ) : null}
                   <div
-                    aria-label={model.parse_status === 'parsed' ? 'Model preview is ready' : 'Model is being processed'}
+                    aria-label={model.parse_status === 'parsed' ? t('project.modelTree.previewReady') : t('project.modelTree.processing')}
                     className={`size-1.5 shrink-0 rounded-full ${model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'}`}
                   />
                 </div>
@@ -130,7 +135,7 @@ export function ProjectModelTree({
         })}
         {isUploading ? (
           <div className="rounded-md border border-[#e2e8f0] bg-[#f1f5f9] px-3 py-3 font-mono text-[11px] uppercase text-[#475569]">
-            Importing model
+            {t('project.modelTree.importing')}
           </div>
         ) : null}
         {uploadError ? <p className="text-sm leading-6 text-[#8a2f24]">{uploadError}</p> : null}

@@ -1,5 +1,6 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { Box, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
 import type { ProjectParametricArtifact } from 'src/types/project'
@@ -61,6 +62,7 @@ export function ProjectWorkbenchSidebar({
   unitLabel,
   uploadError,
 }: ProjectWorkbenchSidebarProps) {
+  const { t } = useTranslation()
   const LeftPanelIcon = isLeftPanelCollapsed ? PanelLeftOpen : PanelLeftClose
 
   return (
@@ -74,16 +76,16 @@ export function ProjectWorkbenchSidebar({
         <div className="flex min-h-7 items-center gap-2.5">
           <Box className="size-3.5 shrink-0 text-[#0f172a]" />
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <p className="truncate text-sm font-semibold text-[#0f172a]">Project</p>
+            <p className="truncate text-sm font-semibold text-[#0f172a]">{t('project.sidebar.project')}</p>
             <span className="shrink-0 rounded bg-[#eff6ff] px-1.5 py-0.5 text-[11px] font-medium leading-none text-[#0074d9]">
-              {modelCount} models
+              {t('project.sidebar.modelCount', { count: modelCount })}
             </span>
           </div>
           <button
-            aria-label="Expand left panel"
+            aria-label={t('project.sidebar.expand')}
             className="grid size-6 shrink-0 place-items-center rounded text-[#0f172a] transition hover:bg-[#f1f5f9]"
             onClick={() => onCollapseChange(false)}
-            title="Expand left panel"
+            title={t('project.sidebar.expand')}
             type="button"
           >
             <LeftPanelIcon className="size-3.5" />
@@ -92,12 +94,12 @@ export function ProjectWorkbenchSidebar({
       ) : (
         <>
           <div
-            aria-label="Resize left panel"
+            aria-label={t('project.sidebar.resize')}
             aria-orientation="vertical"
             className="group absolute right-0 top-0 z-40 h-full w-2 cursor-col-resize"
             onPointerDown={onResizePointerDown}
             role="separator"
-            title="Resize left panel"
+            title={t('project.sidebar.resize')}
           >
             <span className="absolute bottom-3 right-0 top-3 w-px rounded-full bg-transparent transition group-hover:bg-[#94a3b8]" />
           </div>
@@ -107,10 +109,10 @@ export function ProjectWorkbenchSidebar({
               groups={projectModelTree}
               headerAction={
                 <button
-                  aria-label="Collapse left panel"
+                  aria-label={t('project.sidebar.collapse')}
                   className="grid size-8 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
                   onClick={() => onCollapseChange(true)}
-                  title="Collapse left panel"
+                  title={t('project.sidebar.collapse')}
                   type="button"
                 >
                   <LeftPanelIcon className="size-4" />

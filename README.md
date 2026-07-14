@@ -9,6 +9,7 @@ It is built for an early but concrete product loop: sign in, create a project, u
 LiteCAD currently supports:
 
 - Account registration, login, current-user lookup, logout with an `HttpOnly` session cookie, and deliberate sign-in prompts for protected project routes.
+- English and Chinese UI copy through the shared language switcher, including the public shell, auth pages, project list, project workbench, Assistant panel, export/history controls, and error states.
 - User-owned projects with names, descriptions, owner-scoped rename/delete, project-list cards, and static thumbnail snapshots generated from the workbench.
 - Uploads for `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files.
 - Lightweight CAD source metadata, including STEP schema/product/component/unit/entity summaries and STL triangle counts where available.
@@ -87,6 +88,10 @@ LITECAD_HTTP_PORT=47280 LITECAD_VITE_PORT=47281 task dev
 ### Projects
 
 After signing in, open `/projects`, create a project, and enter its workbench at `/projects/:projectId`. Project data is scoped to the signed-in user.
+
+### Language
+
+Use the header language switcher to choose English or Chinese. LiteCAD stores the choice in browser-local storage and keeps the document language attribute in sync. Fixed UI copy is localized; project names, uploaded file names, model/component names, Assistant replies, code blocks, JSON snippets, and model parameter keys such as `DIAMETER` stay as project or generated content instead of being translated.
 
 ### CAD Imports
 

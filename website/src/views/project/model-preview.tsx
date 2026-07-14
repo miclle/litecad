@@ -1,10 +1,12 @@
 import type { ModelPreviewProps } from './use-model-preview-scene'
 import { formatModelPreviewMeasurementValue, useModelPreviewScene } from './use-model-preview-scene'
 import { cn } from '@/lib/utils'
+import { useTranslation } from 'react-i18next'
 
 export type { ModelPreviewSnapshotCapture } from './use-model-preview-scene'
 
 export function ModelPreview(props: ModelPreviewProps) {
+  const { t } = useTranslation()
   const { containerRef, measurement, zoomHUD } = useModelPreviewScene(props)
   const previewAssetCount = props.previewAssets?.length ?? 0
   const variant = props.variant ?? 'workspace'
@@ -24,21 +26,21 @@ export function ModelPreview(props: ModelPreviewProps) {
             zoomHUD.visible ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0'
           }`}
         >
-          View {zoomHUD.percent}%
+          {t('project.preview.zoom', { percent: zoomHUD.percent })}
         </div>
       ) : null}
       {variant === 'workspace' && measurement ? (
         <div
-          aria-label="Measurement summary"
+          aria-label={t('project.preview.measurementSummary')}
           className={cn(
             'pointer-events-none absolute right-4 top-4 z-20 w-[min(280px,calc(100vw-32px))] rounded-md border border-[#cbd5e1] bg-white/92 p-3 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur',
             props.measurementOverlayClassName,
           )}
         >
           <div className="flex items-center justify-between gap-3">
-            <p className="font-mono text-[10px] font-semibold uppercase text-[#64748b]">Measurement</p>
+            <p className="font-mono text-[10px] font-semibold uppercase text-[#64748b]">{t('project.preview.measurement')}</p>
             <span className="font-mono text-[10px] uppercase text-[#94a3b8]">
-              {measurement.modelCount} {measurement.modelCount === 1 ? 'model' : 'models'}
+              {t('project.preview.modelCount', { count: measurement.modelCount })}
             </span>
           </div>
           <dl className="mt-2 grid grid-cols-3 gap-1.5 text-[11px]">

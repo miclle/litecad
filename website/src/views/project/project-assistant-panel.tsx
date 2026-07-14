@@ -1,5 +1,6 @@
 import { BotMessageSquare, Box, Plus, RefreshCw, Send, X } from 'lucide-react'
 import type { FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { AgentMarkdown } from './agent-markdown'
@@ -46,21 +47,23 @@ function assistantStatusLabel({
   hasActiveConversation,
   isPending,
   pendingKind,
+  t,
 }: {
   hasActiveConversation: boolean
   isPending: boolean
   pendingKind: ProjectAssistantPanelProps['pendingKind']
+  t: (key: string) => string
 }) {
   if (isPending && pendingKind === 'parametric') {
-    return 'Generating model'
+    return t('project.assistant.status.generatingModel')
   }
   if (isPending && pendingKind === 'conversation') {
-    return 'Creating chat'
+    return t('project.assistant.status.creatingChat')
   }
   if (isPending) {
-    return 'Thinking'
+    return t('project.assistant.status.thinking')
   }
-  return hasActiveConversation ? 'Project context' : 'New chat required'
+  return hasActiveConversation ? t('project.assistant.status.projectContext') : t('project.assistant.status.newChatRequired')
 }
 
 export function ProjectAssistantPanel({
@@ -85,11 +88,12 @@ export function ProjectAssistantPanel({
   sourceCount,
   width,
 }: ProjectAssistantPanelProps) {
+  const { t } = useTranslation()
   const hasActiveConversation = activeConversationId !== ''
   const canSubmit = draft.trim() !== '' && !isPending && hasActiveConversation
   const canGenerate = canSubmit
   const canRetryParametric = retryParametricPrompt.trim() !== '' && !isPending && hasActiveConversation && !!onRetryParametric
-  const statusLabel = assistantStatusLabel({ hasActiveConversation, isPending, pendingKind })
+  const statusLabel = assistantStatusLabel({ hasActiveConversation, isPending, pendingKind, t })
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (canSubmit) {
@@ -111,7 +115,7 @@ export function ProjectAssistantPanel({
   return (
     <aside
       aria-hidden={!open}
-      aria-label="Assistant panel"
+      aria-label={t('project.assistant.panel')}
       className={`relative flex h-full w-full min-h-0 flex-col overflow-hidden border-l bg-[#ffffff]/96 shadow-[0_10px_28px_rgba(15,23,42,0.06)] backdrop-blur will-change-transform transition-[border-color,box-shadow,opacity,transform] duration-[220ms] ease-out motion-reduce:transition-none ${
         open
           ? 'pointer-events-auto translate-x-0 border-[#d6dbe3] opacity-100'
@@ -120,7 +124,7 @@ export function ProjectAssistantPanel({
       inert={!open}
     >
       <div
-        aria-label="Resize Assistant panel"
+        aria-label={t('project.assistant.resize')}
         aria-orientation="vertical"
         aria-valuemax={maxWidth}
         aria-valuemin={assistantPanelMinWidth}
@@ -128,7 +132,7 @@ export function ProjectAssistantPanel({
         className="group absolute left-0 top-0 z-40 h-full w-2 cursor-col-resize"
         onPointerDown={onResizePointerDown}
         role="separator"
-        title="Resize Assistant panel"
+        title={t('project.assistant.resize')}
       >
         <span className="absolute bottom-3 left-0 top-3 w-px rounded-full bg-transparent transition group-hover:bg-[#94a3b8]" />
       </div>
@@ -136,18 +140,20 @@ export function ProjectAssistantPanel({
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
             <BotMessageSquare className="size-4 text-[#2563eb]" />
-            Assistant
+            {t('project.assistant.assistant')}
           </div>
-          <p className="mt-0.5 truncate text-[11px] leading-4 text-[#64748b]">{sourceCount} project sources attached</p>
+          <p className="mt-0.5 truncate text-[11px] leading-4 text-[#64748b]">
+            {t('project.assistant.sourceCount', { count: sourceCount })}
+          </p>
         </div>
-        <Button aria-label="Close Assistant" onClick={onClose} size="icon" title="Close Assistant" type="button" variant="ghost">
+        <Button aria-label={t('project.topbar.closeAssistant')} onClick={onClose} size="icon" title={t('project.topbar.closeAssistant')} type="button" variant="ghost">
           <X />
         </Button>
       </div>
 
       <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-[#e2e8f0] px-3 py-2">
         <label className="sr-only" htmlFor="project-ai-conversation">
-          Assistant conversation
+          {t('project.assistant.conversation')}
         </label>
         <select
           className="h-8 min-w-0 rounded-md border border-[#d6dbe3] bg-white px-2 text-xs font-medium text-[#0f172a] outline-none transition focus:border-[#94a3b8] focus:ring-2 focus:ring-[#bfdbfe]"
@@ -157,7 +163,7 @@ export function ProjectAssistantPanel({
           value={activeConversationId}
         >
           {conversations.length === 0 ? (
-            <option value="">No chats yet</option>
+            <option value="">{t('project.assistant.noChats')}</option>
           ) : (
             conversations.map((conversation) => (
               <option key={conversation.id} value={conversation.id}>
@@ -167,11 +173,11 @@ export function ProjectAssistantPanel({
           )}
         </select>
         <Button
-          aria-label="New chat"
+          aria-label={t('project.assistant.newChat')}
           disabled={isPending}
           onClick={handleCreateConversation}
           size="icon-sm"
-          title="New chat"
+          title={t('project.assistant.newChat')}
           type="button"
           variant="outline"
         >
@@ -201,15 +207,15 @@ export function ProjectAssistantPanel({
         {parametricRunError && (
           <div className="mb-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-[#fecaca] bg-[#fff7ed] px-3 py-2">
             <div className="min-w-0">
-              <div className="text-xs font-semibold text-[#991b1b]">Generation failed</div>
+              <div className="text-xs font-semibold text-[#991b1b]">{t('project.assistant.generationFailed')}</div>
               <div className="truncate text-[11px] leading-5 text-[#9a3412]">{parametricRunError}</div>
             </div>
             <Button
-              aria-label="Retry generation"
+              aria-label={t('project.assistant.retryGeneration')}
               disabled={!canRetryParametric}
               onClick={onRetryParametric}
               size="icon-sm"
-              title="Retry generation"
+              title={t('project.assistant.retryGeneration')}
               type="button"
               variant="outline"
             >
@@ -218,14 +224,14 @@ export function ProjectAssistantPanel({
           </div>
         )}
         <label className="sr-only" htmlFor="project-ai-chat-input">
-          Message Assistant
+          {t('project.assistant.messageAssistant')}
         </label>
         <textarea
           className="min-h-20 w-full resize-none rounded-lg bg-transparent px-2 py-2 text-sm leading-6 text-[#0f172a] outline-none placeholder:text-[#94a3b8]"
           id="project-ai-chat-input"
           onChange={(event) => onDraftChange(event.target.value)}
           onKeyDown={handleInputKeyDown}
-          placeholder="Describe what to inspect or change"
+          placeholder={t('project.assistant.placeholder')}
           readOnly={isPending}
           value={draft}
         />
@@ -235,17 +241,17 @@ export function ProjectAssistantPanel({
           </div>
           <div className="flex items-center gap-1">
             <Button
-              aria-label="Generate parametric model"
+              aria-label={t('project.assistant.generateModel')}
               disabled={!canGenerate}
               onClick={onGenerateParametric}
               size="icon-sm"
-              title="Generate parametric model"
+              title={t('project.assistant.generateModel')}
               type="button"
               variant="outline"
             >
               <Box />
             </Button>
-            <Button aria-label="Send Assistant message" disabled={!canSubmit} size="icon-sm" type="submit">
+            <Button aria-label={t('project.assistant.sendMessage')} disabled={!canSubmit} size="icon-sm" type="submit">
               <Send />
             </Button>
           </div>

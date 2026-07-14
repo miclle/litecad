@@ -1,5 +1,6 @@
-import { useEffect, useRef, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { FlipHorizontal2, Orbit } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import * as THREE from 'three'
 
 import { disposeObject3DResources } from './three-object-resources'
@@ -39,7 +40,12 @@ function ViewCube3D({
   onSetOrientation: (orientation: ViewOrientation) => void
   orientation: ViewOrientation
 }) {
+  const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
+  const translatedViewCubeFaces = useMemo(
+    () => viewCubeFaces.map((face) => ({ ...face, label: t(`project.view.face.${face.id}`) })),
+    [t],
+  )
   const onSetOrientationRef = useRef(onSetOrientation)
   const orientationRef = useRef(orientation)
   const displayedOrientationRef = useRef(orientation)
@@ -183,7 +189,7 @@ function ViewCube3D({
       transparent: true,
     })
 
-    const findMainSurface = (face: (typeof viewCubeFaces)[number]) => {
+    const findMainSurface = (face: (typeof translatedViewCubeFaces)[number]) => {
       const faceDirection = orientationToViewDirection(face.orientation)
       return cubeSurfaces.find(
         (surface): surface is ChamferedCubeSurface =>
@@ -191,7 +197,7 @@ function ViewCube3D({
       )
     }
 
-    for (const face of viewCubeFaces) {
+    for (const face of translatedViewCubeFaces) {
       const mainSurface = findMainSurface(face)
       if (!mainSurface) {
         continue
@@ -443,7 +449,7 @@ function ViewCube3D({
         container.removeChild(renderer.domElement)
       }
     }
-  }, [])
+  }, [translatedViewCubeFaces])
 
   useEffect(() => {
     orientationRef.current = orientation
@@ -454,7 +460,7 @@ function ViewCube3D({
     viewStateRef.current?.syncTo(orientation)
   }, [animateOrientationChanges, orientation])
 
-  return <div ref={containerRef} aria-label="View cube" className="absolute left-1/2 top-1/2 z-10 size-[128px] -translate-x-1/2 -translate-y-1/2" />
+  return <div ref={containerRef} aria-label={t('project.view.cube')} className="absolute left-1/2 top-1/2 z-10 size-[128px] -translate-x-1/2 -translate-y-1/2" />
 }
 
 export function ViewController({
@@ -476,6 +482,7 @@ export function ViewController({
   onStep: (step: ViewRotationStep) => void
   style?: CSSProperties
 }) {
+  const { t } = useTranslation()
   const arrowButtonClass =
     'absolute z-30 grid size-6 place-items-center outline-none transition hover:scale-110 focus-visible:outline-none'
   const verticalArrowClass = 'block h-3 w-5 bg-[#94a3b8] transition group-hover:bg-[#475569]'
@@ -487,55 +494,55 @@ export function ViewController({
 
   return (
     <div
-      aria-label="View orientation controls"
+      aria-label={t('project.view.controls')}
       className={`absolute right-4 top-4 z-20 hidden size-[135px] select-none text-[#1f2937] sm:block ${className}`}
       style={style}
     >
       <button
-        aria-label="Tilt view up"
+        aria-label={t('project.view.tiltUp')}
         className={`${arrowButtonClass} group left-1/2 top-0 -translate-x-1/2`}
         onClick={() => onStep({ vertical: 45 })}
-        title="Tilt view up"
+        title={t('project.view.tiltUp')}
         type="button"
       >
         <span className={verticalArrowClass} style={{ clipPath: 'polygon(50% 0, 0 100%, 100% 100%)' }} />
       </button>
 
       <button
-        aria-label="Rotate view left 45 degrees"
+        aria-label={t('project.view.rotateLeft45')}
         className={`${arrowButtonClass} group left-0 top-1/2 -translate-y-1/2`}
         onClick={() => onStep({ horizontal: 45 })}
-        title="Rotate view left 45 degrees"
+        title={t('project.view.rotateLeft45')}
         type="button"
       >
         <span className={horizontalArrowClass} style={{ clipPath: 'polygon(0 50%, 100% 0, 100% 100%)' }} />
       </button>
 
       <button
-        aria-label="Rotate view right 45 degrees"
+        aria-label={t('project.view.rotateRight45')}
         className={`${arrowButtonClass} group right-0 top-1/2 -translate-y-1/2`}
         onClick={() => onStep({ horizontal: -45 })}
-        title="Rotate view right 45 degrees"
+        title={t('project.view.rotateRight45')}
         type="button"
       >
         <span className={horizontalArrowClass} style={{ clipPath: 'polygon(100% 50%, 0 0, 0 100%)' }} />
       </button>
 
       <button
-        aria-label="Tilt view down"
+        aria-label={t('project.view.tiltDown')}
         className={`${arrowButtonClass} group bottom-0 left-1/2 -translate-x-1/2`}
         onClick={() => onStep({ vertical: -45 })}
-        title="Tilt view down"
+        title={t('project.view.tiltDown')}
         type="button"
       >
         <span className={verticalArrowClass} style={{ clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
       </button>
 
       <button
-        aria-label="Rotate view left"
+        aria-label={t('project.view.rotateLeft')}
         className={`${arcButtonClass} left-[18px] top-3.5`}
         onClick={() => onStep({ roll: -45 })}
-        title="Rotate view left"
+        title={t('project.view.rotateLeft')}
         type="button"
       >
         <svg aria-hidden="true" className="size-full" viewBox="6 2 58 50">
@@ -547,10 +554,10 @@ export function ViewController({
       </button>
 
       <button
-        aria-label="Rotate view right"
+        aria-label={t('project.view.rotateRight')}
         className={`${arcButtonClass} right-[18px] top-3.5`}
         onClick={() => onStep({ roll: 45 })}
-        title="Rotate view right"
+        title={t('project.view.rotateRight')}
         type="button"
       >
         <svg aria-hidden="true" className="size-full" viewBox="71 2 58 50">
@@ -562,20 +569,20 @@ export function ViewController({
       </button>
 
       <button
-        aria-label="Flip view"
+        aria-label={t('project.view.flip')}
         className={`${cornerToolButtonClass} top-0`}
         onClick={onFlip}
-        title="Flip view"
+        title={t('project.view.flip')}
         type="button"
       >
         <FlipHorizontal2 className="size-4" strokeWidth={2.75} />
       </button>
 
       <button
-        aria-label="Reset isometric view"
+        aria-label={t('project.view.reset')}
         className={`${cornerToolButtonClass} bottom-0`}
         onClick={onResetIsometric}
-        title="Reset isometric view"
+        title={t('project.view.reset')}
         type="button"
       >
         <Orbit className="size-4" />

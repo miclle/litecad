@@ -7,15 +7,15 @@ export function cadHistoryActionForKey(event: KeyboardEvent): CADHistoryAction |
   return event.shiftKey ? 'redo' : 'undo'
 }
 
-export function cadHistoryStatusLabel(status: string) {
+export function cadHistoryStatusLabelKey(status: string) {
   if (status === 'applied') {
-    return 'Applied'
+    return 'project.history.status.applied'
   }
   if (status === 'undone') {
-    return 'Undone'
+    return 'project.history.status.undone'
   }
   if (status === 'discarded') {
-    return 'Alternate path'
+    return 'project.history.status.discarded'
   }
   return status
 }

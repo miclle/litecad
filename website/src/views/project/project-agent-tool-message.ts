@@ -22,10 +22,19 @@ export function generatedArtifactTitleFromAIChatBody(body: string) {
   return ''
 }
 
-export function displayAiChatBody(body: string) {
+type ToolMessageTranslator = (key: string, options?: Record<string, unknown>) => string
+
+export function displayAiChatBody(body: string, t: ToolMessageTranslator = defaultToolMessageTranslator) {
   const generatedTitle = generatedArtifactTitleFromAIChatBody(body)
   if (generatedTitle) {
-    return `Generated source draft: ${generatedTitle}`
+    return t('project.assistant.generatedDraft', { title: generatedTitle })
   }
   return body
+}
+
+function defaultToolMessageTranslator(key: string, options: Record<string, unknown> = {}) {
+  if (key === 'project.assistant.generatedDraft') {
+    return `Generated source draft: ${String(options.title ?? '')}`
+  }
+  return key
 }

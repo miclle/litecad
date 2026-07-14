@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 
 import {
   fetchProjectCADDocument,
@@ -31,6 +32,7 @@ export function useProjectWorkbenchModelState({
   isProjectLoaded,
   projectId,
 }: UseProjectWorkbenchModelStateOptions) {
+  const { t } = useTranslation()
   const [previewUrlsByModelID, setPreviewUrlsByModelID] = useState<Record<string, string>>({})
   const projectModelsQuery = useQuery({
     queryKey: ['projects', projectId, 'models'],
@@ -163,14 +165,15 @@ export function useProjectWorkbenchModelState({
     modelCount: projectModels.length,
     previewAssetCount: previewAssets.length,
     latestPreviewFormat: latestPreviewFormat || previewAssets[0]?.previewFormat,
+    t,
   })
   const shouldShowCanvasStatus = !latestModel || previewAssets.length === 0 || areAllPreviewAssetsHidden
-  const canvasStatusLabel = areAllPreviewAssetsHidden ? 'Model layers hidden' : previewSummary.sourceLabel
+  const canvasStatusLabel = areAllPreviewAssetsHidden ? t('project.canvas.hiddenLabel') : previewSummary.sourceLabel
   const canvasStatusBody = areAllPreviewAssetsHidden
-    ? 'All preview layers are hidden. Show a model layer from the project tree to inspect the geometry again.'
+    ? t('project.canvas.hiddenBody')
     : latestModel
-    ? `${latestProductName || latestModel.original_filename} metadata is parsed. Geometry preview is being prepared.`
-    : 'The canvas is empty until imported geometry is prepared for preview. Import a CAD source file to attach real model data to this project.'
+    ? t('project.canvas.preparingBody', { name: latestProductName || latestModel.original_filename })
+    : t('project.canvas.emptyBody')
   const previewBlobSignature = projectModelPreviewQueries
     .map((query, index) => {
       const modelID = backendPreviewModels[index]?.id ?? ''

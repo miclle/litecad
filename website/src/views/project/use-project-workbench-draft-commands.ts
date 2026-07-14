@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { CADDocumentNode, ProjectCADDocument } from 'src/types/project'
 import {
@@ -34,6 +35,7 @@ export function useProjectWorkbenchDraftCommands({
   projectCADDocument,
   sourceNodeIDByModelID,
 }: UseProjectWorkbenchDraftCommandsOptions) {
+  const { t } = useTranslation()
   const [transformDraftsByNodeID, setTransformDraftsByNodeID] = useState<Record<string, TransformDraft>>({})
   const [boxFeatureDraftsByModelID, setBoxFeatureDraftsByModelID] = useState<Record<string, BoxFeatureDraft>>({})
 
@@ -114,7 +116,7 @@ export function useProjectWorkbenchDraftCommands({
       const translation = parseTransformDraft(nextDraft)
       if (!translation) {
         commandAdapter?.cancelTransformAutosave(nodeID)
-        commandAdapter?.setTransformValidationError(nodeID, 'Invalid transform')
+        commandAdapter?.setTransformValidationError(nodeID, t('project.errors.invalidTransform'))
         return
       }
       const savedTranslation = translationFromCADTransform(cadNodeByID.get(nodeID)?.transform)
@@ -126,7 +128,7 @@ export function useProjectWorkbenchDraftCommands({
       commandAdapter?.setTransformValidationError(nodeID, '')
       commandAdapter?.scheduleTransformAutosave(nodeID, translation)
     },
-    [cadNodeByID, commandAdapterRef, transformDraftsByNodeID],
+    [cadNodeByID, commandAdapterRef, t, transformDraftsByNodeID],
   )
 
   const updateBoxFeatureDraft = useCallback(
@@ -151,12 +153,12 @@ export function useProjectWorkbenchDraftCommands({
       const draft = boxFeatureDraftsByModelID[modelID] ?? latestBoxFeatureDraftForModel(modelID)
       const box = parseBoxFeatureDraft(draft)
       if (!box) {
-        commandAdapter?.setBoxValidationError(modelID, 'Invalid box feature')
+        commandAdapter?.setBoxValidationError(modelID, t('project.errors.invalidBox'))
         return
       }
       commandAdapter?.addBoxUnion(modelID, box)
     },
-    [boxFeatureDraftsByModelID, commandAdapterRef, latestBoxFeatureDraftForModel],
+    [boxFeatureDraftsByModelID, commandAdapterRef, latestBoxFeatureDraftForModel, t],
   )
 
   return {

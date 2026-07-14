@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   addProjectCADModelBoxUnion,
@@ -13,7 +14,6 @@ import { shouldAcceptCADNodeTransformDocument } from './cad-document-cache'
 import { cadTransformWithTranslation, type CADTranslation } from './cad-document-transforms'
 
 const defaultTransformAutosaveDelayMS = 500
-const conflictMessage = 'Document changed in another session. Latest version loaded.'
 
 type UseCADDocumentCommandsOptions = {
   projectId: string
@@ -40,6 +40,7 @@ export function useCADDocumentCommands({
   onNodeDeleted,
   onTransformSynchronized,
 }: UseCADDocumentCommandsOptions) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const commandQueueRef = useRef<Promise<unknown>>(Promise.resolve())
   const latestTransformRequestByNodeIdRef = useRef<Record<string, number>>({})
@@ -70,6 +71,7 @@ export function useCADDocumentCommands({
       if (!isCADDocumentConflict(error)) {
         return false
       }
+      const conflictMessage = t('project.errors.conflict')
       setHistoryError(conflictMessage)
       onConflict?.(conflictMessage)
       await Promise.all([
@@ -79,7 +81,7 @@ export function useCADDocumentCommands({
       ])
       return true
     },
-    [documentQueryKey, historyQueryKey, modelsQueryKey, onConflict, queryClient],
+    [documentQueryKey, historyQueryKey, modelsQueryKey, onConflict, queryClient, t],
   )
 
   const updateTransformMutation = useMutation({
@@ -87,7 +89,7 @@ export function useCADDocumentCommands({
       enqueueCommand(async () => {
         const document = currentDocument()
         if (!document) {
-          throw new Error('CAD document is not loaded')
+          throw new Error(t('project.errors.documentNotLoaded'))
         }
         const currentNode = document.nodes.find((node) => node.id === nodeId)
         const transform = cadTransformWithTranslation(currentNode?.transform, translation)
@@ -124,7 +126,7 @@ export function useCADDocumentCommands({
         delete latestTranslationByNodeIdRef.current[variables.nodeId]
         onTransformSynchronized?.(variables.nodeId)
       } else {
-        setTransformErrorsByNodeId((errors) => ({ ...errors, [variables.nodeId]: 'Invalid transform' }))
+        setTransformErrorsByNodeId((errors) => ({ ...errors, [variables.nodeId]: t('project.errors.invalidTransform') }))
       }
     },
   })
@@ -157,7 +159,7 @@ export function useCADDocumentCommands({
       enqueueCommand(async () => {
         const document = currentDocument()
         if (!document) {
-          throw new Error('CAD document is not loaded')
+          throw new Error(t('project.errors.documentNotLoaded'))
         }
         const updatedDocument = (await deleteProjectCADNode(projectId, nodeId, document.revision)).data.document
         queryClient.setQueryData(documentQueryKey, updatedDocument)
@@ -180,7 +182,7 @@ export function useCADDocumentCommands({
     },
     onError: async (error) => {
       if (!(await refreshAfterConflict(error))) {
-        setDeleteError('Could not delete this model')
+        setDeleteError(t('project.errors.deleteFailed'))
       }
     },
   })
@@ -190,7 +192,7 @@ export function useCADDocumentCommands({
       enqueueCommand(async () => {
         const document = currentDocument()
         if (!document) {
-          throw new Error('CAD document is not loaded')
+          throw new Error(t('project.errors.documentNotLoaded'))
         }
         const updatedDocument = (await addProjectCADModelBoxUnion(projectId, modelId, box, document.revision)).data.document
         queryClient.setQueryData(documentQueryKey, updatedDocument)
@@ -204,7 +206,7 @@ export function useCADDocumentCommands({
     },
     onError: async (error, variables) => {
       if (!(await refreshAfterConflict(error))) {
-        setBoxErrorsByModelId((errors) => ({ ...errors, [variables.modelId]: 'Invalid box feature' }))
+        setBoxErrorsByModelId((errors) => ({ ...errors, [variables.modelId]: t('project.errors.invalidBox') }))
       }
     },
   })
@@ -214,7 +216,7 @@ export function useCADDocumentCommands({
       enqueueCommand(async () => {
         const document = currentDocument()
         if (!document) {
-          throw new Error('CAD document is not loaded')
+          throw new Error(t('project.errors.documentNotLoaded'))
         }
         const request = action === 'undo' ? undoProjectCADDocument : redoProjectCADDocument
         const updatedDocument = (await request(projectId, document.revision)).data.document
@@ -230,7 +232,7 @@ export function useCADDocumentCommands({
     },
     onError: async (error) => {
       if (!(await refreshAfterConflict(error))) {
-        setHistoryError('Could not change document history')
+        setHistoryError(t('project.errors.historyFailed'))
       }
     },
   })

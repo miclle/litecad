@@ -1,4 +1,5 @@
 import { Box } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -72,9 +73,11 @@ export function ProjectInspector({
   selected,
   unitLabel,
 }: ProjectInspectorProps) {
+  const { t } = useTranslation()
+
   return (
     <section className="mt-auto pt-5">
-      <p className="font-mono text-[11px] uppercase text-[#64748b]">Document</p>
+      <p className="font-mono text-[11px] uppercase text-[#64748b]">{t('project.inspector.document')}</p>
       {selected ? (
         <div className="mt-2 grid gap-2 text-xs">
           <div className="min-w-0">
@@ -89,13 +92,13 @@ export function ProjectInspector({
 
           <div className="border-t border-[#e2e8f0] pt-2.5">
             <div className="flex min-w-0 items-start justify-between gap-2">
-              <p className="text-xs font-medium text-[#334155]">Position</p>
+              <p className="text-xs font-medium text-[#334155]">{t('project.inspector.position')}</p>
               <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">{unitLabel}</span>
             </div>
             <div className="grid grid-cols-3 gap-1 pb-2 pt-1.5">
               {(['x', 'y', 'z'] as const).map((axis) => (
                 <PositionField
-                  ariaLabel={`${axis.toUpperCase()} position for ${selected.name}`}
+                  ariaLabel={t('project.inspector.positionFor', { axis: axis.toUpperCase(), name: selected.name })}
                   axis={axis}
                   key={axis}
                   onChange={(value) => onTransformChange(selected.nodeId, axis, value)}
@@ -113,7 +116,7 @@ export function ProjectInspector({
       ) : (
         <>
           <DetailList details={documentDetails} />
-          {modelCount > 0 ? <div className="pt-2 text-[11px] leading-4 text-[#64748b]">Select a model to inspect placement and features.</div> : null}
+          {modelCount > 0 ? <div className="pt-2 text-[11px] leading-4 text-[#64748b]">{t('project.inspector.selectModel')}</div> : null}
         </>
       )}
     </section>

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   createProjectAgentConversation,
@@ -14,30 +15,34 @@ import { displayAiChatBody, generatedArtifactTitleFromAIChatBody } from './proje
 import type { AiChatMessage } from './project-assistant-panel'
 import { formatParametricRunSummary } from './project-parametric-run-telemetry'
 
-const initialMessages: AiChatMessage[] = [
-  {
-    id: 'assistant-initial',
-    role: 'assistant',
-    body: 'I can stay beside the model while you inspect sources, metadata, and design notes.',
-  },
-]
-
 type UseProjectAssistantControllerOptions = {
   enabled: boolean
   onArtifactSelected?: (artifact: ProjectParametricArtifact) => void
   projectId: string
 }
 
-export function projectAssistantErrorMessage(error: unknown) {
+type AssistantTranslator = (key: string) => string
+
+export function projectAssistantErrorMessage(error: unknown, t: AssistantTranslator = defaultAssistantTranslator) {
   const status = (error as { response?: { status?: number } }).response?.status
   const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message
   if (status === 503) {
-    return 'Assistant is not configured yet. Add the server-side AI provider settings, then try again.'
+    return t('project.assistant.notConfigured')
   }
   if (message) {
     return message
   }
-  return 'Assistant could not answer right now. Check the AI provider configuration and try again.'
+  return t('project.assistant.answerFailed')
+}
+
+function defaultAssistantTranslator(key: string) {
+  if (key === 'project.assistant.notConfigured') {
+    return 'Assistant is not configured yet. Add the server-side AI provider settings, then try again.'
+  }
+  if (key === 'project.assistant.answerFailed') {
+    return 'Assistant could not answer right now. Check the AI provider configuration and try again.'
+  }
+  return key
 }
 
 export function useProjectAssistantController({
@@ -45,6 +50,7 @@ export function useProjectAssistantController({
   onArtifactSelected,
   projectId,
 }: UseProjectAssistantControllerOptions) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState('')
   const [localMessages, setLocalMessages] = useState<AiChatMessage[]>([])
@@ -66,12 +72,22 @@ export function useProjectAssistantController({
     queryFn: async () => (await fetchProjectAgentConversationMessages(projectId, activeConversationID)).data.messages,
     enabled: projectId !== '' && enabled && activeConversationID !== '',
   })
+  const initialMessages = useMemo<AiChatMessage[]>(
+    () => [
+      {
+        id: 'assistant-initial',
+        role: 'assistant',
+        body: t('project.assistant.initialMessage'),
+      },
+    ],
+    [t],
+  )
   const persistedMessages = useMemo<AiChatMessage[]>(
     () =>
       messagesQuery.data && messagesQuery.data.length > 0
-        ? messagesQuery.data.map((message) => ({ id: message.id, role: message.role, body: displayAiChatBody(message.body) }))
+        ? messagesQuery.data.map((message) => ({ id: message.id, role: message.role, body: displayAiChatBody(message.body, t) }))
         : initialMessages,
-    [messagesQuery.data],
+    [initialMessages, messagesQuery.data, t],
   )
   const messages = useMemo(() => [...persistedMessages, ...localMessages], [localMessages, persistedMessages])
 
@@ -117,7 +133,7 @@ export function useProjectAssistantController({
     onError: (error) => {
       setLocalMessages((currentMessages) => [
         ...currentMessages,
-        { id: `assistant-error-${Date.now()}`, role: 'assistant', body: projectAssistantErrorMessage(error) },
+        { id: `assistant-error-${Date.now()}`, role: 'assistant', body: projectAssistantErrorMessage(error, t) },
       ])
     },
   })
@@ -134,7 +150,7 @@ export function useProjectAssistantController({
         {
           id: `local-assistant-parametric-${message.id || Date.now()}`,
           role: 'assistant',
-          body: formatParametricRunSummary(artifact.title, telemetry),
+          body: formatParametricRunSummary(artifact.title, telemetry, t),
         },
       ])
       await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })
@@ -143,7 +159,7 @@ export function useProjectAssistantController({
       setLocalMessages([])
     },
     onError: (error) => {
-      const errorMessage = projectAssistantErrorMessage(error)
+      const errorMessage = projectAssistantErrorMessage(error, t)
       setParametricRunError(errorMessage)
       setLocalMessages((currentMessages) => [
         ...currentMessages,
@@ -153,7 +169,7 @@ export function useProjectAssistantController({
   })
 
   const createConversationMutation = useMutation({
-    mutationFn: async () => (await createProjectAgentConversation(projectId, { title: 'New chat' })).data.conversation,
+    mutationFn: async () => (await createProjectAgentConversation(projectId, { title: t('project.assistant.newChat') })).data.conversation,
     onSuccess: async (conversation) => {
       setSelectedConversationID(conversation.id)
       setDraft('')

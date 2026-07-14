@@ -1,5 +1,6 @@
 import { Download, FileText } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -35,6 +36,7 @@ export function ProjectStepExportPopover({
   selectedTargetIds,
   targets,
 }: ProjectStepExportPopoverProps) {
+  const { t } = useTranslation()
   const [error, setError] = useState('')
   const [isPending, setIsPending] = useState(false)
   const selectedCount = targets.filter((target) => selectedTargetIds.has(target.modelId)).length
@@ -46,7 +48,7 @@ export function ProjectStepExportPopover({
       await onExport(mode)
       onOpenChange(false)
     } catch {
-      setError('STEP export failed')
+      setError(t('project.export.failed'))
       onOpenChange(true)
     } finally {
       setIsPending(false)
@@ -61,7 +63,7 @@ export function ProjectStepExportPopover({
             <PopoverTrigger
               render={
                 <Button
-                  aria-label="Export STEP"
+                  aria-label={t('project.export.step')}
                   className="border-transparent text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]"
                   disabled={disabled}
                   size="icon-lg"
@@ -74,28 +76,28 @@ export function ProjectStepExportPopover({
             </PopoverTrigger>
           }
         />
-        <TooltipContent sideOffset={8}>Export STEP</TooltipContent>
+        <TooltipContent sideOffset={8}>{t('project.export.step')}</TooltipContent>
       </Tooltip>
       <PopoverContent
         align="end"
-        aria-label="Export STEP options"
+        aria-label={t('project.export.options')}
         className="relative w-[min(420px,calc(100vw-24px))] gap-0 rounded-md border-[#e2e8f0] bg-white/96 p-2 text-left shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur"
         sideOffset={10}
       >
         <PopoverArrow className="border-[#e2e8f0] bg-white/96" />
         <PopoverHeader className="px-2 py-2">
-          <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">Export STEP</PopoverTitle>
+          <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">{t('project.export.step')}</PopoverTitle>
           <PopoverDescription className="text-xs leading-5 text-[#64748b]">
-            Select current document models, then choose a download action.
+            {t('project.export.description')}
           </PopoverDescription>
         </PopoverHeader>
         <div className="mt-1 border-t border-[#e2e8f0] px-2 pt-3">
           <div className="flex items-center justify-between gap-3">
             <span className="font-mono text-[11px] uppercase text-[#64748b]">
-              {selectedCount}/{targets.length} selected
+              {t('project.export.selected', { selected: selectedCount, total: targets.length })}
             </span>
             <Button disabled={isPending || targets.length === 0} onClick={onSelectAll} size="xs" type="button" variant="ghost">
-              Select all
+              {t('project.export.selectAll')}
             </Button>
           </div>
           <div className="mt-2 max-h-56 overflow-y-auto pr-1">
@@ -122,7 +124,7 @@ export function ProjectStepExportPopover({
           <div className="grid grid-cols-2 gap-1.5">
             <Button disabled={isPending || selectedCount === 0} onClick={() => exportSelection('merged')} size="sm" type="button">
               <Download data-icon="inline-start" />
-              <span className="truncate">{isPending ? 'Exporting' : 'Merged STEP'}</span>
+              <span className="truncate">{isPending ? t('project.export.exporting') : t('project.export.merged')}</span>
             </Button>
             <Button
               disabled={isPending || selectedCount === 0}
@@ -132,7 +134,7 @@ export function ProjectStepExportPopover({
               variant="outline"
             >
               <Download data-icon="inline-start" />
-              <span className="truncate">{isPending ? 'Exporting' : 'Separate files'}</span>
+              <span className="truncate">{isPending ? t('project.export.exporting') : t('project.export.separate')}</span>
             </Button>
           </div>
         </div>

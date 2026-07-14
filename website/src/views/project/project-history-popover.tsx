@@ -1,4 +1,5 @@
 import { History, Redo2, Undo2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -12,7 +13,7 @@ import {
 } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { CADHistoryEntry } from 'src/types/project'
-import { cadHistoryStatusLabel } from './cad-document-history'
+import { cadHistoryStatusLabelKey } from './cad-document-history'
 
 type ProjectHistoryPopoverProps = {
   canRedo: boolean
@@ -69,50 +70,52 @@ export function ProjectHistoryPopover({
   onOpenChange,
   open,
 }: ProjectHistoryPopoverProps) {
+  const { t } = useTranslation()
+
   return (
     <div className="flex items-center rounded-md border border-[#e2e8f0] bg-white/70 p-0.5">
       <HistoryAction
         disabled={isMutationPending || !canUndo}
         icon="undo"
-        label="Undo"
+        label={t('project.history.undo')}
         onClick={() => onHistoryAction('undo')}
       />
       <HistoryAction
         disabled={isMutationPending || !canRedo}
         icon="redo"
-        label="Redo"
+        label={t('project.history.redo')}
         onClick={() => onHistoryAction('redo')}
       />
       <Popover onOpenChange={onOpenChange} open={open}>
         <Tooltip>
           <TooltipTrigger
             render={
-              <PopoverTrigger render={<Button aria-label="Operation history" size="icon-sm" type="button" variant="ghost" />}>
+              <PopoverTrigger render={<Button aria-label={t('project.history.operationHistory')} size="icon-sm" type="button" variant="ghost" />}>
                 <History />
               </PopoverTrigger>
             }
           />
-          <TooltipContent sideOffset={8}>Operation history</TooltipContent>
+          <TooltipContent sideOffset={8}>{t('project.history.operationHistory')}</TooltipContent>
         </Tooltip>
         <PopoverContent
           align="end"
-          aria-label="Operation history"
+          aria-label={t('project.history.operationHistory')}
           className="relative w-[min(380px,calc(100vw-24px))] gap-0 rounded-md border-[#e2e8f0] bg-white/96 p-2 text-left shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur"
           sideOffset={10}
         >
           <PopoverArrow className="border-[#e2e8f0] bg-white/96" />
           <PopoverHeader className="px-2 py-2">
-            <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">Operation history</PopoverTitle>
+            <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">{t('project.history.operationHistory')}</PopoverTitle>
             <PopoverDescription className="text-xs leading-5 text-[#64748b]">
-              Saved with this project and available on every signed-in device.
+              {t('project.history.description')}
             </PopoverDescription>
           </PopoverHeader>
           {error ? <p className="mx-2 border-t border-[#e2e8f0] py-3 text-xs leading-5 text-[#8a2f24]">{error}</p> : null}
           <div className="max-h-72 overflow-y-auto border-t border-[#e2e8f0] py-1">
-            {isLoading ? <p className="px-2 py-4 text-xs text-[#64748b]">Loading history…</p> : null}
-            {loadError ? <p className="px-2 py-4 text-xs text-[#8a2f24]">Could not load operation history.</p> : null}
+            {isLoading ? <p className="px-2 py-4 text-xs text-[#64748b]">{t('project.history.loading')}</p> : null}
+            {loadError ? <p className="px-2 py-4 text-xs text-[#8a2f24]">{t('project.history.loadError')}</p> : null}
             {!isLoading && !loadError && entries.length === 0 ? (
-              <p className="px-2 py-4 text-xs leading-5 text-[#64748b]">Edits will appear here after you move, change parameters, add, or delete model content.</p>
+              <p className="px-2 py-4 text-xs leading-5 text-[#64748b]">{t('project.history.empty')}</p>
             ) : null}
             {entries.map((entry) => (
               <div className="flex items-start gap-3 rounded px-2 py-2.5 hover:bg-[#f8fafc]" key={entry.id}>
@@ -122,7 +125,7 @@ export function ProjectHistoryPopover({
                     {entry.summary}
                   </p>
                   <div className="mt-1 flex items-center justify-between gap-3 font-mono text-[10px] uppercase text-[#64748b]">
-                    <span>{cadHistoryStatusLabel(entry.status)}</span>
+                    <span>{t(cadHistoryStatusLabelKey(entry.status))}</span>
                     <time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time>
                   </div>
                 </div>
@@ -137,7 +140,7 @@ export function ProjectHistoryPopover({
                 type="button"
                 variant="outline"
               >
-                {isFetchingNextPage ? 'Loading…' : 'Load older operations'}
+                {isFetchingNextPage ? t('project.history.loadingMore') : t('project.history.loadOlder')}
               </Button>
             ) : null}
           </div>

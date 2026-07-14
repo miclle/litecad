@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Clock3, FileBox, Grid2X2, Loader2, Pencil, Plus, Sparkles, Trash2, UserRound, X } from 'lucide-react'
 import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import axios from 'axios'
+import { useTranslation } from 'react-i18next'
 
 import {
   createProject,
@@ -21,6 +22,7 @@ interface MainLayoutContext {
 }
 
 function ProjectsView() {
+  const { t } = useTranslation()
   const { currentUser } = useOutletContext<MainLayoutContext>()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -47,10 +49,10 @@ function ProjectsView() {
     },
     onError: (error) => {
       if (axios.isAxiosError(error) && error.response?.status === 400) {
-        setErrorMessage('Add a project name and keep the description under 350 characters.')
+        setErrorMessage(t('projects.errors.invalidProject'))
         return
       }
-      setErrorMessage('The project could not be created. Please try again.')
+      setErrorMessage(t('projects.errors.createFailed'))
     },
   })
 
@@ -74,11 +76,11 @@ function ProjectsView() {
         <nav className="flex gap-1 overflow-x-auto lg:grid lg:overflow-visible">
           <span className="flex h-10 shrink-0 items-center gap-3 rounded-md bg-[#171814] px-3 text-sm font-medium text-[#f7f5ef]">
             <Grid2X2 className="size-4" />
-            All projects
+            {t('projects.allProjects')}
           </span>
           <span className="flex h-10 shrink-0 items-center gap-3 rounded-md px-3 text-sm text-[#686a60] transition hover:bg-[#e8e1d0] hover:text-[#171814]">
             <Clock3 className="size-4" />
-            Recent
+            {t('projects.recent')}
           </span>
         </nav>
 
@@ -91,14 +93,14 @@ function ProjectsView() {
       </aside>
 
       <section className="min-w-0 px-5 py-4 lg:px-8">
-        <h1 className="sr-only">Projects</h1>
+        <h1 className="sr-only">{t('projects.title')}</h1>
         {projectsQuery.isLoading ? (
           <ProjectSkeletonGrid />
         ) : projectsQuery.isError ? (
           <StatePanel
-            body="Projects could not be loaded. Check your session and try refreshing the page."
+            body={t('projects.loadErrorBody')}
             icon={<FileBox className="size-5" />}
-            title="Unable to load projects"
+            title={t('projects.loadErrorTitle')}
           />
         ) : projects.length === 0 ? (
           <StatePanel
@@ -109,12 +111,12 @@ function ProjectsView() {
                 type="button"
               >
                 <Plus className="size-4" />
-                New project
+                {t('nav.newProject')}
               </button>
             }
-            body="Create the first project to collect briefs, references, and future CAD preview work."
+            body={t('projects.emptyBody')}
             icon={<Sparkles className="size-5" />}
-            title="Start a project library"
+            title={t('projects.emptyTitle')}
           />
         ) : (
           <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-8 gap-y-9">
@@ -130,11 +132,11 @@ function ProjectsView() {
           <section className="w-full max-w-[520px] rounded-md border border-[#d8cfbc] bg-[#fcfaf3] shadow-xl">
             <div className="flex items-start justify-between gap-4 border-b border-[#d9d3c2] px-5 py-4">
               <div>
-                <p className="font-mono text-xs uppercase text-[#7a6c52]">Create</p>
-                <h2 className="mt-2 text-2xl font-semibold text-[#171814]">New project</h2>
+                <p className="font-mono text-xs uppercase text-[#7a6c52]">{t('projects.createEyebrow')}</p>
+                <h2 className="mt-2 text-2xl font-semibold text-[#171814]">{t('projects.createTitle')}</h2>
               </div>
               <button
-                aria-label="Close"
+                aria-label={t('common.close')}
                 className="grid size-9 place-items-center rounded-md border border-[#cfc6b2] text-[#303329] transition hover:border-[#52625a]"
                 onClick={() => setIsCreateOpen(false)}
                 type="button"
@@ -145,31 +147,31 @@ function ProjectsView() {
 
             <form className="grid gap-4 p-5" onSubmit={handleSubmit}>
               <label className="grid gap-2 text-sm font-medium text-[#303329]">
-                Project name
+                {t('projects.projectName')}
                 <input
                   autoFocus
                   className="h-12 rounded-md border border-[#cfc6b2] bg-white px-3 text-sm outline-none focus:border-[#52625a]"
                   maxLength={120}
                   onChange={(event) => setName(event.target.value)}
-                  placeholder="Bracket study"
+                  placeholder={t('projects.projectPlaceholder')}
                   required
                   value={name}
                 />
               </label>
 
               <label className="grid gap-2 text-sm font-medium text-[#303329]">
-                Description
+                {t('projects.description')}
                 <textarea
                   className="min-h-28 resize-none rounded-md border border-[#cfc6b2] bg-white p-3 text-sm leading-6 outline-none focus:border-[#52625a]"
                   maxLength={350}
                   onChange={(event) => setDescription(event.target.value)}
-                  placeholder="A short note about intent, constraints, materials, or references."
+                  placeholder={t('projects.descriptionPlaceholder')}
                   value={description}
                 />
               </label>
 
               <div className="flex items-center justify-between text-xs text-[#7a6c52]">
-                <span>Stored in your LiteCAD workspace</span>
+                <span>{t('projects.storedInWorkspace')}</span>
                 <span>{description.length}/350</span>
               </div>
 
@@ -185,7 +187,7 @@ function ProjectsView() {
                 type="submit"
               >
                 {createMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-                Create project
+                {t('projects.createButton')}
               </button>
             </form>
           </section>
@@ -196,6 +198,7 @@ function ProjectsView() {
 }
 
 function ProjectCard({ index, project }: { index: number; project: Project }) {
+  const { i18n, t } = useTranslation()
   const queryClient = useQueryClient()
   const models = project.thumbnail?.models ?? []
   const modelCount = project.thumbnail?.model_count ?? 0
@@ -204,7 +207,7 @@ function ProjectCard({ index, project }: { index: number; project: Project }) {
   const [editName, setEditName] = useState(project.name)
   const [editDescription, setEditDescription] = useState(project.description)
   const [actionError, setActionError] = useState('')
-  const updatedAt = new Intl.DateTimeFormat('en-US', {
+  const updatedAt = new Intl.DateTimeFormat(i18n.language === 'zh' ? 'zh-CN' : 'en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -223,10 +226,10 @@ function ProjectCard({ index, project }: { index: number; project: Project }) {
     },
     onError: (error) => {
       if (axios.isAxiosError(error) && error.response?.status === 400) {
-        setActionError('Add a project name and keep the description under 350 characters.')
+        setActionError(t('projects.errors.invalidProject'))
         return
       }
-      setActionError('The project could not be updated. Please try again.')
+      setActionError(t('projects.errors.updateFailed'))
     },
   })
 
@@ -238,7 +241,7 @@ function ProjectCard({ index, project }: { index: number; project: Project }) {
       await queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
     onError: () => {
-      setActionError('The project could not be deleted. Please try again.')
+      setActionError(t('projects.errors.deleteFailed'))
     },
   })
 
@@ -263,7 +266,7 @@ function ProjectCard({ index, project }: { index: number; project: Project }) {
   return (
     <article className="group flex aspect-[4/3] flex-col overflow-hidden rounded-lg border border-[#ddd6c8] bg-[#fbfaf5] text-inherit transition hover:-translate-y-0.5 hover:border-[#c9c0ad] hover:shadow-sm">
       <Link
-        aria-label={`Open ${project.name}`}
+        aria-label={t('projects.openProject', { name: project.name })}
         className="relative min-h-0 flex-1 overflow-hidden border-b border-[#e5e1d8] bg-[#f8fafc]"
         to={`/projects/${project.id}`}
       >
@@ -273,15 +276,15 @@ function ProjectCard({ index, project }: { index: number; project: Project }) {
         <Link className="flex min-w-0 items-center text-inherit no-underline" to={`/projects/${project.id}`}>
           <span className="min-w-0 text-left">
             <h2 className="line-clamp-1 text-sm font-medium leading-5 text-[#171814]">{project.name}</h2>
-            <span className="block truncate text-xs leading-5 text-[#8a857b]">Edited {updatedAt}</span>
+            <span className="block truncate text-xs leading-5 text-[#8a857b]">{t('projects.edited', { date: updatedAt })}</span>
           </span>
         </Link>
         <div className="flex shrink-0 items-center gap-1">
           <span className="mr-1 hidden text-xs font-medium uppercase tracking-normal text-[#686a60] sm:inline">
-            {modelCount > 0 ? `${modelCount} model${modelCount > 1 ? 's' : ''}` : 'No models'}
+            {modelCount > 0 ? t('projects.modelCount', { count: modelCount }) : t('projects.noModels')}
           </span>
           <button
-            aria-label={`Rename ${project.name}`}
+            aria-label={t('projects.renameProject', { name: project.name })}
             className="grid size-8 place-items-center rounded-md border border-transparent text-[#686a60] transition hover:border-[#cfc6b2] hover:bg-[#f3f0e8] hover:text-[#171814]"
             onClick={openEdit}
             type="button"
@@ -289,7 +292,7 @@ function ProjectCard({ index, project }: { index: number; project: Project }) {
             <Pencil className="size-4" />
           </button>
           <button
-            aria-label={`Delete ${project.name}`}
+            aria-label={t('projects.deleteProject', { name: project.name })}
             className="grid size-8 place-items-center rounded-md border border-transparent text-[#8a4a3d] transition hover:border-[#d9a9a1] hover:bg-[#fff2ef]"
             onClick={openDelete}
             type="button"
@@ -345,16 +348,18 @@ function ProjectEditModal({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   projectName: string
 }) {
+  const { t } = useTranslation()
+
   return (
     <div className="fixed inset-0 z-[80] grid place-items-center bg-[#171814]/32 px-4 backdrop-blur-sm">
       <section className="w-full max-w-[520px] rounded-md border border-[#d8cfbc] bg-[#fcfaf3] shadow-xl">
         <div className="flex items-start justify-between gap-4 border-b border-[#d9d3c2] px-5 py-4">
           <div>
-            <p className="font-mono text-xs uppercase text-[#7a6c52]">Rename</p>
+            <p className="font-mono text-xs uppercase text-[#7a6c52]">{t('projects.renameEyebrow')}</p>
             <h2 className="mt-2 text-2xl font-semibold text-[#171814]">{projectName}</h2>
           </div>
           <button
-            aria-label="Close"
+            aria-label={t('common.close')}
             className="grid size-9 place-items-center rounded-md border border-[#cfc6b2] text-[#303329] transition hover:border-[#52625a]"
             onClick={onClose}
             type="button"
@@ -365,7 +370,7 @@ function ProjectEditModal({
 
         <form className="grid gap-4 p-5" onSubmit={onSubmit}>
           <label className="grid gap-2 text-sm font-medium text-[#303329]">
-            Project name
+            {t('projects.projectName')}
             <input
               autoFocus
               className="h-12 rounded-md border border-[#cfc6b2] bg-white px-3 text-sm outline-none focus:border-[#52625a]"
@@ -377,7 +382,7 @@ function ProjectEditModal({
           </label>
 
           <label className="grid gap-2 text-sm font-medium text-[#303329]">
-            Description
+            {t('projects.description')}
             <textarea
               className="min-h-28 resize-none rounded-md border border-[#cfc6b2] bg-white p-3 text-sm leading-6 outline-none focus:border-[#52625a]"
               maxLength={350}
@@ -387,7 +392,7 @@ function ProjectEditModal({
           </label>
 
           <div className="flex items-center justify-between text-xs text-[#7a6c52]">
-            <span>Project metadata</span>
+            <span>{t('projects.metadata')}</span>
             <span>{description.length}/350</span>
           </div>
 
@@ -403,7 +408,7 @@ function ProjectEditModal({
             type="submit"
           >
             {isPending ? <Loader2 className="size-4 animate-spin" /> : <Pencil className="size-4" />}
-            Save changes
+            {t('projects.saveChanges')}
           </button>
         </form>
       </section>
@@ -424,16 +429,18 @@ function ProjectDeleteModal({
   onConfirm: () => void
   projectName: string
 }) {
+  const { t } = useTranslation()
+
   return (
     <div className="fixed inset-0 z-[80] grid place-items-center bg-[#171814]/32 px-4 backdrop-blur-sm">
       <section className="w-full max-w-[440px] rounded-md border border-[#d8cfbc] bg-[#fcfaf3] p-5 shadow-xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="font-mono text-xs uppercase text-[#8a4a3d]">Delete</p>
+            <p className="font-mono text-xs uppercase text-[#8a4a3d]">{t('projects.deleteEyebrow')}</p>
             <h2 className="mt-2 text-xl font-semibold text-[#171814]">{projectName}</h2>
           </div>
           <button
-            aria-label="Close"
+            aria-label={t('common.close')}
             className="grid size-9 place-items-center rounded-md border border-[#cfc6b2] text-[#303329] transition hover:border-[#52625a]"
             onClick={onClose}
             type="button"
@@ -442,7 +449,7 @@ function ProjectDeleteModal({
           </button>
         </div>
         <p className="mt-4 text-sm leading-6 text-[#686a60]">
-          This removes the project from your project library. Uploaded source records stay server-side but are no longer reachable through project APIs.
+          {t('projects.deleteBody')}
         </p>
         {errorMessage && (
           <p className="mt-4 rounded-md border border-[#d9a9a1] bg-[#fff2ef] px-3 py-2 text-sm text-[#8a2f24]">
@@ -455,7 +462,7 @@ function ProjectDeleteModal({
             onClick={onClose}
             type="button"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#8a4a3d] px-4 text-sm font-semibold text-white transition hover:bg-[#743a30] disabled:cursor-not-allowed disabled:opacity-70"
@@ -464,7 +471,7 @@ function ProjectDeleteModal({
             type="button"
           >
             {isPending ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-            Delete
+            {t('common.delete')}
           </button>
         </div>
       </section>

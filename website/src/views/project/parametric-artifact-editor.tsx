@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Box, Save } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from '@/components/ui/field'
@@ -50,8 +51,10 @@ export function ParametricArtifactEditor({
   onParameterValuesChange,
   onSaveAsModel,
   onSaveParameters,
-  saveLabel = 'Save as model',
+  saveLabel,
 }: ParametricArtifactEditorProps) {
+  const { t } = useTranslation()
+  const resolvedSaveLabel = saveLabel ?? t('project.parametric.saveAsModel')
   const parsedParameters = useMemo(() => parseOpenSCADParameters(artifact.source_code), [artifact.source_code])
   const defaultValues = useMemo(() => defaultOpenSCADParameterValues(parsedParameters), [parsedParameters])
   const editorInitialValues = useMemo(
@@ -187,7 +190,7 @@ export function ParametricArtifactEditor({
   }, [artifact.id, clearScheduledParameterSave, flushPendingParameterSave, hasOnSaveParameters, parameterSignature, parameterValues])
 
   return (
-    <section aria-label="Parametric artifact" className="mt-4 min-w-0 overflow-hidden border-t border-[#e2e8f0] pt-4">
+    <section aria-label={t('project.parametric.artifact')} className="mt-4 min-w-0 overflow-hidden border-t border-[#e2e8f0] pt-4">
       <div className="min-w-0">
         <h2 className="truncate text-sm font-semibold text-[#0f172a]" title={artifact.title}>
           {artifact.title}
@@ -197,7 +200,7 @@ export function ParametricArtifactEditor({
       <FieldSet className="mt-3 min-w-0 gap-3">
         {preview.parameters.length > 0 ? (
           <FieldGroup className="min-w-0 gap-2">
-            <FieldTitle className="text-xs text-[#334155]">Parameters</FieldTitle>
+            <FieldTitle className="text-xs text-[#334155]">{t('project.parametric.parameters')}</FieldTitle>
             <div className="grid min-w-0 gap-2">
               {preview.parameters.map((parameter) => {
                 const value = parameterValues[parameter.name] ?? parameter.value
@@ -208,7 +211,7 @@ export function ParametricArtifactEditor({
                       <div className="flex items-center justify-between gap-2">
                         <FieldLabel className="font-mono text-[10px] uppercase text-[#64748b]">{parameter.name}</FieldLabel>
                         <Input
-                          aria-label={`${parameter.name} value`}
+                          aria-label={t('project.parametric.value', { name: parameter.name })}
                           className="h-7 w-20 rounded-md border-[#d6dbe3] px-2 text-right font-mono text-[11px]"
                           inputMode="decimal"
                           onBlur={flushPendingParameterSave}
@@ -223,7 +226,7 @@ export function ParametricArtifactEditor({
                         />
                       </div>
                       <input
-                        aria-label={`${parameter.name} parameter`}
+                        aria-label={t('project.parametric.parameter', { name: parameter.name })}
                         className="h-5 min-w-0 max-w-full accent-[#1d4ed8]"
                         max={range.max}
                         min={range.min}
@@ -246,7 +249,7 @@ export function ParametricArtifactEditor({
                     <label className="flex items-center justify-between gap-3 rounded-md border border-[#e2e8f0] bg-white px-2 py-1.5 text-xs" key={parameter.name}>
                       <span className="font-mono uppercase text-[#64748b]">{parameter.name}</span>
                       <input
-                        aria-label={`${parameter.name} parameter`}
+                        aria-label={t('project.parametric.parameter', { name: parameter.name })}
                         checked={Boolean(value)}
                         className="size-4 accent-[#1d4ed8]"
                         onBlur={flushPendingParameterSave}
@@ -261,7 +264,7 @@ export function ParametricArtifactEditor({
                     <Field className="min-w-0 gap-1" key={parameter.name}>
                       <FieldLabel className="font-mono text-[10px] uppercase text-[#64748b]">{parameter.name}</FieldLabel>
                       <Input
-                        aria-label={`${parameter.name} parameter`}
+                        aria-label={t('project.parametric.parameter', { name: parameter.name })}
                         className="h-8 rounded-md border-[#d6dbe3] bg-white"
                         onBlur={flushPendingParameterSave}
                         onChange={(event) => updateParameterValue(parameter.name, event.target.value)}
@@ -276,7 +279,7 @@ export function ParametricArtifactEditor({
                     <Field className="min-w-0 gap-1" key={parameter.name}>
                       <FieldLabel className="font-mono text-[10px] uppercase text-[#64748b]">{parameter.name}</FieldLabel>
                       <select
-                        aria-label={`${parameter.name} parameter`}
+                        aria-label={t('project.parametric.parameter', { name: parameter.name })}
                         className="h-8 rounded-md border border-[#d6dbe3] bg-white px-2 text-xs text-[#0f172a] outline-none focus:border-[#94a3b8] focus:ring-2 focus:ring-[#bfdbfe]"
                         onBlur={flushPendingParameterSave}
                         onChange={(event) => updateParameterValue(parameter.name, event.target.value)}
@@ -295,7 +298,7 @@ export function ParametricArtifactEditor({
                   <Field className="min-w-0 gap-1" key={parameter.name}>
                     <FieldLabel className="font-mono text-[10px] uppercase text-[#64748b]">{parameter.name}</FieldLabel>
                     <Input
-                      aria-label={`${parameter.name} parameter`}
+                      aria-label={t('project.parametric.parameter', { name: parameter.name })}
                       className="h-8 rounded-md border-[#d6dbe3] bg-white px-2 text-xs"
                       onBlur={flushPendingParameterSave}
                       onChange={(event) => updateParameterValue(parameter.name, event.target.value)}
@@ -324,7 +327,7 @@ export function ParametricArtifactEditor({
         {shouldAutoSaveOnPreviewSuccess || onSaveParameters ? null : (
           <Button className="justify-center" disabled={!canSave} onClick={handleSave} size="sm" type="button">
             {canSave ? <Save data-icon="inline-start" /> : <Box data-icon="inline-start" />}
-            {saveLabel}
+            {resolvedSaveLabel}
           </Button>
         )}
       </FieldSet>

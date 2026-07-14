@@ -9,6 +9,7 @@ litecad is a Go + React single-page application for AI-assisted CAD exploration 
 Current implemented product surface:
 
 - Home-page import pipeline status panel and CAD-oriented project workbench shell, with browser-local persistence for the left-panel and Assistant-panel visibility and widths.
+- English and Chinese user-facing UI copy through `i18next` / `react-i18next`, with a shared `LanguageSwitcher`, browser-local language preference, and synchronized document `lang` attribute.
 - Account registration/login/logout with an `HttpOnly` `litecad_session` cookie and explicit protected-route sign-in prompts for project pages.
 - Session-scoped project creation, listing with lightweight static thumbnail snapshots, detail lookup, owner-scoped rename, and soft delete.
 - Session-scoped CAD source upload, lightweight Go-only metadata extraction, listing, source download, preview artifact metadata, preview loading, editable LiteCAD document persistence for per-model transform and constrained box-union operations, database-backed reversible operation History with cross-browser Undo/Redo for transform/box-union/node-delete edits and saved parametric model parameter changes, STEP product/component names grouped under the imported model in the workbench project tree with node-scoped selection, position edits, and model/source plus component deletion, workbench-generated static project thumbnail snapshots, direct per-model STEP export downloads, selected multi-model STEP export downloads as one browser-kernel compound STEP file, multi-source browser preview composition, preview-layer edge display, center-plane visual sectioning, visible-model bounds measurement, read-only geometry document API, and generated geometry version snapshots for project-owned `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files, including browser-kernel STEP/STP workbench mesh generation with box-union replay plus scene-level persisted transforms, backend-validated self-contained GLTF/GLB preview publication, and Go-based STL-to-OBJ preview conversion. STEP/STP upload metadata extraction scans uploaded ISO-10303-21 text in Go and does not invoke Python, FreeCAD, or another desktop CAD application. STEP/STP backend preview artifact generation is intentionally unavailable; the workbench uses source download plus the browser kernel.
@@ -29,6 +30,7 @@ Target CAD architecture is documented in `docs/browser-cad-kernel-roadmap.md`: L
 - Frontend: React 19 + TypeScript 6 + Vite 8 + Tailwind CSS 4
   - React Router v7 (routing)
   - React Query v5 (server state)
+  - i18next + react-i18next (English / Chinese UI copy)
   - Axios (HTTP client)
   - Lucide React (icons)
   - Three.js (browser 3D previews/viewer shell)
@@ -77,6 +79,7 @@ website/                      # Embedded SPA (frontend + go:embed glue)
   ├── build/                  #   Vite build output (embedded)
   └── src/
       ├── main.tsx
+      ├── i18n.ts
       ├── App.tsx
       ├── router.tsx
       ├── globals.css
@@ -129,6 +132,8 @@ For feature work that changes the browser experience, combine the relevant front
 - API calls go in `website/src/api/` and use the shared Axios client.
 - Type definitions go in `website/src/types/`.
 - Pages go in `website/src/views/`.
+- User-facing shell and page copy should use `react-i18next` with English and Chinese resources in `website/src/i18n.ts`; keep language switching through `LanguageSwitcher` or a shared wrapper instead of ad hoc localStorage reads.
+- Do not translate project/user/generated content such as project names, uploaded filenames, STEP product/component names, AI messages, code/JSON snippets, or parametric model keys like `DIAMETER`; only fixed UI copy belongs in i18n resources.
 - UI components must be implemented with or composed from shadcn/ui primitives whenever shadcn/ui provides the needed component or a reasonable composition path. Use custom component markup only when shadcn/ui has no suitable primitive for the requirement.
 - Prefer existing Tailwind styles, shadcn/ui component conventions, Lucide icons, and local layout patterns.
 - Do not hard-code backend origins in components; use `/api/v1` through the shared client and Vite proxy.

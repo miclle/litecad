@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { fetchProjectModelSource } from 'src/api/projects'
 import {
@@ -51,6 +52,7 @@ export function useProjectStepExportController({
   projectId,
   targets,
 }: UseProjectStepExportControllerOptions) {
+  const { t } = useTranslation()
   const [errorByModelID, setErrorByModelID] = useState<Record<string, string>>({})
   const [statusByModelID, setStatusByModelID] = useState<Record<string, string>>({})
   const [selectedTargetIDs, setSelectedTargetIDs] = useState<Set<string>>(() => new Set())
@@ -88,7 +90,7 @@ export function useProjectStepExportController({
 
   const exportSelection = async (mode: StepExportMode) => {
     if (selectedTargets.length === 0) {
-      throw new Error('No STEP models selected')
+      throw new Error(t('project.export.noSelection'))
     }
     const fetchSourceText = (modelId: string) => resolvedDependencies.fetchSourceText(projectId, modelId)
 
@@ -124,7 +126,9 @@ export function useProjectStepExportController({
       const nextStatuses = { ...currentStatuses }
       selectedTargets.forEach((target) => {
         nextStatuses[target.modelId] =
-          mode === 'merged' ? `Included in ${assemblyDownloadFilename}` : `Downloaded ${target.downloadFilename}`
+          mode === 'merged'
+            ? t('project.export.included', { filename: assemblyDownloadFilename })
+            : t('project.export.downloaded', { filename: target.downloadFilename })
       })
       return nextStatuses
     })

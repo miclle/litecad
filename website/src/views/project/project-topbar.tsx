@@ -1,6 +1,7 @@
 import type { ChangeEventHandler, ReactElement, ReactNode, RefObject } from 'react'
 import { ArrowLeft, BotMessageSquare, CheckCircle2, Info, Upload } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -117,14 +118,16 @@ export function ProjectTopbar({
   stepExportDisabled,
   stepExportTargets,
 }: ProjectTopbarProps) {
+  const { t } = useTranslation()
+
   return (
     <>
       <div className="flex min-w-0 items-center gap-3">
         <TopbarTooltip
-          label="All projects"
+          label={t('project.route.allProjects')}
           render={
             <Link
-              aria-label="All projects"
+              aria-label={t('project.route.allProjects')}
               className="grid size-9 shrink-0 place-items-center rounded-md text-[#64748b] no-underline transition hover:bg-[#f1f5f9] hover:text-[#0f172a]"
               to="/projects"
             />
@@ -141,7 +144,7 @@ export function ProjectTopbar({
                   <PopoverTrigger
                     render={
                       <Button
-                        aria-label="Project info"
+                        aria-label={t('project.topbar.projectInfo')}
                         className="shrink-0"
                         size="icon-sm"
                         type="button"
@@ -153,24 +156,24 @@ export function ProjectTopbar({
                   </PopoverTrigger>
                 }
               />
-              <TooltipContent sideOffset={8}>Project info</TooltipContent>
+              <TooltipContent sideOffset={8}>{t('project.topbar.projectInfo')}</TooltipContent>
             </Tooltip>
             <PopoverContent
               align="center"
-              aria-label="Project info"
+              aria-label={t('project.topbar.projectInfo')}
               className="relative w-[min(360px,calc(100vw-24px))] gap-0 rounded-md border-[#e2e8f0] bg-white/96 p-4 text-left shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur"
               sideOffset={10}
             >
               <PopoverArrow className="border-[#e2e8f0] bg-white/96" />
               <PopoverHeader className="flex-row items-center justify-between gap-3">
-                <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">Project</PopoverTitle>
+                <PopoverTitle className="font-mono text-[11px] uppercase text-[#64748b]">{t('project.topbar.project')}</PopoverTitle>
                 <PopoverDescription className="truncate text-sm font-semibold text-[#0f172a]">
                   {project.name}
                 </PopoverDescription>
               </PopoverHeader>
 
               <section className="mt-4">
-                <p className="font-mono text-[11px] uppercase text-[#64748b]">Description</p>
+                <p className="font-mono text-[11px] uppercase text-[#64748b]">{t('project.topbar.description')}</p>
                 <p className="mt-2 text-sm leading-6 text-[#1f2937]">{projectDescription}</p>
               </section>
 
@@ -183,7 +186,7 @@ export function ProjectTopbar({
               </section>
 
               <section className="mt-4">
-                <p className="font-mono text-[11px] uppercase text-[#64748b]">Document</p>
+                <p className="font-mono text-[11px] uppercase text-[#64748b]">{t('project.topbar.document')}</p>
                 <dl className="mt-3 grid gap-2 text-sm">
                   {documentDetails.map((detail) => (
                     <div className="flex items-center justify-between gap-4 border-b border-[#e2e8f0] pb-2" key={detail.label}>
@@ -225,10 +228,10 @@ export function ProjectTopbar({
           targets={stepExportTargets}
         />
         <TopbarTooltip
-          label="Import model"
+          label={t('project.topbar.importModel')}
           render={
             <button
-              aria-label="Import model"
+              aria-label={t('project.topbar.importModel')}
               className="grid size-9 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isUploading}
               onClick={() => fileInputRef.current?.click()}
@@ -239,7 +242,7 @@ export function ProjectTopbar({
           <Upload className="size-4" />
         </TopbarTooltip>
         <button
-          aria-label="Toggle Assistant"
+          aria-label={t('project.topbar.toggleAssistant')}
           aria-pressed={isAiChatOpen}
           className={`flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
             isAiChatOpen
@@ -247,11 +250,11 @@ export function ProjectTopbar({
               : 'border-transparent text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]'
           }`}
           onClick={onToggleAiChat}
-          title={isAiChatOpen ? 'Close Assistant' : 'Open Assistant'}
+          title={isAiChatOpen ? t('project.topbar.closeAssistant') : t('project.topbar.openAssistant')}
           type="button"
         >
           <BotMessageSquare className="size-4" />
-          Assistant
+          {t('project.topbar.assistant')}
         </button>
         <input
           accept=".step,.stp,.gltf,.glb,.stl"

@@ -4,6 +4,7 @@ import CodeMirror from '@uiw/react-codemirror'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import Markdown, { type Components as MarkdownComponents } from 'react-markdown'
+import { useTranslation } from 'react-i18next'
 
 const codeBlockCollapsedHeight = 260
 
@@ -123,6 +124,7 @@ function formatAgentMarkdownSource(source: string) {
 }
 
 function AgentCodeBlock({ className, code }: { className?: string; code: string }) {
+  const { t } = useTranslation()
   const [isExpanded, setIsExpanded] = useState(false)
   const language = languageLabelFromClassName(className) ?? 'code'
   const isCollapsible = shouldCollapseCode(code)
@@ -142,7 +144,7 @@ function AgentCodeBlock({ className, code }: { className?: string; code: string 
             type="button"
           >
             {isExpanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-            {isExpanded ? 'Collapse' : 'Expand'}
+            {isExpanded ? t('project.assistant.collapseCode') : t('project.assistant.expandCode')}
           </button>
         )}
       </div>
