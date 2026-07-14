@@ -3,7 +3,7 @@ import { translationFromCADTransform } from './cad-document-transforms'
 import type { BoxFeatureDraft } from './cad-document-box-features'
 import type { ProjectInspectorSelection, TransformDraft } from './project-inspector'
 import { getModelDisplayName } from './project-preview-assets'
-import type { CADDocumentNode, Project, ProjectCADDocument, ProjectModel } from 'src/types/project'
+import type { CADAssemblyOccurrence, CADDocumentNode, Project, ProjectCADDocument, ProjectModel } from 'src/types/project'
 import { useTranslation } from 'react-i18next'
 
 type ProjectPreviewSummary = {
@@ -22,6 +22,7 @@ type ProjectWorkbenchInspectorStateOptions = {
   project?: Project
   projectCADDocument?: ProjectCADDocument
   selectedDocumentNode?: CADDocumentNode
+	selectedOccurrence?: CADAssemblyOccurrence
   selectedSourceModel?: ProjectModel
   stepExportErrorByModelId: Record<string, string>
   stepExportStatusByModelId: Record<string, string>
@@ -41,6 +42,7 @@ export function useProjectWorkbenchInspectorState({
   project,
   projectCADDocument,
   selectedDocumentNode,
+	selectedOccurrence,
   selectedSourceModel,
   stepExportErrorByModelId,
   stepExportStatusByModelId,
@@ -60,13 +62,15 @@ export function useProjectWorkbenchInspectorState({
   const selectedModelDisplayName =
     selectedDocumentNode?.source_format === 'step-component'
       ? selectedDocumentNode.name
-      : selectedSourceModel
+		: selectedOccurrence?.name || (selectedSourceModel
         ? getModelDisplayName(selectedSourceModel)
-        : ''
-  const selectedModelTransformDraft = selectedDocumentNode
-    ? transformDraftsByNodeId[selectedDocumentNode.id] ?? transformDraftFromTranslation(translationFromCADTransform(selectedDocumentNode.transform))
+			: '')
+	const selectedTransformTargetID = selectedDocumentNode?.parent_node_id ? selectedDocumentNode.id : (selectedOccurrence?.id ?? selectedDocumentNode?.id)
+	const selectedTransform = selectedDocumentNode?.parent_node_id ? selectedDocumentNode.transform : (selectedOccurrence?.transform ?? selectedDocumentNode?.transform)
+	const selectedModelTransformDraft = selectedTransformTargetID
+		? transformDraftsByNodeId[selectedTransformTargetID] ?? transformDraftFromTranslation(translationFromCADTransform(selectedTransform))
     : undefined
-  const selectedModelTransformError = selectedDocumentNode ? transformErrorsByNodeId[selectedDocumentNode.id] : ''
+	const selectedModelTransformError = selectedTransformTargetID ? transformErrorsByNodeId[selectedTransformTargetID] : ''
   const selectedModelSupportsFuseBox = selectedSourceModel?.format === 'step'
   const selectedModelBoxFeatureDraft = selectedSourceModel
     ? boxFeatureDraftsByModelId[selectedSourceModel.id] ?? getBoxFeatureDraft(selectedSourceModel.id)
@@ -105,7 +109,7 @@ export function useProjectWorkbenchInspectorState({
           deleteError,
           details: selectedModelDetails,
           name: selectedModelDisplayName,
-          nodeId: selectedDocumentNode.id,
+			nodeId: selectedTransformTargetID ?? selectedDocumentNode.id,
           stepExportError: selectedModelStepExportError,
           stepExportStatus: selectedModelStepExportStatus,
           transformDraft: selectedModelTransformDraft,

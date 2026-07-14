@@ -88,9 +88,12 @@ describe('useProjectWorkbenchRouteControllers', () => {
       changeHistory: expect.any(Function),
       clearDeleteError: expect.any(Function),
       deleteNode: expect.any(Function),
+			deleteOccurrence: undefined,
       isCADDocumentCommandPending: false,
       keyboardDeleteNode: cadDocumentNode(),
       projectCADDocument: cadDocument(),
+			selectedModelOccurrenceCount: 0,
+			selectedOccurrence: undefined,
     })
   })
 

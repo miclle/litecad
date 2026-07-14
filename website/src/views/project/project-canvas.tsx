@@ -32,9 +32,9 @@ type ProjectCanvasProps = {
   onClearSelection: () => void
   onCloseCADTool: () => void
   onFlipOrientation: () => void
-  onModelTranslationChange: (modelId: string, translation: CADTranslation, nodeId?: string) => void
+	onModelTranslationChange: (modelId: string, translation: CADTranslation, nodeId?: string, occurrenceId?: string) => void
   onResetIsometric: () => void
-  onSelectModel: (modelId: string, nodeId?: string) => void
+	onSelectModel: (modelId: string, nodeId?: string, occurrenceId?: string) => void
   onSetOrientation: (orientation: ViewOrientation) => void
   onSnapshotCapture: (snapshot: ModelPreviewSnapshotCapture) => void
   onStepOrientation: (step: ViewRotationStep) => void
@@ -49,6 +49,7 @@ type ProjectCanvasProps = {
   selectedModelBoxFeatureError: string
   selectedModelDisplayName: string
   selectedModelId: string
+	selectedOccurrenceId?: string
   selectedModelSupportsFuseBox: boolean
   selectedNodeId: string
   selectedSourceModel?: ProjectModel
@@ -128,6 +129,7 @@ export function ProjectCanvas({
   selectedModelBoxFeatureError,
   selectedModelDisplayName,
   selectedModelId,
+	selectedOccurrenceId = '',
   selectedModelSupportsFuseBox,
   selectedNodeId,
   selectedSourceModel,
@@ -163,6 +165,7 @@ export function ProjectCanvas({
         previewAssets={previewAssets}
         selectedModelId={selectedModelId}
         selectedNodeId={selectedNodeId}
+				selectedOccurrenceId={selectedOccurrenceId}
         unitLabel={unitLabel}
         visibleModelIds={visibleModelIds}
       />

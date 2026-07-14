@@ -251,6 +251,57 @@ describe('project STEP export helpers', () => {
     expect(buildStepExportTargets([retainedModel, deletedModel], document).map((target) => target.modelId)).toEqual(['mdl_retained'])
   })
 
+	test('exports repeated occurrences in assembly order and omits suppressed instances', () => {
+		const model = {
+			...baseModel,
+			id: 'mdl_fixture',
+			original_filename: 'fixture.step',
+		} satisfies ProjectModel
+		const leftTransform = { matrix: [1, 0, 0, -25, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }
+		const rightTransform = { matrix: [1, 0, 0, 25, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }
+		const document = {
+			...cadDocument,
+			assembly: {
+				...cadDocument.assembly,
+				occurrences: [
+					{
+						id: 'occ_left', node_id: 'node_mdl_fixture', model_id: model.id, model_revision_id: 'mvr_left',
+						name: 'Fixture left', suppressed: false, transform: leftTransform,
+					},
+					{
+						id: 'occ_right', node_id: 'node_mdl_fixture', model_id: model.id, model_revision_id: 'mvr_right',
+						name: 'Fixture right', suppressed: false, transform: rightTransform,
+					},
+				],
+			},
+		} satisfies ProjectCADDocument
+
+		expect(buildStepExportTargets([model], document).map((target) => ({
+			id: target.occurrenceId,
+			name: target.displayName,
+			filename: target.downloadFilename,
+			placement: target.operations.at(-1),
+		}))).toEqual([
+			{
+				id: 'occ_left', name: 'Fixture left', filename: 'Fixture left-litecad-r7.step',
+				placement: { id: 'occ_left_placement', type: 'transform', modelId: model.id, matrix: leftTransform.matrix },
+			},
+			{
+				id: 'occ_right', name: 'Fixture right', filename: 'Fixture right-litecad-r7.step',
+				placement: { id: 'occ_right_placement', type: 'transform', modelId: model.id, matrix: rightTransform.matrix },
+			},
+		])
+
+		const suppressedDocument: ProjectCADDocument = {
+			...document,
+			assembly: {
+				...document.assembly,
+				occurrences: document.assembly.occurrences.map((occurrence, index) => index === 1 ? { ...occurrence, suppressed: true } : occurrence),
+			},
+		}
+		expect(buildStepExportTargets([model], suppressedDocument).map((target) => target.occurrenceId)).toEqual(['occ_left'])
+	})
+
   test('sanitizes exported STEP filenames while preserving the source base name', () => {
     expect(stepExportFilename('gear:alpha.stp', 12)).toBe('gear-alpha-litecad-r12.step')
     expect(stepExportFilename('assembly.step', 0)).toBe('assembly-litecad-r0.step')

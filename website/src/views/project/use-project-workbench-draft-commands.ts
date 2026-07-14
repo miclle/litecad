@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import type { CADDocumentNode, ProjectCADDocument } from 'src/types/project'
+import type { CADAssemblyOccurrence, CADDocumentNode, ProjectCADDocument } from 'src/types/project'
 import {
   boxFeatureDraftFromCADBoxFeature,
   defaultBoxFeatureDraft,
@@ -22,6 +22,7 @@ export type ProjectWorkbenchDraftCommandAdapter = {
 
 type UseProjectWorkbenchDraftCommandsOptions = {
   cadNodeByID: ReadonlyMap<string, CADDocumentNode>
+	cadOccurrenceByID?: ReadonlyMap<string, CADAssemblyOccurrence>
   commandAdapterRef: RefObject<ProjectWorkbenchDraftCommandAdapter | null>
   onSelectionClear: () => void
   projectCADDocument?: ProjectCADDocument
@@ -30,6 +31,7 @@ type UseProjectWorkbenchDraftCommandsOptions = {
 
 export function useProjectWorkbenchDraftCommands({
   cadNodeByID,
+	cadOccurrenceByID = emptyCADOccurrenceMap,
   commandAdapterRef,
   onSelectionClear,
   projectCADDocument,
@@ -47,13 +49,16 @@ export function useProjectWorkbenchDraftCommands({
         continue
       }
       translations[nodeID] = translation
+			if (cadOccurrenceByID.has(nodeID)) {
+				continue
+			}
       const modelID = cadNodeByID.get(nodeID)?.model_id
       if (modelID) {
         translations[modelID] = translation
       }
     }
     return translations
-  }, [cadNodeByID, transformDraftsByNodeID])
+	}, [cadNodeByID, cadOccurrenceByID, transformDraftsByNodeID])
 
   const handleTransformSynchronized = useCallback((nodeId: string) => {
     setTransformDraftsByNodeID((currentDrafts) => {
@@ -96,21 +101,26 @@ export function useProjectWorkbenchDraftCommands({
   )
 
   const updateTransformDraftFromTranslation = useCallback(
-    (modelID: string, translation: CADTranslation, selectedNodeID?: string) => {
+		(modelID: string, translation: CADTranslation, selectedNodeID?: string, occurrenceID?: string) => {
       const commandAdapter = commandAdapterRef.current
-      const nodeID = selectedNodeID ?? sourceNodeIDByModelID.get(modelID) ?? `node_${modelID}`
+			const occurrence = occurrenceID ? cadOccurrenceByID.get(occurrenceID) : undefined
+			const sourceNodeID = sourceNodeIDByModelID.get(modelID) ?? `node_${modelID}`
+			const nodeID = occurrence && (!selectedNodeID || selectedNodeID === occurrence.node_id || selectedNodeID === sourceNodeID)
+				? occurrence.id
+				: selectedNodeID ?? sourceNodeID
       const nextDraft = transformDraftFromTranslation(translation)
       setTransformDraftsByNodeID((currentDrafts) => ({ ...currentDrafts, [nodeID]: nextDraft }))
       commandAdapter?.setTransformValidationError(nodeID, '')
       commandAdapter?.scheduleTransformAutosave(nodeID, translation)
     },
-    [commandAdapterRef, sourceNodeIDByModelID],
+		[cadOccurrenceByID, commandAdapterRef, sourceNodeIDByModelID],
   )
 
   const updateTransformDraftField = useCallback(
     (nodeID: string, axis: keyof CADTranslation, value: string) => {
       const commandAdapter = commandAdapterRef.current
-      const currentDraft = transformDraftsByNodeID[nodeID] ?? transformDraftFromTranslation(translationFromCADTransform(cadNodeByID.get(nodeID)?.transform))
+			const savedTransform = cadOccurrenceByID.get(nodeID)?.transform ?? cadNodeByID.get(nodeID)?.transform
+			const currentDraft = transformDraftsByNodeID[nodeID] ?? transformDraftFromTranslation(translationFromCADTransform(savedTransform))
       const nextDraft = { ...currentDraft, [axis]: value }
       setTransformDraftsByNodeID((currentDrafts) => ({ ...currentDrafts, [nodeID]: nextDraft }))
       const translation = parseTransformDraft(nextDraft)
@@ -119,7 +129,7 @@ export function useProjectWorkbenchDraftCommands({
         commandAdapter?.setTransformValidationError(nodeID, t('project.errors.invalidTransform'))
         return
       }
-      const savedTranslation = translationFromCADTransform(cadNodeByID.get(nodeID)?.transform)
+			const savedTranslation = translationFromCADTransform(savedTransform)
       if (translationsEqual(translation, savedTranslation)) {
         commandAdapter?.cancelTransformAutosave(nodeID)
         commandAdapter?.setTransformValidationError(nodeID, '')
@@ -128,7 +138,7 @@ export function useProjectWorkbenchDraftCommands({
       commandAdapter?.setTransformValidationError(nodeID, '')
       commandAdapter?.scheduleTransformAutosave(nodeID, translation)
     },
-    [cadNodeByID, commandAdapterRef, t, transformDraftsByNodeID],
+		[cadNodeByID, cadOccurrenceByID, commandAdapterRef, t, transformDraftsByNodeID],
   )
 
   const updateBoxFeatureDraft = useCallback(
@@ -174,6 +184,8 @@ export function useProjectWorkbenchDraftCommands({
     updateTransformDraftFromTranslation,
   }
 }
+
+const emptyCADOccurrenceMap = new Map<string, CADAssemblyOccurrence>()
 
 function translationsEqual(left: CADTranslation | undefined, right: CADTranslation | undefined) {
   return !!left && !!right && left.x === right.x && left.y === right.y && left.z === right.z

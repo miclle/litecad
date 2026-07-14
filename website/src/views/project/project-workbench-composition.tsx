@@ -71,6 +71,7 @@ export function ProjectWorkbenchComposition({
     activeCADTool,
     effectiveSelectedDocumentNodeID,
     effectiveSelectedModelID,
+		effectiveSelectedOccurrenceID,
     clearSelection,
     selectModel,
     selectedArtifact: selectedParametricArtifact,
@@ -128,8 +129,12 @@ export function ProjectWorkbenchComposition({
           onFlipOrientation={viewControls.flipCanvasOrientation}
           onModelTranslationChange={draftCommands.updateTransformDraftFromTranslation}
           onResetIsometric={() => viewControls.applyCanvasOrientation(initialViewOrientation)}
-          onSelectModel={(modelID, nodeID) => {
-            selectModel(modelID, nodeID)
+			onSelectModel={(modelID, nodeID, occurrenceID) => {
+				if (occurrenceID) {
+					selectModel(modelID, nodeID, occurrenceID)
+				} else {
+					selectModel(modelID, nodeID)
+				}
             cadDocumentCommands.clearDeleteError()
           }}
           onSetOrientation={viewControls.applyCanvasOrientation}
@@ -145,6 +150,7 @@ export function ProjectWorkbenchComposition({
           selectedModelBoxFeatureError={inspectorState.selectedModelBoxFeatureError}
           selectedModelDisplayName={inspectorState.selectedModelDisplayName}
           selectedModelId={effectiveSelectedModelID}
+					selectedOccurrenceId={effectiveSelectedOccurrenceID}
           selectedModelSupportsFuseBox={inspectorState.selectedModelSupportsFuseBox}
           selectedNodeId={effectiveSelectedDocumentNodeID}
           selectedSourceModel={selectedSourceModel}
@@ -163,11 +169,22 @@ export function ProjectWorkbenchComposition({
           isLeftPanelCollapsed={shellState.isLeftPanelCollapsed}
           isModelTreeLoading={modelState.projectModelsQuery.isLoading}
           isUploading={projectModelUpload.isUploading}
+					isOccurrenceMutationPending={cadDocumentCommands.isOccurrenceMutationPending}
           leftPanelWidth={shellState.leftPanelWidth}
           modelCount={modelState.projectModels.length}
           onCollapseChange={shellState.setIsLeftPanelCollapsed}
-          onModelSelect={(modelId, nodeId) => {
-            selectModel(modelId, nodeId)
+					onDeleteOccurrence={(occurrenceId) => {
+						cadDocumentCommands.deleteOccurrence(occurrenceId)
+						clearSelection()
+					}}
+					onDuplicateOccurrence={cadDocumentCommands.duplicateOccurrence}
+					onMoveOccurrence={cadDocumentCommands.moveOccurrence}
+			onModelSelect={(modelId, nodeId, occurrenceId) => {
+				if (occurrenceId) {
+					selectModel(modelId, nodeId, occurrenceId)
+				} else {
+					selectModel(modelId, nodeId)
+				}
             cadDocumentCommands.clearDeleteError()
           }}
           onParameterValuesChange={modelState.parametricModels.updatePreviewParameters}
@@ -182,11 +199,14 @@ export function ProjectWorkbenchComposition({
             parametricModelCommands.restoreModelRevision({ modelID, revisionID })
           }
           onToggleModelVisibility={visibilityState.toggleModelVisibility}
+          onUpdateOccurrence={cadDocumentCommands.updateOccurrence}
+					occurrenceError={cadDocumentCommands.occurrenceError}
           onTransformChange={draftCommands.updateTransformDraftField}
           previewAssetModelIds={modelState.previewAssetModelIDs}
           projectModelTree={modelState.projectModelTree}
           selectedGeneratedArtifact={selectedParametricArtifact}
           selectedNodeId={effectiveSelectedDocumentNodeID}
+					selectedOccurrenceId={effectiveSelectedOccurrenceID}
           selectedSavedArtifact={modelState.parametricModels.selectedSavedArtifact}
           selectedSavedModelRevisionID={selectedSourceModel?.current_revision_id}
           selectedSavedModelRevisionSequence={selectedSourceModel?.revision_sequence}

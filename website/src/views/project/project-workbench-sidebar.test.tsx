@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ProjectWorkbenchSidebar } from './project-workbench-sidebar'
 import type { ProjectModelTreeGroup } from './project-preview-assets'
+import type { ProjectParametricArtifact } from 'src/types/project'
 
 afterEach(cleanup)
 
@@ -47,8 +48,27 @@ describe('ProjectWorkbenchSidebar', () => {
     await user.click(screen.getByRole('option', { name: /Assembly/ }))
     fireEvent.change(screen.getByLabelText('X position for Assembly'), { target: { value: '12' } })
 
-    expect(onModelSelect).toHaveBeenCalledWith('model_one', 'node_model_one')
+		expect(onModelSelect).toHaveBeenCalledWith('model_one', 'node_model_one', 'occurrence_model_one')
     expect(onTransformChange).toHaveBeenLastCalledWith('node_model_one', 'x', '12')
+  })
+
+  it('keeps occurrence placement available beside saved parametric model controls', () => {
+    renderSidebar({
+      inspectorSelection: {
+        deleteError: '',
+        details: [{ label: 'Format', value: 'LCAD' }],
+        name: 'Fixture right',
+        nodeId: 'occurrence_model_one',
+        stepExportError: '',
+        stepExportStatus: '',
+        transformDraft: { x: '24', y: '0', z: '0' },
+        transformError: '',
+      },
+      selectedSavedArtifact: savedArtifact,
+    })
+
+    expect(screen.getByRole('region', { name: 'Parametric artifact' })).toBeTruthy()
+    expect((screen.getByLabelText('X position for Fixture right') as HTMLInputElement).value).toBe('24')
   })
 })
 
@@ -115,3 +135,21 @@ const groups: ProjectModelTreeGroup[] = [
     children: [],
   },
 ]
+
+const savedArtifact = {
+  id: 'artifact_one',
+  project_id: 'project_one',
+  conversation_id: 'conversation_one',
+  message_id: 'message_one',
+  title: 'Smoke bracket',
+  preview_model_id: 'model_one',
+  source_kind: 'litecad-feature-dsl',
+  source_code: JSON.stringify({ schema_version: '1.0', parameters: {}, features: [] }),
+  parameter_values: {},
+  compile_status: 'success',
+  compile_error: '',
+  generation_tool_mode: 'native_tool',
+  generation_duration_ms: 120,
+  created_at: '2026-07-14T00:00:00Z',
+  updated_at: '2026-07-14T00:00:00Z',
+} satisfies ProjectParametricArtifact

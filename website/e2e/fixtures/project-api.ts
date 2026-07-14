@@ -3,6 +3,16 @@ import type { Page, Route } from '@playwright/test'
 export const projectId = 'project_smoke'
 const now = '2026-07-10T00:00:00Z'
 
+type FixtureOccurrence = {
+	id: string
+	node_id: string
+	model_id: string
+	model_revision_id: string
+	name: string
+	suppressed: boolean
+	transform: { matrix: number[] }
+}
+
 export type ProjectAPIFixtureState = {
   messages: unknown[]
   models: unknown[]
@@ -28,6 +38,13 @@ export type ProjectAPIFixtureState = {
   canUndo: boolean
   canRedo: boolean
   uploadCount: number
+	occurrences: FixtureOccurrence[]
+	occurrenceUndoStack: FixtureOccurrence[][]
+	occurrenceRedoStack: FixtureOccurrence[][]
+	occurrenceDuplicateCount: number
+	occurrenceUpdateCount: number
+	occurrenceMoveCount: number
+	occurrenceDeleteCount: number
   parametricRunDelayMs: number
   parametricRunErrorMessage: string
 }
@@ -58,6 +75,13 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
     canUndo: false,
     canRedo: false,
     uploadCount: 0,
+		occurrences: [],
+		occurrenceUndoStack: [],
+		occurrenceRedoStack: [],
+		occurrenceDuplicateCount: 0,
+		occurrenceUpdateCount: 0,
+		occurrenceMoveCount: 0,
+		occurrenceDeleteCount: 0,
     parametricRunDelayMs: 0,
     parametricRunErrorMessage: '',
   }
@@ -202,6 +226,7 @@ function smokeSavedModel(state: ProjectAPIFixtureState) {
 
 function smokeCADDocument(state: ProjectAPIFixtureState) {
   const modelID = (state.models[0] as { id?: string } | undefined)?.id ?? ''
+	const occurrences = state.occurrences.length > 0 ? state.occurrences : (modelID ? [defaultSmokeOccurrence(state, modelID)] : [])
   return {
     id: 'cad_document_smoke',
     project_id: projectId,
@@ -211,19 +236,7 @@ function smokeCADDocument(state: ProjectAPIFixtureState) {
 	assembly: {
 		id: `assembly_${projectId}`,
 		name: 'Workbench Smoke',
-		occurrences:
-			state.models.length > 0
-				? [
-						{
-							id: `occurrence_${modelID}`,
-							node_id: `node_${modelID}`,
-							model_id: modelID,
-							model_revision_id: state.currentModelRevisionID,
-							name: state.parametricArtifactTitle,
-							transform: { matrix: [1, 0, 0, state.translationX, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
-						},
-					]
-				: [],
+		occurrences: occurrences.map((occurrence) => ({ ...occurrence, model_revision_id: state.currentModelRevisionID })),
 	},
     nodes:
       state.models.length > 0
@@ -249,6 +262,33 @@ function smokeCADDocument(state: ProjectAPIFixtureState) {
     created_at: now,
     updated_at: now,
   }
+}
+
+function defaultSmokeOccurrence(state: ProjectAPIFixtureState, modelID = state.savedModelID): FixtureOccurrence {
+	return {
+		id: `occurrence_${modelID}`,
+		node_id: `node_${modelID}`,
+		model_id: modelID,
+		model_revision_id: state.currentModelRevisionID,
+		name: state.parametricArtifactTitle,
+		suppressed: false,
+		transform: { matrix: [1, 0, 0, state.translationX, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+	}
+}
+
+function cloneOccurrences(occurrences: FixtureOccurrence[]) {
+	return occurrences.map((occurrence) => ({
+		...occurrence,
+		transform: { matrix: [...occurrence.transform.matrix] },
+	}))
+}
+
+function recordOccurrenceMutation(state: ProjectAPIFixtureState) {
+	state.occurrenceUndoStack.push(cloneOccurrences(state.occurrences))
+	state.occurrenceRedoStack = []
+	state.cadRevision += 1
+	state.canUndo = true
+	state.canRedo = false
 }
 
 async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
@@ -470,9 +510,105 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
       },
     }
     state.models = [uploadedModel]
+		state.occurrences = [
+			{
+				...defaultSmokeOccurrence(state, uploadedModel.id),
+				name: uploadedModel.original_filename,
+			},
+		]
     await route.fulfill({ json: { model: uploadedModel } })
     return
   }
+	const occurrenceRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/cad-document/occurrences/([^/]+)(?:/(duplicate|move))?$`))
+	if (occurrenceRoute) {
+		if (state.occurrences.length === 0 && state.models.length > 0) {
+			state.occurrences = [defaultSmokeOccurrence(state, (state.models[0] as { id: string }).id)]
+		}
+		const occurrenceID = decodeURIComponent(occurrenceRoute[1] ?? '')
+		const action = occurrenceRoute[2]
+		const occurrenceIndex = state.occurrences.findIndex((occurrence) => occurrence.id === occurrenceID)
+		if (occurrenceIndex < 0) {
+			await route.fulfill({ json: { message: 'occurrence not found' }, status: 404 })
+			return
+		}
+		if (request.method() === 'POST' && action === 'duplicate') {
+			recordOccurrenceMutation(state)
+			const source = state.occurrences[occurrenceIndex]!
+			state.occurrenceDuplicateCount += 1
+			state.occurrences.splice(occurrenceIndex + 1, 0, {
+				...source,
+				id: `occ_smoke_copy_${state.occurrenceDuplicateCount}`,
+				name: `${source.name} copy`,
+				transform: { matrix: [...source.transform.matrix] },
+			})
+			state.historyEntries = [{
+				id: `hist_occurrence_duplicate_${state.occurrenceDuplicateCount}`, sequence: state.cadRevision,
+				status: 'applied', command_type: 'occurrence-create', target_id: occurrenceID,
+				summary: `Duplicate ${source.name}`, created_at: now,
+			}]
+			await route.fulfill({ json: { document: smokeCADDocument(state) } })
+			return
+		}
+		if (request.method() === 'PATCH' && !action) {
+			if (state.conflictNextTransform) {
+				state.conflictNextTransform = false
+				await route.fulfill({ json: { message: 'document revision conflict' }, status: 409 })
+				return
+			}
+			const requestBody = request.postDataJSON() as { name?: string; suppressed?: boolean; transform?: { matrix?: number[] } }
+			if (requestBody.transform?.matrix) {
+				state.translationX = requestBody.transform.matrix[3] ?? 0
+				state.occurrences[occurrenceIndex] = {
+					...state.occurrences[occurrenceIndex]!,
+					transform: { matrix: [...requestBody.transform.matrix] },
+				}
+				state.transformUpdateCount += 1
+				state.cadRevision += 1
+				state.canUndo = true
+				state.canRedo = false
+			} else {
+				recordOccurrenceMutation(state)
+			}
+			state.occurrenceUpdateCount += 1
+			state.occurrences[occurrenceIndex] = {
+				...state.occurrences[occurrenceIndex]!,
+				...(requestBody.name !== undefined ? { name: requestBody.name } : {}),
+				...(requestBody.suppressed !== undefined ? { suppressed: requestBody.suppressed } : {}),
+			}
+			state.historyEntries = [{
+				id: `hist_occurrence_update_${state.occurrenceUpdateCount}`, sequence: state.cadRevision,
+				status: 'applied', command_type: 'occurrence-update', target_id: occurrenceID,
+				summary: `Update ${state.occurrences[occurrenceIndex]!.name}`, created_at: now,
+			}]
+			await route.fulfill({ json: { document: smokeCADDocument(state) } })
+			return
+		}
+		if (request.method() === 'POST' && action === 'move') {
+			const requestBody = request.postDataJSON() as { target_index?: number }
+			const targetIndex = requestBody.target_index ?? occurrenceIndex
+			if (targetIndex < 0 || targetIndex >= state.occurrences.length || targetIndex === occurrenceIndex) {
+				await route.fulfill({ json: { message: 'invalid occurrence move' }, status: 400 })
+				return
+			}
+			recordOccurrenceMutation(state)
+			const [occurrence] = state.occurrences.splice(occurrenceIndex, 1)
+			state.occurrences.splice(targetIndex, 0, occurrence!)
+			state.occurrenceMoveCount += 1
+			await route.fulfill({ json: { document: smokeCADDocument(state) } })
+			return
+		}
+		if (request.method() === 'DELETE' && !action) {
+			if (state.occurrences.filter((occurrence) => occurrence.model_id === state.occurrences[occurrenceIndex]!.model_id).length <= 1) {
+				await route.fulfill({ json: { message: 'last occurrence' }, status: 400 })
+				return
+			}
+			recordOccurrenceMutation(state)
+			state.occurrences.splice(occurrenceIndex, 1)
+			state.occurrenceDeleteCount += 1
+			await route.fulfill({ json: { document: smokeCADDocument(state) } })
+			return
+		}
+	}
   if (
     request.method() === 'PATCH' &&
     pathname === `/api/v1/projects/${projectId}/cad-document/nodes/node_mdl_smoke_lcad/transform`
@@ -504,7 +640,16 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
   }
   if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/cad-document/history/undo`) {
     state.undoCount += 1
-    state.translationX = 0
+		if (state.occurrenceUndoStack.length > 0) {
+			state.occurrenceRedoStack.push(cloneOccurrences(state.occurrences))
+			state.occurrences = state.occurrenceUndoStack.pop()!
+		} else {
+			state.translationX = 0
+			state.occurrences = state.occurrences.map((occurrence) => ({
+				...occurrence,
+				transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+			}))
+		}
     state.cadRevision += 1
     state.canUndo = false
     state.canRedo = true
@@ -513,7 +658,16 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
   }
   if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/cad-document/history/redo`) {
     state.redoCount += 1
-    state.translationX = 12
+		if (state.occurrenceRedoStack.length > 0) {
+			state.occurrenceUndoStack.push(cloneOccurrences(state.occurrences))
+			state.occurrences = state.occurrenceRedoStack.pop()!
+		} else {
+			state.translationX = 12
+			state.occurrences = state.occurrences.map((occurrence) => ({
+				...occurrence,
+				transform: { matrix: [1, 0, 0, 12, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+			}))
+		}
     state.cadRevision += 1
     state.canUndo = true
     state.canRedo = false
@@ -581,6 +735,7 @@ export async function installProjectAPIFixture(page: Page, state = createProject
     state,
     seedSavedModel() {
       state.models = [smokeSavedModel(state)]
+			state.occurrences = [defaultSmokeOccurrence(state)]
     },
     seedTransformModel() {
       state.models = [
@@ -601,6 +756,7 @@ export async function installProjectAPIFixture(page: Page, state = createProject
           },
         },
       ]
+			state.occurrences = [defaultSmokeOccurrence(state)]
     },
   }
 }

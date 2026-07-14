@@ -88,6 +88,61 @@ func TestGetProjectCADDocumentCreatesOneOccurrencePerModel(t *testing.T) {
 	}
 }
 
+func TestGetProjectCADDocumentPreservesExistingV2OccurrenceIdentityAndDuplicates(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	user, project := createTestProjectForModel(t, svc, ctx)
+	model := uploadTestSTEPModel(t, svc, ctx, user.ID, project.ID, "fixture.step")
+	firstTransform := identityCADTransform()
+	firstTransform.Matrix[3] = 12
+	secondTransform := identityCADTransform()
+	secondTransform.Matrix[7] = -8
+	node := cadDocumentNodeFromModel(model)
+	state := cadDocumentState{
+		Unit: "millimetre",
+		Assembly: CADAssembly{
+			ID:   "assembly_" + project.ID,
+			Name: project.Name,
+			Occurrences: []CADAssemblyOccurrence{
+				{
+					ID: "occurrence_existing_left", NodeID: "node_" + model.ID, ModelID: model.ID,
+					ModelRevisionID: model.CurrentRevisionID, Name: "Fixture left", Transform: firstTransform,
+				},
+				{
+					ID: "occurrence_existing_right", NodeID: "node_" + model.ID, ModelID: model.ID,
+					ModelRevisionID: model.CurrentRevisionID, Name: "Fixture right", Suppressed: true, Transform: secondTransform,
+				},
+			},
+		},
+		Nodes: []CADDocumentNode{node},
+	}
+	documentJSON, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal schema v2 document: %v", err)
+	}
+	stored := entity.ProjectCADDocument{
+		ID: "doc_existing_v2", ProjectID: project.ID, SchemaVersion: 2, Revision: 7, DocumentJSON: documentJSON,
+	}
+	if err := svc.DB().Create(&stored).Error; err != nil {
+		t.Fatalf("create schema v2 CAD document: %v", err)
+	}
+
+	document, err := svc.GetProjectCADDocument(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectCADDocument returned error: %v", err)
+	}
+	if document.Revision != 7 || len(document.Assembly.Occurrences) != 2 {
+		t.Fatalf("synced document revision/occurrences = %d/%d, want 7/2", document.Revision, len(document.Assembly.Occurrences))
+	}
+	left, right := document.Assembly.Occurrences[0], document.Assembly.Occurrences[1]
+	if left.ID != "occurrence_existing_left" || left.Name != "Fixture left" || left.Transform != firstTransform {
+		t.Fatalf("left occurrence = %+v, want preserved identity and placement", left)
+	}
+	if right.ID != "occurrence_existing_right" || right.Name != "Fixture right" || !right.Suppressed || right.Transform != secondTransform {
+		t.Fatalf("right occurrence = %+v, want preserved identity, suppression, and placement", right)
+	}
+}
+
 func TestGetProjectCADDocumentUpgradesV1TransformToAssemblyOccurrence(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

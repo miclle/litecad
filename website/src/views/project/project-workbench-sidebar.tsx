@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
 import type { ProjectModelRevision, ProjectParametricArtifact } from 'src/types/project'
+import type { UpdateCADAssemblyOccurrencePayload } from 'src/types/project'
 import type { CADTranslation } from './cad-document-transforms'
 import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { ProjectInspector, type InspectorDetail, type ProjectInspectorSelection } from './project-inspector'
@@ -17,21 +18,28 @@ type ProjectWorkbenchSidebarProps = {
   isLeftPanelCollapsed: boolean
   isModelTreeLoading: boolean
   isUploading: boolean
+	isOccurrenceMutationPending?: boolean
   leftPanelWidth: number
   modelCount: number
   onCollapseChange: (isCollapsed: boolean) => void
-  onModelSelect: (modelId: string, nodeId: string) => void
+	onDeleteOccurrence?: (occurrenceId: string) => void
+	onDuplicateOccurrence?: (occurrenceId: string) => void
+	onMoveOccurrence?: (occurrenceId: string, targetIndex: number) => void
+	onModelSelect: (modelId: string, nodeId: string, occurrenceId?: string) => void
   onParameterValuesChange: (modelId: string, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
   onSaveGeneratedArtifactAsModel: (artifact: ProjectParametricArtifact, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onSaveModelParameters: (modelId: string, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onRestoreModelRevision?: (modelId: string, revisionId: string) => void
   onToggleModelVisibility: (modelId: string) => void
+  onUpdateOccurrence?: (occurrenceId: string, payload: UpdateCADAssemblyOccurrencePayload) => void
+	occurrenceError?: string
   onTransformChange: (nodeId: string, axis: keyof CADTranslation, value: string) => void
   previewAssetModelIds: ReadonlySet<string>
   projectModelTree: ProjectModelTreeGroup[]
   selectedGeneratedArtifact?: ProjectParametricArtifact
   selectedNodeId: string
+	selectedOccurrenceId?: string
   selectedSavedArtifact?: ProjectParametricArtifact
   selectedSavedModelRevisionID?: string
   selectedSavedModelRevisionSequence?: number
@@ -49,9 +57,13 @@ export function ProjectWorkbenchSidebar({
   isLeftPanelCollapsed,
   isModelTreeLoading,
   isUploading,
+	isOccurrenceMutationPending,
   leftPanelWidth,
   modelCount,
   onCollapseChange,
+	onDeleteOccurrence,
+	onDuplicateOccurrence,
+	onMoveOccurrence,
   onModelSelect,
   onParameterValuesChange,
   onResizePointerDown,
@@ -59,11 +71,14 @@ export function ProjectWorkbenchSidebar({
   onSaveModelParameters,
   onRestoreModelRevision,
   onToggleModelVisibility,
+  onUpdateOccurrence,
+	occurrenceError,
   onTransformChange,
   previewAssetModelIds,
   projectModelTree,
   selectedGeneratedArtifact,
   selectedNodeId,
+	selectedOccurrenceId = '',
   selectedSavedArtifact,
   selectedSavedModelRevisionID,
   selectedSavedModelRevisionSequence,
@@ -131,10 +146,17 @@ export function ProjectWorkbenchSidebar({
               hiddenModelIds={hiddenModelIds}
               isLoading={isModelTreeLoading}
               isUploading={isUploading}
+						isOccurrenceMutationPending={isOccurrenceMutationPending}
+						onDeleteOccurrence={onDeleteOccurrence}
+						onDuplicateOccurrence={onDuplicateOccurrence}
+						onMoveOccurrence={onMoveOccurrence}
               onSelect={onModelSelect}
               onToggleVisibility={onToggleModelVisibility}
+              onUpdateOccurrence={onUpdateOccurrence}
+						occurrenceError={occurrenceError}
               previewAssetModelIds={previewAssetModelIds}
               selectedNodeId={selectedNodeId}
+						selectedOccurrenceId={selectedOccurrenceId}
               uploadError={uploadError}
             />
 
@@ -156,7 +178,9 @@ export function ProjectWorkbenchSidebar({
                 onSaveParameters={(parameterValues) => onSaveModelParameters(selectedSavedArtifact.preview_model_id, parameterValues)}
                 onRestoreRevision={(revisionID) => onRestoreModelRevision?.(selectedSavedArtifact.preview_model_id, revisionID)}
               />
-            ) : (
+            ) : null}
+
+            {!selectedGeneratedArtifact && (!selectedSavedArtifact || inspectorSelection) ? (
               <ProjectInspector
                 documentDetails={documentDetails}
                 modelCount={modelCount}
@@ -164,7 +188,7 @@ export function ProjectWorkbenchSidebar({
                 selected={inspectorSelection}
                 unitLabel={unitLabel}
               />
-            )}
+            ) : null}
           </div>
         </>
       )}

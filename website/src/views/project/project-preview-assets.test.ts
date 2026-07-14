@@ -398,7 +398,7 @@ describe('project preview assets', () => {
     )
 
     expect(assets[0]).toMatchObject({ modelId: 'mdl_step', previewFormat: 'kernel-mesh' })
-    expect(assets[0]).not.toHaveProperty('transform')
+		expect(assets[0]).toMatchObject({ transform })
     expect(projectPreviewAssetSignature(assets)).toContain('mdl_step:kernel-mesh:')
   })
 
@@ -935,6 +935,73 @@ describe('project preview assets', () => {
 			{ modelId: 'mdl_second', occurrenceId: 'occurrence_mdl_second', modelRevisionId: 'mvr_second', assemblyName: 'Drive train' },
 			{ modelId: 'mdl_first', occurrenceId: 'occurrence_mdl_first', modelRevisionId: 'mvr_first', assemblyName: 'Drive train' },
 		])
+	})
+
+	test('builds distinct tree rows and preview assets for repeated model occurrences', () => {
+		const model = { ...baseModel, id: 'mdl_fixture', original_filename: 'fixture.step' } satisfies ProjectModel
+		const mesh = {
+			positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+			normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+			indices: [0, 1, 2],
+		}
+		const document = {
+			id: 'cad_doc_occurrences',
+			project_id: 'prj_01test',
+			schema_version: 2,
+			revision: 4,
+			unit: 'millimetre',
+			assembly: {
+				id: 'assembly_prj_01test',
+				name: 'Fixture assembly',
+				occurrences: [
+					{
+						id: 'occ_left', node_id: 'node_mdl_fixture', model_id: model.id, model_revision_id: 'mvr_left',
+						name: 'Fixture left', suppressed: false,
+						transform: { matrix: [1, 0, 0, -20, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+					},
+					{
+						id: 'occ_right', node_id: 'node_mdl_fixture', model_id: model.id, model_revision_id: 'mvr_right',
+						name: 'Fixture right', suppressed: false,
+						transform: { matrix: [1, 0, 0, 20, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+					},
+				],
+			},
+			nodes: [{
+				id: 'node_mdl_fixture', model_id: model.id, source_model_id: model.id, parent_node_id: '', name: 'fixture.step',
+				source_format: 'step', transform: { matrix: [] },
+			}],
+			operations: [],
+			history: { head_id: '', can_undo: false, can_redo: false },
+			created_at: '2026-07-14T00:00:00Z',
+			updated_at: '2026-07-14T00:00:00Z',
+		} satisfies ProjectCADDocument
+
+		expect(buildProjectModelTree([model], document).map((group) => ({
+			name: group.displayName,
+			occurrenceId: group.occurrenceId,
+			modelRevisionId: group.modelRevisionId,
+		}))).toEqual([
+			{ name: 'Fixture left', occurrenceId: 'occ_left', modelRevisionId: 'mvr_left' },
+			{ name: 'Fixture right', occurrenceId: 'occ_right', modelRevisionId: 'mvr_right' },
+		])
+		const assets = buildProjectPreviewAssets(
+			[model], [], {}, { mdl_fixture: { mesh, meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true } } }, document,
+		)
+		expect(assets.map((asset) => ({ occurrenceId: asset.occurrenceId, name: asset.name, transform: asset.transform }))).toEqual([
+			{ occurrenceId: 'occ_left', name: 'Fixture left', transform: document.assembly.occurrences[0].transform },
+			{ occurrenceId: 'occ_right', name: 'Fixture right', transform: document.assembly.occurrences[1].transform },
+		])
+
+		const suppressedDocument: ProjectCADDocument = {
+			...document,
+			assembly: {
+				...document.assembly,
+				occurrences: document.assembly.occurrences.map((occurrence, index) => index === 1 ? { ...occurrence, suppressed: true } : occurrence),
+			},
+		}
+		expect(buildProjectPreviewAssets(
+			[model], [], {}, { mdl_fixture: { mesh, meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true } } }, suppressedDocument,
+		).map((asset) => asset.occurrenceId)).toEqual(['occ_left'])
 	})
 
   test('uses imported model names for tree source groups instead of STEP filenames', () => {

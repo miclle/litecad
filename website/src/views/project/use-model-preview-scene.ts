@@ -35,6 +35,7 @@ import {
 } from './view-orientation'
 import {
   projectPreviewAssetContentSignature,
+	projectPreviewAssetId,
   projectPreviewSceneSignature,
   type ProjectPreviewAsset,
   type ProjectPreviewKernelMeshAsset,
@@ -66,12 +67,13 @@ export type ModelPreviewProps = {
   measurementOverlayClassName?: string
   modelTranslations?: Record<string, CADTranslation>
   onClearSelection?: () => void
-  onModelTranslationChange?: (modelID: string, translation: CADTranslation, nodeID?: string) => void
+  onModelTranslationChange?: (modelID: string, translation: CADTranslation, nodeID?: string, occurrenceID?: string) => void
   onSnapshotCapture?: (snapshot: ModelPreviewSnapshotCapture) => void
-  onSelectModel?: (modelID: string, nodeID?: string) => void
+	onSelectModel?: (modelID: string, nodeID?: string, occurrenceID?: string) => void
   previewAssets?: ProjectPreviewAsset[]
   selectedNodeId?: string
   selectedModelId?: string
+	selectedOccurrenceId?: string
   unitLabel?: string
   variant?: 'workspace' | 'thumbnail'
   visibleModelIds?: readonly string[]
@@ -98,6 +100,8 @@ const modelPreviewResizeCompleteEventName = 'litecad:model-preview-resize-comple
 const zeroTranslation: CADTranslation = { x: 0, y: 0, z: 0 }
 
 const previewMaterialColors = [0xb6c0b8, 0xc4b78a, 0x9fb6c8, 0xc7a0a0, 0xa8bea0]
+
+const previewNodeObjectID = (occurrenceID: string | undefined, nodeID: string) => occurrenceID ? `${occurrenceID}:${nodeID}` : nodeID
 
 export function createModelPreviewLifecycle() {
   const cleanups: (() => void)[] = []
@@ -132,6 +136,7 @@ export function useModelPreviewScene({
   previewAssets = [],
   selectedNodeId,
   selectedModelId,
+	selectedOccurrenceId,
   variant = 'workspace',
   visibleModelIds,
 }: ModelPreviewProps) {
@@ -157,6 +162,7 @@ export function useModelPreviewScene({
     onSelectModelRef,
     selectedModelIdRef,
     selectedNodeIdRef,
+		selectedOccurrenceIdRef,
     syncSelectionRef: syncSelectedPreviewObjectRef,
     syncTransformsRef: syncPreviewObjectTransformsRef,
     syncVisibilityRef: syncPreviewObjectVisibilityRef,
@@ -169,6 +175,7 @@ export function useModelPreviewScene({
     onSelectModel,
     selectedModelId,
     selectedNodeId,
+		selectedOccurrenceId,
     visibleModelIds,
   })
   const zoomHUDHideTimeoutRef = useRef<number | undefined>(undefined)
@@ -176,7 +183,7 @@ export function useModelPreviewScene({
   const [measurement, setMeasurement] = useState<ModelPreviewMeasurement | undefined>(undefined)
   const previewSceneSignature = useMemo(() => projectPreviewSceneSignature(previewAssets), [previewAssets])
   const sceneRuntimeRef = useRef<ModelPreviewSceneRuntime | undefined>(undefined)
-  const isPreviewObjectVisible = (modelId: string) => !visibleModelIdsRef.current || visibleModelIdsRef.current.includes(modelId)
+	const isPreviewObjectVisible = (previewID: string) => !visibleModelIdsRef.current || visibleModelIdsRef.current.includes(previewID)
   const clearZoomHUDHideTimeout = () => {
     if (zoomHUDHideTimeoutRef.current !== undefined) {
       window.clearTimeout(zoomHUDHideTimeoutRef.current)
@@ -407,21 +414,21 @@ export function useModelPreviewScene({
     }
     syncPreviewObjectVisibilityRef.current = () => {
       const visibleModelIDs = visibleModelIdsRef.current ? new Set(visibleModelIdsRef.current) : undefined
-      previewObjectsByModelIDRef.current.forEach((object, modelID) => {
-        object.visible = !visibleModelIDs || visibleModelIDs.has(modelID)
+			previewObjectsByModelIDRef.current.forEach((object, previewID) => {
+				object.visible = !visibleModelIDs || visibleModelIDs.has(previewID)
       })
       syncSelectedPreviewObjectRef.current()
       syncMeasurement()
       renderScene()
       scheduleSnapshotCapture()
     }
-    const syncPreviewObjectTransform = (objectID: string, object: THREE.Object3D) => {
+		const syncPreviewObjectTransform = (objectID: string, object: THREE.Object3D, translationID = objectID) => {
       const basePosition = previewObjectBasePositionsByObjectIDRef.current.get(objectID)
       if (!basePosition) {
         return
       }
       const baseTranslation = previewObjectBaseTranslationsByObjectIDRef.current.get(objectID) ?? zeroTranslation
-      const activeTranslation = draftModelTranslationsRef.current?.[objectID] ?? modelTranslationsRef.current?.[objectID]
+			const activeTranslation = draftModelTranslationsRef.current?.[translationID] ?? modelTranslationsRef.current?.[translationID]
       if (!activeTranslation) {
         object.position.copy(basePosition)
         return
@@ -437,18 +444,12 @@ export function useModelPreviewScene({
       object.position.copy(basePosition).add(new THREE.Vector3(previewTranslation.x, previewTranslation.y, previewTranslation.z))
     }
     syncPreviewObjectTransformsRef.current = () => {
-      previewObjectsByModelIDRef.current.forEach((object, modelID) => {
-        syncPreviewObjectTransform(modelID, object)
+			previewObjectsByModelIDRef.current.forEach((object, previewID) => {
+				syncPreviewObjectTransform(previewID, object)
       })
-      previewObjectsByNodeIDRef.current.forEach((object, nodeID) => {
-        if (previewObjectsByModelIDRef.current.get(object.userData.litecadModelId) === object && nodeID === `node_${object.userData.litecadModelId}`) {
-          syncPreviewObjectTransform(nodeID, object)
-          return
-        }
-        if (previewObjectsByModelIDRef.current.get(object.userData.litecadModelId) === object) {
-          return
-        }
-        syncPreviewObjectTransform(nodeID, object)
+			previewObjectsByNodeIDRef.current.forEach((object, objectID) => {
+				const nodeID = typeof object.userData.litecadNodeId === 'string' ? object.userData.litecadNodeId : objectID
+				syncPreviewObjectTransform(objectID, object, nodeID)
       })
       syncSelectedPreviewObjectRef.current()
       syncMeasurement()
@@ -476,12 +477,14 @@ export function useModelPreviewScene({
         previewObjectBaseUsesCADOrientationByObjectIDRef.current.get(objectID) ?? false,
       )
     }
-    syncSelectedPreviewObjectRef.current = () => {
+		syncSelectedPreviewObjectRef.current = () => {
       const selectedModelID = selectedModelIdRef.current
       const selectedNodeID = selectedNodeIdRef.current
+			const selectedOccurrenceID = selectedOccurrenceIdRef.current
+			const selectedPreviewID = selectedOccurrenceID || selectedModelID
       const selectedObject =
-        (selectedNodeID ? previewObjectsByNodeIDRef.current.get(selectedNodeID) : undefined) ??
-        (selectedModelID ? previewObjectsByModelIDRef.current.get(selectedModelID) : undefined)
+				(selectedNodeID ? previewObjectsByNodeIDRef.current.get(previewNodeObjectID(selectedOccurrenceID, selectedNodeID)) : undefined) ??
+				(selectedPreviewID ? previewObjectsByModelIDRef.current.get(selectedPreviewID) : undefined)
       if (!selectedObject || !selectedObject.visible) {
         transformControls.detach()
         updateSelectionBox()
@@ -506,16 +509,22 @@ export function useModelPreviewScene({
     const handleTransformObjectChange = () => {
       const selectedModelID = selectedModelIdRef.current
       const selectedNodeID = selectedNodeIdRef.current
+			const selectedOccurrenceID = selectedOccurrenceIdRef.current
+			const selectedPreviewID = selectedOccurrenceID || selectedModelID
+			const selectedNodeObjectID = selectedNodeID ? previewNodeObjectID(selectedOccurrenceID, selectedNodeID) : ''
       const selectedObject =
-        (selectedNodeID ? previewObjectsByNodeIDRef.current.get(selectedNodeID) : undefined) ??
-        (selectedModelID ? previewObjectsByModelIDRef.current.get(selectedModelID) : undefined)
+				(selectedNodeObjectID ? previewObjectsByNodeIDRef.current.get(selectedNodeObjectID) : undefined) ??
+				(selectedPreviewID ? previewObjectsByModelIDRef.current.get(selectedPreviewID) : undefined)
       if (!selectedModelID || !selectedObject) {
         return
       }
       updateSelectionBox(selectedObject)
-      const translation = selectedPreviewObjectTranslation(selectedNodeID ?? selectedModelID, selectedObject)
+			const translation = selectedPreviewObjectTranslation(
+				previewObjectsByNodeIDRef.current.has(selectedNodeObjectID) ? selectedNodeObjectID : (selectedPreviewID ?? selectedModelID),
+				selectedObject,
+			)
       if (translation) {
-        onModelTranslationChangeRef.current?.(selectedModelID, translation, selectedNodeID)
+				onModelTranslationChangeRef.current?.(selectedModelID, translation, selectedNodeID, selectedOccurrenceID)
       }
       renderScene()
     }
@@ -662,40 +671,38 @@ export function useModelPreviewScene({
       }
     }
 
-    const assetContentSignatureByModelID = new Map<string, string>()
-    const deleteRegisteredPreviewObject = (modelID: string, object: THREE.Object3D) => {
-      const sourceNodeID = `node_${modelID}`
-      previewObjectsByModelIDRef.current.delete(modelID)
-      previewObjectsByNodeIDRef.current.delete(sourceNodeID)
-      previewObjectBasePositionsByObjectIDRef.current.delete(modelID)
-      previewObjectBasePositionsByObjectIDRef.current.delete(sourceNodeID)
-      previewObjectBaseUsesCADOrientationByObjectIDRef.current.delete(modelID)
-      previewObjectBaseUsesCADOrientationByObjectIDRef.current.delete(sourceNodeID)
-      previewObjectBaseTranslationsByObjectIDRef.current.delete(modelID)
-      previewObjectBaseTranslationsByObjectIDRef.current.delete(sourceNodeID)
+		const assetContentSignatureByPreviewID = new Map<string, string>()
+		const deleteRegisteredPreviewObject = (previewID: string, object: THREE.Object3D) => {
+			const occurrenceID = typeof object.userData.litecadOccurrenceId === 'string' ? object.userData.litecadOccurrenceId : undefined
+			previewObjectsByModelIDRef.current.delete(previewID)
+			previewObjectBasePositionsByObjectIDRef.current.delete(previewID)
+			previewObjectBaseUsesCADOrientationByObjectIDRef.current.delete(previewID)
+			previewObjectBaseTranslationsByObjectIDRef.current.delete(previewID)
       object.traverse((child) => {
         const nodeID = typeof child.userData.litecadNodeId === 'string' ? child.userData.litecadNodeId : undefined
         if (!nodeID) {
           return
         }
-        previewObjectsByNodeIDRef.current.delete(nodeID)
-        previewObjectBasePositionsByObjectIDRef.current.delete(nodeID)
-        previewObjectBaseUsesCADOrientationByObjectIDRef.current.delete(nodeID)
-        previewObjectBaseTranslationsByObjectIDRef.current.delete(nodeID)
+				const objectID = previewNodeObjectID(occurrenceID, nodeID)
+				previewObjectsByNodeIDRef.current.delete(objectID)
+				previewObjectBasePositionsByObjectIDRef.current.delete(objectID)
+				previewObjectBaseUsesCADOrientationByObjectIDRef.current.delete(objectID)
+				previewObjectBaseTranslationsByObjectIDRef.current.delete(objectID)
       })
       previewGroup.remove(object)
       removeEdgeOverlays(object)
       disposeObject3DResources(object)
-      assetContentSignatureByModelID.delete(modelID)
+			assetContentSignatureByPreviewID.delete(previewID)
     }
 
     const addPreviewObject = (asset: ProjectPreviewAsset, assetIndex: number, object: THREE.Object3D, { resetCamera = true }: { resetCamera?: boolean } = {}) => {
       if (isDisposed || !acceptLoadedObject(resourceGeneration, object)) {
         return
       }
-      const existingObject = previewObjectsByModelIDRef.current.get(asset.modelId)
+			const previewID = projectPreviewAssetId(asset)
+			const existingObject = previewObjectsByModelIDRef.current.get(previewID)
       if (existingObject) {
-        deleteRegisteredPreviewObject(asset.modelId, existingObject)
+				deleteRegisteredPreviewObject(previewID, existingObject)
       }
       const sourceNodeID = `node_${asset.modelId}`
       const baseUsesCADOrientation = asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh'
@@ -713,6 +720,9 @@ export function useModelPreviewScene({
       object.name = asset.name
       object.userData.litecadModelId = asset.modelId
       object.userData.litecadNodeId = sourceNodeID
+			if (asset.occurrenceId) {
+				object.userData.litecadOccurrenceId = asset.occurrenceId
+			}
       if (asset.transform?.matrix.length === 16) {
         const matrix = new THREE.Matrix4()
         matrix.set(
@@ -738,12 +748,14 @@ export function useModelPreviewScene({
       if (asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh') {
         orientCADPreviewObject(object)
       }
-      registerPreviewObjectTransform(asset.modelId, object, baseUsesCADOrientation, baseTranslation)
-      registerPreviewObjectTransform(sourceNodeID, object, baseUsesCADOrientation, baseTranslation)
+			registerPreviewObjectTransform(previewID, object, baseUsesCADOrientation, baseTranslation)
       syncPreviewObjectTransformsRef.current()
-      object.visible = isPreviewObjectVisible(asset.modelId)
+			object.visible = isPreviewObjectVisible(previewID)
       object.traverse((child) => {
         child.userData.litecadModelId = asset.modelId
+				if (asset.occurrenceId) {
+					child.userData.litecadOccurrenceId = asset.occurrenceId
+				}
         if (child instanceof THREE.Mesh) {
           const objectName = `${child.name} ${child.parent?.name ?? ''}`
           if (asset.previewFormat === 'obj' || asset.previewFormat === 'kernel-mesh') {
@@ -764,17 +776,17 @@ export function useModelPreviewScene({
           child.renderOrder = 10
         }
       })
-      previewObjectsByModelIDRef.current.set(asset.modelId, object)
-      previewObjectsByNodeIDRef.current.set(sourceNodeID, object)
+			previewObjectsByModelIDRef.current.set(previewID, object)
       object.traverse((child) => {
         const nodeID = typeof child.userData.litecadNodeId === 'string' ? child.userData.litecadNodeId : undefined
-        if (nodeID && child !== object) {
-          previewObjectsByNodeIDRef.current.set(nodeID, child)
-          registerPreviewObjectTransform(nodeID, child, false, zeroTranslation)
+				if (nodeID && child !== object) {
+					const objectID = previewNodeObjectID(asset.occurrenceId, nodeID)
+					previewObjectsByNodeIDRef.current.set(objectID, child)
+					registerPreviewObjectTransform(objectID, child, false, zeroTranslation)
         }
       })
       previewGroup.add(object)
-      assetContentSignatureByModelID.set(asset.modelId, projectPreviewAssetContentSignature(asset))
+			assetContentSignatureByPreviewID.set(previewID, projectPreviewAssetContentSignature(asset))
       syncDisplayOptions()
       syncPreviewObjectTransformsRef.current()
       syncSelectedPreviewObjectRef.current()
@@ -782,9 +794,9 @@ export function useModelPreviewScene({
       scheduleSnapshotCapture()
     }
 
-    const updateKernelMeshAsset = (asset: ProjectPreviewKernelMeshAsset, assetIndex: number) => {
+		const updateKernelMeshAsset = (asset: ProjectPreviewKernelMeshAsset, assetIndex: number) => {
       const nextContentSignature = projectPreviewAssetContentSignature(asset)
-      if (assetContentSignatureByModelID.get(asset.modelId) === nextContentSignature) {
+			if (assetContentSignatureByPreviewID.get(projectPreviewAssetId(asset)) === nextContentSignature) {
         return
       }
       addPreviewObject(asset, assetIndex, createKernelMeshPreviewObject(asset.mesh, asset.pickTargets, asset.componentMeshes, asset.modelId), {
@@ -843,7 +855,7 @@ export function useModelPreviewScene({
       }
       const selection = selectionFromPointerEvent(event)
       if (selection) {
-        onSelectModelRef.current?.(selection.modelID, selection.nodeID)
+				onSelectModelRef.current?.(selection.modelID, selection.nodeID, selection.occurrenceID)
         return
       }
       if (isTransformControlPointerEvent(event)) {

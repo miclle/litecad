@@ -2,7 +2,7 @@ import { renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { useProjectWorkbenchKeyboardCommands } from './use-project-workbench-keyboard-commands'
-import type { CADDocumentNode, ProjectCADDocument } from 'src/types/project'
+import type { CADAssemblyOccurrence, CADDocumentNode, ProjectCADDocument } from 'src/types/project'
 
 describe('useProjectWorkbenchKeyboardCommands', () => {
   it('runs Undo and Redo shortcuts only when history can move', () => {
@@ -71,6 +71,28 @@ describe('useProjectWorkbenchKeyboardCommands', () => {
     expect(clearDeleteError).not.toHaveBeenCalled()
     expect(deleteNode).not.toHaveBeenCalled()
   })
+
+	it('deletes a selected repeated occurrence without deleting its source node', () => {
+		const deleteNode = vi.fn()
+		const deleteOccurrence = vi.fn()
+		renderHook(() =>
+			useProjectWorkbenchKeyboardCommands({
+				changeHistory: vi.fn(),
+				clearDeleteError: vi.fn(),
+				deleteNode,
+				deleteOccurrence,
+				isCADDocumentCommandPending: false,
+				keyboardDeleteNode: cadNode('node_source'),
+				selectedOccurrence: cadOccurrence('occ_right'),
+				selectedModelOccurrenceCount: 2,
+			}),
+		)
+
+		window.dispatchEvent(keyboardEvent('Delete'))
+
+		expect(deleteOccurrence).toHaveBeenCalledWith('occ_right')
+		expect(deleteNode).not.toHaveBeenCalled()
+	})
 })
 
 function keyboardEvent(key: string, init: KeyboardEventInit = {}) {
@@ -80,6 +102,18 @@ function keyboardEvent(key: string, init: KeyboardEventInit = {}) {
     key,
     ...init,
   })
+}
+
+function cadOccurrence(id: string): CADAssemblyOccurrence {
+	return {
+		id,
+		node_id: 'node_source',
+		model_id: 'model_keyboard',
+		model_revision_id: 'mvr_keyboard',
+		name: 'Keyboard occurrence',
+		suppressed: false,
+		transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+	}
 }
 
 function cadDocument(history: ProjectCADDocument['history']): ProjectCADDocument {

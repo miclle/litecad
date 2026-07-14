@@ -4,13 +4,16 @@ import { useTranslation } from 'react-i18next'
 
 import {
   addProjectCADModelBoxUnion,
+	deleteProjectCADOccurrence,
   deleteProjectCADNode,
+	duplicateProjectCADOccurrence,
+	moveProjectCADOccurrence,
   redoProjectCADDocument,
   undoProjectCADDocument,
   updateProjectCADNodeTransform,
+	updateProjectCADOccurrence,
 } from 'src/api/projects'
-import type { CADBoxFeature, ProjectCADDocument } from 'src/types/project'
-import { shouldAcceptCADNodeTransformDocument } from './cad-document-cache'
+import type { CADBoxFeature, ProjectCADDocument, UpdateCADAssemblyOccurrencePayload } from 'src/types/project'
 import { cadTransformWithTranslation, type CADTranslation } from './cad-document-transforms'
 
 const defaultTransformAutosaveDelayMS = 500
@@ -28,6 +31,12 @@ type TransformMutationVariables = {
   requestVersion: number
   translation: CADTranslation
 }
+
+type OccurrenceMutationVariables =
+	| { action: 'duplicate'; occurrenceId: string }
+	| { action: 'update'; occurrenceId: string; payload: UpdateCADAssemblyOccurrencePayload }
+	| { action: 'move'; occurrenceId: string; targetIndex: number }
+	| { action: 'delete'; occurrenceId: string }
 
 function isCADDocumentConflict(error: unknown) {
   return (error as { response?: { status?: number } }).response?.status === 409
@@ -48,6 +57,7 @@ export function useCADDocumentCommands({
   const transformAutosaveTimersRef = useRef<Record<string, number>>({})
   const [historyError, setHistoryError] = useState('')
   const [deleteError, setDeleteError] = useState('')
+	const [occurrenceError, setOccurrenceError] = useState('')
   const [transformErrorsByNodeId, setTransformErrorsByNodeId] = useState<Record<string, string>>({})
   const [boxErrorsByModelId, setBoxErrorsByModelId] = useState<Record<string, string>>({})
 
@@ -91,9 +101,12 @@ export function useCADDocumentCommands({
         if (!document) {
           throw new Error(t('project.errors.documentNotLoaded'))
         }
-        const currentNode = document.nodes.find((node) => node.id === nodeId)
-        const transform = cadTransformWithTranslation(currentNode?.transform, translation)
-        const updatedDocument = (await updateProjectCADNodeTransform(projectId, nodeId, transform, document.revision)).data.document
+				const currentOccurrence = document.assembly?.occurrences.find((occurrence) => occurrence.id === nodeId)
+				const currentNode = document.nodes.find((node) => node.id === nodeId)
+				const transform = cadTransformWithTranslation(currentOccurrence?.transform ?? currentNode?.transform, translation)
+				const updatedDocument = currentOccurrence
+					? (await updateProjectCADOccurrence(projectId, nodeId, { transform }, document.revision)).data.document
+					: (await updateProjectCADNodeTransform(projectId, nodeId, transform, document.revision)).data.document
         queryClient.setQueryData(documentQueryKey, updatedDocument)
         return updatedDocument
       }),
@@ -101,7 +114,11 @@ export function useCADDocumentCommands({
       if ((latestTransformRequestByNodeIdRef.current[variables.nodeId] ?? 0) > variables.requestVersion) {
         return
       }
-      if (!shouldAcceptCADNodeTransformDocument(currentDocument(), variables.nodeId)) {
+			const latestDocument = currentDocument()
+			const acceptsTarget = !latestDocument ||
+				latestDocument.nodes.some((node) => node.id === variables.nodeId) ||
+				latestDocument.assembly?.occurrences.some((occurrence) => occurrence.id === variables.nodeId)
+			if (!acceptsTarget) {
         return
       }
       const latestTranslation = latestTranslationByNodeIdRef.current[variables.nodeId]
@@ -211,6 +228,37 @@ export function useCADDocumentCommands({
     },
   })
 
+	const occurrenceMutation = useMutation({
+		mutationFn: (variables: OccurrenceMutationVariables) =>
+			enqueueCommand(async () => {
+				const document = currentDocument()
+				if (!document) {
+					throw new Error(t('project.errors.documentNotLoaded'))
+				}
+				const request = variables.action === 'duplicate'
+					? duplicateProjectCADOccurrence(projectId, variables.occurrenceId, document.revision)
+					: variables.action === 'update'
+						? updateProjectCADOccurrence(projectId, variables.occurrenceId, variables.payload, document.revision)
+						: variables.action === 'move'
+							? moveProjectCADOccurrence(projectId, variables.occurrenceId, variables.targetIndex, document.revision)
+							: deleteProjectCADOccurrence(projectId, variables.occurrenceId, document.revision)
+				const updatedDocument = (await request).data.document
+				queryClient.setQueryData(documentQueryKey, updatedDocument)
+				return updatedDocument
+			}),
+		onSuccess: async (document) => {
+			setOccurrenceError('')
+			setHistoryError('')
+			queryClient.setQueryData(documentQueryKey, document)
+			await queryClient.invalidateQueries({ queryKey: historyQueryKey })
+		},
+		onError: async (error) => {
+			if (!(await refreshAfterConflict(error))) {
+				setOccurrenceError(t('project.errors.occurrenceFailed'))
+			}
+		},
+	})
+
   const historyMutation = useMutation({
     mutationFn: (action: 'undo' | 'redo') =>
       enqueueCommand(async () => {
@@ -239,6 +287,7 @@ export function useCADDocumentCommands({
   const mutateBoxUnion = addBoxUnionMutation.mutate
   const mutateDeleteNode = deleteNodeMutation.mutate
   const mutateHistory = historyMutation.mutate
+	const mutateOccurrence = occurrenceMutation.mutate
 
   useEffect(
     () => () => {
@@ -256,6 +305,16 @@ export function useCADDocumentCommands({
   const clearDeleteError = useCallback(() => setDeleteError(''), [])
   const clearHistoryError = useCallback(() => setHistoryError(''), [])
   const deleteNode = useCallback((nodeId: string) => mutateDeleteNode({ nodeId }), [mutateDeleteNode])
+	const deleteOccurrence = useCallback((occurrenceId: string) => mutateOccurrence({ action: 'delete', occurrenceId }), [mutateOccurrence])
+	const duplicateOccurrence = useCallback((occurrenceId: string) => mutateOccurrence({ action: 'duplicate', occurrenceId }), [mutateOccurrence])
+	const moveOccurrence = useCallback(
+		(occurrenceId: string, targetIndex: number) => mutateOccurrence({ action: 'move', occurrenceId, targetIndex }),
+		[mutateOccurrence],
+	)
+	const updateOccurrence = useCallback(
+		(occurrenceId: string, payload: UpdateCADAssemblyOccurrencePayload) => mutateOccurrence({ action: 'update', occurrenceId, payload }),
+		[mutateOccurrence],
+	)
   const hasPendingTransform = useCallback((nodeId: string) => Boolean(latestTranslationByNodeIdRef.current[nodeId]), [])
   const setBoxValidationError = useCallback(
     (modelId: string, message: string) => setBoxErrorsByModelId((errors) => ({ ...errors, [modelId]: message })),
@@ -275,14 +334,20 @@ export function useCADDocumentCommands({
     clearHistoryError,
     deleteError,
     deleteNode,
+		deleteOccurrence,
+		duplicateOccurrence,
     historyError,
     isBoxUnionPendingFor: (modelId: string) => addBoxUnionMutation.isPending && addBoxUnionMutation.variables?.modelId === modelId,
     isDeletingNode: (nodeId: string) => deleteNodeMutation.isPending && deleteNodeMutation.variables?.nodeId === nodeId,
-    isPending: updateTransformMutation.isPending || deleteNodeMutation.isPending || addBoxUnionMutation.isPending || historyMutation.isPending,
+		isOccurrenceMutationPending: occurrenceMutation.isPending,
+		isPending: updateTransformMutation.isPending || deleteNodeMutation.isPending || addBoxUnionMutation.isPending || occurrenceMutation.isPending || historyMutation.isPending,
+		moveOccurrence,
+		occurrenceError,
     hasPendingTransform,
     scheduleTransformAutosave,
     setBoxValidationError,
     setTransformValidationError,
     transformErrorsByNodeId,
+		updateOccurrence,
   }
 }

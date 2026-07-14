@@ -27,20 +27,25 @@ export function buildStepExportTargets(models: ProjectModel[], cadDocument: Proj
 	}
 	const modelByID = new Map(models.map((model) => [model.id, model]))
 	return cadDocument.assembly.occurrences
+		.filter((occurrence) => !occurrence.suppressed)
 		.flatMap((occurrence) => {
 			const model = modelByID.get(occurrence.model_id)
 			return model ? [{ model, occurrence }] : []
 		})
 		.filter(({ model }) => parsedPreviewModels([model]).length > 0)
 		.filter(({ model }) => model.format === 'step' || model.format === 'lcad')
-		.map(({ model, occurrence }) => ({
+		.map(({ model, occurrence }) => {
+			const occurrenceName = occurrence.name.trim()
+			const hasCustomOccurrenceName = occurrenceName !== '' && occurrenceName !== model.original_filename
+			const displayName = hasCustomOccurrenceName ? occurrenceName : getModelDisplayName(model)
+			return {
 			occurrenceId: occurrence.id,
 			modelId: model.id,
 			modelRevisionId: occurrence.model_revision_id,
       sourceFormat: model.format === 'lcad' ? 'lcad' : 'step',
-      displayName: getModelDisplayName(model),
+			displayName,
       sourceFilename: model.original_filename,
-      downloadFilename: stepExportFilename(model.original_filename, cadDocument?.revision ?? 0),
+			downloadFilename: stepExportFilename(hasCustomOccurrenceName ? displayName : model.original_filename, cadDocument?.revision ?? 0),
       ...(model.format === 'lcad' ? { parameterValues: model.metadata.parameter_values ?? {} } : {}),
 			operations: [
 				...(model.format === 'step' ? cadKernelGeometryOperationsForModel(cadDocument, model.id) : []),
@@ -51,7 +56,8 @@ export function buildStepExportTargets(models: ProjectModel[], cadDocument: Proj
 					matrix: occurrence.transform.matrix,
 				},
 			] satisfies CadKernelOperation[],
-		}))
+			}
+		})
 }
 
 export function defaultSelectedStepExportTargetIDs(targets: readonly StepExportTarget[]) {

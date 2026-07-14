@@ -6,10 +6,11 @@ type UseModelPreviewSelectionOptions = {
   draftModelTranslations?: Record<string, CADTranslation>
   modelTranslations?: Record<string, CADTranslation>
   onClearSelection?: () => void
-  onModelTranslationChange?: (modelId: string, translation: CADTranslation, nodeId?: string) => void
-  onSelectModel?: (modelId: string, nodeId?: string) => void
+  onModelTranslationChange?: (modelId: string, translation: CADTranslation, nodeId?: string, occurrenceId?: string) => void
+	onSelectModel?: (modelId: string, nodeId?: string, occurrenceId?: string) => void
   selectedModelId?: string
   selectedNodeId?: string
+	selectedOccurrenceId?: string
   syncSelection?: () => void
   syncTransforms?: () => void
   syncVisibility?: () => void
@@ -32,6 +33,7 @@ export function useModelPreviewSelection({
   onSelectModel,
   selectedModelId,
   selectedNodeId,
+	selectedOccurrenceId,
   syncSelection = noop,
   syncTransforms = noop,
   syncVisibility = noop,
@@ -44,6 +46,7 @@ export function useModelPreviewSelection({
   const onSelectModelRef = useRef(onSelectModel)
   const selectedModelIdRef = useRef(selectedModelId)
   const selectedNodeIdRef = useRef(selectedNodeId)
+	const selectedOccurrenceIdRef = useRef(selectedOccurrenceId)
   const visibleModelIdsRef = useRef(visibleModelIds)
   const syncSelectionRef = useRef(syncSelection)
   const syncTransformsRef = useRef(syncTransforms)
@@ -58,8 +61,9 @@ export function useModelPreviewSelection({
     onSelectModelRef.current = onSelectModel
     selectedModelIdRef.current = selectedModelId
     selectedNodeIdRef.current = selectedNodeId
+		selectedOccurrenceIdRef.current = selectedOccurrenceId
     syncSelectionRef.current()
-  }, [onClearSelection, onModelTranslationChange, onSelectModel, selectedModelId, selectedNodeId])
+	}, [onClearSelection, onModelTranslationChange, onSelectModel, selectedModelId, selectedNodeId, selectedOccurrenceId])
 
   useEffect(() => {
     visibleModelIdsRef.current = visibleModelIds
@@ -84,6 +88,7 @@ export function useModelPreviewSelection({
     onSelectModelRef,
     selectedModelIdRef,
     selectedNodeIdRef,
+		selectedOccurrenceIdRef,
     syncSelectionRef,
     syncTransformsRef,
     syncVisibilityRef,

@@ -91,6 +91,7 @@ export function useProjectWorkbenchRouteControllers({
   } = projectSelection
   const draftCommands = useProjectWorkbenchDraftCommands({
     cadNodeByID,
+		cadOccurrenceByID: modelState.cadOccurrenceByID,
     commandAdapterRef: cadDocumentCommandAdapterRef,
     onSelectionClear: clearSelection,
     projectCADDocument,
@@ -135,9 +136,14 @@ export function useProjectWorkbenchRouteControllers({
     changeHistory,
     clearDeleteError: cadDocumentCommands.clearDeleteError,
     deleteNode: cadDocumentCommands.deleteNode,
+		deleteOccurrence: cadDocumentCommands.deleteOccurrence,
     isCADDocumentCommandPending,
     keyboardDeleteNode,
     projectCADDocument,
+		selectedOccurrence: projectSelection.selectedOccurrence,
+		selectedModelOccurrenceCount: projectCADDocument?.assembly?.occurrences.filter(
+			(occurrence) => occurrence.model_id === projectSelection.selectedOccurrence?.model_id,
+		).length ?? 0,
   })
 
   const inspectorState = useProjectWorkbenchInspectorState({
@@ -152,6 +158,7 @@ export function useProjectWorkbenchRouteControllers({
     project,
     projectCADDocument,
     selectedDocumentNode,
+		selectedOccurrence: projectSelection.selectedOccurrence,
     selectedSourceModel,
     stepExportErrorByModelId: projectStepExport.errorByModelID,
     stepExportStatusByModelId: projectStepExport.statusByModelID,

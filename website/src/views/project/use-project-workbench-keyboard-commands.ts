@@ -3,24 +3,30 @@ import { useEffect } from 'react'
 import { cadHistoryActionForKey, type CADHistoryAction } from './cad-document-history'
 import { isCADDocumentNodeDeletable } from './project-cad-node-actions'
 import { shouldDeleteSelectedCADNodeFromKey } from './project-delete-keyboard'
-import type { CADDocumentNode, ProjectCADDocument } from 'src/types/project'
+import type { CADAssemblyOccurrence, CADDocumentNode, ProjectCADDocument } from 'src/types/project'
 
 type ProjectWorkbenchKeyboardCommandsOptions = {
   changeHistory: (action: CADHistoryAction) => void
   clearDeleteError: () => void
   deleteNode: (nodeID: string) => void
+	deleteOccurrence?: (occurrenceID: string) => void
   isCADDocumentCommandPending: boolean
   keyboardDeleteNode?: CADDocumentNode
   projectCADDocument?: ProjectCADDocument
+	selectedModelOccurrenceCount?: number
+	selectedOccurrence?: CADAssemblyOccurrence
 }
 
 export function useProjectWorkbenchKeyboardCommands({
   changeHistory,
   clearDeleteError,
   deleteNode,
+	deleteOccurrence,
   isCADDocumentCommandPending,
   keyboardDeleteNode,
   projectCADDocument,
+	selectedModelOccurrenceCount = 0,
+	selectedOccurrence,
 }: ProjectWorkbenchKeyboardCommandsOptions) {
   useEffect(() => {
     const handleHistoryKeyDown = (event: KeyboardEvent) => {
@@ -51,10 +57,14 @@ export function useProjectWorkbenchKeyboardCommands({
       }
       event.preventDefault()
       clearDeleteError()
-      deleteNode(keyboardDeleteNode.id)
+			if (!keyboardDeleteNode.parent_node_id && selectedOccurrence && selectedModelOccurrenceCount > 1) {
+				deleteOccurrence?.(selectedOccurrence.id)
+				return
+			}
+			deleteNode(keyboardDeleteNode.id)
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [clearDeleteError, deleteNode, isCADDocumentCommandPending, keyboardDeleteNode])
+	}, [clearDeleteError, deleteNode, deleteOccurrence, isCADDocumentCommandPending, keyboardDeleteNode, selectedModelOccurrenceCount, selectedOccurrence])
 }

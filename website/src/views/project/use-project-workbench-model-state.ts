@@ -10,11 +10,13 @@ import {
   fetchProjectModels,
 } from 'src/api/projects'
 import { runStepPreviewInWorker, type CadKernelWorkerPreviewResult } from 'src/cad/kernel-worker-client'
+import type { CADAssemblyOccurrence } from 'src/types/project'
 import {
   buildProjectModelTree,
   buildProjectPreviewAssets,
   cadKernelGeometryOperationSignature,
   cadKernelGeometryOperationsForModel,
+	projectPreviewAssetId,
   projectPreviewSummary,
 } from './project-preview-assets'
 import { translationFromCADTransform, type CADTranslation } from './cad-document-transforms'
@@ -46,6 +48,8 @@ export function useProjectWorkbenchModelState({
     enabled: projectId !== '' && projectModelsQuery.isSuccess,
   })
   const projectCADDocument = projectCADDocumentQuery.data
+	const cadOccurrences = projectCADDocument?.assembly?.occurrences ?? emptyCADOccurrences
+	const cadOccurrenceByID = useMemo(() => new Map(cadOccurrences.map((occurrence) => [occurrence.id, occurrence])), [cadOccurrences])
   const cadDocumentNodes = projectCADDocument?.nodes
   const cadNodeByID = useMemo(() => new Map((cadDocumentNodes ?? []).map((node) => [node.id, node])), [cadDocumentNodes])
   const sourceNodeIDByModelID = useMemo(
@@ -54,6 +58,7 @@ export function useProjectWorkbenchModelState({
   )
   const projectSelection = useProjectSelectionController({
     cadNodeByID,
+		cadOccurrences,
     projectModels,
     sourceNodeIDByModelID,
   })
@@ -77,6 +82,9 @@ export function useProjectWorkbenchModelState({
         translations[node.model_id] = translation
       }
     }
+		for (const occurrence of projectCADDocument?.assembly?.occurrences ?? []) {
+			translations[occurrence.id] = translationFromCADTransform(occurrence.transform)
+		}
     return translations
   }, [projectCADDocument])
   const previewModels = parametricModels.previewModels
@@ -155,9 +163,12 @@ export function useProjectWorkbenchModelState({
     () => buildProjectPreviewAssets(previewModels, previewArtifacts, previewUrlsByModelID, kernelMeshesByModelID, projectCADDocument),
     [kernelMeshesByModelID, previewArtifacts, previewModels, previewUrlsByModelID, projectCADDocument],
   )
-  const previewAssetModelIDs = useMemo(() => new Set(previewAssets.map((asset) => asset.modelId)), [previewAssets])
+	const previewAssetModelIDs = useMemo(() => new Set(previewAssets.map(projectPreviewAssetId)), [previewAssets])
   const visibleModelIds = useMemo(
-    () => previewAssets.flatMap((asset) => (hiddenModelIds.has(asset.modelId) ? [] : [asset.modelId])),
+		() => previewAssets.flatMap((asset) => {
+			const previewID = projectPreviewAssetId(asset)
+			return hiddenModelIds.has(previewID) ? [] : [previewID]
+		}),
     [hiddenModelIds, previewAssets],
   )
   const areAllPreviewAssetsHidden = previewAssets.length > 0 && visibleModelIds.length === 0
@@ -210,6 +221,7 @@ export function useProjectWorkbenchModelState({
     areAllPreviewAssetsHidden,
     backendPreviewModels,
     cadNodeByID,
+		cadOccurrenceByID,
     canvasStatusBody,
     canvasStatusLabel,
     latestModel,
@@ -230,3 +242,5 @@ export function useProjectWorkbenchModelState({
     visibleModelIds,
   }
 }
+
+const emptyCADOccurrences: CADAssemblyOccurrence[] = []

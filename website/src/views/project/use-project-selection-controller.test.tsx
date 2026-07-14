@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import type { CADDocumentNode, ProjectModel, ProjectParametricArtifact } from 'src/types/project'
+import type { CADAssemblyOccurrence, CADDocumentNode, ProjectModel, ProjectParametricArtifact } from 'src/types/project'
 import { useProjectSelectionController } from './use-project-selection-controller'
 
 const model = {
@@ -37,6 +37,17 @@ const node = {
   source_format: 'step',
   transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
 } satisfies CADDocumentNode
+
+const occurrences = [
+	{
+		id: 'occ_left', node_id: node.id, model_id: model.id, model_revision_id: model.current_revision_id,
+		name: 'Base left', suppressed: false, transform: node.transform,
+	},
+	{
+		id: 'occ_right', node_id: node.id, model_id: model.id, model_revision_id: model.current_revision_id,
+		name: 'Base right', suppressed: false, transform: { matrix: [1, 0, 0, 20, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+	},
+] satisfies CADAssemblyOccurrence[]
 
 const artifact = {
   id: 'pma_test',
@@ -81,6 +92,17 @@ describe('useProjectSelectionController', () => {
     expect(result.current.activeCADTool).toBe('inspect')
   })
 
+	it('selects repeated source models by occurrence identity', () => {
+		const { result } = renderController()
+
+		act(() => result.current.selectModel(model.id, node.id, 'occ_right'))
+
+		expect(result.current.effectiveSelectedModelID).toBe(model.id)
+		expect(result.current.effectiveSelectedDocumentNodeID).toBe(node.id)
+		expect(result.current.effectiveSelectedOccurrenceID).toBe('occ_right')
+		expect(result.current.selectedOccurrence?.name).toBe('Base right')
+	})
+
   it('returns to inspect mode when clearing selection', () => {
     const { result } = renderController()
 
@@ -98,6 +120,7 @@ function renderController() {
   return renderHook(() =>
     useProjectSelectionController({
       cadNodeByID: new Map([[node.id, node]]),
+			cadOccurrences: occurrences,
       projectModels: [model],
       sourceNodeIDByModelID: new Map([[model.id, node.id]]),
     }),
