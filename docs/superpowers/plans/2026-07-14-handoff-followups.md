@@ -331,11 +331,11 @@ Commit message: `docs(cad): decide openscad browser runtime`
 ### Phase 6: Richer Measurement And Durable Section Geometry
 
 **Files:**
-- Extend the browser CAD kernel worker with a narrowly defined section-geometry output that is derived from the current immutable source revisions and occurrence placements.
-- Add a project-owned durable section artifact entity/service/API with document revision, plane, source revision/occurrence inputs, generated geometry bytes, and download/restore lifecycle.
-- Add at least one measurement type beyond whole-visible-bounds size while keeping its derivation and units explicit.
-- Extend the workbench inspection UI, deterministic Playwright workflow, and in-app browser verification.
-- Update docs and commit `feat(cad): persist section geometry artifacts`.
+- [x] Extend the browser CAD kernel worker with a narrowly defined section-geometry output that is derived from the current immutable source revisions and occurrence placements.
+- [x] Add a project-owned durable section artifact entity/service/API with document revision, plane, source revision/occurrence inputs, generated geometry bytes, and download/restore lifecycle.
+- [x] Add at least one measurement type beyond whole-visible-bounds size while keeping its derivation and units explicit.
+- [x] Extend the workbench inspection UI, deterministic Playwright workflow, and in-app browser verification.
+- [x] Update docs and commit `feat(cad): persist section geometry artifacts` as `df0647e`.
 
 **Boundary:** The durable section result must contain actual kernel-derived geometry or a clearly typed empty result, not only a saved viewer clipping-plane definition. Richer measurements must identify their derivation and must not imply exact B-rep metrology beyond what the kernel computes.
 
@@ -344,7 +344,7 @@ Commit message: `docs(cad): decide openscad browser runtime`
 ## Completion Gate
 
 - [x] `docs/current-work-handoff.md` has no unfinished items copied from the original Larger Follow-Ups list.
-- [x] Every completed phase before Phase 6 has at least one commit; Phase 6 is committed after this final gate passes.
+- [x] Every phase has at least one commit: `f7e4995`, `bacb659`, `2691219`, `080deab`, `6a41342`, and `df0647e`.
 - [x] Every completed phase has fresh `task check`, `task test`, and `task test-browser` evidence when applicable; Phase 6 passed the same gates immediately before commit.
 - [x] Every UI phase has in-app browser verification evidence.
 - [x] `TODO.md`, `README.md`, `AGENTS.md`, `.agents/rules/`, and roadmap docs match the actual shipped behavior.

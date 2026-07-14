@@ -56,6 +56,7 @@ This note is the short cross-machine handoff for the current LiteCAD development
 - Owner-scoped project section artifact APIs store either generated STEP edge geometry or an explicit typed empty result together with the CAD document revision, unit, plane, source revision IDs, occurrence IDs, edge count, and byte size.
 - The workbench can generate, list after reload, restore the saved section plane, download ready STEP artifacts, and delete section artifacts. Visual center-plane clipping remains a preview aid; the stored STEP is the kernel-derived intersection result at generation time.
 - Visible-bounds measurement now includes a diagonal value and identifies its derivation as `preview-visible-aabb`. It is not a topology-aware distance, radius, angle, tolerance, or exact B-rep metrology result.
+- Focused and full Go/Vitest/Playwright coverage plus real-backend in-app browser verification passed before commit `df0647e`.
 
 ## Last Verification
 
