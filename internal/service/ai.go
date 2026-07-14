@@ -597,7 +597,14 @@ func (c *openAICompatibleAIClient) ChatWithTools(ctx context.Context, messages [
 	}
 	decoded, err := c.sendChatCompletion(ctx, payload)
 	if err != nil {
-		return AIChatToolCall{}, err
+		if !isOpenAICompatibleToolChoiceUnsupportedError(err) {
+			return AIChatToolCall{}, err
+		}
+		payload.ToolChoice = nil
+		decoded, err = c.sendChatCompletion(ctx, payload)
+		if err != nil {
+			return AIChatToolCall{}, err
+		}
 	}
 	if len(decoded.Choices) == 0 {
 		return AIChatToolCall{}, fmt.Errorf("chat provider returned no message")
@@ -611,6 +618,12 @@ func (c *openAICompatibleAIClient) ChatWithTools(ctx context.Context, messages [
 		}
 	}
 	return AIChatToolCall{}, fmt.Errorf("chat provider returned no tool call")
+}
+
+func isOpenAICompatibleToolChoiceUnsupportedError(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "tool_choice") ||
+		strings.Contains(message, "tool choice")
 }
 
 func openAICompatibleMessages(messages []AIChatMessage) []openAICompatibleChatMessage {

@@ -73,3 +73,69 @@ func TestOpenAICompatibleChatWithToolsSendsToolSchemaAndParsesToolCall(t *testin
 		t.Fatalf("request tool choice = %+v", request.ToolChoice)
 	}
 }
+
+func TestOpenAICompatibleChatWithToolsRetriesWithoutToolChoiceWhenUnsupported(t *testing.T) {
+	var requests []openAICompatibleChatRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request openAICompatibleChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		requests = append(requests, request)
+		w.Header().Set("Content-Type", "application/json")
+		if len(requests) == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"Thinking mode does not support this tool_choice"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{
+		  "choices": [{
+		    "message": {
+		      "role": "assistant",
+		      "tool_calls": [{
+		        "id": "call_01",
+		        "type": "function",
+		        "function": {
+		          "name": "build_parametric_model",
+		          "arguments": "{\"title\":\"Tool bracket\",\"version\":\"v1\",\"source_kind\":\"litecad-feature-dsl\",\"code\":\"{\\\"version\\\":1,\\\"unit\\\":\\\"millimetre\\\",\\\"features\\\":[{\\\"id\\\":\\\"base\\\",\\\"type\\\":\\\"box\\\",\\\"size\\\":[80,40,6]}]}\"}"
+		        }
+		      }]
+		    }
+		  }]
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := NewOpenAICompatibleAIClient(OpenAICompatibleConfig{
+		BaseURL: server.URL,
+		APIKey:  "sk-test",
+		Model:   "thinking-model",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleAIClient returned error: %v", err)
+	}
+	toolClient := client.(AIChatToolClient)
+
+	call, err := toolClient.ChatWithTools(context.Background(), []AIChatMessage{
+		{Role: "system", Body: "System prompt"},
+		{Role: "user", Body: "Make a bracket"},
+	}, []AIChatTool{buildParametricModelAITool()})
+	if err != nil {
+		t.Fatalf("ChatWithTools returned error: %v", err)
+	}
+	if call.Tool != aiParametricToolBuildModel {
+		t.Fatalf("call = %+v", call)
+	}
+	if len(requests) != 2 {
+		t.Fatalf("request count = %d, want 2", len(requests))
+	}
+	if requests[0].ToolChoice == nil {
+		t.Fatalf("first request should force tool choice")
+	}
+	if requests[1].ToolChoice != nil {
+		t.Fatalf("retry request tool choice = %+v, want nil", requests[1].ToolChoice)
+	}
+	if len(requests[1].Tools) != 1 || requests[1].Tools[0].Function.Name != aiParametricToolBuildModel {
+		t.Fatalf("retry tools = %+v", requests[1].Tools)
+	}
+}
