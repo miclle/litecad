@@ -136,6 +136,56 @@ export interface ProjectExportArtifactsResponse {
   artifacts: ProjectExportArtifact[]
 }
 
+export interface ProjectInspectionVector {
+  x: number
+  y: number
+  z: number
+}
+
+export interface ProjectInspectionMeasurement {
+  model_count: number
+  center: ProjectInspectionVector
+  size: ProjectInspectionVector
+}
+
+export interface ProjectInspectionSection {
+  mode: 'center-plane'
+  plane_normal: ProjectInspectionVector
+  plane_constant: number
+}
+
+export interface ProjectInspectionRecord {
+  id: string
+  project_id: string
+  kind: 'measurement' | 'section'
+  name: string
+  cad_document_revision: number
+  unit: string
+  visible_model_ids: string[]
+  measurement?: ProjectInspectionMeasurement
+  section?: ProjectInspectionSection
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectInspectionRecordPayload {
+  kind: 'measurement' | 'section'
+  name?: string
+  cad_document_revision?: number
+  unit?: string
+  visible_model_ids?: string[]
+  measurement?: ProjectInspectionMeasurement
+  section?: ProjectInspectionSection
+}
+
+export interface ProjectInspectionRecordResponse {
+  record: ProjectInspectionRecord
+}
+
+export interface ProjectInspectionRecordsResponse {
+  records: ProjectInspectionRecord[]
+}
+
 export interface ProjectGeometryTreeNode {
   model_id: string
   parent_model_id: string

@@ -64,6 +64,7 @@ func Migrate(ctx context.Context, db *gorm.DB) error {
 		&entity.ProjectThumbnailSnapshot{},
 		&entity.ProjectGeometryVersion{},
 		&entity.ProjectExportArtifact{},
+		&entity.ProjectInspectionRecord{},
 		&entity.ProjectCADDocument{},
 		&entity.ProjectCADHistoryEntry{},
 		&entity.ProjectAgentConversation{},

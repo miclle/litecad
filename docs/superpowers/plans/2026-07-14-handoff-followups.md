@@ -18,7 +18,7 @@
 - Run `task test-browser` for routing, workbench panels, model upload, thumbnail publication, or browser-visible CAD interactions.
 - Use the in-app browser for UI-visible phases after automated E2E is green.
 - Update `docs/current-work-handoff.md`, `TODO.md`, and shipped-truth docs before committing each phase.
-- Do not document AI-driven geometry mutation, backend export artifacts, durable measurement records, nested assembly/mate/constraint semantics, OpenSCAD browser compilation, or durable kernel feature graph state as shipped until that phase has code, tests, browser evidence when applicable, and docs.
+- Do not document AI-driven geometry mutation, nested assembly/mate/constraint semantics, OpenSCAD browser compilation, durable kernel feature graph state, or durable B-rep section geometry as shipped until that phase has code, tests, browser evidence when applicable, and docs.
 
 ---
 
@@ -141,7 +141,7 @@
 
   Update `README.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, and `docs/current-work-handoff.md` so backend-stored export artifact history is described as shipped and removed from unfinished follow-ups.
 
-- [ ] **Step 12: Commit Phase 1**
+- [x] **Step 12: Commit Phase 1**
 
   Run: `git diff --check`
 
@@ -156,6 +156,28 @@
 - Update docs and commit `feat(cad): persist measurement and section records`.
 
 **Boundary:** Persist measurement and section definitions and their document-revision relationship. Do not claim durable B-rep section geometry unless actual section bodies are generated and stored.
+
+- [x] **Step 1: Write failing service/API tests**
+
+  Added owner-scoped project inspection record service and handler tests for create/list/delete, validation, and foreign access.
+
+- [x] **Step 2: Implement persistence and routes**
+
+  Added `ProjectInspectionRecord`, auto-migration, service validation, and `GET` / `POST` / `DELETE` project inspection record routes.
+
+- [x] **Step 3: Add frontend API and workbench UI**
+
+  Added typed API helpers, a React Query controller, measurement callback plumbing, and a compact workbench inspection record panel for save/restore/delete.
+
+- [x] **Step 4: Add E2E coverage**
+
+  Extended the workbench shell Playwright fixture and spec to save measurement and section records, reload, restore section state, and delete a saved record.
+
+- [x] **Step 5: Full verification and in-app browser verification**
+
+  Ran `task check`, `task test`, and `task test-browser`. Verified the UI in the in-app browser against a local Vite/mock API stack.
+
+- [ ] **Step 6: Commit Phase 2**
 
 ### Phase 3: Durable Feature DSL Graph History
 

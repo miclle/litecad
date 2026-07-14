@@ -11,6 +11,7 @@ import type { StepExportTarget } from './project-step-export'
 import type { useCADDocumentCommands } from './use-cad-document-commands'
 import type { useProjectAssistantController } from './use-project-assistant-controller'
 import type { useProjectModelUploadController } from './use-project-model-upload-controller'
+import type { useProjectInspectionRecordsController } from './use-project-inspection-records-controller'
 import type { useProjectStepExportController } from './use-project-step-export-controller'
 import type { useProjectThumbnailSnapshotController } from './use-project-thumbnail-snapshot-controller'
 import type { useProjectWorkbenchDraftCommands } from './use-project-workbench-draft-commands'
@@ -41,6 +42,7 @@ export type ProjectWorkbenchCompositionProps = {
   projectAssistant: ReturnType<typeof useProjectAssistantController>
   projectCADHistory: ProjectCADHistoryState
   projectModelUpload: ReturnType<typeof useProjectModelUploadController>
+  projectInspectionRecords: ReturnType<typeof useProjectInspectionRecordsController>
   projectStepExport: ReturnType<typeof useProjectStepExportController>
   projectThumbnailSnapshot: ReturnType<typeof useProjectThumbnailSnapshotController>
   shellState: ReturnType<typeof useProjectWorkbenchShellState>
@@ -60,6 +62,7 @@ export function ProjectWorkbenchComposition({
   projectAssistant,
   projectCADHistory,
   projectModelUpload,
+  projectInspectionRecords,
   projectStepExport,
   projectThumbnailSnapshot,
   shellState,
@@ -129,6 +132,14 @@ export function ProjectWorkbenchComposition({
           onFlipOrientation={viewControls.flipCanvasOrientation}
           onModelTranslationChange={draftCommands.updateTransformDraftFromTranslation}
           onResetIsometric={() => viewControls.applyCanvasOrientation(initialViewOrientation)}
+          onDeleteInspectionRecord={projectInspectionRecords.deleteInspectionRecord}
+          onRestoreInspectionRecord={(record) => {
+            if (record.kind === 'section') {
+              viewControls.applyCanvasOrientation(viewControls.viewOrientation)
+            }
+          }}
+          onSaveMeasurementRecord={projectInspectionRecords.saveMeasurementRecord}
+          onSaveSectionRecord={projectInspectionRecords.saveSectionRecord}
 			onSelectModel={(modelID, nodeID, occurrenceID) => {
 				if (occurrenceID) {
 					selectModel(modelID, nodeID, occurrenceID)
@@ -143,6 +154,8 @@ export function ProjectWorkbenchComposition({
           onToggleFuseBoxTool={() => setActiveCADTool((currentTool) => (currentTool === 'fuse-box' ? 'inspect' : 'fuse-box'))}
           onUpdateBoxFeatureDraft={draftCommands.updateBoxFeatureDraft}
           previewAssets={modelState.previewAssets}
+          inspectionRecords={projectInspectionRecords.inspectionRecords}
+          isInspectionRecordsLoading={projectInspectionRecords.isInspectionRecordsLoading}
           projectCADDocument={modelState.projectCADDocument}
           projectId={project.id}
           selectedDocumentNode={selectedDocumentNode}

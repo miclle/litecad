@@ -20,10 +20,10 @@ For a short cross-machine status snapshot and the recommended next branch, see [
   - Define nested subassemblies, mates, constraints, and hierarchical suppression behavior.
   - Decide whether cross-model merge/boolean operations create one editable CAD part or remain export-only compounds.
   - Decide how richer assemblies preserve or normalize colors, names, units, and source STEP product structure.
-- Continue beyond the first preview-layer edge display, center-plane visual sectioning, and visible-model bounds measurement controls.
-  - Add durable CAD measurement entities instead of only transient bounding-box dimensions derived from visible preview meshes.
-  - Add saved section definitions and durable B-rep section geometry instead of only a viewer clipping plane.
-  - Decide how measurement and section records interact with document revisions, Undo/Redo, export, and shared project state.
+- Continue beyond the first project-saved inspection records for preview-layer edge display, center-plane visual sectioning, and visible-model bounds measurement controls.
+  - Add richer CAD measurement types beyond saved visible-bounds snapshots.
+  - Add durable B-rep section geometry instead of only saved viewer clipping-plane definitions.
+  - Decide how saved inspection records should interact with Undo/Redo, export annotations, and shared project state.
 - Expand export beyond the current direct browser download plus stored artifact history path.
   - Define export artifact retention, cleanup, quota, and storage migration policy before launch.
   - Add richer export workflows only after durable kernel shape state and richer assembly semantics define what should be exported.

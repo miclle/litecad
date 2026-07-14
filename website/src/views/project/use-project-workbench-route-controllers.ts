@@ -12,6 +12,7 @@ import {
 import { useCADDocumentCommands } from './use-cad-document-commands'
 import { useProjectAssistantController } from './use-project-assistant-controller'
 import { useProjectModelUploadController } from './use-project-model-upload-controller'
+import { useProjectInspectionRecordsController } from './use-project-inspection-records-controller'
 import { useProjectStepExportController } from './use-project-step-export-controller'
 import { useProjectThumbnailSnapshotController } from './use-project-thumbnail-snapshot-controller'
 import { useProjectWorkbenchDraftCommands, type ProjectWorkbenchDraftCommandAdapter } from './use-project-workbench-draft-commands'
@@ -122,6 +123,12 @@ export function useProjectWorkbenchRouteControllers({
     revision: projectCADDocument?.revision ?? 0,
     visibleModelIds,
   })
+  const projectInspectionRecords = useProjectInspectionRecordsController({
+    cadDocumentRevision: projectCADDocument?.revision ?? 0,
+    projectId,
+    unit: projectCADDocument?.unit ?? 'unit',
+    visibleModelIds,
+  })
 
   useEffect(() => {
     cadDocumentCommandAdapterRef.current = cadDocumentCommands
@@ -182,6 +189,7 @@ export function useProjectWorkbenchRouteControllers({
       isPending: projectCADHistoryQuery.isPending,
     },
     projectModelUpload,
+    projectInspectionRecords,
     projectStepExport,
     projectThumbnailSnapshot,
     shellState,

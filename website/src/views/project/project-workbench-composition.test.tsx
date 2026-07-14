@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ProjectWorkbenchComposition } from './project-workbench-composition'
 import type { useCADDocumentCommands } from './use-cad-document-commands'
 import type { useProjectAssistantController } from './use-project-assistant-controller'
+import type { useProjectInspectionRecordsController } from './use-project-inspection-records-controller'
 import type { useProjectModelUploadController } from './use-project-model-upload-controller'
 import type { useProjectStepExportController } from './use-project-step-export-controller'
 import type { useProjectThumbnailSnapshotController } from './use-project-thumbnail-snapshot-controller'
@@ -158,6 +159,7 @@ function renderComposition(callbacks: ReturnType<typeof callbackSpies>) {
           isPending: false,
         }}
         projectModelUpload={projectModelUpload()}
+        projectInspectionRecords={projectInspectionRecords(callbacks)}
         projectStepExport={projectStepExport()}
         projectThumbnailSnapshot={projectThumbnailSnapshot()}
         shellState={shellState(callbacks)}
@@ -307,6 +309,18 @@ function projectModelUpload() {
     isUploading: false,
     uploadError: '',
   } as unknown as ReturnType<typeof useProjectModelUploadController>
+}
+
+function projectInspectionRecords(_callbacks: ReturnType<typeof callbackSpies>) {
+  return {
+    deleteInspectionRecord: vi.fn(),
+    inspectionRecords: [],
+    isInspectionRecordMutationPending: false,
+    isInspectionRecordsLoading: false,
+    saveMeasurementRecord: vi.fn(),
+    saveSectionRecord: vi.fn(),
+    selectedRestoredRecord: undefined,
+  } as unknown as ReturnType<typeof useProjectInspectionRecordsController>
 }
 
 function projectStepExport() {

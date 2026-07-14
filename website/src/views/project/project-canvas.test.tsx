@@ -71,6 +71,43 @@ describe('ProjectCanvas', () => {
     expect(preview?.getAttribute('data-measurement')).toBe('true')
   })
 
+  test('saves, restores, and deletes inspection records', async () => {
+    const user = userEvent.setup()
+    const onSaveSectionRecord = vi.fn()
+    const onRestoreInspectionRecord = vi.fn()
+    const onDeleteInspectionRecord = vi.fn()
+    renderCanvas({
+      inspectionRecords: [
+        {
+          id: 'pir_section',
+          project_id: 'prj_demo',
+          kind: 'section',
+          name: 'Saved section',
+          cad_document_revision: 4,
+          unit: 'mm',
+          visible_model_ids: ['mdl_step'],
+          section: { mode: 'center-plane', plane_normal: { x: -1, y: 0, z: 0 }, plane_constant: 0 },
+          created_at: '2026-07-14T00:00:00Z',
+          updated_at: '2026-07-14T00:00:00Z',
+        },
+      ],
+      onDeleteInspectionRecord,
+      onRestoreInspectionRecord,
+      onSaveSectionRecord,
+      previewAssets: [{ modelId: 'mdl_step', name: 'gearbox.step', previewFormat: 'obj', previewUrl: '/gearbox.obj' }],
+    })
+
+    await user.click(document.querySelector('button[aria-label="Section"]') as HTMLButtonElement)
+    await user.click(document.querySelector('button[aria-label="Save section"]') as HTMLButtonElement)
+    await user.click(document.querySelector('button[aria-label="Restore Saved section"]') as HTMLButtonElement)
+    await user.click(document.querySelector('button[aria-label="Delete Saved section"]') as HTMLButtonElement)
+
+    expect(onSaveSectionRecord).toHaveBeenCalled()
+    expect(onRestoreInspectionRecord).toHaveBeenCalledWith(expect.objectContaining({ id: 'pir_section' }))
+    expect(onDeleteInspectionRecord).toHaveBeenCalledWith('pir_section')
+    expect(document.querySelector('[data-model-preview]')?.getAttribute('data-section')).toBe('true')
+  })
+
   test('edits and applies the Fuse box draft for the selected STEP source', async () => {
     const user = userEvent.setup()
     const onApplyBoxFeatureDraft = vi.fn()

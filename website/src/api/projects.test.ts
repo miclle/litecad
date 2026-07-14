@@ -3,9 +3,11 @@ import { describe, expect, test, vi } from 'vitest'
 import client from './client'
 import {
   createProjectExportArtifact,
+  createProjectInspectionRecord,
   deleteProject,
   deleteProjectCADNode,
 	deleteProjectCADOccurrence,
+  deleteProjectInspectionRecord,
 	duplicateProjectCADOccurrence,
   fetchProjectCADDocument,
   fetchProjectCADHistory,
@@ -21,6 +23,7 @@ import {
   fetchProjectModelRevisions,
   downloadProjectExportArtifact,
   fetchProjectExportArtifacts,
+  fetchProjectInspectionRecords,
   fetchProjectParametricArtifact,
   fetchProjectParametricArtifacts,
   addProjectCADModelBoxUnion,
@@ -115,6 +118,29 @@ describe('project API', () => {
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/export-artifacts')
     expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/export-artifacts', payload)
     expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/export-artifacts/pex_01test/download', { responseType: 'blob' })
+  })
+
+  test('manages project inspection records', () => {
+    const payload = {
+      kind: 'measurement' as const,
+      name: 'Visible bounds',
+      cad_document_revision: 3,
+      unit: 'millimetre',
+      visible_model_ids: ['mdl_a'],
+      measurement: {
+        model_count: 1,
+        center: { x: 1, y: 2, z: 3 },
+        size: { x: 10, y: 20, z: 30 },
+      },
+    }
+
+    fetchProjectInspectionRecords('prj_01test')
+    createProjectInspectionRecord('prj_01test', payload)
+    deleteProjectInspectionRecord('prj_01test', 'pir_01test')
+
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/inspection-records')
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/inspection-records', payload)
+    expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/inspection-records/pir_01test')
   })
 
 	test('fetches an immutable project model revision source as a blob', () => {

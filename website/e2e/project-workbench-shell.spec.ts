@@ -41,7 +41,7 @@ test('opens the project workbench shell and History without browser errors', asy
   expect(browserErrors).toEqual([])
 })
 
-test('keeps the measurement panel clear of view orientation controls', async ({ page }) => {
+test('keeps the measurement panel clear of view orientation controls and persists inspection records', async ({ page }) => {
   const browserErrors = captureBrowserErrors(page)
   const fixture = await installProjectAPIFixture(page)
   fixture.seedSavedModel()
@@ -49,7 +49,7 @@ test('keeps the measurement panel clear of view orientation controls', async ({ 
   await page.goto(`/projects/${projectId}`)
   await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
   await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
-  await page.getByRole('button', { name: 'Measure' }).click()
+  await page.getByRole('button', { name: 'Measure', exact: true }).click()
   await expect(page.getByLabel('Measurement summary')).toBeVisible()
 
   const orientationBounds = await page.getByLabel('View orientation controls').boundingBox()
@@ -57,6 +57,21 @@ test('keeps the measurement panel clear of view orientation controls', async ({ 
   expect(orientationBounds).not.toBeNull()
   expect(measurementBounds).not.toBeNull()
   expect(measurementBounds!.y).toBeGreaterThanOrEqual(orientationBounds!.y + orientationBounds!.height)
+
+  await expect(page.getByText('Inspection records')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save measurement' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Save measurement' }).click()
+  await page.getByRole('button', { name: 'Section', exact: true }).click()
+  await page.getByRole('button', { name: 'Save section' }).click()
+  await expect.poll(() => fixture.state.inspectionRecords.length).toBe(2)
+
+  await page.reload()
+  await expect(page.getByText('Visible bounds')).toBeVisible()
+  await expect(page.getByText('Center X section')).toBeVisible()
+  await page.getByRole('button', { name: 'Restore Center X section' }).click()
+  await expect(page.getByRole('button', { name: 'Section', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Delete Visible bounds' }).click()
+  await expect.poll(() => fixture.state.inspectionRecords.map((record) => record.name)).toEqual(['Center X section'])
 
   expect(browserErrors).toEqual([])
 })

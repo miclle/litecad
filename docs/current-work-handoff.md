@@ -30,7 +30,7 @@ The durable flat assembly path now includes authoring, not only passive persiste
 - Suppressed occurrences stay persisted and reversible but do not enter preview or export.
 - Selected multi-occurrence STEP export uses durable occurrence order, pinned immutable model revisions, names, and placement.
 
-This remains a flat assembly model. It does not implement nested subassemblies, mates, constraints, preserved source STEP product structure, durable kernel shape state, durable CAD measurement/section records, or editable B-rep feature history.
+This remains a flat assembly model. It does not implement nested subassemblies, mates, constraints, preserved source STEP product structure, durable kernel shape state, durable B-rep section geometry, or editable B-rep feature history.
 
 Backend-stored export artifact history is implemented in this checkout:
 
@@ -38,9 +38,16 @@ Backend-stored export artifact history is implemented in this checkout:
 - The workbench export popover lists stored exports and can download a stored STEP artifact again after reload.
 - Focused Go, Vitest, Playwright export-spec, full `task check`, full `task test`, full `task test-browser`, and in-app browser verification have passed locally; commit is pending.
 
+Project-saved measurement and section inspection records are implemented in this checkout:
+
+- Owner-scoped project inspection record APIs can create/list/delete viewer-derived measurement snapshots and center-plane section definitions.
+- The workbench inspection panel can save a visible-bounds measurement, save the current section definition, restore records after reload, and delete saved records.
+- Records store the CAD document revision, unit, visible model IDs, and either a measurement snapshot or a section-plane definition. They are not durable B-rep section bodies or kernel shape state.
+- Focused Go, Vitest, Playwright shell E2E, full `task check`, full `task test`, full `task test-browser`, and in-app browser verification have passed locally; commit is pending.
+
 ## Last Verification
 
-The latest export artifact history phase was verified with:
+The latest inspection-record phase was verified with:
 
 ```bash
 task check
@@ -51,13 +58,13 @@ task test-browser
 Results:
 
 - `task check` passed.
-- `task test` passed: Go race/coverage tests passed and Vitest reported 75 test files / 365 tests passing. Vitest still prints the existing localStorage and `MaxListenersExceededWarning` warnings during the full run.
+- `task test` passed: Go race/coverage tests passed and Vitest reported 75 test files / 367 tests passing. Vitest still prints the existing localStorage and `MaxListenersExceededWarning` warnings during the full run.
 - `task test-browser` passed: 14/14 Playwright workbench tests.
-- In-app browser verification passed against a local mock API/Vite stack: export history row and stored-export download button were visible after export, and the browser console had no error logs.
+- In-app browser verification passed against a local mock API/Vite stack: measurement and section records were saved, persisted through reload, section restore re-enabled the section control, the measurement record could be deleted, and the browser console had no error logs.
 
 ## Recommended Next Work
 
-Continue with the next larger follow-up as its own verified phase. The smallest next slice is durable CAD measurement and saved section records because the transient viewer tools already exist and can be extended into persisted project records with E2E coverage.
+Continue with the next larger follow-up as its own verified phase. The smallest next slice is durable Feature DSL graph history because export artifacts and project-saved inspection records now have persisted project APIs and workbench coverage.
 
 ## Larger Follow-Ups
 
@@ -65,7 +72,7 @@ Do not start these before deciding a narrower design boundary:
 
 - Durable kernel feature graph state and CAD document History integration for generated Feature DSL graph nodes.
 - Nested assembly, mate, constraint, and hierarchical suppression semantics.
-- Durable CAD measurement and saved section records.
+- Richer CAD measurement semantics and durable B-rep section geometry beyond saved viewer inspection records.
 - License-compatible OpenSCAD browser runtime selection.
 
 ## Resume Checklist

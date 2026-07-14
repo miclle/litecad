@@ -18,6 +18,9 @@ import type {
   ProjectExportArtifactPayload,
   ProjectExportArtifactResponse,
   ProjectExportArtifactsResponse,
+  ProjectInspectionRecordPayload,
+  ProjectInspectionRecordResponse,
+  ProjectInspectionRecordsResponse,
   ProjectThumbnailSnapshotResponse,
   ProjectModelPreviewArtifactResponse,
   ProjectModelResponse,
@@ -250,4 +253,16 @@ export function createProjectExportArtifact(projectId: string, payload: ProjectE
 
 export function downloadProjectExportArtifact(projectId: string, artifactId: string) {
   return client.get<Blob>(`/projects/${projectId}/export-artifacts/${artifactId}/download`, { responseType: 'blob' })
+}
+
+export function fetchProjectInspectionRecords(projectId: string) {
+  return client.get<ProjectInspectionRecordsResponse>(`/projects/${projectId}/inspection-records`)
+}
+
+export function createProjectInspectionRecord(projectId: string, payload: ProjectInspectionRecordPayload) {
+  return client.post<ProjectInspectionRecordResponse>(`/projects/${projectId}/inspection-records`, payload)
+}
+
+export function deleteProjectInspectionRecord(projectId: string, recordId: string) {
+  return client.delete(`/projects/${projectId}/inspection-records/${recordId}`)
 }

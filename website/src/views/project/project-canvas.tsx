@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
-import { Box, HardDrive, Layers, Ruler, ScanLine, X } from 'lucide-react'
+import { Box, HardDrive, Layers, Ruler, Save, ScanLine, Trash2, Undo2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -8,11 +8,11 @@ import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from 
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import type { CADDocumentNode, ProjectCADDocument, ProjectModel } from 'src/types/project'
+import type { CADDocumentNode, ProjectCADDocument, ProjectInspectionRecord, ProjectModel } from 'src/types/project'
 import type { CADTranslation } from './cad-document-transforms'
 import type { BoxFeatureDraft } from './cad-document-box-features'
 import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
-import { defaultModelPreviewDisplayOptions, type ModelPreviewDisplayOptions } from './model-preview-tools'
+import { defaultModelPreviewDisplayOptions, type ModelPreviewDisplayOptions, type ModelPreviewMeasurement } from './model-preview-tools'
 import type { ProjectPreviewAsset } from './project-preview-assets'
 import { ViewController } from './view-controller'
 import type { CADTool } from './use-project-selection-controller'
@@ -34,6 +34,10 @@ type ProjectCanvasProps = {
   onFlipOrientation: () => void
 	onModelTranslationChange: (modelId: string, translation: CADTranslation, nodeId?: string, occurrenceId?: string) => void
   onResetIsometric: () => void
+  onDeleteInspectionRecord?: (recordId: string) => void
+  onRestoreInspectionRecord?: (record: ProjectInspectionRecord) => void
+  onSaveMeasurementRecord?: (measurement: ModelPreviewMeasurement) => void
+  onSaveSectionRecord?: () => void
 	onSelectModel: (modelId: string, nodeId?: string, occurrenceId?: string) => void
   onSetOrientation: (orientation: ViewOrientation) => void
   onSnapshotCapture: (snapshot: ModelPreviewSnapshotCapture) => void
@@ -41,6 +45,8 @@ type ProjectCanvasProps = {
   onToggleFuseBoxTool: () => void
   onUpdateBoxFeatureDraft: (modelId: string, field: keyof BoxFeatureDraft, value: string) => void
   previewAssets: ProjectPreviewAsset[]
+  inspectionRecords?: readonly ProjectInspectionRecord[]
+  isInspectionRecordsLoading?: boolean
   projectCADDocument?: ProjectCADDocument
   projectId: string
   isSelectedModelBoxFeatureUpdating: boolean
@@ -114,6 +120,10 @@ export function ProjectCanvas({
   onFlipOrientation,
   onModelTranslationChange,
   onResetIsometric,
+  onDeleteInspectionRecord,
+  onRestoreInspectionRecord,
+  onSaveMeasurementRecord,
+  onSaveSectionRecord,
   onSelectModel,
   onSetOrientation,
   onSnapshotCapture,
@@ -121,6 +131,8 @@ export function ProjectCanvas({
   onToggleFuseBoxTool,
   onUpdateBoxFeatureDraft,
   previewAssets,
+  inspectionRecords = [],
+  isInspectionRecordsLoading = false,
   projectCADDocument,
   projectId,
   isSelectedModelBoxFeatureUpdating,
@@ -140,6 +152,7 @@ export function ProjectCanvas({
 }: ProjectCanvasProps) {
   const { t } = useTranslation()
   const [displayOptions, setDisplayOptions] = useState<ModelPreviewDisplayOptions>(defaultModelPreviewDisplayOptions)
+  const [currentMeasurement, setCurrentMeasurement] = useState<ModelPreviewMeasurement | undefined>(undefined)
   const previewTools: PreviewTool[] = [
     { description: t('project.canvas.edgesDescription'), icon: Layers, key: 'showEdges', label: t('project.canvas.edges') },
     { description: t('project.canvas.sectionDescription'), icon: ScanLine, key: 'section', label: t('project.canvas.section') },
@@ -160,6 +173,7 @@ export function ProjectCanvas({
         modelTranslations={modelTranslations}
         onClearSelection={onClearSelection}
         onModelTranslationChange={onModelTranslationChange}
+        onMeasurementChange={setCurrentMeasurement}
         onSelectModel={onSelectModel}
         onSnapshotCapture={onSnapshotCapture}
         previewAssets={previewAssets}
@@ -169,6 +183,96 @@ export function ProjectCanvas({
         unitLabel={unitLabel}
         visibleModelIds={visibleModelIds}
       />
+      {previewAssets.length > 0 ? (
+        <div className="absolute right-4 top-4 z-20 w-[min(320px,calc(100vw-32px))] rounded-md border border-[#dbe3ec] bg-white/94 p-3 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur sm:top-[312px]">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-mono text-[10px] font-semibold uppercase text-[#64748b]">{t('project.canvas.inspectionRecords')}</p>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      aria-label={t('project.canvas.saveMeasurement')}
+                      disabled={!currentMeasurement || !displayOptions.measurement || !onSaveMeasurementRecord}
+                      onClick={() => currentMeasurement && onSaveMeasurementRecord?.(currentMeasurement)}
+                      size="icon-sm"
+                      type="button"
+                      variant="ghost"
+                    />
+                  }
+                >
+                  <Save />
+                </TooltipTrigger>
+                <TooltipContent sideOffset={8}>{t('project.canvas.saveMeasurement')}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      aria-label={t('project.canvas.saveSection')}
+                      disabled={!displayOptions.section || !onSaveSectionRecord}
+                      onClick={() => onSaveSectionRecord?.()}
+                      size="icon-sm"
+                      type="button"
+                      variant="ghost"
+                    />
+                  }
+                >
+                  <ScanLine />
+                </TooltipTrigger>
+                <TooltipContent sideOffset={8}>{t('project.canvas.saveSection')}</TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+          <div className="mt-2 space-y-1.5">
+            {isInspectionRecordsLoading ? (
+              <p className="text-xs text-[#64748b]">{t('project.canvas.inspectionRecordsLoading')}</p>
+            ) : inspectionRecords.length === 0 ? (
+              <p className="text-xs text-[#64748b]">{t('project.canvas.inspectionRecordsEmpty')}</p>
+            ) : (
+              inspectionRecords.slice(0, 5).map((record) => (
+                <div className="flex items-center justify-between gap-2 rounded border border-[#e2e8f0] bg-[#f8fafc] px-2 py-1.5" key={record.id}>
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-medium text-[#0f172a]">{record.name}</p>
+                    <p className="font-mono text-[10px] uppercase text-[#64748b]">
+                      {record.kind === 'measurement' ? t('project.canvas.measurementRecord') : t('project.canvas.sectionRecord')}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      aria-label={t('project.canvas.restoreInspectionRecord', { name: record.name })}
+                      disabled={!onRestoreInspectionRecord}
+                      onClick={() => {
+                        setDisplayOptions((currentOptions) => ({
+                          ...currentOptions,
+                          measurement: record.kind === 'measurement' ? true : currentOptions.measurement,
+                          section: record.kind === 'section' ? true : currentOptions.section,
+                        }))
+                        onRestoreInspectionRecord?.(record)
+                      }}
+                      size="icon-sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Undo2 />
+                    </Button>
+                    <Button
+                      aria-label={t('project.canvas.deleteInspectionRecord', { name: record.name })}
+                      disabled={!onDeleteInspectionRecord}
+                      onClick={() => onDeleteInspectionRecord?.(record.id)}
+                      size="icon-sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
       {shouldShowCanvasStatus ? (
         <div
           className="pointer-events-none absolute bottom-4 left-4 max-w-sm rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 p-4 shadow-xl backdrop-blur lg:left-[var(--canvas-status-left)]"

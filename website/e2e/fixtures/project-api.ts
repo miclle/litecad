@@ -28,6 +28,28 @@ type FixtureExportArtifact = {
   updated_at: string
 }
 
+type FixtureInspectionRecord = {
+  id: string
+  project_id: string
+  kind: 'measurement' | 'section'
+  name: string
+  cad_document_revision: number
+  unit: string
+  visible_model_ids: string[]
+  measurement?: {
+    model_count: number
+    center: { x: number; y: number; z: number }
+    size: { x: number; y: number; z: number }
+  }
+  section?: {
+    mode: 'center-plane'
+    plane_normal: { x: number; y: number; z: number }
+    plane_constant: number
+  }
+  created_at: string
+  updated_at: string
+}
+
 export type ProjectAPIFixtureState = {
   messages: unknown[]
   models: unknown[]
@@ -55,6 +77,8 @@ export type ProjectAPIFixtureState = {
   uploadCount: number
   exportArtifacts: FixtureExportArtifact[]
   exportArtifactCreateCount: number
+  inspectionRecords: FixtureInspectionRecord[]
+  inspectionRecordCreateCount: number
 	occurrences: FixtureOccurrence[]
 	occurrenceUndoStack: FixtureOccurrence[][]
 	occurrenceRedoStack: FixtureOccurrence[][]
@@ -94,6 +118,8 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
     uploadCount: 0,
     exportArtifacts: [],
     exportArtifactCreateCount: 0,
+    inspectionRecords: [],
+    inspectionRecordCreateCount: 0,
 		occurrences: [],
 		occurrenceUndoStack: [],
 		occurrenceRedoStack: [],
@@ -334,6 +360,9 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     [`/api/v1/projects/${projectId}/export-artifacts`]: {
       artifacts: state.exportArtifacts.map(({ step_text: _stepText, ...artifact }) => artifact),
     },
+    [`/api/v1/projects/${projectId}/inspection-records`]: {
+      records: state.inspectionRecords,
+    },
     [`/api/v1/projects/${projectId}/cad-document`]: { document: smokeCADDocument(state) },
     [`/api/v1/projects/${projectId}/cad-document/history`]: { entries: state.historyEntries },
   }
@@ -540,6 +569,33 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     state.exportArtifacts = [artifact, ...state.exportArtifacts]
     const { step_text: _stepText, ...publicArtifact } = artifact
     await route.fulfill({ json: { artifact: publicArtifact }, status: 201 })
+    return
+  }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/inspection-records`) {
+    const requestBody = request.postDataJSON() as Partial<FixtureInspectionRecord>
+    state.inspectionRecordCreateCount += 1
+    const record: FixtureInspectionRecord = {
+      id: `pir_smoke_${state.inspectionRecordCreateCount}`,
+      project_id: projectId,
+      kind: requestBody.kind ?? 'measurement',
+      name: requestBody.name ?? 'Inspection record',
+      cad_document_revision: requestBody.cad_document_revision ?? state.cadRevision,
+      unit: requestBody.unit ?? 'mm',
+      visible_model_ids: requestBody.visible_model_ids ?? [],
+      measurement: requestBody.measurement,
+      section: requestBody.section,
+      created_at: now,
+      updated_at: now,
+    }
+    state.inspectionRecords = [record, ...state.inspectionRecords]
+    await route.fulfill({ json: { record }, status: 201 })
+    return
+  }
+  const inspectionRecordRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/inspection-records/([^/]+)$`))
+  if (request.method() === 'DELETE' && inspectionRecordRoute) {
+    const recordID = decodeURIComponent(inspectionRecordRoute[1] ?? '')
+    state.inspectionRecords = state.inspectionRecords.filter((record) => record.id !== recordID)
+    await route.fulfill({ status: 204 })
     return
   }
   const exportDownloadRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/export-artifacts/([^/]+)/download$`))

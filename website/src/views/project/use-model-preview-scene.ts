@@ -67,6 +67,7 @@ export type ModelPreviewProps = {
   measurementOverlayClassName?: string
   modelTranslations?: Record<string, CADTranslation>
   onClearSelection?: () => void
+  onMeasurementChange?: (measurement?: ModelPreviewMeasurement) => void
   onModelTranslationChange?: (modelID: string, translation: CADTranslation, nodeID?: string, occurrenceID?: string) => void
   onSnapshotCapture?: (snapshot: ModelPreviewSnapshotCapture) => void
 	onSelectModel?: (modelID: string, nodeID?: string, occurrenceID?: string) => void
@@ -130,6 +131,7 @@ export function useModelPreviewScene({
   draftModelTranslations,
   modelTranslations,
   onClearSelection,
+  onMeasurementChange,
   onModelTranslationChange,
   onSnapshotCapture,
   onSelectModel,
@@ -181,6 +183,7 @@ export function useModelPreviewScene({
   const zoomHUDHideTimeoutRef = useRef<number | undefined>(undefined)
   const [zoomHUD, setZoomHUD] = useState<ZoomHUDState>({ percent: 100, visible: false })
   const [measurement, setMeasurement] = useState<ModelPreviewMeasurement | undefined>(undefined)
+  const onMeasurementChangeRef = useRef(onMeasurementChange)
   const previewSceneSignature = useMemo(() => projectPreviewSceneSignature(previewAssets), [previewAssets])
   const sceneRuntimeRef = useRef<ModelPreviewSceneRuntime | undefined>(undefined)
 	const isPreviewObjectVisible = (previewID: string) => !visibleModelIdsRef.current || visibleModelIdsRef.current.includes(previewID)
@@ -211,6 +214,14 @@ export function useModelPreviewScene({
   useEffect(() => {
     onSnapshotCaptureRef.current = onSnapshotCapture
   }, [onSnapshotCapture])
+
+  useEffect(() => {
+    onMeasurementChangeRef.current = onMeasurementChange
+  }, [onMeasurementChange])
+
+  useEffect(() => {
+    onMeasurementChangeRef.current?.(measurement)
+  }, [measurement])
 
   useEffect(() => {
     const container = containerRef.current
