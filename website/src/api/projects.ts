@@ -4,7 +4,8 @@ import type {
   UpdateProjectPayload,
   CADBoxFeature,
   CADTransform,
-	UpdateCADAssemblyOccurrencePayload,
+  UpdateCADAssemblyOccurrencePayload,
+  UpdateCADAssemblyGroupPayload,
   CreateProjectAgentConversationPayload,
   ProjectAgentConversationResponse,
   ProjectAgentConversationsResponse,
@@ -53,34 +54,49 @@ export function fetchProjectCADDocument(projectId: string) {
 }
 
 export function duplicateProjectCADOccurrence(projectId: string, occurrenceId: string, expectedRevision: number) {
-	return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/occurrences/${occurrenceId}/duplicate`, {
-		expected_revision: expectedRevision,
-	})
+  return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/occurrences/${occurrenceId}/duplicate`, {
+    expected_revision: expectedRevision,
+  })
 }
 
-export function updateProjectCADOccurrence(
-	projectId: string,
-	occurrenceId: string,
-	payload: UpdateCADAssemblyOccurrencePayload,
-	expectedRevision: number,
-) {
-	return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/occurrences/${occurrenceId}`, {
-		...payload,
-		expected_revision: expectedRevision,
-	})
+export function updateProjectCADOccurrence(projectId: string, occurrenceId: string, payload: UpdateCADAssemblyOccurrencePayload, expectedRevision: number) {
+  return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/occurrences/${occurrenceId}`, {
+    ...payload,
+    expected_revision: expectedRevision,
+  })
 }
 
 export function moveProjectCADOccurrence(projectId: string, occurrenceId: string, targetIndex: number, expectedRevision: number) {
-	return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/occurrences/${occurrenceId}/move`, {
-		target_index: targetIndex,
-		expected_revision: expectedRevision,
-	})
+  return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/occurrences/${occurrenceId}/move`, {
+    target_index: targetIndex,
+    expected_revision: expectedRevision,
+  })
 }
 
 export function deleteProjectCADOccurrence(projectId: string, occurrenceId: string, expectedRevision: number) {
-	return client.delete<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/occurrences/${occurrenceId}`, {
-		data: { expected_revision: expectedRevision },
-	})
+  return client.delete<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/occurrences/${occurrenceId}`, {
+    data: { expected_revision: expectedRevision },
+  })
+}
+
+export function createProjectCADAssemblyGroup(projectId: string, payload: { name: string; parent_group_id: string }, expectedRevision: number) {
+  return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/groups`, {
+    ...payload,
+    expected_revision: expectedRevision,
+  })
+}
+
+export function updateProjectCADAssemblyGroup(projectId: string, groupId: string, payload: UpdateCADAssemblyGroupPayload, expectedRevision: number) {
+  return client.patch<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/groups/${groupId}`, {
+    ...payload,
+    expected_revision: expectedRevision,
+  })
+}
+
+export function deleteProjectCADAssemblyGroup(projectId: string, groupId: string, expectedRevision: number) {
+  return client.delete<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/groups/${groupId}`, {
+    data: { expected_revision: expectedRevision },
+  })
 }
 
 export function updateProjectCADModelTransform(projectId: string, modelId: string, transform: CADTransform, expectedRevision: number) {
@@ -136,11 +152,7 @@ export function createProjectAgentConversation(projectId: string, payload: Creat
   return client.post<ProjectAgentConversationResponse>(`/projects/${projectId}/agent/conversations`, payload)
 }
 
-export function sendProjectAgentConversationMessage(
-  projectId: string,
-  conversationId: string,
-  payload: SendProjectAgentMessagePayload,
-) {
+export function sendProjectAgentConversationMessage(projectId: string, conversationId: string, payload: SendProjectAgentMessagePayload) {
   return client.post<ProjectAgentMessageResponse>(`/projects/${projectId}/agent/conversations/${conversationId}/messages`, payload)
 }
 
@@ -149,10 +161,7 @@ export function fetchProjectAgentConversationMessages(projectId: string, convers
 }
 
 export function runProjectAgentParametric(projectId: string, conversationId: string, payload: ProjectAgentParametricRunPayload) {
-  return client.post<ProjectAgentParametricRunResponse>(
-    `/projects/${projectId}/agent/conversations/${conversationId}/parametric-runs`,
-    payload,
-  )
+  return client.post<ProjectAgentParametricRunResponse>(`/projects/${projectId}/agent/conversations/${conversationId}/parametric-runs`, payload)
 }
 
 export function fetchProjectParametricArtifacts(projectId: string) {
@@ -175,11 +184,7 @@ export function saveProjectParametricArtifactModel(projectId: string, artifactId
   return client.post<ProjectModelResponse>(`/projects/${projectId}/parametric-artifacts/${artifactId}/save-model`, {})
 }
 
-export function updateProjectParametricModelParameters(
-  projectId: string,
-  modelId: string,
-  payload: ProjectParametricModelParametersPayload,
-) {
+export function updateProjectParametricModelParameters(projectId: string, modelId: string, payload: ProjectParametricModelParametersPayload) {
   return client.patch<ProjectModelResponse>(`/projects/${projectId}/models/${modelId}/parametric-parameters`, payload)
 }
 
@@ -209,11 +214,7 @@ export function deleteProject(projectId: string) {
   return client.delete(`/projects/${projectId}`)
 }
 
-export function uploadProjectThumbnailSnapshot(
-  projectId: string,
-  snapshot: Blob,
-  metadata: { width: number; height: number; revision: number },
-) {
+export function uploadProjectThumbnailSnapshot(projectId: string, snapshot: Blob, metadata: { width: number; height: number; revision: number }) {
   const formData = new FormData()
   formData.append('snapshot', snapshot, 'thumbnail.webp')
   formData.append('width', String(metadata.width))
@@ -233,15 +234,19 @@ export function uploadProjectModel(projectId: string, file: File) {
 }
 
 export function fetchProjectModelPreview(projectId: string, modelId: string) {
-  return client.get<Blob>(`/projects/${projectId}/models/${modelId}/preview`, { responseType: 'blob' })
+  return client.get<Blob>(`/projects/${projectId}/models/${modelId}/preview`, {
+    responseType: 'blob',
+  })
 }
 
 export function fetchProjectModelSource(projectId: string, modelId: string) {
-  return client.get<Blob>(`/projects/${projectId}/models/${modelId}/source`, { responseType: 'blob' })
+  return client.get<Blob>(`/projects/${projectId}/models/${modelId}/source`, {
+    responseType: 'blob',
+  })
 }
 
 export function fetchProjectModelRevisionSource(projectId: string, modelId: string, revisionId: string) {
-	return client.get<Blob>(`/projects/${projectId}/models/${modelId}/revisions/${revisionId}/source`, { responseType: 'blob' })
+  return client.get<Blob>(`/projects/${projectId}/models/${modelId}/revisions/${revisionId}/source`, { responseType: 'blob' })
 }
 
 export function fetchProjectModelPreviewArtifact(projectId: string, modelId: string) {

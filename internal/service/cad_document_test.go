@@ -20,7 +20,7 @@ func TestGetProjectCADDocumentCreatesPersistedIdentityDocument(t *testing.T) {
 	if document.ID == "" || document.ProjectID != project.ID {
 		t.Fatalf("document identity = %+v, want project document", document)
 	}
-	if document.SchemaVersion != 2 || document.Unit != "millimetre" {
+	if document.SchemaVersion != 3 || document.Unit != "millimetre" {
 		t.Fatalf("document metadata = schema %d unit %q", document.SchemaVersion, document.Unit)
 	}
 	if document.Revision != 1 {
@@ -131,8 +131,8 @@ func TestGetProjectCADDocumentPreservesExistingV2OccurrenceIdentityAndDuplicates
 	if err != nil {
 		t.Fatalf("GetProjectCADDocument returned error: %v", err)
 	}
-	if document.Revision != 7 || len(document.Assembly.Occurrences) != 2 {
-		t.Fatalf("synced document revision/occurrences = %d/%d, want 7/2", document.Revision, len(document.Assembly.Occurrences))
+	if document.SchemaVersion != 3 || document.Revision != 8 || len(document.Assembly.Occurrences) != 2 {
+		t.Fatalf("synced document schema/revision/occurrences = %d/%d/%d, want 3/8/2", document.SchemaVersion, document.Revision, len(document.Assembly.Occurrences))
 	}
 	left, right := document.Assembly.Occurrences[0], document.Assembly.Occurrences[1]
 	if left.ID != "occurrence_existing_left" || left.Name != "Fixture left" || left.Transform != firstTransform {
@@ -194,8 +194,8 @@ func TestGetProjectCADDocumentUpgradesV1TransformToAssemblyOccurrence(t *testing
 	if err != nil {
 		t.Fatalf("upgrade GetProjectCADDocument returned error: %v", err)
 	}
-	if upgraded.SchemaVersion != 2 || upgraded.Revision != 5 {
-		t.Fatalf("upgraded document schema/revision = %d/%d, want 2/5", upgraded.SchemaVersion, upgraded.Revision)
+	if upgraded.SchemaVersion != 3 || upgraded.Revision != 5 {
+		t.Fatalf("upgraded document schema/revision = %d/%d, want 3/5", upgraded.SchemaVersion, upgraded.Revision)
 	}
 	if len(upgraded.Assembly.Occurrences) != 1 || upgraded.Assembly.Occurrences[0].Transform.Matrix != legacyTransform.Matrix {
 		t.Fatalf("upgraded assembly = %+v, want preserved legacy transform", upgraded.Assembly)

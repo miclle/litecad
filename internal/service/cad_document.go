@@ -16,7 +16,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const cadDocumentSchemaVersion = 2
+const (
+	cadDocumentSchemaVersion             = 3
+	cadDocumentFlatAssemblySchemaVersion = 2
+)
 
 var (
 	// ErrInvalidCADDocumentInput indicates missing or malformed editable CAD document input.
@@ -51,11 +54,31 @@ type ProjectCADDocument struct {
 	UpdatedAt     string            `json:"updated_at"`
 }
 
-// CADAssembly is the single durable flat assembly owned by a project document.
+// CADAssembly is the durable assembly tree owned by a project document.
 type CADAssembly struct {
-	ID          string                  `json:"id"`
-	Name        string                  `json:"name"`
-	Occurrences []CADAssemblyOccurrence `json:"occurrences"`
+	ID          string                        `json:"id"`
+	Name        string                        `json:"name"`
+	Groups      []CADAssemblyGroup            `json:"groups"`
+	Occurrences []CADAssemblyOccurrence       `json:"occurrences"`
+	Constraints []CADAssemblyConstraintRecord `json:"constraints"`
+}
+
+// CADAssemblyGroup provides nested organization and hierarchical suppression.
+type CADAssemblyGroup struct {
+	ID            string `json:"id"`
+	ParentGroupID string `json:"parent_group_id"`
+	Name          string `json:"name"`
+	Suppressed    bool   `json:"suppressed"`
+}
+
+// CADAssemblyConstraintRecord stores an unresolved relationship without implying solver behavior.
+type CADAssemblyConstraintRecord struct {
+	ID                 string `json:"id"`
+	Kind               string `json:"kind"`
+	Name               string `json:"name"`
+	FirstOccurrenceID  string `json:"first_occurrence_id"`
+	SecondOccurrenceID string `json:"second_occurrence_id"`
+	Status             string `json:"status"`
 }
 
 // CADAssemblyOccurrence binds one source model revision to an assembly placement.
@@ -64,6 +87,7 @@ type CADAssemblyOccurrence struct {
 	NodeID          string       `json:"node_id"`
 	ModelID         string       `json:"model_id"`
 	ModelRevisionID string       `json:"model_revision_id"`
+	ParentGroupID   string       `json:"parent_group_id"`
 	Name            string       `json:"name"`
 	Suppressed      bool         `json:"suppressed"`
 	Transform       CADTransform `json:"transform"`
@@ -348,6 +372,19 @@ func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Proje
 		deletedOccurrenceIndex := -1
 		deletedOccurrences := []cadDeletedAssemblyOccurrence{}
 		if deletedNode.ParentNodeID == "" {
+			removedOccurrenceIDs := make(map[string]struct{})
+			for _, occurrence := range state.Assembly.Occurrences {
+				if occurrence.NodeID == deletedNode.ID {
+					removedOccurrenceIDs[occurrence.ID] = struct{}{}
+				}
+			}
+			for _, constraint := range state.Assembly.Constraints {
+				_, removesFirst := removedOccurrenceIDs[constraint.FirstOccurrenceID]
+				_, removesSecond := removedOccurrenceIDs[constraint.SecondOccurrenceID]
+				if removesFirst || removesSecond {
+					return ErrInvalidCADDocumentInput
+				}
+			}
 			nextOccurrences := make([]CADAssemblyOccurrence, 0, len(state.Assembly.Occurrences))
 			for index, occurrence := range state.Assembly.Occurrences {
 				if occurrence.NodeID != deletedNode.ID {
@@ -535,6 +572,9 @@ func (s *Service) getOrCreateProjectCADDocumentEntity(ctx context.Context, tx *g
 		if err != nil {
 			return entity.ProjectCADDocument{}, cadDocumentState{}, err
 		}
+		if err := validateCADAssembly(state.Assembly); err != nil {
+			return entity.ProjectCADDocument{}, cadDocumentState{}, err
+		}
 		if migrated || changed || document.SchemaVersion != cadDocumentSchemaVersion {
 			document.Revision++
 			document.SchemaVersion = cadDocumentSchemaVersion
@@ -560,6 +600,9 @@ func (s *Service) getOrCreateProjectCADDocumentEntity(ctx context.Context, tx *g
 	state, _ := upgradeCADDocumentState(project, 0, cadDocumentState{Unit: "millimetre"})
 	state, _, err = s.syncCADDocumentNodes(ctx, tx, project, state)
 	if err != nil {
+		return entity.ProjectCADDocument{}, cadDocumentState{}, err
+	}
+	if err := validateCADAssembly(state.Assembly); err != nil {
 		return entity.ProjectCADDocument{}, cadDocumentState{}, err
 	}
 	if state.Unit == "" {
@@ -689,30 +732,36 @@ func upgradeCADDocumentState(project entity.Project, schemaVersion int, state ca
 		state.Assembly.Occurrences = []CADAssemblyOccurrence{}
 		changed = true
 	}
-	if schemaVersion >= cadDocumentSchemaVersion {
-		return state, changed
-	}
-
-	for index := range state.Nodes {
-		node := &state.Nodes[index]
-		if node.ParentNodeID != "" || node.ModelID == "" {
-			continue
-		}
-		transform := node.Transform
-		if transform.Matrix == ([16]float64{}) {
-			transform = identityCADTransform()
-		}
-		state.Assembly.Occurrences = append(state.Assembly.Occurrences, CADAssemblyOccurrence{
-			ID:              "occurrence_" + node.ModelID,
-			NodeID:          node.ID,
-			ModelID:         node.ModelID,
-			ModelRevisionID: node.ModelRevisionID,
-			Name:            node.Name,
-			Transform:       transform,
-		})
-		node.ModelRevisionID = ""
-		node.Transform = identityCADTransform()
+	if state.Assembly.Groups == nil {
+		state.Assembly.Groups = []CADAssemblyGroup{}
 		changed = true
+	}
+	if state.Assembly.Constraints == nil {
+		state.Assembly.Constraints = []CADAssemblyConstraintRecord{}
+		changed = true
+	}
+	if schemaVersion < cadDocumentFlatAssemblySchemaVersion {
+		for index := range state.Nodes {
+			node := &state.Nodes[index]
+			if node.ParentNodeID != "" || node.ModelID == "" {
+				continue
+			}
+			transform := node.Transform
+			if transform.Matrix == ([16]float64{}) {
+				transform = identityCADTransform()
+			}
+			state.Assembly.Occurrences = append(state.Assembly.Occurrences, CADAssemblyOccurrence{
+				ID:              "occurrence_" + node.ModelID,
+				NodeID:          node.ID,
+				ModelID:         node.ModelID,
+				ModelRevisionID: node.ModelRevisionID,
+				Name:            node.Name,
+				Transform:       transform,
+			})
+			node.ModelRevisionID = ""
+			node.Transform = identityCADTransform()
+			changed = true
+		}
 	}
 	return state, changed
 }
@@ -877,6 +926,14 @@ func publicProjectCADDocument(document entity.ProjectCADDocument, state cadDocum
 	if occurrences == nil {
 		occurrences = []CADAssemblyOccurrence{}
 	}
+	groups := append([]CADAssemblyGroup(nil), state.Assembly.Groups...)
+	if groups == nil {
+		groups = []CADAssemblyGroup{}
+	}
+	constraints := append([]CADAssemblyConstraintRecord(nil), state.Assembly.Constraints...)
+	if constraints == nil {
+		constraints = []CADAssemblyConstraintRecord{}
+	}
 	occurrenceByNodeID := make(map[string]CADAssemblyOccurrence, len(occurrences))
 	for _, occurrence := range occurrences {
 		if _, exists := occurrenceByNodeID[occurrence.NodeID]; !exists {
@@ -902,7 +959,9 @@ func publicProjectCADDocument(document entity.ProjectCADDocument, state cadDocum
 		Assembly: CADAssembly{
 			ID:          state.Assembly.ID,
 			Name:        state.Assembly.Name,
+			Groups:      groups,
 			Occurrences: occurrences,
+			Constraints: constraints,
 		},
 		Nodes:      nodes,
 		Operations: operations,

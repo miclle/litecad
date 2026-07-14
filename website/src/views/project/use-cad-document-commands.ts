@@ -4,16 +4,19 @@ import { useTranslation } from 'react-i18next'
 
 import {
   addProjectCADModelBoxUnion,
-	deleteProjectCADOccurrence,
+  createProjectCADAssemblyGroup,
+  deleteProjectCADOccurrence,
+  deleteProjectCADAssemblyGroup,
   deleteProjectCADNode,
-	duplicateProjectCADOccurrence,
-	moveProjectCADOccurrence,
+  duplicateProjectCADOccurrence,
+  moveProjectCADOccurrence,
   redoProjectCADDocument,
   undoProjectCADDocument,
   updateProjectCADNodeTransform,
-	updateProjectCADOccurrence,
+  updateProjectCADOccurrence,
+  updateProjectCADAssemblyGroup,
 } from 'src/api/projects'
-import type { CADBoxFeature, ProjectCADDocument, UpdateCADAssemblyOccurrencePayload } from 'src/types/project'
+import type { CADBoxFeature, ProjectCADDocument, UpdateCADAssemblyGroupPayload, UpdateCADAssemblyOccurrencePayload } from 'src/types/project'
 import { cadTransformWithTranslation, type CADTranslation } from './cad-document-transforms'
 
 const defaultTransformAutosaveDelayMS = 500
@@ -33,10 +36,23 @@ type TransformMutationVariables = {
 }
 
 type OccurrenceMutationVariables =
-	| { action: 'duplicate'; occurrenceId: string }
-	| { action: 'update'; occurrenceId: string; payload: UpdateCADAssemblyOccurrencePayload }
-	| { action: 'move'; occurrenceId: string; targetIndex: number }
-	| { action: 'delete'; occurrenceId: string }
+  | { action: 'duplicate'; occurrenceId: string }
+  | {
+      action: 'update'
+      occurrenceId: string
+      payload: UpdateCADAssemblyOccurrencePayload
+    }
+  | { action: 'move'; occurrenceId: string; targetIndex: number }
+  | { action: 'delete'; occurrenceId: string }
+
+type AssemblyGroupMutationVariables =
+  | { action: 'create'; name: string; parentGroupId: string }
+  | {
+      action: 'update'
+      groupId: string
+      payload: UpdateCADAssemblyGroupPayload
+    }
+  | { action: 'delete'; groupId: string }
 
 function isCADDocumentConflict(error: unknown) {
   return (error as { response?: { status?: number } }).response?.status === 409
@@ -57,7 +73,7 @@ export function useCADDocumentCommands({
   const transformAutosaveTimersRef = useRef<Record<string, number>>({})
   const [historyError, setHistoryError] = useState('')
   const [deleteError, setDeleteError] = useState('')
-	const [occurrenceError, setOccurrenceError] = useState('')
+  const [occurrenceError, setOccurrenceError] = useState('')
   const [transformErrorsByNodeId, setTransformErrorsByNodeId] = useState<Record<string, string>>({})
   const [boxErrorsByModelId, setBoxErrorsByModelId] = useState<Record<string, string>>({})
 
@@ -65,7 +81,7 @@ export function useCADDocumentCommands({
   const historyQueryKey = useMemo(() => ['projects', projectId, 'cad-document', 'history'] as const, [projectId])
   const modelsQueryKey = useMemo(() => ['projects', projectId, 'models'] as const, [projectId])
 
-  const enqueueCommand = useCallback(<T,>(command: () => Promise<T>) => {
+  const enqueueCommand = useCallback(<T>(command: () => Promise<T>) => {
     const queuedCommand = commandQueueRef.current.then(command, command)
     commandQueueRef.current = queuedCommand.then(
       () => undefined,
@@ -101,12 +117,12 @@ export function useCADDocumentCommands({
         if (!document) {
           throw new Error(t('project.errors.documentNotLoaded'))
         }
-				const currentOccurrence = document.assembly?.occurrences.find((occurrence) => occurrence.id === nodeId)
-				const currentNode = document.nodes.find((node) => node.id === nodeId)
-				const transform = cadTransformWithTranslation(currentOccurrence?.transform ?? currentNode?.transform, translation)
-				const updatedDocument = currentOccurrence
-					? (await updateProjectCADOccurrence(projectId, nodeId, { transform }, document.revision)).data.document
-					: (await updateProjectCADNodeTransform(projectId, nodeId, transform, document.revision)).data.document
+        const currentOccurrence = document.assembly?.occurrences.find((occurrence) => occurrence.id === nodeId)
+        const currentNode = document.nodes.find((node) => node.id === nodeId)
+        const transform = cadTransformWithTranslation(currentOccurrence?.transform ?? currentNode?.transform, translation)
+        const updatedDocument = currentOccurrence
+          ? (await updateProjectCADOccurrence(projectId, nodeId, { transform }, document.revision)).data.document
+          : (await updateProjectCADNodeTransform(projectId, nodeId, transform, document.revision)).data.document
         queryClient.setQueryData(documentQueryKey, updatedDocument)
         return updatedDocument
       }),
@@ -114,11 +130,12 @@ export function useCADDocumentCommands({
       if ((latestTransformRequestByNodeIdRef.current[variables.nodeId] ?? 0) > variables.requestVersion) {
         return
       }
-			const latestDocument = currentDocument()
-			const acceptsTarget = !latestDocument ||
-				latestDocument.nodes.some((node) => node.id === variables.nodeId) ||
-				latestDocument.assembly?.occurrences.some((occurrence) => occurrence.id === variables.nodeId)
-			if (!acceptsTarget) {
+      const latestDocument = currentDocument()
+      const acceptsTarget =
+        !latestDocument ||
+        latestDocument.nodes.some((node) => node.id === variables.nodeId) ||
+        latestDocument.assembly?.occurrences.some((occurrence) => occurrence.id === variables.nodeId)
+      if (!acceptsTarget) {
         return
       }
       const latestTranslation = latestTranslationByNodeIdRef.current[variables.nodeId]
@@ -130,7 +147,10 @@ export function useCADDocumentCommands({
       }
       delete latestTranslationByNodeIdRef.current[variables.nodeId]
       onTransformSynchronized?.(variables.nodeId)
-      setTransformErrorsByNodeId((errors) => ({ ...errors, [variables.nodeId]: '' }))
+      setTransformErrorsByNodeId((errors) => ({
+        ...errors,
+        [variables.nodeId]: '',
+      }))
       queryClient.setQueryData(documentQueryKey, document)
       setHistoryError('')
       await queryClient.invalidateQueries({ queryKey: historyQueryKey })
@@ -143,7 +163,10 @@ export function useCADDocumentCommands({
         delete latestTranslationByNodeIdRef.current[variables.nodeId]
         onTransformSynchronized?.(variables.nodeId)
       } else {
-        setTransformErrorsByNodeId((errors) => ({ ...errors, [variables.nodeId]: t('project.errors.invalidTransform') }))
+        setTransformErrorsByNodeId((errors) => ({
+          ...errors,
+          [variables.nodeId]: t('project.errors.invalidTransform'),
+        }))
       }
     },
   })
@@ -216,48 +239,92 @@ export function useCADDocumentCommands({
         return updatedDocument
       }),
     onSuccess: async (document, variables) => {
-      setBoxErrorsByModelId((errors) => ({ ...errors, [variables.modelId]: '' }))
+      setBoxErrorsByModelId((errors) => ({
+        ...errors,
+        [variables.modelId]: '',
+      }))
       queryClient.setQueryData(documentQueryKey, document)
       setHistoryError('')
       await queryClient.invalidateQueries({ queryKey: historyQueryKey })
     },
     onError: async (error, variables) => {
       if (!(await refreshAfterConflict(error))) {
-        setBoxErrorsByModelId((errors) => ({ ...errors, [variables.modelId]: t('project.errors.invalidBox') }))
+        setBoxErrorsByModelId((errors) => ({
+          ...errors,
+          [variables.modelId]: t('project.errors.invalidBox'),
+        }))
       }
     },
   })
 
-	const occurrenceMutation = useMutation({
-		mutationFn: (variables: OccurrenceMutationVariables) =>
-			enqueueCommand(async () => {
-				const document = currentDocument()
-				if (!document) {
-					throw new Error(t('project.errors.documentNotLoaded'))
-				}
-				const request = variables.action === 'duplicate'
-					? duplicateProjectCADOccurrence(projectId, variables.occurrenceId, document.revision)
-					: variables.action === 'update'
-						? updateProjectCADOccurrence(projectId, variables.occurrenceId, variables.payload, document.revision)
-						: variables.action === 'move'
-							? moveProjectCADOccurrence(projectId, variables.occurrenceId, variables.targetIndex, document.revision)
-							: deleteProjectCADOccurrence(projectId, variables.occurrenceId, document.revision)
-				const updatedDocument = (await request).data.document
-				queryClient.setQueryData(documentQueryKey, updatedDocument)
-				return updatedDocument
-			}),
-		onSuccess: async (document) => {
-			setOccurrenceError('')
-			setHistoryError('')
-			queryClient.setQueryData(documentQueryKey, document)
-			await queryClient.invalidateQueries({ queryKey: historyQueryKey })
-		},
-		onError: async (error) => {
-			if (!(await refreshAfterConflict(error))) {
-				setOccurrenceError(t('project.errors.occurrenceFailed'))
-			}
-		},
-	})
+  const occurrenceMutation = useMutation({
+    mutationFn: (variables: OccurrenceMutationVariables) =>
+      enqueueCommand(async () => {
+        const document = currentDocument()
+        if (!document) {
+          throw new Error(t('project.errors.documentNotLoaded'))
+        }
+        const request =
+          variables.action === 'duplicate'
+            ? duplicateProjectCADOccurrence(projectId, variables.occurrenceId, document.revision)
+            : variables.action === 'update'
+              ? updateProjectCADOccurrence(projectId, variables.occurrenceId, variables.payload, document.revision)
+              : variables.action === 'move'
+                ? moveProjectCADOccurrence(projectId, variables.occurrenceId, variables.targetIndex, document.revision)
+                : deleteProjectCADOccurrence(projectId, variables.occurrenceId, document.revision)
+        const updatedDocument = (await request).data.document
+        queryClient.setQueryData(documentQueryKey, updatedDocument)
+        return updatedDocument
+      }),
+    onSuccess: async (document) => {
+      setOccurrenceError('')
+      setHistoryError('')
+      queryClient.setQueryData(documentQueryKey, document)
+      await queryClient.invalidateQueries({ queryKey: historyQueryKey })
+    },
+    onError: async (error) => {
+      if (!(await refreshAfterConflict(error))) {
+        setOccurrenceError(t('project.errors.occurrenceFailed'))
+      }
+    },
+  })
+
+  const assemblyGroupMutation = useMutation({
+    mutationFn: (variables: AssemblyGroupMutationVariables) =>
+      enqueueCommand(async () => {
+        const document = currentDocument()
+        if (!document) {
+          throw new Error(t('project.errors.documentNotLoaded'))
+        }
+        const request =
+          variables.action === 'create'
+            ? createProjectCADAssemblyGroup(
+                projectId,
+                {
+                  name: variables.name,
+                  parent_group_id: variables.parentGroupId,
+                },
+                document.revision,
+              )
+            : variables.action === 'update'
+              ? updateProjectCADAssemblyGroup(projectId, variables.groupId, variables.payload, document.revision)
+              : deleteProjectCADAssemblyGroup(projectId, variables.groupId, document.revision)
+        const updatedDocument = (await request).data.document
+        queryClient.setQueryData(documentQueryKey, updatedDocument)
+        return updatedDocument
+      }),
+    onSuccess: async (document) => {
+      setOccurrenceError('')
+      setHistoryError('')
+      queryClient.setQueryData(documentQueryKey, document)
+      await queryClient.invalidateQueries({ queryKey: historyQueryKey })
+    },
+    onError: async (error) => {
+      if (!(await refreshAfterConflict(error))) {
+        setOccurrenceError(t('project.errors.assemblyGroupFailed'))
+      }
+    },
+  })
 
   const historyMutation = useMutation({
     mutationFn: (action: 'undo' | 'redo') =>
@@ -273,10 +340,7 @@ export function useCADDocumentCommands({
       }),
     onSuccess: async () => {
       setHistoryError('')
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: historyQueryKey }),
-        queryClient.invalidateQueries({ queryKey: modelsQueryKey }),
-      ])
+      await Promise.all([queryClient.invalidateQueries({ queryKey: historyQueryKey }), queryClient.invalidateQueries({ queryKey: modelsQueryKey })])
     },
     onError: async (error) => {
       if (!(await refreshAfterConflict(error))) {
@@ -287,7 +351,8 @@ export function useCADDocumentCommands({
   const mutateBoxUnion = addBoxUnionMutation.mutate
   const mutateDeleteNode = deleteNodeMutation.mutate
   const mutateHistory = historyMutation.mutate
-	const mutateOccurrence = occurrenceMutation.mutate
+  const mutateOccurrence = occurrenceMutation.mutate
+  const mutateAssemblyGroup = assemblyGroupMutation.mutate
 
   useEffect(
     () => () => {
@@ -297,31 +362,38 @@ export function useCADDocumentCommands({
     [],
   )
 
-  const addBoxUnion = useCallback(
-    (modelId: string, box: CADBoxFeature) => mutateBoxUnion({ modelId, box }),
-    [mutateBoxUnion],
-  )
+  const addBoxUnion = useCallback((modelId: string, box: CADBoxFeature) => mutateBoxUnion({ modelId, box }), [mutateBoxUnion])
   const changeHistory = useCallback((action: 'undo' | 'redo') => mutateHistory(action), [mutateHistory])
   const clearDeleteError = useCallback(() => setDeleteError(''), [])
   const clearHistoryError = useCallback(() => setHistoryError(''), [])
   const deleteNode = useCallback((nodeId: string) => mutateDeleteNode({ nodeId }), [mutateDeleteNode])
-	const deleteOccurrence = useCallback((occurrenceId: string) => mutateOccurrence({ action: 'delete', occurrenceId }), [mutateOccurrence])
-	const duplicateOccurrence = useCallback((occurrenceId: string) => mutateOccurrence({ action: 'duplicate', occurrenceId }), [mutateOccurrence])
-	const moveOccurrence = useCallback(
-		(occurrenceId: string, targetIndex: number) => mutateOccurrence({ action: 'move', occurrenceId, targetIndex }),
-		[mutateOccurrence],
-	)
-	const updateOccurrence = useCallback(
-		(occurrenceId: string, payload: UpdateCADAssemblyOccurrencePayload) => mutateOccurrence({ action: 'update', occurrenceId, payload }),
-		[mutateOccurrence],
-	)
-  const hasPendingTransform = useCallback((nodeId: string) => Boolean(latestTranslationByNodeIdRef.current[nodeId]), [])
-  const setBoxValidationError = useCallback(
-    (modelId: string, message: string) => setBoxErrorsByModelId((errors) => ({ ...errors, [modelId]: message })),
-    [],
+  const deleteOccurrence = useCallback((occurrenceId: string) => mutateOccurrence({ action: 'delete', occurrenceId }), [mutateOccurrence])
+  const duplicateOccurrence = useCallback((occurrenceId: string) => mutateOccurrence({ action: 'duplicate', occurrenceId }), [mutateOccurrence])
+  const moveOccurrence = useCallback(
+    (occurrenceId: string, targetIndex: number) => mutateOccurrence({ action: 'move', occurrenceId, targetIndex }),
+    [mutateOccurrence],
   )
+  const updateOccurrence = useCallback(
+    (occurrenceId: string, payload: UpdateCADAssemblyOccurrencePayload) => mutateOccurrence({ action: 'update', occurrenceId, payload }),
+    [mutateOccurrence],
+  )
+  const createAssemblyGroup = useCallback(
+    (name: string, parentGroupId: string) => mutateAssemblyGroup({ action: 'create', name, parentGroupId }),
+    [mutateAssemblyGroup],
+  )
+  const deleteAssemblyGroup = useCallback((groupId: string) => mutateAssemblyGroup({ action: 'delete', groupId }), [mutateAssemblyGroup])
+  const updateAssemblyGroup = useCallback(
+    (groupId: string, payload: UpdateCADAssemblyGroupPayload) => mutateAssemblyGroup({ action: 'update', groupId, payload }),
+    [mutateAssemblyGroup],
+  )
+  const hasPendingTransform = useCallback((nodeId: string) => Boolean(latestTranslationByNodeIdRef.current[nodeId]), [])
+  const setBoxValidationError = useCallback((modelId: string, message: string) => setBoxErrorsByModelId((errors) => ({ ...errors, [modelId]: message })), [])
   const setTransformValidationError = useCallback(
-    (nodeId: string, message: string) => setTransformErrorsByNodeId((errors) => ({ ...errors, [nodeId]: message })),
+    (nodeId: string, message: string) =>
+      setTransformErrorsByNodeId((errors) => ({
+        ...errors,
+        [nodeId]: message,
+      })),
     [],
   )
 
@@ -332,22 +404,31 @@ export function useCADDocumentCommands({
     changeHistory,
     clearDeleteError,
     clearHistoryError,
+    createAssemblyGroup,
     deleteError,
     deleteNode,
-		deleteOccurrence,
-		duplicateOccurrence,
+    deleteOccurrence,
+    deleteAssemblyGroup,
+    duplicateOccurrence,
     historyError,
     isBoxUnionPendingFor: (modelId: string) => addBoxUnionMutation.isPending && addBoxUnionMutation.variables?.modelId === modelId,
     isDeletingNode: (nodeId: string) => deleteNodeMutation.isPending && deleteNodeMutation.variables?.nodeId === nodeId,
-		isOccurrenceMutationPending: occurrenceMutation.isPending,
-		isPending: updateTransformMutation.isPending || deleteNodeMutation.isPending || addBoxUnionMutation.isPending || occurrenceMutation.isPending || historyMutation.isPending,
-		moveOccurrence,
-		occurrenceError,
+    isOccurrenceMutationPending: occurrenceMutation.isPending || assemblyGroupMutation.isPending,
+    isPending:
+      updateTransformMutation.isPending ||
+      deleteNodeMutation.isPending ||
+      addBoxUnionMutation.isPending ||
+      occurrenceMutation.isPending ||
+      assemblyGroupMutation.isPending ||
+      historyMutation.isPending,
+    moveOccurrence,
+    occurrenceError,
     hasPendingTransform,
     scheduleTransformAutosave,
     setBoxValidationError,
     setTransformValidationError,
     transformErrorsByNodeId,
-		updateOccurrence,
+    updateOccurrence,
+    updateAssemblyGroup,
   }
 }

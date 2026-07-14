@@ -8,9 +8,22 @@ type FixtureOccurrence = {
 	node_id: string
 	model_id: string
 	model_revision_id: string
+	parent_group_id: string
 	name: string
 	suppressed: boolean
 	transform: { matrix: number[] }
+}
+
+type FixtureAssemblyGroup = {
+	id: string
+	parent_group_id: string
+	name: string
+	suppressed: boolean
+}
+
+type FixtureAssemblySnapshot = {
+	occurrences: FixtureOccurrence[]
+	groups: FixtureAssemblyGroup[]
 }
 
 type FixtureExportArtifact = {
@@ -87,8 +100,12 @@ export type ProjectAPIFixtureState = {
   inspectionRecords: FixtureInspectionRecord[]
   inspectionRecordCreateCount: number
 	occurrences: FixtureOccurrence[]
-	occurrenceUndoStack: FixtureOccurrence[][]
-	occurrenceRedoStack: FixtureOccurrence[][]
+	assemblyGroups: FixtureAssemblyGroup[]
+	assemblyUndoStack: FixtureAssemblySnapshot[]
+	assemblyRedoStack: FixtureAssemblySnapshot[]
+	assemblyGroupCreateCount: number
+	assemblyGroupUpdateCount: number
+	assemblyGroupDeleteCount: number
 	occurrenceDuplicateCount: number
 	occurrenceUpdateCount: number
 	occurrenceMoveCount: number
@@ -135,8 +152,12 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
     inspectionRecords: [],
     inspectionRecordCreateCount: 0,
 		occurrences: [],
-		occurrenceUndoStack: [],
-		occurrenceRedoStack: [],
+		assemblyGroups: [],
+		assemblyUndoStack: [],
+		assemblyRedoStack: [],
+		assemblyGroupCreateCount: 0,
+		assemblyGroupUpdateCount: 0,
+		assemblyGroupDeleteCount: 0,
 		occurrenceDuplicateCount: 0,
 		occurrenceUpdateCount: 0,
 		occurrenceMoveCount: 0,
@@ -300,13 +321,15 @@ function smokeCADDocument(state: ProjectAPIFixtureState) {
   return {
     id: 'cad_document_smoke',
     project_id: projectId,
-    schema_version: 2,
+    schema_version: 3,
     revision: state.models.length > 0 ? state.cadRevision : 1,
     unit: 'mm',
 	assembly: {
 		id: `assembly_${projectId}`,
 		name: 'Workbench Smoke',
+		groups: state.assemblyGroups,
 		occurrences: occurrences.map((occurrence) => ({ ...occurrence, model_revision_id: state.currentModelRevisionID })),
+		constraints: [],
 	},
     nodes:
       state.models.length > 0
@@ -340,6 +363,7 @@ function defaultSmokeOccurrence(state: ProjectAPIFixtureState, modelID = state.s
 		node_id: `node_${modelID}`,
 		model_id: modelID,
 		model_revision_id: state.currentModelRevisionID,
+		parent_group_id: '',
 		name: state.parametricArtifactTitle,
 		suppressed: false,
 		transform: { matrix: [1, 0, 0, state.translationX, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
@@ -353,9 +377,25 @@ function cloneOccurrences(occurrences: FixtureOccurrence[]) {
 	}))
 }
 
-function recordOccurrenceMutation(state: ProjectAPIFixtureState) {
-	state.occurrenceUndoStack.push(cloneOccurrences(state.occurrences))
-	state.occurrenceRedoStack = []
+function cloneAssemblyGroups(groups: FixtureAssemblyGroup[]) {
+	return groups.map((group) => ({ ...group }))
+}
+
+function assemblySnapshot(state: ProjectAPIFixtureState): FixtureAssemblySnapshot {
+	return {
+		occurrences: cloneOccurrences(state.occurrences),
+		groups: cloneAssemblyGroups(state.assemblyGroups),
+	}
+}
+
+function restoreAssemblySnapshot(state: ProjectAPIFixtureState, snapshot: FixtureAssemblySnapshot) {
+	state.occurrences = cloneOccurrences(snapshot.occurrences)
+	state.assemblyGroups = cloneAssemblyGroups(snapshot.groups)
+}
+
+function recordAssemblyMutation(state: ProjectAPIFixtureState) {
+	state.assemblyUndoStack.push(assemblySnapshot(state))
+	state.assemblyRedoStack = []
 	state.cadRevision += 1
 	state.canUndo = true
 	state.canRedo = false
@@ -676,6 +716,64 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     await route.fulfill({ json: { model: uploadedModel } })
     return
   }
+	const assemblyGroupRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/cad-document/groups(?:/([^/]+))?$`))
+	if (assemblyGroupRoute) {
+		const groupID = decodeURIComponent(assemblyGroupRoute[1] ?? '')
+		if (request.method() === 'POST' && !groupID) {
+			const requestBody = request.postDataJSON() as { name?: string; parent_group_id?: string }
+			recordAssemblyMutation(state)
+			state.assemblyGroupCreateCount += 1
+			const group: FixtureAssemblyGroup = {
+				id: `grp_smoke_${state.assemblyGroupCreateCount}`,
+				parent_group_id: requestBody.parent_group_id ?? '',
+				name: requestBody.name ?? `Group ${state.assemblyGroupCreateCount}`,
+				suppressed: false,
+			}
+			state.assemblyGroups.push(group)
+			state.historyEntries = [{
+				id: `hist_assembly_group_create_${state.assemblyGroupCreateCount}`, sequence: state.cadRevision,
+				status: 'applied', command_type: 'assembly-group-create', target_id: group.id,
+				summary: `Create group ${group.name}`, created_at: now,
+			}]
+			await route.fulfill({ json: { document: smokeCADDocument(state) } })
+			return
+		}
+		const groupIndex = state.assemblyGroups.findIndex((group) => group.id === groupID)
+		if (groupIndex < 0) {
+			await route.fulfill({ json: { message: 'assembly group not found' }, status: 404 })
+			return
+		}
+		if (request.method() === 'PATCH') {
+			const requestBody = request.postDataJSON() as { name?: string; parent_group_id?: string; suppressed?: boolean }
+			recordAssemblyMutation(state)
+			state.assemblyGroupUpdateCount += 1
+			state.assemblyGroups[groupIndex] = {
+				...state.assemblyGroups[groupIndex]!,
+				...(requestBody.name !== undefined ? { name: requestBody.name } : {}),
+				...(requestBody.parent_group_id !== undefined ? { parent_group_id: requestBody.parent_group_id } : {}),
+				...(requestBody.suppressed !== undefined ? { suppressed: requestBody.suppressed } : {}),
+			}
+			state.historyEntries = [{
+				id: `hist_assembly_group_update_${state.assemblyGroupUpdateCount}`, sequence: state.cadRevision,
+				status: 'applied', command_type: 'assembly-group-update', target_id: groupID,
+				summary: `Update group ${state.assemblyGroups[groupIndex]!.name}`, created_at: now,
+			}]
+			await route.fulfill({ json: { document: smokeCADDocument(state) } })
+			return
+		}
+		if (request.method() === 'DELETE') {
+			const hasContents = state.assemblyGroups.some((group) => group.parent_group_id === groupID) || state.occurrences.some((occurrence) => occurrence.parent_group_id === groupID)
+			if (hasContents) {
+				await route.fulfill({ json: { message: 'assembly group is not empty' }, status: 400 })
+				return
+			}
+			recordAssemblyMutation(state)
+			state.assemblyGroups.splice(groupIndex, 1)
+			state.assemblyGroupDeleteCount += 1
+			await route.fulfill({ json: { document: smokeCADDocument(state) } })
+			return
+		}
+	}
 	const occurrenceRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/cad-document/occurrences/([^/]+)(?:/(duplicate|move))?$`))
 	if (occurrenceRoute) {
 		if (state.occurrences.length === 0 && state.models.length > 0) {
@@ -689,7 +787,7 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
 			return
 		}
 		if (request.method() === 'POST' && action === 'duplicate') {
-			recordOccurrenceMutation(state)
+			recordAssemblyMutation(state)
 			const source = state.occurrences[occurrenceIndex]!
 			state.occurrenceDuplicateCount += 1
 			state.occurrences.splice(occurrenceIndex + 1, 0, {
@@ -712,7 +810,7 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
 				await route.fulfill({ json: { message: 'document revision conflict' }, status: 409 })
 				return
 			}
-			const requestBody = request.postDataJSON() as { name?: string; suppressed?: boolean; transform?: { matrix?: number[] } }
+			const requestBody = request.postDataJSON() as { name?: string; suppressed?: boolean; parent_group_id?: string; transform?: { matrix?: number[] } }
 			if (requestBody.transform?.matrix) {
 				state.translationX = requestBody.transform.matrix[3] ?? 0
 				state.occurrences[occurrenceIndex] = {
@@ -724,13 +822,14 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
 				state.canUndo = true
 				state.canRedo = false
 			} else {
-				recordOccurrenceMutation(state)
+				recordAssemblyMutation(state)
 			}
 			state.occurrenceUpdateCount += 1
 			state.occurrences[occurrenceIndex] = {
 				...state.occurrences[occurrenceIndex]!,
 				...(requestBody.name !== undefined ? { name: requestBody.name } : {}),
 				...(requestBody.suppressed !== undefined ? { suppressed: requestBody.suppressed } : {}),
+				...(requestBody.parent_group_id !== undefined ? { parent_group_id: requestBody.parent_group_id } : {}),
 			}
 			state.historyEntries = [{
 				id: `hist_occurrence_update_${state.occurrenceUpdateCount}`, sequence: state.cadRevision,
@@ -747,7 +846,7 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
 				await route.fulfill({ json: { message: 'invalid occurrence move' }, status: 400 })
 				return
 			}
-			recordOccurrenceMutation(state)
+			recordAssemblyMutation(state)
 			const [occurrence] = state.occurrences.splice(occurrenceIndex, 1)
 			state.occurrences.splice(targetIndex, 0, occurrence!)
 			state.occurrenceMoveCount += 1
@@ -759,7 +858,7 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
 				await route.fulfill({ json: { message: 'last occurrence' }, status: 400 })
 				return
 			}
-			recordOccurrenceMutation(state)
+			recordAssemblyMutation(state)
 			state.occurrences.splice(occurrenceIndex, 1)
 			state.occurrenceDeleteCount += 1
 			await route.fulfill({ json: { document: smokeCADDocument(state) } })
@@ -804,9 +903,9 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
       state.modelRevisionSequence = state.featureGraphBeforeRevisionSequence
       historyEntry.status = 'undone'
       state.models = [smokeSavedModel(state)]
-    } else if (state.occurrenceUndoStack.length > 0) {
-      state.occurrenceRedoStack.push(cloneOccurrences(state.occurrences))
-      state.occurrences = state.occurrenceUndoStack.pop()!
+	} else if (state.assemblyUndoStack.length > 0) {
+		state.assemblyRedoStack.push(assemblySnapshot(state))
+		restoreAssemblySnapshot(state, state.assemblyUndoStack.pop()!)
     } else {
       state.translationX = 0
       state.occurrences = state.occurrences.map((occurrence) => ({
@@ -829,9 +928,9 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
       state.modelRevisionSequence = state.featureGraphAfterRevisionSequence
       historyEntry.status = 'applied'
       state.models = [smokeSavedModel(state)]
-    } else if (state.occurrenceRedoStack.length > 0) {
-      state.occurrenceUndoStack.push(cloneOccurrences(state.occurrences))
-      state.occurrences = state.occurrenceRedoStack.pop()!
+	} else if (state.assemblyRedoStack.length > 0) {
+		state.assemblyUndoStack.push(assemblySnapshot(state))
+		restoreAssemblySnapshot(state, state.assemblyRedoStack.pop()!)
     } else {
       state.translationX = 12
       state.occurrences = state.occurrences.map((occurrence) => ({

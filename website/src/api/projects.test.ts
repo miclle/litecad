@@ -6,9 +6,11 @@ import {
   createProjectInspectionRecord,
   deleteProject,
   deleteProjectCADNode,
-	deleteProjectCADOccurrence,
+  deleteProjectCADOccurrence,
   deleteProjectInspectionRecord,
-	duplicateProjectCADOccurrence,
+  duplicateProjectCADOccurrence,
+  createProjectCADAssemblyGroup,
+  deleteProjectCADAssemblyGroup,
   fetchProjectCADDocument,
   fetchProjectCADHistory,
   createProjectAgentConversation,
@@ -19,7 +21,7 @@ import {
   fetchProjectModelPreview,
   fetchProjectModelPreviewArtifact,
   fetchProjectModelSource,
-	fetchProjectModelRevisionSource,
+  fetchProjectModelRevisionSource,
   fetchProjectModelRevisions,
   downloadProjectExportArtifact,
   fetchProjectExportArtifacts,
@@ -34,8 +36,9 @@ import {
   restoreProjectModelRevision,
   undoProjectCADDocument,
   updateProjectCADNodeTransform,
-	updateProjectCADOccurrence,
-	moveProjectCADOccurrence,
+  updateProjectCADOccurrence,
+  updateProjectCADAssemblyGroup,
+  moveProjectCADOccurrence,
   updateProjectCADModelTransform,
   updateProject,
   updateProjectParametricArtifact,
@@ -56,7 +59,10 @@ vi.mock('./client', () => ({
 
 describe('project API', () => {
   test('updates and deletes project metadata', () => {
-    updateProject('prj_01test', { name: 'Wall bracket v2', description: 'Updated note' })
+    updateProject('prj_01test', {
+      name: 'Wall bracket v2',
+      description: 'Updated note',
+    })
     deleteProject('prj_01test')
 
     expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test', {
@@ -67,7 +73,9 @@ describe('project API', () => {
   })
 
   test('uploads a project model as multipart form data', () => {
-    const file = new File(['ISO-10303-21;'], 'macintosh_ipad_lcd_case.step', { type: 'application/step' })
+    const file = new File(['ISO-10303-21;'], 'macintosh_ipad_lcd_case.step', {
+      type: 'application/step',
+    })
 
     uploadProjectModel('prj_01test', file)
 
@@ -79,7 +87,11 @@ describe('project API', () => {
   test('uploads a project thumbnail snapshot as multipart form data', () => {
     const snapshot = new Blob(['snapshot'], { type: 'image/webp' })
 
-    uploadProjectThumbnailSnapshot('prj_01test', snapshot, { width: 640, height: 360, revision: 4 })
+    uploadProjectThumbnailSnapshot('prj_01test', snapshot, {
+      width: 640,
+      height: 360,
+      revision: 4,
+    })
 
     expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/thumbnail', expect.any(FormData))
     const formData = vi.mocked(client.post).mock.calls.at(-1)?.[1] as FormData
@@ -144,11 +156,11 @@ describe('project API', () => {
     expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/inspection-records/pir_01test')
   })
 
-	test('fetches an immutable project model revision source as a blob', () => {
-		fetchProjectModelRevisionSource('prj_01test', 'mdl_01test', 'mvr_01test')
+  test('fetches an immutable project model revision source as a blob', () => {
+    fetchProjectModelRevisionSource('prj_01test', 'mdl_01test', 'mvr_01test')
 
-		expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/models/mdl_01test/revisions/mvr_01test/source', { responseType: 'blob' })
-	})
+    expect(client.get).toHaveBeenCalledWith('/projects/prj_01test/models/mdl_01test/revisions/mvr_01test/source', { responseType: 'blob' })
+  })
 
   test('fetches project model preview artifact metadata', () => {
     fetchProjectModelPreviewArtifact('prj_01test', 'mdl_01test')
@@ -202,31 +214,50 @@ describe('project API', () => {
     })
   })
 
-	test('authors durable CAD assembly occurrences', () => {
-		const transform = {
-			matrix: [1, 0, 0, 24, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] as const,
-		}
+  test('authors durable CAD assembly occurrences', () => {
+    const transform = {
+      matrix: [1, 0, 0, 24, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] as const,
+    }
 
-		duplicateProjectCADOccurrence('prj_01test', 'occ_01test', 4)
-		updateProjectCADOccurrence('prj_01test', 'occ_01test', { name: 'Fixture right', suppressed: true, transform }, 5)
-		moveProjectCADOccurrence('prj_01test', 'occ_01test', 0, 6)
-		deleteProjectCADOccurrence('prj_01test', 'occ_01test', 7)
+    duplicateProjectCADOccurrence('prj_01test', 'occ_01test', 4)
+    updateProjectCADOccurrence('prj_01test', 'occ_01test', { name: 'Fixture right', suppressed: true, transform }, 5)
+    moveProjectCADOccurrence('prj_01test', 'occ_01test', 0, 6)
+    deleteProjectCADOccurrence('prj_01test', 'occ_01test', 7)
 
-		expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/occurrences/occ_01test/duplicate', { expected_revision: 4 })
-		expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/cad-document/occurrences/occ_01test', {
-			name: 'Fixture right',
-			suppressed: true,
-			transform,
-			expected_revision: 5,
-		})
-		expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/occurrences/occ_01test/move', {
-			target_index: 0,
-			expected_revision: 6,
-		})
-		expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/cad-document/occurrences/occ_01test', {
-			data: { expected_revision: 7 },
-		})
-	})
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/occurrences/occ_01test/duplicate', { expected_revision: 4 })
+    expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/cad-document/occurrences/occ_01test', {
+      name: 'Fixture right',
+      suppressed: true,
+      transform,
+      expected_revision: 5,
+    })
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/occurrences/occ_01test/move', {
+      target_index: 0,
+      expected_revision: 6,
+    })
+    expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/cad-document/occurrences/occ_01test', {
+      data: { expected_revision: 7 },
+    })
+  })
+
+  test('authors nested CAD assembly groups', () => {
+    createProjectCADAssemblyGroup('prj_01test', { name: 'Power unit', parent_group_id: '' }, 8)
+    updateProjectCADAssemblyGroup('prj_01test', 'grp_01test', { suppressed: true }, 9)
+    deleteProjectCADAssemblyGroup('prj_01test', 'grp_01test', 10)
+
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/groups', {
+      name: 'Power unit',
+      parent_group_id: '',
+      expected_revision: 8,
+    })
+    expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/cad-document/groups/grp_01test', {
+      suppressed: true,
+      expected_revision: 9,
+    })
+    expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/cad-document/groups/grp_01test', {
+      data: { expected_revision: 10 },
+    })
+  })
 
   test('adds a project CAD model box-union feature', () => {
     const box = {
@@ -278,7 +309,10 @@ describe('project API', () => {
   })
 
   test('runs a project agent parametric tool request', () => {
-    const payload = { message: 'Make a parametric mounting bracket', active_model_id: 'mdl_active' }
+    const payload = {
+      message: 'Make a parametric mounting bracket',
+      active_model_id: 'mdl_active',
+    }
 
     runProjectAgentParametric('prj_01test', 'agc_01test', payload)
 
@@ -297,9 +331,15 @@ describe('project API', () => {
     fetchProjectParametricArtifacts('prj_01test')
     fetchProjectParametricArtifact('prj_01test', 'pma_01test')
     createProjectParametricArtifact('prj_01test', payload)
-    updateProjectParametricArtifact('prj_01test', 'pma_01test', { ...payload, compile_status: 'success' })
+    updateProjectParametricArtifact('prj_01test', 'pma_01test', {
+      ...payload,
+      compile_status: 'success',
+    })
     saveProjectParametricArtifactModel('prj_01test', 'pma_01test')
-    updateProjectParametricModelParameters('prj_01test', 'mdl_01test', { parameter_values: { width: 12 }, expected_revision: 13 })
+    updateProjectParametricModelParameters('prj_01test', 'mdl_01test', {
+      parameter_values: { width: 12 },
+      expected_revision: 13,
+    })
     fetchProjectModelRevisions('prj_01test', 'mdl_01test')
     restoreProjectModelRevision('prj_01test', 'mdl_01test', 'mvr_01test', 14)
 
@@ -325,7 +365,8 @@ describe('project API', () => {
     const payload = {
       title: 'Feature DSL bracket',
       source_kind: 'litecad-feature-dsl' as const,
-      source_code: '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
+      source_code:
+        '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
       parameter_values: { width: 96 },
       compile_status: 'success' as const,
     }

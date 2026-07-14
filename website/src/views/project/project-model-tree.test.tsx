@@ -9,14 +9,14 @@ afterEach(cleanup)
 
 const groups: ProjectModelTreeGroup[] = [
   {
-	assemblyId: 'assembly_project_one',
-	assemblyName: 'Robot project',
-	assemblyOccurrenceCount: 2,
-	occurrenceId: 'occurrence_model_one',
-	occurrenceIndex: 0,
-	modelOccurrenceCount: 2,
-	modelRevisionId: 'mvr_model_one',
-	suppressed: false,
+    assemblyId: 'assembly_project_one',
+    assemblyName: 'Robot project',
+    assemblyOccurrenceCount: 2,
+    occurrenceId: 'occurrence_model_one',
+    occurrenceIndex: 0,
+    modelOccurrenceCount: 2,
+    modelRevisionId: 'mvr_model_one',
+    suppressed: false,
     model: {
       id: 'model_one',
       project_id: 'project_one',
@@ -52,10 +52,10 @@ describe('ProjectModelTree', () => {
     const user = userEvent.setup()
     const onSelect = vi.fn()
     const onToggleVisibility = vi.fn()
-		const onDeleteOccurrence = vi.fn()
-		const onDuplicateOccurrence = vi.fn()
-		const onMoveOccurrence = vi.fn()
-		const onUpdateOccurrence = vi.fn()
+    const onDeleteOccurrence = vi.fn()
+    const onDuplicateOccurrence = vi.fn()
+    const onMoveOccurrence = vi.fn()
+    const onUpdateOccurrence = vi.fn()
     render(
       <ProjectModelTree
         groups={groups}
@@ -63,14 +63,14 @@ describe('ProjectModelTree', () => {
         isLoading={false}
         isUploading={false}
         onSelect={onSelect}
-			onDeleteOccurrence={onDeleteOccurrence}
-			onDuplicateOccurrence={onDuplicateOccurrence}
-			onMoveOccurrence={onMoveOccurrence}
+        onDeleteOccurrence={onDeleteOccurrence}
+        onDuplicateOccurrence={onDuplicateOccurrence}
+        onMoveOccurrence={onMoveOccurrence}
         onToggleVisibility={onToggleVisibility}
-			onUpdateOccurrence={onUpdateOccurrence}
-			previewAssetModelIds={new Set(['occurrence_model_one'])}
+        onUpdateOccurrence={onUpdateOccurrence}
+        previewAssetModelIds={new Set(['occurrence_model_one'])}
         selectedNodeId=""
-			selectedOccurrenceId="occurrence_model_one"
+        selectedOccurrenceId="occurrence_model_one"
         uploadError=""
       />,
     )
@@ -79,73 +79,147 @@ describe('ProjectModelTree', () => {
     await user.click(screen.getByRole('option', { name: 'Bracket' }))
     await user.click(screen.getByRole('button', { name: 'Hide Assembly' }))
 
-		expect(onSelect).toHaveBeenNthCalledWith(1, 'model_one', 'node_model_one', 'occurrence_model_one')
-		expect(onSelect).toHaveBeenNthCalledWith(2, 'model_one', 'node_child_one', 'occurrence_model_one')
-		expect(onToggleVisibility).toHaveBeenCalledWith('occurrence_model_one')
-		expect(screen.getByTestId('assembly-root').textContent).toContain('Robot project')
+    expect(onSelect).toHaveBeenNthCalledWith(1, 'model_one', 'node_model_one', 'occurrence_model_one')
+    expect(onSelect).toHaveBeenNthCalledWith(2, 'model_one', 'node_child_one', 'occurrence_model_one')
+    expect(onToggleVisibility).toHaveBeenCalledWith('occurrence_model_one')
+    expect(screen.getByTestId('assembly-root').textContent).toContain('Robot project')
   })
 
-	it('forwards compact occurrence authoring commands', async () => {
-		const user = userEvent.setup()
-		const onDeleteOccurrence = vi.fn()
-		const onDuplicateOccurrence = vi.fn()
-		const onMoveOccurrence = vi.fn()
-		const onUpdateOccurrence = vi.fn()
-		render(
-			<ProjectModelTree
-				groups={groups}
-				hiddenModelIds={new Set()}
-				isLoading={false}
-				isUploading={false}
-				onDeleteOccurrence={onDeleteOccurrence}
-				onDuplicateOccurrence={onDuplicateOccurrence}
-				onMoveOccurrence={onMoveOccurrence}
-				onSelect={vi.fn()}
-				onToggleVisibility={vi.fn()}
-				onUpdateOccurrence={onUpdateOccurrence}
-				previewAssetModelIds={new Set(['occurrence_model_one'])}
-				selectedNodeId="node_model_one"
-				selectedOccurrenceId="occurrence_model_one"
-				uploadError=""
-			/>,
-		)
+  it('forwards compact occurrence authoring commands', async () => {
+    const user = userEvent.setup()
+    const onDeleteOccurrence = vi.fn()
+    const onDuplicateOccurrence = vi.fn()
+    const onMoveOccurrence = vi.fn()
+    const onUpdateOccurrence = vi.fn()
+    render(
+      <ProjectModelTree
+        groups={groups}
+        hiddenModelIds={new Set()}
+        isLoading={false}
+        isUploading={false}
+        onDeleteOccurrence={onDeleteOccurrence}
+        onDuplicateOccurrence={onDuplicateOccurrence}
+        onMoveOccurrence={onMoveOccurrence}
+        onSelect={vi.fn()}
+        onToggleVisibility={vi.fn()}
+        onUpdateOccurrence={onUpdateOccurrence}
+        previewAssetModelIds={new Set(['occurrence_model_one'])}
+        selectedNodeId="node_model_one"
+        selectedOccurrenceId="occurrence_model_one"
+        uploadError=""
+      />,
+    )
 
-		await user.click(screen.getByRole('button', { name: 'Duplicate occurrence' }))
-		await user.click(screen.getByRole('button', { name: 'Move occurrence down' }))
-		await user.click(screen.getByRole('button', { name: 'Suppress occurrence' }))
-		await user.click(screen.getByRole('button', { name: 'Rename occurrence' }))
-		const nameInput = screen.getByRole('textbox', { name: 'Occurrence name' })
-		await user.clear(nameInput)
-		await user.type(nameInput, 'Fixture right')
-		await user.click(screen.getByRole('button', { name: 'Save occurrence name' }))
-		await user.click(screen.getByRole('button', { name: 'Delete occurrence' }))
+    await user.click(screen.getByRole('button', { name: 'Duplicate occurrence' }))
+    await user.click(screen.getByRole('button', { name: 'Move occurrence down' }))
+    await user.click(screen.getByRole('button', { name: 'Suppress occurrence' }))
+    await user.click(screen.getByRole('button', { name: 'Rename occurrence' }))
+    const nameInput = screen.getByRole('textbox', { name: 'Occurrence name' })
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Fixture right')
+    await user.click(screen.getByRole('button', { name: 'Save occurrence name' }))
+    await user.click(screen.getByRole('button', { name: 'Delete occurrence' }))
 
-		expect(onDuplicateOccurrence).toHaveBeenCalledWith('occurrence_model_one')
-		expect(onMoveOccurrence).toHaveBeenCalledWith('occurrence_model_one', 1)
-		expect(onUpdateOccurrence).toHaveBeenNthCalledWith(1, 'occurrence_model_one', { suppressed: true })
-		expect(onUpdateOccurrence).toHaveBeenNthCalledWith(2, 'occurrence_model_one', { name: 'Fixture right' })
-		expect(onDeleteOccurrence).toHaveBeenCalledWith('occurrence_model_one')
-	})
+    expect(onDuplicateOccurrence).toHaveBeenCalledWith('occurrence_model_one')
+    expect(onMoveOccurrence).toHaveBeenCalledWith('occurrence_model_one', 1)
+    expect(onUpdateOccurrence).toHaveBeenNthCalledWith(1, 'occurrence_model_one', { suppressed: true })
+    expect(onUpdateOccurrence).toHaveBeenNthCalledWith(2, 'occurrence_model_one', { name: 'Fixture right' })
+    expect(onDeleteOccurrence).toHaveBeenCalledWith('occurrence_model_one')
+  })
 
-	it('keeps duplicate display suffixes out of occurrence rename values', async () => {
-		const user = userEvent.setup()
-		render(
-			<ProjectModelTree
-				groups={[{ ...groups[0], displayName: 'Assembly · 2', occurrenceName: 'Assembly' }]}
-				hiddenModelIds={new Set()}
-				isLoading={false}
-				isUploading={false}
-				onSelect={vi.fn()}
-				onToggleVisibility={vi.fn()}
-				previewAssetModelIds={new Set(['occurrence_model_one'])}
-				selectedNodeId="node_model_one"
-				selectedOccurrenceId="occurrence_model_one"
-				uploadError=""
-			/>,
-		)
+  it('keeps duplicate display suffixes out of occurrence rename values', async () => {
+    const user = userEvent.setup()
+    render(
+      <ProjectModelTree
+        groups={[
+          {
+            ...groups[0],
+            displayName: 'Assembly · 2',
+            occurrenceName: 'Assembly',
+          },
+        ]}
+        hiddenModelIds={new Set()}
+        isLoading={false}
+        isUploading={false}
+        onSelect={vi.fn()}
+        onToggleVisibility={vi.fn()}
+        previewAssetModelIds={new Set(['occurrence_model_one'])}
+        selectedNodeId="node_model_one"
+        selectedOccurrenceId="occurrence_model_one"
+        uploadError=""
+      />,
+    )
 
-		await user.click(screen.getByRole('button', { name: 'Rename occurrence' }))
+    await user.click(screen.getByRole('button', { name: 'Rename occurrence' }))
 
-		expect((screen.getByRole('textbox', { name: 'Occurrence name' }) as HTMLInputElement).value).toBe('Assembly')
-	})
+    expect(
+      (
+        screen.getByRole('textbox', {
+          name: 'Occurrence name',
+        }) as HTMLInputElement
+      ).value,
+    ).toBe('Assembly')
+  })
+
+  it('authors nested groups and moves an occurrence between them', async () => {
+    const user = userEvent.setup()
+    const onCreateAssemblyGroup = vi.fn()
+    const onDeleteAssemblyGroup = vi.fn()
+    const onUpdateAssemblyGroup = vi.fn()
+    const onUpdateOccurrence = vi.fn()
+    render(
+      <ProjectModelTree
+        assemblyGroups={[
+          {
+            id: 'grp_power',
+            parent_group_id: '',
+            name: 'Power unit',
+            suppressed: false,
+          },
+          {
+            id: 'grp_reduction',
+            parent_group_id: 'grp_power',
+            name: 'Reduction stage',
+            suppressed: false,
+          },
+          {
+            id: 'grp_empty',
+            parent_group_id: '',
+            name: 'Empty group',
+            suppressed: false,
+          },
+        ]}
+        groups={[{ ...groups[0], parentGroupId: 'grp_reduction' }]}
+        hiddenModelIds={new Set()}
+        isLoading={false}
+        isUploading={false}
+        onCreateAssemblyGroup={onCreateAssemblyGroup}
+        onDeleteAssemblyGroup={onDeleteAssemblyGroup}
+        onSelect={vi.fn()}
+        onToggleVisibility={vi.fn()}
+        onUpdateAssemblyGroup={onUpdateAssemblyGroup}
+        onUpdateOccurrence={onUpdateOccurrence}
+        previewAssetModelIds={new Set(['occurrence_model_one'])}
+        selectedNodeId="node_model_one"
+        selectedOccurrenceId="occurrence_model_one"
+        uploadError=""
+      />,
+    )
+
+    expect(screen.getByTestId('assembly-group-grp_reduction').style.marginLeft).toBe('16px')
+    await user.click(screen.getByRole('button', { name: 'Create subgroup in Power unit' }))
+    await user.click(screen.getByRole('button', { name: 'Suppress Power unit' }))
+    await user.click(screen.getByRole('button', { name: 'Delete Empty group' }))
+    await user.click(screen.getByRole('combobox', { name: 'Assembly group' }))
+    await user.click(await screen.findByRole('option', { name: 'Assembly root' }))
+
+    expect(onCreateAssemblyGroup).toHaveBeenCalledWith('Power unit subgroup', 'grp_power')
+    expect(onUpdateAssemblyGroup).toHaveBeenCalledWith('grp_power', {
+      suppressed: true,
+    })
+    expect(onDeleteAssemblyGroup).toHaveBeenCalledWith('grp_empty')
+    expect(onUpdateOccurrence).toHaveBeenCalledWith('occurrence_model_one', {
+      parent_group_id: '',
+    })
+  })
 })

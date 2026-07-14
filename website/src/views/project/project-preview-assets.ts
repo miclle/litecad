@@ -1,9 +1,9 @@
-import type { CADTransform, ProjectCADDocument, ProjectModel, ProjectModelPreviewArtifact } from 'src/types/project'
+import type { CADAssembly, CADAssemblyOccurrence, CADTransform, ProjectCADDocument, ProjectModel, ProjectModelPreviewArtifact } from 'src/types/project'
 import type { CadKernelMesh, CadKernelMeshSummary, CadKernelOperation } from 'src/cad/kernel-protocol'
 
 export type ProjectPreviewUrlAsset = {
   modelId: string
-	occurrenceId?: string
+  occurrenceId?: string
   name: string
   previewFormat: ProjectModelPreviewArtifact['format']
   previewUrl: string
@@ -12,7 +12,7 @@ export type ProjectPreviewUrlAsset = {
 
 export type ProjectPreviewKernelMeshAsset = {
   modelId: string
-	occurrenceId?: string
+  occurrenceId?: string
   name: string
   previewFormat: 'kernel-mesh'
   mesh: CadKernelMesh
@@ -33,22 +33,29 @@ export type ProjectPreviewSummaryInput = {
 }
 
 export type ProjectModelTreeGroup = {
-	assemblyId: string
-	assemblyName: string
-	assemblyOccurrenceCount?: number
-	occurrenceId: string
-	modelRevisionId: string
-	occurrenceIndex?: number
-	modelOccurrenceCount?: number
-	suppressed?: boolean
-	occurrenceName?: string
+  assemblyId: string
+  assemblyName: string
+  assemblyOccurrenceCount?: number
+  occurrenceId: string
+  modelRevisionId: string
+  occurrenceIndex?: number
+  modelOccurrenceCount?: number
+  suppressed?: boolean
+  effectivelySuppressed?: boolean
+  parentGroupId?: string
+  occurrenceName?: string
   model: ProjectModel
   sourceNodeId: string
   displayName: string
   children: { id: string; name: string; sourceModelId: string }[]
 }
 
-type ProjectPreviewPickTarget = { modelId: string; nodeId: string; name: string; componentIndex?: number }
+type ProjectPreviewPickTarget = {
+  modelId: string
+  nodeId: string
+  name: string
+  componentIndex?: number
+}
 
 export function parsedPreviewModels(models: ProjectModel[]) {
   return models.filter((model) => model.parse_status === 'parsed')
@@ -58,15 +65,15 @@ export function visibleProjectModels(models: ProjectModel[], cadDocument?: Proje
   if (!cadDocument) {
     return models
   }
-	if (cadDocument.assembly) {
-		const modelByID = new Map(models.map((model) => [model.id, model]))
-		return cadDocument.assembly.occurrences.flatMap((occurrence) => {
-			const model = modelByID.get(occurrence.model_id)
-			return model ? [model] : []
-		})
-	}
-	const visibleSourceModelIds = new Set(cadDocument.nodes.filter((node) => node.model_id).map((node) => node.model_id))
-	return models.filter((model) => visibleSourceModelIds.has(model.id))
+  if (cadDocument.assembly) {
+    const modelByID = new Map(models.map((model) => [model.id, model]))
+    return cadDocument.assembly.occurrences.flatMap((occurrence) => {
+      const model = modelByID.get(occurrence.model_id)
+      return model ? [model] : []
+    })
+  }
+  const visibleSourceModelIds = new Set(cadDocument.nodes.filter((node) => node.model_id).map((node) => node.model_id))
+  return models.filter((model) => visibleSourceModelIds.has(model.id))
 }
 
 export function buildProjectModelTree(models: ProjectModel[], cadDocument?: ProjectCADDocument): ProjectModelTreeGroup[] {
@@ -77,53 +84,72 @@ export function buildProjectModelTree(models: ProjectModel[], cadDocument?: Proj
       continue
     }
     const nodes = componentNodesByParentID.get(node.parent_node_id) ?? []
-    nodes.push({ id: node.id, name: node.name.trim(), sourceModelId: node.source_model_id || sourceModelIDByNodeID.get(node.parent_node_id) || node.model_id })
+    nodes.push({
+      id: node.id,
+      name: node.name.trim(),
+      sourceModelId: node.source_model_id || sourceModelIDByNodeID.get(node.parent_node_id) || node.model_id,
+    })
     componentNodesByParentID.set(node.parent_node_id, nodes)
   }
 
-	const modelByID = new Map(models.map((model) => [model.id, model]))
-	const treeEntries = cadDocument?.assembly
-		? cadDocument.assembly.occurrences.flatMap((occurrence, occurrenceIndex) => {
-				const model = modelByID.get(occurrence.model_id)
-				return model ? [{ model, occurrence, occurrenceIndex }] : []
-			})
-		: visibleProjectModels(models, cadDocument).map((model, occurrenceIndex) => ({ model, occurrence: undefined, occurrenceIndex }))
-	const displayNameCounts = new Map<string, number>()
-	const modelOccurrenceCounts = new Map<string, number>()
-	for (const { model, occurrence } of treeEntries) {
-		const name = occurrenceDisplayName(model, occurrence?.name)
-		displayNameCounts.set(name, (displayNameCounts.get(name) ?? 0) + 1)
-		modelOccurrenceCounts.set(model.id, (modelOccurrenceCounts.get(model.id) ?? 0) + 1)
+  const modelByID = new Map(models.map((model) => [model.id, model]))
+  const treeEntries = cadDocument?.assembly
+    ? cadDocument.assembly.occurrences.flatMap((occurrence, occurrenceIndex) => {
+        const model = modelByID.get(occurrence.model_id)
+        return model ? [{ model, occurrence, occurrenceIndex }] : []
+      })
+    : visibleProjectModels(models, cadDocument).map((model, occurrenceIndex) => ({
+        model,
+        occurrence: undefined,
+        occurrenceIndex,
+      }))
+  const displayNameCounts = new Map<string, number>()
+  const modelOccurrenceCounts = new Map<string, number>()
+  for (const { model, occurrence } of treeEntries) {
+    const name = occurrenceDisplayName(model, occurrence?.name)
+    displayNameCounts.set(name, (displayNameCounts.get(name) ?? 0) + 1)
+    modelOccurrenceCounts.set(model.id, (modelOccurrenceCounts.get(model.id) ?? 0) + 1)
   }
   const displayNameIndexes = new Map<string, number>()
 
-	return treeEntries.map(({ model, occurrence, occurrenceIndex }) => {
+  return treeEntries.map(({ model, occurrence, occurrenceIndex }) => {
     const parentNodeID = `node_${model.id}`
     const documentChildren = componentNodesByParentID.get(parentNodeID) ?? []
-    const metadataChildren =
-      cadDocument
-        ? documentChildren
-        : documentChildren.length > 0
+    const metadataChildren = cadDocument
+      ? documentChildren
+      : documentChildren.length > 0
         ? documentChildren
         : (model.metadata.components ?? [])
-            .map((component, index) => ({ id: `node_${model.id}_component_${index + 1}`, name: component.name.trim(), sourceModelId: model.id }))
+            .map((component, index) => ({
+              id: `node_${model.id}_component_${index + 1}`,
+              name: component.name.trim(),
+              sourceModelId: model.id,
+            }))
             .filter((component) => component.name !== '')
 
-		const sourceDisplayName = metadataChildren.length > 1 ? getSourceDisplayName(model) : getModelDisplayName(model)
-		const baseDisplayName = occurrence ? occurrenceDisplayName(model, occurrence.name, sourceDisplayName) : sourceDisplayName
+    const sourceDisplayName = metadataChildren.length > 1 ? getSourceDisplayName(model) : getModelDisplayName(model)
+    const baseDisplayName = occurrence ? occurrenceDisplayName(model, occurrence.name, sourceDisplayName) : sourceDisplayName
     const duplicateIndex = (displayNameIndexes.get(baseDisplayName) ?? 0) + 1
     const duplicateCount = displayNameCounts.get(baseDisplayName) ?? 0
     displayNameIndexes.set(baseDisplayName, duplicateIndex)
 
-		return {
-			assemblyId: cadDocument?.assembly?.id ?? '',
-			assemblyName: cadDocument?.assembly?.name ?? '',
-			...(occurrence ? { assemblyOccurrenceCount: treeEntries.length } : {}),
-			occurrenceId: occurrence?.id ?? '',
-			modelRevisionId: occurrence?.model_revision_id ?? model.current_revision_id,
-			...(occurrence ? { occurrenceIndex, modelOccurrenceCount: modelOccurrenceCounts.get(model.id) ?? 1, suppressed: occurrence.suppressed } : {}),
-			...(occurrence ? { occurrenceName: baseDisplayName } : {}),
-			model,
+    return {
+      assemblyId: cadDocument?.assembly?.id ?? '',
+      assemblyName: cadDocument?.assembly?.name ?? '',
+      ...(occurrence ? { assemblyOccurrenceCount: treeEntries.length } : {}),
+      occurrenceId: occurrence?.id ?? '',
+      modelRevisionId: occurrence?.model_revision_id ?? model.current_revision_id,
+      ...(occurrence
+        ? {
+            occurrenceIndex,
+            modelOccurrenceCount: modelOccurrenceCounts.get(model.id) ?? 1,
+            suppressed: occurrence.suppressed,
+            effectivelySuppressed: isCADAssemblyOccurrenceEffectivelySuppressed(cadDocument?.assembly, occurrence),
+            parentGroupId: occurrence.parent_group_id ?? '',
+          }
+        : {}),
+      ...(occurrence ? { occurrenceName: baseDisplayName } : {}),
+      model,
       sourceNodeId: parentNodeID,
       displayName: duplicateCount > 1 ? `${baseDisplayName} · ${duplicateIndex}` : baseDisplayName,
       children: metadataChildren.length > 1 ? metadataChildren : [],
@@ -135,11 +161,18 @@ export function buildProjectPreviewAssets(
   models: ProjectModel[],
   previewArtifacts: ProjectModelPreviewArtifact[],
   previewUrlsByModelID: Record<string, string>,
-  kernelMeshesByModelID: Record<string, { mesh: CadKernelMesh; componentMeshes?: CadKernelMesh[]; meshSummary: CadKernelMeshSummary }> = {},
+  kernelMeshesByModelID: Record<
+    string,
+    {
+      mesh: CadKernelMesh
+      componentMeshes?: CadKernelMesh[]
+      meshSummary: CadKernelMeshSummary
+    }
+  > = {},
   cadDocument?: ProjectCADDocument,
 ) {
   const artifactByModelID = new Map(previewArtifacts.map((artifact) => [artifact.model_id, artifact]))
-	const transformByModelID = new Map((cadDocument?.nodes ?? []).map((node) => [node.model_id, node.transform]))
+  const transformByModelID = new Map((cadDocument?.nodes ?? []).map((node) => [node.model_id, node.transform]))
   const sourceModelIDByNodeID = buildSourceModelIDByNodeID(cadDocument)
   const componentNodesBySourceModelID = new Map<string, ProjectPreviewPickTarget[]>()
   for (const node of cadDocument?.nodes ?? []) {
@@ -151,36 +184,43 @@ export function buildProjectPreviewAssets(
       continue
     }
     const nodes = componentNodesBySourceModelID.get(sourceModelID) ?? []
-    nodes.push({ modelId: sourceModelID, nodeId: node.id, name: node.name.trim(), componentIndex: componentIndexFromNodeID(node.id) })
+    nodes.push({
+      modelId: sourceModelID,
+      nodeId: node.id,
+      name: node.name.trim(),
+      componentIndex: componentIndexFromNodeID(node.id),
+    })
     componentNodesBySourceModelID.set(sourceModelID, nodes)
   }
 
-	const modelByID = new Map(models.map((model) => [model.id, model]))
-	const previewEntries = cadDocument?.assembly
-		? cadDocument.assembly.occurrences.flatMap((occurrence) => {
-				const model = modelByID.get(occurrence.model_id)
-				return model && !occurrence.suppressed ? [{ model, occurrence }] : []
-			})
-		: visibleProjectModels(models, cadDocument).map((model) => ({ model, occurrence: undefined }))
+  const modelByID = new Map(models.map((model) => [model.id, model]))
+  const previewEntries = cadDocument?.assembly
+    ? cadDocument.assembly.occurrences.flatMap((occurrence) => {
+        const model = modelByID.get(occurrence.model_id)
+        return model && !isCADAssemblyOccurrenceEffectivelySuppressed(cadDocument.assembly, occurrence) ? [{ model, occurrence }] : []
+      })
+    : visibleProjectModels(models, cadDocument).map((model) => ({
+        model,
+        occurrence: undefined,
+      }))
 
-	return previewEntries.flatMap(({ model, occurrence }): ProjectPreviewAsset[] => {
+  return previewEntries.flatMap(({ model, occurrence }): ProjectPreviewAsset[] => {
     const kernelMesh = model.format === 'step' || model.format === 'lcad' ? kernelMeshesByModelID[model.id] : undefined
-		const transform = occurrence?.transform ?? transformByModelID.get(model.id)
-		const name = occurrenceDisplayName(model, occurrence?.name)
+    const transform = occurrence?.transform ?? transformByModelID.get(model.id)
+    const name = occurrenceDisplayName(model, occurrence?.name)
     if (kernelMesh) {
       const geometrySignature = cadKernelGeometryOperationSignature(cadDocument, model.id)
-      const pickTargetsWithIndex =
-        cadDocument
-          ? (componentNodesBySourceModelID.get(model.id) ?? [])
-          : (componentNodesBySourceModelID.get(model.id) ??
-            (model.metadata.components ?? [])
-              .map((component, index) => ({
-                modelId: model.id,
-                nodeId: `node_${model.id}_component_${index + 1}`,
-                name: component.name.trim(),
-                componentIndex: index,
-              }))
-              .filter((component) => component.name !== ''))
+      const pickTargetsWithIndex = cadDocument
+        ? (componentNodesBySourceModelID.get(model.id) ?? [])
+        : (componentNodesBySourceModelID.get(model.id) ??
+          (model.metadata.components ?? [])
+            .map((component, index) => ({
+              modelId: model.id,
+              nodeId: `node_${model.id}_component_${index + 1}`,
+              name: component.name.trim(),
+              componentIndex: index,
+            }))
+            .filter((component) => component.name !== ''))
       const filteredComponentMeshes =
         kernelMesh.componentMeshes && pickTargetsWithIndex.length > 0
           ? pickTargetsWithIndex
@@ -191,15 +231,15 @@ export function buildProjectPreviewAssets(
       return [
         {
           modelId: model.id,
-					...(occurrence ? { occurrenceId: occurrence.id } : {}),
-					name,
+          ...(occurrence ? { occurrenceId: occurrence.id } : {}),
+          name,
           previewFormat: 'kernel-mesh',
           mesh: kernelMesh.mesh,
           meshSummary: kernelMesh.meshSummary,
           ...(geometrySignature ? { geometrySignature } : {}),
           ...(pickTargets.length > 1 || filteredComponentMeshes?.length ? { pickTargets } : {}),
           ...(filteredComponentMeshes?.length ? { componentMeshes: filteredComponentMeshes } : kernelMesh.componentMeshes ? {} : {}),
-					...(transform ? { transform } : {}),
+          ...(transform ? { transform } : {}),
         },
       ]
     }
@@ -212,14 +252,35 @@ export function buildProjectPreviewAssets(
     return [
       {
         modelId: model.id,
-				...(occurrence ? { occurrenceId: occurrence.id } : {}),
-				name,
+        ...(occurrence ? { occurrenceId: occurrence.id } : {}),
+        name,
         previewFormat: artifact.format,
         previewUrl,
         transform,
       },
     ]
   })
+}
+
+export function isCADAssemblyOccurrenceEffectivelySuppressed(assembly: CADAssembly | undefined, occurrence: CADAssemblyOccurrence) {
+  if (occurrence.suppressed) {
+    return true
+  }
+  const groupByID = new Map((assembly?.groups ?? []).map((group) => [group.id, group]))
+  const visited = new Set<string>()
+  let groupID = occurrence.parent_group_id ?? ''
+  while (groupID) {
+    if (visited.has(groupID)) {
+      return true
+    }
+    visited.add(groupID)
+    const group = groupByID.get(groupID)
+    if (!group || group.suppressed) {
+      return true
+    }
+    groupID = group.parent_group_id
+  }
+  return false
 }
 
 function buildSourceModelIDByNodeID(cadDocument: ProjectCADDocument | undefined) {
@@ -236,9 +297,7 @@ function componentIndexFromNodeID(nodeID: string) {
 }
 
 export function projectPreviewAssetSignature(assets: readonly ProjectPreviewAsset[]) {
-  return assets
-    .map(projectPreviewAssetContentSignature)
-    .join('|')
+  return assets.map(projectPreviewAssetContentSignature).join('|')
 }
 
 export function projectPreviewSceneSignature(assets: readonly ProjectPreviewAsset[]) {
@@ -249,9 +308,9 @@ export function projectPreviewSceneSignature(assets: readonly ProjectPreviewAsse
         const pickTargetSignature = asset.pickTargets
           ? `:${asset.pickTargets.map((target) => `${target.modelId}/${target.nodeId}/${target.name}`).join(',')}`
           : ''
-				return `${projectPreviewAssetIdentityPrefix(asset)}${asset.previewFormat}:${asset.name}${geometrySignature}:${asset.componentMeshes?.length ?? 0}${pickTargetSignature}`
+        return `${projectPreviewAssetIdentityPrefix(asset)}${asset.previewFormat}:${asset.name}${geometrySignature}:${asset.componentMeshes?.length ?? 0}${pickTargetSignature}`
       }
-			return `${projectPreviewAssetIdentityPrefix(asset)}${asset.previewFormat}:${asset.previewUrl}`
+      return `${projectPreviewAssetIdentityPrefix(asset)}${asset.previewFormat}:${asset.previewUrl}`
     })
     .join('|')
 }
@@ -261,22 +320,22 @@ export function projectPreviewAssetContentSignature(asset: ProjectPreviewAsset) 
     const geometrySignature = asset.geometrySignature ? `:${asset.geometrySignature}` : ''
     const componentMeshSignature = asset.componentMeshes?.length ? `:${asset.componentMeshes.map(cadKernelMeshContentSignature).join(',')}` : ''
     const pickTargetSignature = asset.pickTargets ? `:${asset.pickTargets.map((target) => `${target.modelId}/${target.nodeId}/${target.name}`).join(',')}` : ''
-		return `${projectPreviewAssetIdentityPrefix(asset)}${asset.previewFormat}:${cadKernelMeshContentSignature(asset.mesh)}${geometrySignature}${componentMeshSignature}${pickTargetSignature}`
+    return `${projectPreviewAssetIdentityPrefix(asset)}${asset.previewFormat}:${cadKernelMeshContentSignature(asset.mesh)}${geometrySignature}${componentMeshSignature}${pickTargetSignature}`
   }
-	return `${projectPreviewAssetIdentityPrefix(asset)}${asset.previewFormat}:${asset.previewUrl}`
+  return `${projectPreviewAssetIdentityPrefix(asset)}${asset.previewFormat}:${asset.previewUrl}`
 }
 
 export function projectPreviewAssetId(asset: ProjectPreviewAsset) {
-	return asset.occurrenceId || asset.modelId
+  return asset.occurrenceId || asset.modelId
 }
 
 function projectPreviewAssetIdentityPrefix(asset: ProjectPreviewAsset) {
-	return asset.occurrenceId ? `${asset.occurrenceId}:${asset.modelId}:` : `${asset.modelId}:`
+  return asset.occurrenceId ? `${asset.occurrenceId}:${asset.modelId}:` : `${asset.modelId}:`
 }
 
 function occurrenceDisplayName(model: ProjectModel, occurrenceName?: string, defaultDisplayName = getModelDisplayName(model)) {
-	const name = occurrenceName?.trim()
-	return !name || name === model.original_filename ? defaultDisplayName : name
+  const name = occurrenceName?.trim()
+  return !name || name === model.original_filename ? defaultDisplayName : name
 }
 
 function cadKernelMeshContentSignature(mesh: CadKernelMesh) {
@@ -322,8 +381,7 @@ export function cadKernelOperationsForModel(cadDocument: ProjectCADDocument | un
       continue
     }
     if (operation.type === 'transform' && operation.transform) {
-      const isSourceTransform =
-        !operation.node_id || (sourceNodeIDs.size > 0 ? sourceNodeIDs.has(operation.node_id) : operation.node_id === `node_${modelId}`)
+      const isSourceTransform = !operation.node_id || (sourceNodeIDs.size > 0 ? sourceNodeIDs.has(operation.node_id) : operation.node_id === `node_${modelId}`)
       if (isSourceTransform) {
         latestTransform = {
           id: operation.id,
@@ -359,21 +417,36 @@ export function getSourceDisplayName(model: ProjectModel) {
   return model.original_filename.replace(/\.[^.]+$/, '')
 }
 
-export function projectPreviewSummary({ modelCount, previewAssetCount, latestPreviewFormat = '', t = defaultProjectPreviewSummaryTranslator }: ProjectPreviewSummaryInput) {
+export function projectPreviewSummary({
+  modelCount,
+  previewAssetCount,
+  latestPreviewFormat = '',
+  t = defaultProjectPreviewSummaryTranslator,
+}: ProjectPreviewSummaryInput) {
   const isReady = previewAssetCount > 0
-  const meshWord = t('project.previewSummary.meshWord', { count: previewAssetCount })
+  const meshWord = t('project.previewSummary.meshWord', {
+    count: previewAssetCount,
+  })
   const previewFormat = latestPreviewFormat ? latestPreviewFormat.toUpperCase() : t('project.previewSummary.previewFormat')
 
   return {
     isReady,
     previewLabel: isReady
-      ? t('project.previewSummary.meshCount', { count: previewAssetCount, format: previewFormat })
+      ? t('project.previewSummary.meshCount', {
+          count: previewAssetCount,
+          format: previewFormat,
+        })
       : modelCount > 0
         ? t('project.previewSummary.preparing')
         : t('project.previewSummary.empty'),
     sourceLabel: modelCount > 0 ? t('project.previewSummary.sourceStored', { count: modelCount }) : t('project.previewSummary.awaitingImport'),
     sourceBody: isReady
-      ? t('project.previewSummary.readyBody', { count: modelCount, modelCount, previewAssetCount, meshWord })
+      ? t('project.previewSummary.readyBody', {
+          count: modelCount,
+          modelCount,
+          previewAssetCount,
+          meshWord,
+        })
       : modelCount > 0
         ? t('project.previewSummary.pendingBody', { count: modelCount })
         : t('project.previewSummary.emptyBody'),

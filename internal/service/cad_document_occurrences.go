@@ -22,6 +22,7 @@ type UpdateProjectCADOccurrenceInput struct {
 	ProjectID        string
 	OccurrenceID     string
 	Name             *string
+	ParentGroupID    *string
 	Suppressed       *bool
 	Transform        *CADTransform
 	ExpectedRevision int
@@ -72,7 +73,7 @@ func (s *Service) UpdateProjectCADOccurrence(ctx context.Context, input UpdatePr
 	if err != nil {
 		return ProjectCADDocument{}, err
 	}
-	if input.Name == nil && input.Suppressed == nil && input.Transform == nil {
+	if input.Name == nil && input.ParentGroupID == nil && input.Suppressed == nil && input.Transform == nil {
 		return ProjectCADDocument{}, ErrInvalidCADDocumentInput
 	}
 	if input.Name != nil && (strings.TrimSpace(*input.Name) == "" || len(strings.TrimSpace(*input.Name)) > 200) {
@@ -91,6 +92,9 @@ func (s *Service) UpdateProjectCADOccurrence(ctx context.Context, input UpdatePr
 		if input.Name != nil {
 			after.Name = strings.TrimSpace(*input.Name)
 		}
+		if input.ParentGroupID != nil {
+			after.ParentGroupID = strings.TrimSpace(*input.ParentGroupID)
+		}
 		if input.Suppressed != nil {
 			after.Suppressed = *input.Suppressed
 		}
@@ -101,6 +105,9 @@ func (s *Service) UpdateProjectCADOccurrence(ctx context.Context, input UpdatePr
 			return ErrInvalidCADDocumentInput
 		}
 		state.Assembly.Occurrences[index] = after
+		if err := validateCADAssembly(state.Assembly); err != nil {
+			return err
+		}
 		_, err = appendProjectCADHistoryEntry(ctx, tx, document, "occurrence-update", after.ID, "Update "+after.Name, cadOccurrenceUpdateHistoryCommand{
 			Before: before, After: after,
 		})
@@ -152,6 +159,11 @@ func (s *Service) DeleteProjectCADOccurrence(ctx context.Context, input DeletePr
 		if modelOccurrenceCount <= 1 {
 			return ErrInvalidCADDocumentInput
 		}
+		for _, constraint := range state.Assembly.Constraints {
+			if constraint.FirstOccurrenceID == occurrence.ID || constraint.SecondOccurrenceID == occurrence.ID {
+				return ErrInvalidCADDocumentInput
+			}
+		}
 		state.Assembly.Occurrences = append(state.Assembly.Occurrences[:index], state.Assembly.Occurrences[index+1:]...)
 		_, err = appendProjectCADHistoryEntry(ctx, tx, document, "occurrence-delete", occurrence.ID, "Delete "+occurrence.Name, cadOccurrenceDeleteHistoryCommand{
 			Occurrence: occurrence, Index: index,
@@ -186,6 +198,9 @@ func (s *Service) mutateCADOccurrence(
 			return ErrCADDocumentConflict
 		}
 		if err := mutate(tx, &document, &state); err != nil {
+			return err
+		}
+		if err := validateCADAssembly(state.Assembly); err != nil {
 			return err
 		}
 		if err := persistProjectCADDocumentEntity(ctx, tx, &document, state); err != nil {

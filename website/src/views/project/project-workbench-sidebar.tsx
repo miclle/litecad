@@ -3,8 +3,13 @@ import { Box, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
-import type { ProjectModelRevision, ProjectParametricArtifact } from 'src/types/project'
-import type { UpdateCADAssemblyOccurrencePayload } from 'src/types/project'
+import type {
+  CADAssemblyGroup,
+  ProjectModelRevision,
+  ProjectParametricArtifact,
+  UpdateCADAssemblyGroupPayload,
+  UpdateCADAssemblyOccurrencePayload,
+} from 'src/types/project'
 import type { CADTranslation } from './cad-document-transforms'
 import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { ProjectInspector, type InspectorDetail, type ProjectInspectorSelection } from './project-inspector'
@@ -12,6 +17,7 @@ import { ProjectModelTree } from './project-model-tree'
 import type { ProjectModelTreeGroup } from './project-preview-assets'
 
 type ProjectWorkbenchSidebarProps = {
+  assemblyGroups?: CADAssemblyGroup[]
   documentDetails: InspectorDetail[]
   hiddenModelIds: ReadonlySet<string>
   inspectorSelection?: ProjectInspectorSelection
@@ -24,6 +30,8 @@ type ProjectWorkbenchSidebarProps = {
   modelCount: number
   onCollapseChange: (isCollapsed: boolean) => void
 	onDeleteOccurrence?: (occurrenceId: string) => void
+	onCreateAssemblyGroup?: (name: string, parentGroupId: string) => void
+	onDeleteAssemblyGroup?: (groupId: string) => void
 	onDuplicateOccurrence?: (occurrenceId: string) => void
 	onMoveOccurrence?: (occurrenceId: string, targetIndex: number) => void
 	onModelSelect: (modelId: string, nodeId: string, occurrenceId?: string) => void
@@ -34,6 +42,7 @@ type ProjectWorkbenchSidebarProps = {
   onSaveModelParameters: (modelId: string, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onRestoreModelRevision?: (modelId: string, revisionId: string) => void
   onToggleModelVisibility: (modelId: string) => void
+  onUpdateAssemblyGroup?: (groupId: string, payload: UpdateCADAssemblyGroupPayload) => void
   onUpdateOccurrence?: (occurrenceId: string, payload: UpdateCADAssemblyOccurrencePayload) => void
 	occurrenceError?: string
   onTransformChange: (nodeId: string, axis: keyof CADTranslation, value: string) => void
@@ -53,6 +62,7 @@ type ProjectWorkbenchSidebarProps = {
 
 // ProjectWorkbenchSidebar renders the controlled left workbench slot while route state stays in ProjectView.
 export function ProjectWorkbenchSidebar({
+  assemblyGroups = [],
   documentDetails,
   hiddenModelIds,
   inspectorSelection,
@@ -65,6 +75,8 @@ export function ProjectWorkbenchSidebar({
   modelCount,
   onCollapseChange,
 	onDeleteOccurrence,
+	onCreateAssemblyGroup,
+	onDeleteAssemblyGroup,
 	onDuplicateOccurrence,
 	onMoveOccurrence,
   onModelSelect,
@@ -75,6 +87,7 @@ export function ProjectWorkbenchSidebar({
   onSaveModelParameters,
   onRestoreModelRevision,
   onToggleModelVisibility,
+  onUpdateAssemblyGroup,
   onUpdateOccurrence,
 	occurrenceError,
   onTransformChange,
@@ -135,6 +148,7 @@ export function ProjectWorkbenchSidebar({
 
           <div className="flex min-h-full flex-col">
             <ProjectModelTree
+              assemblyGroups={assemblyGroups}
               groups={projectModelTree}
               headerAction={
                 <button
@@ -151,11 +165,14 @@ export function ProjectWorkbenchSidebar({
               isLoading={isModelTreeLoading}
               isUploading={isUploading}
 						isOccurrenceMutationPending={isOccurrenceMutationPending}
+						onCreateAssemblyGroup={onCreateAssemblyGroup}
+						onDeleteAssemblyGroup={onDeleteAssemblyGroup}
 						onDeleteOccurrence={onDeleteOccurrence}
 						onDuplicateOccurrence={onDuplicateOccurrence}
 						onMoveOccurrence={onMoveOccurrence}
               onSelect={onModelSelect}
               onToggleVisibility={onToggleModelVisibility}
+              onUpdateAssemblyGroup={onUpdateAssemblyGroup}
               onUpdateOccurrence={onUpdateOccurrence}
 						occurrenceError={occurrenceError}
               previewAssetModelIds={previewAssetModelIds}

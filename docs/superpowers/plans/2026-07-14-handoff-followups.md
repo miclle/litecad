@@ -318,13 +318,15 @@ Commit message: `docs(cad): decide openscad browser runtime`
 ### Phase 5: Nested Assembly, Mate, Constraint, And Hierarchical Suppression Semantics
 
 **Files:**
-- Add a schema/version plan for nested assembly nodes, occurrence parenting, hierarchical suppression, and mate/constraint records.
-- Implement the smallest end-to-end nested assembly slice: nested occurrence grouping, hierarchical suppression propagation, API validation, tree UI display, preview filtering, export filtering, Undo/Redo, and reload.
-- Keep mate/constraint solving behind explicit validated records until there is a solver-backed behavior; do not fake geometric solving.
-- Extend Playwright for nested group suppression and export exclusion.
-- Update docs and commit `feat(cad): add nested assembly grouping`.
+- [x] Add a schema/version plan for nested assembly nodes, occurrence parenting, hierarchical suppression, and mate/constraint records.
+- [x] Implement the smallest end-to-end nested assembly slice: nested occurrence grouping, hierarchical suppression propagation, API validation, tree UI display, preview filtering, export filtering, Undo/Redo, and reload.
+- [x] Keep mate/constraint solving behind explicit validated records until there is a solver-backed behavior; do not fake geometric solving.
+- [x] Extend Playwright for nested group suppression and export exclusion.
+- [x] Update docs and commit `feat(cad): add nested assembly grouping`.
 
 **Boundary:** This phase completes the handoff item by establishing real nested assembly semantics and a documented mate/constraint boundary. Constraint solving is only shipped when backed by code and tests.
+
+**Completion note (2026-07-14):** Schema v3 nested organizational groups, occurrence parent bindings, hierarchical suppression, validated unresolved mate records, reversible History, workbench tree authoring, preview/export filtering, deterministic Playwright coverage, full gates, and in-app browser verification are complete. `docs/nested-assembly-semantics.md` records the no-solver boundary.
 
 ### Phase 6: Richer Measurement And Durable Section Geometry
 

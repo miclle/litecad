@@ -42,21 +42,23 @@ const cadDocument = {
   revision: 7,
   history: { head_id: 'hist_07test', can_undo: true, can_redo: false },
   unit: 'millimetre',
-	assembly: {
-		id: 'assembly_prj_01test',
-		name: 'Test assembly',
-		occurrences: [
-			{
-				id: 'occurrence_mdl_step',
-				node_id: 'node_mdl_step',
-				model_id: 'mdl_step',
-					model_revision_id: 'mvr_base',
-					name: 'bracket.step',
-					suppressed: false,
-					transform: { matrix: [1, 0, 0, 24, 0, 1, 0, -6, 0, 0, 1, 3, 0, 0, 0, 1] },
-			},
-		],
-	},
+  assembly: {
+    id: 'assembly_prj_01test',
+    name: 'Test assembly',
+    occurrences: [
+      {
+        id: 'occurrence_mdl_step',
+        node_id: 'node_mdl_step',
+        model_id: 'mdl_step',
+        model_revision_id: 'mvr_base',
+        name: 'bracket.step',
+        suppressed: false,
+        transform: {
+          matrix: [1, 0, 0, 24, 0, 1, 0, -6, 0, 0, 1, 3, 0, 0, 0, 1],
+        },
+      },
+    ],
+  },
   nodes: [
     {
       id: 'node_mdl_step',
@@ -125,21 +127,23 @@ describe('project STEP export helpers', () => {
     } satisfies ProjectModel
     const exportDocument = {
       ...cadDocument,
-		assembly: {
-			...cadDocument.assembly,
-			occurrences: [
-				...cadDocument.assembly.occurrences,
-				{
-					id: 'occurrence_mdl_lcad',
-					node_id: 'node_mdl_lcad',
-					model_id: 'mdl_lcad',
-						model_revision_id: 'mvr_base',
-						name: 'feature-dsl-bracket-litecad.lcad.json',
-						suppressed: false,
-						transform: { matrix: [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
-				},
-			],
-		},
+      assembly: {
+        ...cadDocument.assembly,
+        occurrences: [
+          ...cadDocument.assembly.occurrences,
+          {
+            id: 'occurrence_mdl_lcad',
+            node_id: 'node_mdl_lcad',
+            model_id: 'mdl_lcad',
+            model_revision_id: 'mvr_base',
+            name: 'feature-dsl-bracket-litecad.lcad.json',
+            suppressed: false,
+            transform: {
+              matrix: [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            },
+          },
+        ],
+      },
       nodes: [
         ...cadDocument.nodes,
         {
@@ -156,9 +160,9 @@ describe('project STEP export helpers', () => {
 
     expect(buildStepExportTargets([stepModel, lcadModel, stlModel], exportDocument)).toEqual([
       {
-		occurrenceId: 'occurrence_mdl_step',
+        occurrenceId: 'occurrence_mdl_step',
         modelId: 'mdl_step',
-		modelRevisionId: 'mvr_base',
+        modelRevisionId: 'mvr_base',
         sourceFormat: 'step',
         displayName: 'Mount bracket',
         sourceFilename: 'bracket.step',
@@ -171,30 +175,30 @@ describe('project STEP export helpers', () => {
             box: { origin: [10, 0, 0], size: [5, 5, 5] },
           },
           {
-			id: 'occurrence_mdl_step_placement',
+            id: 'occurrence_mdl_step_placement',
             type: 'transform',
             modelId: 'mdl_step',
-			matrix: [1, 0, 0, 24, 0, 1, 0, -6, 0, 0, 1, 3, 0, 0, 0, 1],
+            matrix: [1, 0, 0, 24, 0, 1, 0, -6, 0, 0, 1, 3, 0, 0, 0, 1],
           },
         ],
       },
       {
-		occurrenceId: 'occurrence_mdl_lcad',
+        occurrenceId: 'occurrence_mdl_lcad',
         modelId: 'mdl_lcad',
-		modelRevisionId: 'mvr_base',
+        modelRevisionId: 'mvr_base',
         sourceFormat: 'lcad',
         displayName: 'Feature DSL bracket',
         sourceFilename: 'feature-dsl-bracket-litecad.lcad.json',
         downloadFilename: 'feature-dsl-bracket-litecad.lcad-litecad-r7.step',
         parameterValues: { width: 96 },
-		operations: [
-			{
-				id: 'occurrence_mdl_lcad_placement',
-				type: 'transform',
-				modelId: 'mdl_lcad',
-				matrix: [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-			},
-		],
+        operations: [
+          {
+            id: 'occurrence_mdl_lcad_placement',
+            type: 'transform',
+            modelId: 'mdl_lcad',
+            matrix: [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+          },
+        ],
       },
     ])
   })
@@ -212,20 +216,22 @@ describe('project STEP export helpers', () => {
     } satisfies ProjectModel
     const document = {
       ...cadDocument,
-		assembly: {
-			...cadDocument.assembly,
-			occurrences: [
-				{
-					id: 'occurrence_mdl_retained',
-					node_id: 'node_mdl_retained',
-					model_id: 'mdl_retained',
-						model_revision_id: 'mvr_base',
-						name: 'retained.step',
-						suppressed: false,
-						transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
-				},
-			],
-		},
+      assembly: {
+        ...cadDocument.assembly,
+        occurrences: [
+          {
+            id: 'occurrence_mdl_retained',
+            node_id: 'node_mdl_retained',
+            model_id: 'mdl_retained',
+            model_revision_id: 'mvr_base',
+            name: 'retained.step',
+            suppressed: false,
+            transform: {
+              matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            },
+          },
+        ],
+      },
       nodes: [
         {
           id: 'node_mdl_retained',
@@ -251,56 +257,108 @@ describe('project STEP export helpers', () => {
     expect(buildStepExportTargets([retainedModel, deletedModel], document).map((target) => target.modelId)).toEqual(['mdl_retained'])
   })
 
-	test('exports repeated occurrences in assembly order and omits suppressed instances', () => {
-		const model = {
-			...baseModel,
-			id: 'mdl_fixture',
-			original_filename: 'fixture.step',
-		} satisfies ProjectModel
-		const leftTransform = { matrix: [1, 0, 0, -25, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }
-		const rightTransform = { matrix: [1, 0, 0, 25, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }
-		const document = {
-			...cadDocument,
-			assembly: {
-				...cadDocument.assembly,
-				occurrences: [
-					{
-						id: 'occ_left', node_id: 'node_mdl_fixture', model_id: model.id, model_revision_id: 'mvr_left',
-						name: 'Fixture left', suppressed: false, transform: leftTransform,
-					},
-					{
-						id: 'occ_right', node_id: 'node_mdl_fixture', model_id: model.id, model_revision_id: 'mvr_right',
-						name: 'Fixture right', suppressed: false, transform: rightTransform,
-					},
-				],
-			},
-		} satisfies ProjectCADDocument
+  test('exports repeated occurrences in assembly order and omits suppressed instances', () => {
+    const model = {
+      ...baseModel,
+      id: 'mdl_fixture',
+      original_filename: 'fixture.step',
+    } satisfies ProjectModel
+    const leftTransform = {
+      matrix: [1, 0, 0, -25, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    }
+    const rightTransform = {
+      matrix: [1, 0, 0, 25, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    }
+    const document = {
+      ...cadDocument,
+      assembly: {
+        ...cadDocument.assembly,
+        occurrences: [
+          {
+            id: 'occ_left',
+            node_id: 'node_mdl_fixture',
+            model_id: model.id,
+            model_revision_id: 'mvr_left',
+            name: 'Fixture left',
+            suppressed: false,
+            transform: leftTransform,
+          },
+          {
+            id: 'occ_right',
+            node_id: 'node_mdl_fixture',
+            model_id: model.id,
+            model_revision_id: 'mvr_right',
+            name: 'Fixture right',
+            suppressed: false,
+            transform: rightTransform,
+          },
+        ],
+      },
+    } satisfies ProjectCADDocument
 
-		expect(buildStepExportTargets([model], document).map((target) => ({
-			id: target.occurrenceId,
-			name: target.displayName,
-			filename: target.downloadFilename,
-			placement: target.operations.at(-1),
-		}))).toEqual([
-			{
-				id: 'occ_left', name: 'Fixture left', filename: 'Fixture left-litecad-r7.step',
-				placement: { id: 'occ_left_placement', type: 'transform', modelId: model.id, matrix: leftTransform.matrix },
-			},
-			{
-				id: 'occ_right', name: 'Fixture right', filename: 'Fixture right-litecad-r7.step',
-				placement: { id: 'occ_right_placement', type: 'transform', modelId: model.id, matrix: rightTransform.matrix },
-			},
-		])
+    expect(
+      buildStepExportTargets([model], document).map((target) => ({
+        id: target.occurrenceId,
+        name: target.displayName,
+        filename: target.downloadFilename,
+        placement: target.operations.at(-1),
+      })),
+    ).toEqual([
+      {
+        id: 'occ_left',
+        name: 'Fixture left',
+        filename: 'Fixture left-litecad-r7.step',
+        placement: {
+          id: 'occ_left_placement',
+          type: 'transform',
+          modelId: model.id,
+          matrix: leftTransform.matrix,
+        },
+      },
+      {
+        id: 'occ_right',
+        name: 'Fixture right',
+        filename: 'Fixture right-litecad-r7.step',
+        placement: {
+          id: 'occ_right_placement',
+          type: 'transform',
+          modelId: model.id,
+          matrix: rightTransform.matrix,
+        },
+      },
+    ])
 
-		const suppressedDocument: ProjectCADDocument = {
-			...document,
-			assembly: {
-				...document.assembly,
-				occurrences: document.assembly.occurrences.map((occurrence, index) => index === 1 ? { ...occurrence, suppressed: true } : occurrence),
-			},
-		}
-		expect(buildStepExportTargets([model], suppressedDocument).map((target) => target.occurrenceId)).toEqual(['occ_left'])
-	})
+    const suppressedDocument: ProjectCADDocument = {
+      ...document,
+      assembly: {
+        ...document.assembly,
+        occurrences: document.assembly.occurrences.map((occurrence, index) => (index === 1 ? { ...occurrence, suppressed: true } : occurrence)),
+      },
+    }
+    expect(buildStepExportTargets([model], suppressedDocument).map((target) => target.occurrenceId)).toEqual(['occ_left'])
+
+    const groupSuppressedDocument: ProjectCADDocument = {
+      ...document,
+      schema_version: 3,
+      assembly: {
+        ...document.assembly,
+        groups: [
+          {
+            id: 'grp_fixture',
+            parent_group_id: '',
+            name: 'Fixture group',
+            suppressed: true,
+          },
+        ],
+        constraints: [],
+        occurrences: document.assembly.occurrences.map((occurrence, index) => ({
+          ...occurrence,
+          parent_group_id: index === 0 ? 'grp_fixture' : '',
+        })),
+      },
+    }
+    expect(buildStepExportTargets([model], groupSuppressedDocument).map((target) => target.occurrenceId)).toEqual(['occ_right'])
+  })
 
   test('sanitizes exported STEP filenames while preserving the source base name', () => {
     expect(stepExportFilename('gear:alpha.stp', 12)).toBe('gear-alpha-litecad-r12.step')
@@ -315,9 +373,9 @@ describe('project STEP export helpers', () => {
   test('builds default and filtered export selections', () => {
     const targets = [
       {
-		occurrenceId: 'occurrence_mdl_a',
+        occurrenceId: 'occurrence_mdl_a',
         modelId: 'mdl_a',
-		modelRevisionId: 'mvr_a',
+        modelRevisionId: 'mvr_a',
         sourceFormat: 'step',
         displayName: 'A',
         sourceFilename: 'a.step',
@@ -325,9 +383,9 @@ describe('project STEP export helpers', () => {
         operations: [],
       },
       {
-		occurrenceId: 'occurrence_mdl_b',
+        occurrenceId: 'occurrence_mdl_b',
         modelId: 'mdl_b',
-		modelRevisionId: 'mvr_b',
+        modelRevisionId: 'mvr_b',
         sourceFormat: 'step',
         displayName: 'B',
         sourceFilename: 'b.step',
@@ -336,8 +394,8 @@ describe('project STEP export helpers', () => {
       },
     ] satisfies StepExportTarget[]
 
-		expect([...defaultSelectedStepExportTargetIDs(targets)]).toEqual(['occurrence_mdl_a', 'occurrence_mdl_b'])
-		expect(selectedStepExportTargets(targets, new Set(['occurrence_mdl_b']))).toEqual([targets[1]])
+    expect([...defaultSelectedStepExportTargetIDs(targets)]).toEqual(['occurrence_mdl_a', 'occurrence_mdl_b'])
+    expect(selectedStepExportTargets(targets, new Set(['occurrence_mdl_b']))).toEqual([targets[1]])
   })
 
   test('creates a browser-downloadable STEP blob', async () => {

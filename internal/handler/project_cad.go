@@ -30,7 +30,29 @@ type updateProjectCADOccurrenceRequest struct {
 	Name             *string               `json:"name"`
 	Suppressed       *bool                 `json:"suppressed"`
 	Transform        *service.CADTransform `json:"transform"`
+	ParentGroupID    *string               `json:"parent_group_id"`
 	ExpectedRevision int                   `json:"expected_revision" binding:"required,min=1"`
+}
+
+type createProjectCADAssemblyGroupRequest struct {
+	Name             string `json:"name" binding:"required"`
+	ParentGroupID    string `json:"parent_group_id"`
+	ExpectedRevision int    `json:"expected_revision" binding:"required,min=1"`
+}
+
+type updateProjectCADAssemblyGroupRequest struct {
+	Name             *string `json:"name"`
+	ParentGroupID    *string `json:"parent_group_id"`
+	Suppressed       *bool   `json:"suppressed"`
+	ExpectedRevision int     `json:"expected_revision" binding:"required,min=1"`
+}
+
+type createProjectCADAssemblyConstraintRequest struct {
+	Name               string `json:"name" binding:"required"`
+	Kind               string `json:"kind" binding:"required"`
+	FirstOccurrenceID  string `json:"first_occurrence_id" binding:"required"`
+	SecondOccurrenceID string `json:"second_occurrence_id" binding:"required"`
+	ExpectedRevision   int    `json:"expected_revision" binding:"required,min=1"`
 }
 
 type moveProjectCADOccurrenceRequest struct {
@@ -79,7 +101,86 @@ func (ctrl *Ctrl) UpdateProjectCADOccurrence(c *fox.Context, req *updateProjectC
 	}
 	document, err := ctrl.service.UpdateProjectCADOccurrence(c.Request.Context(), service.UpdateProjectCADOccurrenceInput{
 		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), OccurrenceID: c.Param("occurrenceID"),
-		Name: req.Name, Suppressed: req.Suppressed, Transform: req.Transform, ExpectedRevision: req.ExpectedRevision,
+		Name: req.Name, Suppressed: req.Suppressed, Transform: req.Transform, ParentGroupID: req.ParentGroupID,
+		ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// CreateProjectCADAssemblyGroup adds an organizational node to the assembly tree.
+func (ctrl *Ctrl) CreateProjectCADAssemblyGroup(c *fox.Context, req *createProjectCADAssemblyGroupRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.CreateProjectCADAssemblyGroup(c.Request.Context(), service.CreateProjectCADAssemblyGroupInput{
+		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), Name: req.Name,
+		ParentGroupID: req.ParentGroupID, ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// UpdateProjectCADAssemblyGroup updates group naming, nesting, or suppression.
+func (ctrl *Ctrl) UpdateProjectCADAssemblyGroup(c *fox.Context, req *updateProjectCADAssemblyGroupRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.UpdateProjectCADAssemblyGroup(c.Request.Context(), service.UpdateProjectCADAssemblyGroupInput{
+		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), GroupID: c.Param("groupID"), Name: req.Name,
+		ParentGroupID: req.ParentGroupID, Suppressed: req.Suppressed, ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// DeleteProjectCADAssemblyGroup removes an empty assembly group.
+func (ctrl *Ctrl) DeleteProjectCADAssemblyGroup(c *fox.Context, req *modifyProjectCADHistoryRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.DeleteProjectCADAssemblyGroup(c.Request.Context(), service.DeleteProjectCADAssemblyGroupInput{
+		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), GroupID: c.Param("groupID"), ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// CreateProjectCADAssemblyConstraint records an unresolved mate relationship.
+func (ctrl *Ctrl) CreateProjectCADAssemblyConstraint(c *fox.Context, req *createProjectCADAssemblyConstraintRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.CreateProjectCADAssemblyConstraint(c.Request.Context(), service.CreateProjectCADAssemblyConstraintInput{
+		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), Name: req.Name, Kind: req.Kind,
+		FirstOccurrenceID: req.FirstOccurrenceID, SecondOccurrenceID: req.SecondOccurrenceID, ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// DeleteProjectCADAssemblyConstraint removes a recorded unresolved relationship.
+func (ctrl *Ctrl) DeleteProjectCADAssemblyConstraint(c *fox.Context, req *modifyProjectCADHistoryRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.DeleteProjectCADAssemblyConstraint(c.Request.Context(), service.DeleteProjectCADAssemblyConstraintInput{
+		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), ConstraintID: c.Param("constraintID"), ExpectedRevision: req.ExpectedRevision,
 	})
 	if err != nil {
 		return projectCADDocumentResponse{}, projectError(err)

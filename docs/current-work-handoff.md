@@ -6,8 +6,8 @@ This note is the short cross-machine handoff for the current LiteCAD development
 
 ## Current Mainline
 
-- `origin/main` is at `526ce24 docs: refresh current work handoff`.
-- Local `main` is intentionally ahead of `origin/main` with the phased handoff follow-ups. The committed phases begin with `f7e4995 feat(cad): persist export artifact history`, `bacb659 feat(cad): persist inspection records`, and `2691219 feat(cad): record feature dsl graph history`.
+- `origin/main` was at `526ce24 docs: refresh current work handoff` when this phase began; refresh the remote reference before relying on that value.
+- Local `main` is intentionally ahead of `origin/main` with the phased handoff follow-ups. Use `git log --oneline origin/main..main` for the exact local phase commits.
 - The old assembly and tapered-extrude feature branches have already been merged and cleaned up.
 - Continue in the current checkout unless the user explicitly asks to publish; do not push these local phase commits implicitly.
 
@@ -42,9 +42,17 @@ This note is the short cross-machine handoff for the current LiteCAD development
 - The official runtime can produce STL through a headless browser call, but it does not provide LiteCAD's OCCT mesh-buffer or STEP-export contracts. OpenSCAD therefore remains a parameter-editable source-draft format without browser preview, normal Save as model, or project export.
 - The docs-only decision phase passed full `task check`, `task test`, and `task test-browser`; it did not change UI, so no in-app browser verification was required.
 
+### Nested Assembly Grouping
+
+- CAD document schema v3 adds nested organizational groups, occurrence `parent_group_id` bindings, and hierarchical suppression. Direct or ancestor suppression keeps occurrences durable but excludes them from preview and STEP export.
+- Owner-scoped expected-revision APIs validate group trees, reject cycles and dangling parents, require groups to be empty before deletion, and persist group create/update/delete plus occurrence regrouping in reversible History.
+- Validated `mate` records connect two distinct existing occurrences only with status `unresolved`. They are reversible referential records and do not solve placement, move geometry, or imply reusable subassembly documents.
+- The workbench tree creates, renames, suppresses, and deletes groups, creates subgroups, and moves occurrences between groups. Preview/export filtering, Undo/Redo, and reload persistence share the same ancestor-suppression semantics.
+- The exact boundary is documented in `docs/nested-assembly-semantics.md`.
+
 ## Last Verification
 
-The OpenSCAD runtime decision phase inspected the current worker and single-binary serving path, official OpenSCAD source/snapshots, the official WASM port, and `openscad-wasm@0.0.4`. The resulting repository decision rejects bundling the current GPL-2.0 candidates and records concrete reconsideration gates. No source dependency, generated runtime, or UI behavior changed.
+The nested assembly phase upgraded documents to schema v3, added validated group/constraint-record APIs and History commands, rendered nested group authoring in the workbench, and applied ancestor suppression to preview and export. In-app browser verification against a current-code server created a parent and child group, moved one of ten occurrences into the child, suppressed the parent, observed preview assets fall from 10 to 9, undid back to 10, redid to 9, reloaded with the state intact, and found no console warnings or errors.
 
 Full phase gates passed:
 
@@ -55,20 +63,19 @@ task test-browser
 ```
 
 - `task check` passed backend format/vet/lint, frontend TypeScript, and module-tidy checks.
-- `task test` passed Go race/coverage tests and 76 Vitest files / 376 tests. Vitest still prints the existing localStorage and `MaxListenersExceededWarning` warnings during the full run.
+- `task test` passed Go race/coverage tests and 76 Vitest files / 379 tests. Vitest still prints the existing localStorage and `MaxListenersExceededWarning` warnings during the full run.
 - `task test-browser` passed all 14 deterministic Playwright workbench tests.
 
 ## Recommended Next Work
 
-Implement the smallest real nested-assembly slice: nested occurrence grouping, hierarchical suppression propagation, API validation, tree display, preview/export filtering, History, Undo/Redo, reload persistence, and a documented mate/constraint record boundary without pretending to solve geometry.
+Implement the richer inspection phase: persist actual browser-kernel section geometry artifacts with document revision and occurrence/revision inputs, add at least one explicit measurement type beyond whole-visible-bounds size, expose download/restore lifecycle in the workbench, and preserve the distinction between kernel-derived results and exact B-rep metrology claims.
 
 ## Larger Follow-Ups
 
 Complete each as a separate verified phase with a narrow boundary:
 
-- Nested assembly, mate, constraint, and hierarchical suppression semantics beyond the current flat occurrence model.
 - Richer CAD measurement types and durable B-rep section geometry beyond saved viewer-derived inspection records.
-- Durable serialized kernel shape/feature state and nested feature-node editing beyond complete-source Feature DSL revisions with top-level node transitions.
+- Broader durable kernel shape state and nested feature-node editing remain in `TODO.md`; the handoff's source-graph History phase is complete at the documented complete-source/top-level-transition boundary.
 
 ## Resume Checklist
 

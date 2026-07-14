@@ -243,21 +243,47 @@ export interface CADAssemblyOccurrence {
   node_id: string
   model_id: string
   model_revision_id: string
+  parent_group_id?: string
   name: string
-	suppressed: boolean
+  suppressed: boolean
   transform: CADTransform
 }
 
 export interface UpdateCADAssemblyOccurrencePayload {
-	name?: string
-	suppressed?: boolean
-	transform?: CADTransform
+  name?: string
+  suppressed?: boolean
+  transform?: CADTransform
+  parent_group_id?: string
+}
+
+export interface CADAssemblyGroup {
+  id: string
+  parent_group_id: string
+  name: string
+  suppressed: boolean
+}
+
+export interface UpdateCADAssemblyGroupPayload {
+  name?: string
+  parent_group_id?: string
+  suppressed?: boolean
+}
+
+export interface CADAssemblyConstraintRecord {
+  id: string
+  kind: 'mate'
+  name: string
+  first_occurrence_id: string
+  second_occurrence_id: string
+  status: 'unresolved'
 }
 
 export interface CADAssembly {
   id: string
   name: string
+  groups?: CADAssemblyGroup[]
   occurrences: CADAssemblyOccurrence[]
+  constraints?: CADAssemblyConstraintRecord[]
 }
 
 export interface CADOperation {
@@ -288,6 +314,11 @@ export interface CADHistoryEntry {
     | 'parameter-change'
     | 'feature-graph-change'
     | 'model-revision-restore'
+    | 'assembly-group-create'
+    | 'assembly-group-update'
+    | 'assembly-group-delete'
+    | 'assembly-constraint-create'
+    | 'assembly-constraint-delete'
     | 'occurrence-create'
     | 'occurrence-update'
     | 'occurrence-move'

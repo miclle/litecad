@@ -51,7 +51,11 @@ const previewArtifact = {
 
 describe('project preview assets', () => {
   test('keeps every parsed model eligible for preview metadata queries', () => {
-    const parsedModel = { ...baseModel, id: 'mdl_parsed', original_filename: 'parsed.step' } satisfies ProjectModel
+    const parsedModel = {
+      ...baseModel,
+      id: 'mdl_parsed',
+      original_filename: 'parsed.step',
+    } satisfies ProjectModel
     const erroredModel = {
       ...baseModel,
       id: 'mdl_error',
@@ -108,7 +112,17 @@ describe('project preview assets', () => {
 
     expect(buildProjectModelTree([lcadModel])).toMatchObject([{ model: lcadModel, displayName: 'Feature DSL bracket' }])
     expect(
-      buildProjectPreviewAssets([lcadModel], [], {}, { mdl_lcad: { mesh, meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true } } }),
+      buildProjectPreviewAssets(
+        [lcadModel],
+        [],
+        {},
+        {
+          mdl_lcad: {
+            mesh,
+            meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true },
+          },
+        },
+      ),
     ).toEqual([
       {
         modelId: 'mdl_lcad',
@@ -141,10 +155,7 @@ describe('project preview assets', () => {
       original_filename: 'sphere-b.lcad.json',
     } satisfies ProjectModel
 
-    expect(buildProjectModelTree([first, second]).map((group) => group.displayName)).toEqual([
-      '球体三轴通孔 · 1',
-      '球体三轴通孔 · 2',
-    ])
+    expect(buildProjectModelTree([first, second]).map((group) => group.displayName)).toEqual(['球体三轴通孔 · 1', '球体三轴通孔 · 2'])
   })
 
   test('keeps scene identity stable while detecting same-size kernel mesh content changes', () => {
@@ -186,13 +197,19 @@ describe('project preview assets', () => {
       ...baseModel,
       id: 'mdl_pulley',
       original_filename: '同步轮.step',
-      metadata: { ...baseModel.metadata, product_names: ['CyberGearTimingPulley'] },
+      metadata: {
+        ...baseModel.metadata,
+        product_names: ['CyberGearTimingPulley'],
+      },
     } satisfies ProjectModel
     const connector = {
       ...baseModel,
       id: 'mdl_connector',
       original_filename: '转向轴承连接器.step',
-      metadata: { ...baseModel.metadata, product_names: ['转向轴承连接器 - Ø8 boss center through hole'] },
+      metadata: {
+        ...baseModel.metadata,
+        product_names: ['转向轴承连接器 - Ø8 boss center through hole'],
+      },
     } satisfies ProjectModel
     const artifacts = [
       { ...previewArtifact, id: 'prv_connector', model_id: 'mdl_connector' },
@@ -225,7 +242,10 @@ describe('project preview assets', () => {
       ...baseModel,
       id: 'mdl_pulley',
       original_filename: '同步轮.step',
-      metadata: { ...baseModel.metadata, product_names: ['CyberGearTimingPulley'] },
+      metadata: {
+        ...baseModel.metadata,
+        product_names: ['CyberGearTimingPulley'],
+      },
     } satisfies ProjectModel
     const connector = {
       ...baseModel,
@@ -250,7 +270,15 @@ describe('project preview assets', () => {
           transform: { matrix: [] },
         },
       ],
-      operations: [{ id: 'op_delete', type: 'delete-node', model_id: 'mdl_connector', node_id: 'node_mdl_connector', created_at: '2026-07-10T00:00:00Z' }],
+      operations: [
+        {
+          id: 'op_delete',
+          type: 'delete-node',
+          model_id: 'mdl_connector',
+          node_id: 'node_mdl_connector',
+          created_at: '2026-07-10T00:00:00Z',
+        },
+      ],
       history: { head_id: 'hist_delete', can_undo: true, can_redo: false },
       created_at: '2026-07-10T00:00:00Z',
       updated_at: '2026-07-10T00:00:00Z',
@@ -261,7 +289,11 @@ describe('project preview assets', () => {
         [pulley, connector],
         [
           { ...previewArtifact, id: 'prv_pulley', model_id: 'mdl_pulley' },
-          { ...previewArtifact, id: 'prv_connector', model_id: 'mdl_connector' },
+          {
+            ...previewArtifact,
+            id: 'prv_connector',
+            model_id: 'mdl_connector',
+          },
         ],
         { mdl_pulley: 'blob:pulley', mdl_connector: 'blob:connector' },
         {},
@@ -287,7 +319,12 @@ describe('project preview assets', () => {
         [model],
         [{ ...previewArtifact, id: 'prv_step', model_id: 'mdl_step' }],
         { mdl_step: 'blob:freecad-obj' },
-        { mdl_step: { mesh, meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true } } },
+        {
+          mdl_step: {
+            mesh,
+            meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true },
+          },
+        },
       ),
     ).toEqual([
       {
@@ -370,7 +407,11 @@ describe('project preview assets', () => {
       {},
       {
         mdl_step: {
-          mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
+          mesh: {
+            positions: [0, 0, 0],
+            normals: [0, 0, 1],
+            indices: [0, 0, 0],
+          },
           meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
         },
       },
@@ -397,8 +438,11 @@ describe('project preview assets', () => {
       },
     )
 
-    expect(assets[0]).toMatchObject({ modelId: 'mdl_step', previewFormat: 'kernel-mesh' })
-		expect(assets[0]).toMatchObject({ transform })
+    expect(assets[0]).toMatchObject({
+      modelId: 'mdl_step',
+      previewFormat: 'kernel-mesh',
+    })
+    expect(assets[0]).toMatchObject({ transform })
     expect(projectPreviewAssetSignature(assets)).toContain('mdl_step:kernel-mesh:')
   })
 
@@ -414,7 +458,11 @@ describe('project preview assets', () => {
       {},
       {
         mdl_step: {
-          mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
+          mesh: {
+            positions: [0, 0, 0],
+            normals: [0, 0, 1],
+            indices: [0, 0, 0],
+          },
           meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
         },
       },
@@ -433,7 +481,9 @@ describe('project preview assets', () => {
             parent_node_id: '',
             name: 'assembly',
             source_format: 'step',
-            transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+            transform: {
+              matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            },
           },
           {
             id: 'node_mdl_step_component_1',
@@ -442,7 +492,9 @@ describe('project preview assets', () => {
             parent_node_id: 'node_mdl_step',
             name: 'Left pulley',
             source_format: 'step-component',
-            transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+            transform: {
+              matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            },
           },
           {
             id: 'node_mdl_step_component_2',
@@ -451,7 +503,9 @@ describe('project preview assets', () => {
             parent_node_id: 'node_mdl_step',
             name: 'Right pulley',
             source_format: 'step-component',
-            transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+            transform: {
+              matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            },
           },
         ],
         operations: [],
@@ -463,8 +517,16 @@ describe('project preview assets', () => {
     expect(assets[0]).toMatchObject({
       previewFormat: 'kernel-mesh',
       pickTargets: [
-        { modelId: 'mdl_step', nodeId: 'node_mdl_step_component_1', name: 'Left pulley' },
-        { modelId: 'mdl_step', nodeId: 'node_mdl_step_component_2', name: 'Right pulley' },
+        {
+          modelId: 'mdl_step',
+          nodeId: 'node_mdl_step_component_1',
+          name: 'Left pulley',
+        },
+        {
+          modelId: 'mdl_step',
+          nodeId: 'node_mdl_step_component_2',
+          name: 'Right pulley',
+        },
       ],
     })
   })
@@ -481,7 +543,11 @@ describe('project preview assets', () => {
       {},
       {
         mdl_step: {
-          mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
+          mesh: {
+            positions: [0, 0, 0],
+            normals: [0, 0, 1],
+            indices: [0, 0, 0],
+          },
           componentMeshes: [
             { positions: [1, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
             { positions: [2, 0, 0], normals: [0, 0, 1], indices: [0, 0, 0] },
@@ -505,7 +571,9 @@ describe('project preview assets', () => {
             parent_node_id: '',
             name: 'assembly',
             source_format: 'step',
-            transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+            transform: {
+              matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            },
           },
           {
             id: 'node_mdl_step_component_1',
@@ -514,7 +582,9 @@ describe('project preview assets', () => {
             parent_node_id: 'node_mdl_step',
             name: 'Left pulley',
             source_format: 'step-component',
-            transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+            transform: {
+              matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            },
           },
           {
             id: 'node_mdl_step_component_3',
@@ -523,10 +593,20 @@ describe('project preview assets', () => {
             parent_node_id: 'node_mdl_step',
             name: 'Right pulley',
             source_format: 'step-component',
-            transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+            transform: {
+              matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            },
           },
         ],
-        operations: [{ id: 'op_delete', type: 'delete-node', model_id: 'mdl_step', node_id: 'node_mdl_step_component_2', created_at: '2026-07-07T00:00:01Z' }],
+        operations: [
+          {
+            id: 'op_delete',
+            type: 'delete-node',
+            model_id: 'mdl_step',
+            node_id: 'node_mdl_step_component_2',
+            created_at: '2026-07-07T00:00:01Z',
+          },
+        ],
         created_at: '2026-07-07T00:00:00Z',
         updated_at: '2026-07-07T00:00:01Z',
       },
@@ -535,13 +615,18 @@ describe('project preview assets', () => {
     expect(assets[0]).toMatchObject({
       previewFormat: 'kernel-mesh',
       pickTargets: [
-        { modelId: 'mdl_step', nodeId: 'node_mdl_step_component_1', name: 'Left pulley' },
-        { modelId: 'mdl_step', nodeId: 'node_mdl_step_component_3', name: 'Right pulley' },
+        {
+          modelId: 'mdl_step',
+          nodeId: 'node_mdl_step_component_1',
+          name: 'Left pulley',
+        },
+        {
+          modelId: 'mdl_step',
+          nodeId: 'node_mdl_step_component_3',
+          name: 'Right pulley',
+        },
       ],
-      componentMeshes: [
-        { positions: [1, 0, 0] },
-        { positions: [3, 0, 0] },
-      ],
+      componentMeshes: [{ positions: [1, 0, 0] }, { positions: [3, 0, 0] }],
     })
   })
 
@@ -565,7 +650,9 @@ describe('project preview assets', () => {
               id: 'op_other',
               type: 'transform',
               model_id: 'mdl_other',
-              transform: { matrix: [1, 0, 0, 99, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+              transform: {
+                matrix: [1, 0, 0, 99, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+              },
               created_at: '2026-07-07T00:00:00Z',
             },
             {
@@ -611,8 +698,12 @@ describe('project preview assets', () => {
   })
 
   test('replays geometry features before only the latest absolute model transform', () => {
-    const firstTransform = { matrix: [1, 0, 0, 2, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }
-    const latestTransform = { matrix: [1, 0, 0, 9, 0, 1, 0, -3, 0, 0, 1, 4, 0, 0, 0, 1] }
+    const firstTransform = {
+      matrix: [1, 0, 0, 2, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    }
+    const latestTransform = {
+      matrix: [1, 0, 0, 9, 0, 1, 0, -3, 0, 0, 1, 4, 0, 0, 0, 1],
+    }
 
     expect(
       cadKernelOperationsForModel(
@@ -733,7 +824,9 @@ describe('project preview assets', () => {
           id: 'op_transform',
           type: 'transform',
           model_id: 'mdl_step',
-          transform: { matrix: [1, 0, 0, 14, 0, 1, 0, -2, 0, 0, 1, 6, 0, 0, 0, 1] },
+          transform: {
+            matrix: [1, 0, 0, 14, 0, 1, 0, -2, 0, 0, 1, 6, 0, 0, 0, 1],
+          },
           created_at: '2026-07-07T00:00:01Z',
         },
         {
@@ -766,7 +859,13 @@ describe('project preview assets', () => {
   })
 
   test('summarizes multi-model preview readiness for the workbench chrome', () => {
-    expect(projectPreviewSummary({ modelCount: 2, previewAssetCount: 2, latestPreviewFormat: 'obj' })).toEqual({
+    expect(
+      projectPreviewSummary({
+        modelCount: 2,
+        previewAssetCount: 2,
+        latestPreviewFormat: 'obj',
+      }),
+    ).toEqual({
       previewLabel: '2 OBJ meshes',
       sourceLabel: '2 sources stored',
       sourceBody: 'The project owns 2 uploaded source files and 2 browser-loadable preview meshes.',
@@ -804,29 +903,45 @@ describe('project preview assets', () => {
 
     expect(buildProjectModelTree([chassis, steering])).toEqual([
       {
-		assemblyId: '',
-		assemblyName: '',
-		occurrenceId: '',
-		modelRevisionId: 'mvr_base',
+        assemblyId: '',
+        assemblyName: '',
+        occurrenceId: '',
+        modelRevisionId: 'mvr_base',
         model: chassis,
         displayName: 'chassis',
         sourceNodeId: 'node_mdl_chassis',
         children: [
-          { id: 'node_mdl_chassis_component_1', name: 'Frame', sourceModelId: 'mdl_chassis' },
-          { id: 'node_mdl_chassis_component_2', name: 'Battery Tray', sourceModelId: 'mdl_chassis' },
+          {
+            id: 'node_mdl_chassis_component_1',
+            name: 'Frame',
+            sourceModelId: 'mdl_chassis',
+          },
+          {
+            id: 'node_mdl_chassis_component_2',
+            name: 'Battery Tray',
+            sourceModelId: 'mdl_chassis',
+          },
         ],
       },
       {
-		assemblyId: '',
-		assemblyName: '',
-		occurrenceId: '',
-		modelRevisionId: 'mvr_base',
+        assemblyId: '',
+        assemblyName: '',
+        occurrenceId: '',
+        modelRevisionId: 'mvr_base',
         model: steering,
         displayName: 'steering',
         sourceNodeId: 'node_mdl_steering',
         children: [
-          { id: 'node_mdl_steering_component_1', name: 'Left Knuckle', sourceModelId: 'mdl_steering' },
-          { id: 'node_mdl_steering_component_2', name: 'Right Knuckle', sourceModelId: 'mdl_steering' },
+          {
+            id: 'node_mdl_steering_component_1',
+            name: 'Left Knuckle',
+            sourceModelId: 'mdl_steering',
+          },
+          {
+            id: 'node_mdl_steering_component_2',
+            name: 'Right Knuckle',
+            sourceModelId: 'mdl_steering',
+          },
         ],
       },
     ])
@@ -837,7 +952,10 @@ describe('project preview assets', () => {
       ...baseModel,
       id: 'mdl_pulley',
       original_filename: '同步轮.step',
-      metadata: { ...baseModel.metadata, product_names: ['CyberGearTimingPulley'] },
+      metadata: {
+        ...baseModel.metadata,
+        product_names: ['CyberGearTimingPulley'],
+      },
     } satisfies ProjectModel
     const connector = {
       ...baseModel,
@@ -869,7 +987,15 @@ describe('project preview assets', () => {
           transform: { matrix: [] },
         },
       ],
-      operations: [{ id: 'op_delete', type: 'delete-node', model_id: 'mdl_connector', node_id: 'node_mdl_connector', created_at: '2026-07-10T00:00:00Z' }],
+      operations: [
+        {
+          id: 'op_delete',
+          type: 'delete-node',
+          model_id: 'mdl_connector',
+          node_id: 'node_mdl_connector',
+          created_at: '2026-07-10T00:00:00Z',
+        },
+      ],
       history: { head_id: 'hist_delete', can_undo: true, can_redo: false },
       created_at: '2026-07-10T00:00:00Z',
       updated_at: '2026-07-10T00:00:00Z',
@@ -878,131 +1004,273 @@ describe('project preview assets', () => {
     expect(buildProjectModelTree([pulley, connector], cadDocument).map((group) => group.model.id)).toEqual(['mdl_pulley'])
   })
 
-	test('orders model groups by durable assembly occurrences and exposes revision bindings', () => {
-		const first = { ...baseModel, id: 'mdl_first', original_filename: 'first.step' } satisfies ProjectModel
-		const second = { ...baseModel, id: 'mdl_second', original_filename: 'second.step' } satisfies ProjectModel
-		const document = {
-			id: 'cad_doc_v2',
-			project_id: 'prj_01test',
-			schema_version: 2,
-			revision: 3,
-			unit: 'millimetre',
-			assembly: {
-				id: 'assembly_prj_01test',
-				name: 'Drive train',
-				occurrences: [
-					{
-						id: 'occurrence_mdl_second',
-						node_id: 'node_mdl_second',
-						model_id: 'mdl_second',
-							model_revision_id: 'mvr_second',
-							name: 'second.step',
-							suppressed: false,
-							transform: { matrix: [] },
-					},
-					{
-						id: 'occurrence_mdl_first',
-						node_id: 'node_mdl_first',
-						model_id: 'mdl_first',
-							model_revision_id: 'mvr_first',
-							name: 'first.step',
-							suppressed: false,
-							transform: { matrix: [] },
-					},
-				],
-			},
-			nodes: [first, second].map((model) => ({
-				id: `node_${model.id}`,
-				model_id: model.id,
-				source_model_id: model.id,
-				parent_node_id: '',
-				name: model.original_filename,
-				source_format: 'step',
-				transform: { matrix: [] },
-			})),
-			operations: [],
-			history: { head_id: '', can_undo: false, can_redo: false },
-			created_at: '2026-07-14T00:00:00Z',
-			updated_at: '2026-07-14T00:00:00Z',
-		} satisfies ProjectCADDocument
+  test('orders model groups by durable assembly occurrences and exposes revision bindings', () => {
+    const first = {
+      ...baseModel,
+      id: 'mdl_first',
+      original_filename: 'first.step',
+    } satisfies ProjectModel
+    const second = {
+      ...baseModel,
+      id: 'mdl_second',
+      original_filename: 'second.step',
+    } satisfies ProjectModel
+    const document = {
+      id: 'cad_doc_v2',
+      project_id: 'prj_01test',
+      schema_version: 2,
+      revision: 3,
+      unit: 'millimetre',
+      assembly: {
+        id: 'assembly_prj_01test',
+        name: 'Drive train',
+        occurrences: [
+          {
+            id: 'occurrence_mdl_second',
+            node_id: 'node_mdl_second',
+            model_id: 'mdl_second',
+            model_revision_id: 'mvr_second',
+            name: 'second.step',
+            suppressed: false,
+            transform: { matrix: [] },
+          },
+          {
+            id: 'occurrence_mdl_first',
+            node_id: 'node_mdl_first',
+            model_id: 'mdl_first',
+            model_revision_id: 'mvr_first',
+            name: 'first.step',
+            suppressed: false,
+            transform: { matrix: [] },
+          },
+        ],
+      },
+      nodes: [first, second].map((model) => ({
+        id: `node_${model.id}`,
+        model_id: model.id,
+        source_model_id: model.id,
+        parent_node_id: '',
+        name: model.original_filename,
+        source_format: 'step',
+        transform: { matrix: [] },
+      })),
+      operations: [],
+      history: { head_id: '', can_undo: false, can_redo: false },
+      created_at: '2026-07-14T00:00:00Z',
+      updated_at: '2026-07-14T00:00:00Z',
+    } satisfies ProjectCADDocument
 
-		expect(buildProjectModelTree([first, second], document).map(({ model, occurrenceId, modelRevisionId, assemblyName }) => ({
-			modelId: model.id,
-			occurrenceId,
-			modelRevisionId,
-			assemblyName,
-		}))).toEqual([
-			{ modelId: 'mdl_second', occurrenceId: 'occurrence_mdl_second', modelRevisionId: 'mvr_second', assemblyName: 'Drive train' },
-			{ modelId: 'mdl_first', occurrenceId: 'occurrence_mdl_first', modelRevisionId: 'mvr_first', assemblyName: 'Drive train' },
-		])
-	})
+    expect(
+      buildProjectModelTree([first, second], document).map(({ model, occurrenceId, modelRevisionId, assemblyName }) => ({
+        modelId: model.id,
+        occurrenceId,
+        modelRevisionId,
+        assemblyName,
+      })),
+    ).toEqual([
+      {
+        modelId: 'mdl_second',
+        occurrenceId: 'occurrence_mdl_second',
+        modelRevisionId: 'mvr_second',
+        assemblyName: 'Drive train',
+      },
+      {
+        modelId: 'mdl_first',
+        occurrenceId: 'occurrence_mdl_first',
+        modelRevisionId: 'mvr_first',
+        assemblyName: 'Drive train',
+      },
+    ])
+  })
 
-	test('builds distinct tree rows and preview assets for repeated model occurrences', () => {
-		const model = { ...baseModel, id: 'mdl_fixture', original_filename: 'fixture.step' } satisfies ProjectModel
-		const mesh = {
-			positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
-			normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
-			indices: [0, 1, 2],
-		}
-		const document = {
-			id: 'cad_doc_occurrences',
-			project_id: 'prj_01test',
-			schema_version: 2,
-			revision: 4,
-			unit: 'millimetre',
-			assembly: {
-				id: 'assembly_prj_01test',
-				name: 'Fixture assembly',
-				occurrences: [
-					{
-						id: 'occ_left', node_id: 'node_mdl_fixture', model_id: model.id, model_revision_id: 'mvr_left',
-						name: 'Fixture left', suppressed: false,
-						transform: { matrix: [1, 0, 0, -20, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
-					},
-					{
-						id: 'occ_right', node_id: 'node_mdl_fixture', model_id: model.id, model_revision_id: 'mvr_right',
-						name: 'Fixture right', suppressed: false,
-						transform: { matrix: [1, 0, 0, 20, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
-					},
-				],
-			},
-			nodes: [{
-				id: 'node_mdl_fixture', model_id: model.id, source_model_id: model.id, parent_node_id: '', name: 'fixture.step',
-				source_format: 'step', transform: { matrix: [] },
-			}],
-			operations: [],
-			history: { head_id: '', can_undo: false, can_redo: false },
-			created_at: '2026-07-14T00:00:00Z',
-			updated_at: '2026-07-14T00:00:00Z',
-		} satisfies ProjectCADDocument
+  test('builds distinct tree rows and preview assets for repeated model occurrences', () => {
+    const model = {
+      ...baseModel,
+      id: 'mdl_fixture',
+      original_filename: 'fixture.step',
+    } satisfies ProjectModel
+    const mesh = {
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+      indices: [0, 1, 2],
+    }
+    const document = {
+      id: 'cad_doc_occurrences',
+      project_id: 'prj_01test',
+      schema_version: 2,
+      revision: 4,
+      unit: 'millimetre',
+      assembly: {
+        id: 'assembly_prj_01test',
+        name: 'Fixture assembly',
+        occurrences: [
+          {
+            id: 'occ_left',
+            node_id: 'node_mdl_fixture',
+            model_id: model.id,
+            model_revision_id: 'mvr_left',
+            name: 'Fixture left',
+            suppressed: false,
+            transform: {
+              matrix: [1, 0, 0, -20, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            },
+          },
+          {
+            id: 'occ_right',
+            node_id: 'node_mdl_fixture',
+            model_id: model.id,
+            model_revision_id: 'mvr_right',
+            name: 'Fixture right',
+            suppressed: false,
+            transform: {
+              matrix: [1, 0, 0, 20, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            },
+          },
+        ],
+      },
+      nodes: [
+        {
+          id: 'node_mdl_fixture',
+          model_id: model.id,
+          source_model_id: model.id,
+          parent_node_id: '',
+          name: 'fixture.step',
+          source_format: 'step',
+          transform: { matrix: [] },
+        },
+      ],
+      operations: [],
+      history: { head_id: '', can_undo: false, can_redo: false },
+      created_at: '2026-07-14T00:00:00Z',
+      updated_at: '2026-07-14T00:00:00Z',
+    } satisfies ProjectCADDocument
 
-		expect(buildProjectModelTree([model], document).map((group) => ({
-			name: group.displayName,
-			occurrenceId: group.occurrenceId,
-			modelRevisionId: group.modelRevisionId,
-		}))).toEqual([
-			{ name: 'Fixture left', occurrenceId: 'occ_left', modelRevisionId: 'mvr_left' },
-			{ name: 'Fixture right', occurrenceId: 'occ_right', modelRevisionId: 'mvr_right' },
-		])
-		const assets = buildProjectPreviewAssets(
-			[model], [], {}, { mdl_fixture: { mesh, meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true } } }, document,
-		)
-		expect(assets.map((asset) => ({ occurrenceId: asset.occurrenceId, name: asset.name, transform: asset.transform }))).toEqual([
-			{ occurrenceId: 'occ_left', name: 'Fixture left', transform: document.assembly.occurrences[0].transform },
-			{ occurrenceId: 'occ_right', name: 'Fixture right', transform: document.assembly.occurrences[1].transform },
-		])
+    expect(
+      buildProjectModelTree([model], document).map((group) => ({
+        name: group.displayName,
+        occurrenceId: group.occurrenceId,
+        modelRevisionId: group.modelRevisionId,
+      })),
+    ).toEqual([
+      {
+        name: 'Fixture left',
+        occurrenceId: 'occ_left',
+        modelRevisionId: 'mvr_left',
+      },
+      {
+        name: 'Fixture right',
+        occurrenceId: 'occ_right',
+        modelRevisionId: 'mvr_right',
+      },
+    ])
+    const assets = buildProjectPreviewAssets(
+      [model],
+      [],
+      {},
+      {
+        mdl_fixture: {
+          mesh,
+          meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true },
+        },
+      },
+      document,
+    )
+    expect(
+      assets.map((asset) => ({
+        occurrenceId: asset.occurrenceId,
+        name: asset.name,
+        transform: asset.transform,
+      })),
+    ).toEqual([
+      {
+        occurrenceId: 'occ_left',
+        name: 'Fixture left',
+        transform: document.assembly.occurrences[0].transform,
+      },
+      {
+        occurrenceId: 'occ_right',
+        name: 'Fixture right',
+        transform: document.assembly.occurrences[1].transform,
+      },
+    ])
 
-		const suppressedDocument: ProjectCADDocument = {
-			...document,
-			assembly: {
-				...document.assembly,
-				occurrences: document.assembly.occurrences.map((occurrence, index) => index === 1 ? { ...occurrence, suppressed: true } : occurrence),
-			},
-		}
-		expect(buildProjectPreviewAssets(
-			[model], [], {}, { mdl_fixture: { mesh, meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true } } }, suppressedDocument,
-		).map((asset) => asset.occurrenceId)).toEqual(['occ_left'])
-	})
+    const suppressedDocument: ProjectCADDocument = {
+      ...document,
+      assembly: {
+        ...document.assembly,
+        occurrences: document.assembly.occurrences.map((occurrence, index) => (index === 1 ? { ...occurrence, suppressed: true } : occurrence)),
+      },
+    }
+    expect(
+      buildProjectPreviewAssets(
+        [model],
+        [],
+        {},
+        {
+          mdl_fixture: {
+            mesh,
+            meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true },
+          },
+        },
+        suppressedDocument,
+      ).map((asset) => asset.occurrenceId),
+    ).toEqual(['occ_left'])
+
+    const nestedSuppressedDocument: ProjectCADDocument = {
+      ...document,
+      schema_version: 3,
+      assembly: {
+        ...document.assembly,
+        groups: [
+          {
+            id: 'grp_power',
+            parent_group_id: '',
+            name: 'Power unit',
+            suppressed: true,
+          },
+          {
+            id: 'grp_reduction',
+            parent_group_id: 'grp_power',
+            name: 'Reduction stage',
+            suppressed: false,
+          },
+        ],
+        constraints: [],
+        occurrences: document.assembly.occurrences.map((occurrence, index) => ({
+          ...occurrence,
+          parent_group_id: index === 0 ? 'grp_reduction' : '',
+        })),
+      },
+    }
+    expect(
+      buildProjectPreviewAssets(
+        [model],
+        [],
+        {},
+        {
+          mdl_fixture: {
+            mesh,
+            meshSummary: { vertexCount: 3, triangleCount: 1, hasNormals: true },
+          },
+        },
+        nestedSuppressedDocument,
+      ).map((asset) => asset.occurrenceId),
+    ).toEqual(['occ_right'])
+    expect(
+      buildProjectModelTree([model], nestedSuppressedDocument).map((group) => ({
+        id: group.occurrenceId,
+        parentGroupId: group.parentGroupId,
+        effectivelySuppressed: group.effectivelySuppressed,
+      })),
+    ).toEqual([
+      {
+        id: 'occ_left',
+        parentGroupId: 'grp_reduction',
+        effectivelySuppressed: true,
+      },
+      { id: 'occ_right', parentGroupId: '', effectivelySuppressed: false },
+    ])
+  })
 
   test('uses imported model names for tree source groups instead of STEP filenames', () => {
     const unnamed = {
@@ -1083,7 +1351,13 @@ describe('project preview assets', () => {
             indices: [0, 0, 0],
           },
           meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
-          pickTargets: [{ modelId: 'mdl_step', nodeId: 'node_mdl_step_component_1', name: 'Part A' }],
+          pickTargets: [
+            {
+              modelId: 'mdl_step',
+              nodeId: 'node_mdl_step_component_1',
+              name: 'Part A',
+            },
+          ],
         },
       ]),
     ).toContain('mdl_step/node_mdl_step_component_1/Part A')
@@ -1113,8 +1387,16 @@ describe('project preview assets', () => {
         mesh,
         meshSummary: { vertexCount: 1, triangleCount: 1, hasNormals: true },
         pickTargets: [
-          { modelId: 'mdl_step', nodeId: 'node_mdl_step_component_1', name: 'Left pulley' },
-          { modelId: 'mdl_step', nodeId: 'node_mdl_step_component_2', name: 'Right pulley' },
+          {
+            modelId: 'mdl_step',
+            nodeId: 'node_mdl_step_component_1',
+            name: 'Left pulley',
+          },
+          {
+            modelId: 'mdl_step',
+            nodeId: 'node_mdl_step_component_2',
+            name: 'Right pulley',
+          },
         ],
       },
     ])

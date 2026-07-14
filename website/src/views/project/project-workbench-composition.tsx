@@ -176,6 +176,7 @@ export function ProjectWorkbenchComposition({
       isAiChatPanelResizing={shellState.isAiChatPanelResizing}
       leftPanel={
         <ProjectWorkbenchSidebar
+          assemblyGroups={modelState.projectCADDocument?.assembly?.groups ?? []}
           documentDetails={inspectorState.documentDetails}
           hiddenModelIds={visibilityState.hiddenModelIDs}
           inspectorSelection={inspectorState.inspectorSelection}
@@ -187,6 +188,8 @@ export function ProjectWorkbenchComposition({
           leftPanelWidth={shellState.leftPanelWidth}
           modelCount={modelState.projectModels.length}
           onCollapseChange={shellState.setIsLeftPanelCollapsed}
+					onCreateAssemblyGroup={cadDocumentCommands.createAssemblyGroup}
+					onDeleteAssemblyGroup={cadDocumentCommands.deleteAssemblyGroup}
 					onDeleteOccurrence={(occurrenceId) => {
 						cadDocumentCommands.deleteOccurrence(occurrenceId)
 						clearSelection()
@@ -216,6 +219,7 @@ export function ProjectWorkbenchComposition({
             parametricModelCommands.restoreModelRevision({ modelID, revisionID })
           }
           onToggleModelVisibility={visibilityState.toggleModelVisibility}
+          onUpdateAssemblyGroup={cadDocumentCommands.updateAssemblyGroup}
           onUpdateOccurrence={cadDocumentCommands.updateOccurrence}
 					occurrenceError={cadDocumentCommands.occurrenceError}
           onTransformChange={draftCommands.updateTransformDraftField}

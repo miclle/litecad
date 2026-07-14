@@ -85,6 +85,31 @@ type cadOccurrenceDeleteHistoryCommand struct {
 	Index      int                   `json:"index"`
 }
 
+type cadAssemblyGroupCreateHistoryCommand struct {
+	Group CADAssemblyGroup `json:"group"`
+	Index int              `json:"index"`
+}
+
+type cadAssemblyGroupUpdateHistoryCommand struct {
+	Before CADAssemblyGroup `json:"before"`
+	After  CADAssemblyGroup `json:"after"`
+}
+
+type cadAssemblyGroupDeleteHistoryCommand struct {
+	Group CADAssemblyGroup `json:"group"`
+	Index int              `json:"index"`
+}
+
+type cadAssemblyConstraintCreateHistoryCommand struct {
+	Constraint CADAssemblyConstraintRecord `json:"constraint"`
+	Index      int                         `json:"index"`
+}
+
+type cadAssemblyConstraintDeleteHistoryCommand struct {
+	Constraint CADAssemblyConstraintRecord `json:"constraint"`
+	Index      int                         `json:"index"`
+}
+
 // ModifyProjectCADHistoryInput moves one project document through persisted history.
 type ModifyProjectCADHistoryInput struct {
 	OwnerUserID      string
@@ -468,6 +493,76 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 		} else {
 			state.Assembly.Occurrences = insertCADAssemblyOccurrence(state.Assembly.Occurrences, command.Index, command.Occurrence)
 		}
+	case "assembly-group-create":
+		var command cadAssemblyGroupCreateHistoryCommand
+		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
+			return fmt.Errorf("decode assembly group create history command: %w", err)
+		}
+		if forward {
+			state.Assembly.Groups = insertCADAssemblyGroup(state.Assembly.Groups, command.Index, command.Group)
+		} else {
+			index := cadAssemblyGroupIndex(state.Assembly.Groups, command.Group.ID)
+			if index < 0 {
+				return ErrInvalidCADDocumentInput
+			}
+			state.Assembly.Groups = append(state.Assembly.Groups[:index], state.Assembly.Groups[index+1:]...)
+		}
+	case "assembly-group-update":
+		var command cadAssemblyGroupUpdateHistoryCommand
+		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
+			return fmt.Errorf("decode assembly group update history command: %w", err)
+		}
+		value := command.Before
+		if forward {
+			value = command.After
+		}
+		index := cadAssemblyGroupIndex(state.Assembly.Groups, value.ID)
+		if index < 0 {
+			return ErrInvalidCADDocumentInput
+		}
+		state.Assembly.Groups[index] = value
+	case "assembly-group-delete":
+		var command cadAssemblyGroupDeleteHistoryCommand
+		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
+			return fmt.Errorf("decode assembly group delete history command: %w", err)
+		}
+		if forward {
+			index := cadAssemblyGroupIndex(state.Assembly.Groups, command.Group.ID)
+			if index < 0 {
+				return ErrInvalidCADDocumentInput
+			}
+			state.Assembly.Groups = append(state.Assembly.Groups[:index], state.Assembly.Groups[index+1:]...)
+		} else {
+			state.Assembly.Groups = insertCADAssemblyGroup(state.Assembly.Groups, command.Index, command.Group)
+		}
+	case "assembly-constraint-create":
+		var command cadAssemblyConstraintCreateHistoryCommand
+		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
+			return fmt.Errorf("decode assembly constraint create history command: %w", err)
+		}
+		if forward {
+			state.Assembly.Constraints = insertCADAssemblyConstraint(state.Assembly.Constraints, command.Index, command.Constraint)
+		} else {
+			index := cadAssemblyConstraintIndex(state.Assembly.Constraints, command.Constraint.ID)
+			if index < 0 {
+				return ErrInvalidCADDocumentInput
+			}
+			state.Assembly.Constraints = append(state.Assembly.Constraints[:index], state.Assembly.Constraints[index+1:]...)
+		}
+	case "assembly-constraint-delete":
+		var command cadAssemblyConstraintDeleteHistoryCommand
+		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
+			return fmt.Errorf("decode assembly constraint delete history command: %w", err)
+		}
+		if forward {
+			index := cadAssemblyConstraintIndex(state.Assembly.Constraints, command.Constraint.ID)
+			if index < 0 {
+				return ErrInvalidCADDocumentInput
+			}
+			state.Assembly.Constraints = append(state.Assembly.Constraints[:index], state.Assembly.Constraints[index+1:]...)
+		} else {
+			state.Assembly.Constraints = insertCADAssemblyConstraint(state.Assembly.Constraints, command.Index, command.Constraint)
+		}
 	case "parameter-change", "model-revision-restore", "feature-graph-change":
 		var command struct {
 			ModelID          string `json:"model_id"`
@@ -508,6 +603,9 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 		}
 	default:
 		return ErrInvalidCADDocumentInput
+	}
+	if err := validateCADAssembly(state.Assembly); err != nil {
+		return err
 	}
 	return nil
 }
@@ -610,4 +708,24 @@ func insertCADAssemblyOccurrence(occurrences []CADAssemblyOccurrence, index int,
 	copy(occurrences[index+1:], occurrences[index:])
 	occurrences[index] = occurrence
 	return occurrences
+}
+
+func insertCADAssemblyGroup(groups []CADAssemblyGroup, index int, group CADAssemblyGroup) []CADAssemblyGroup {
+	if index < 0 || index > len(groups) {
+		index = len(groups)
+	}
+	groups = append(groups, CADAssemblyGroup{})
+	copy(groups[index+1:], groups[index:])
+	groups[index] = group
+	return groups
+}
+
+func insertCADAssemblyConstraint(constraints []CADAssemblyConstraintRecord, index int, constraint CADAssemblyConstraintRecord) []CADAssemblyConstraintRecord {
+	if index < 0 || index > len(constraints) {
+		index = len(constraints)
+	}
+	constraints = append(constraints, CADAssemblyConstraintRecord{})
+	copy(constraints[index+1:], constraints[index:])
+	constraints[index] = constraint
+	return constraints
 }
