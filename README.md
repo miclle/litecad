@@ -153,6 +153,7 @@ task lint            # Auto-fix Go module/style issues and run frontend lint
 task check           # CI-aligned local checks
 task test            # Go tests with race/coverage + frontend Vitest
 task test-browser    # Deterministic Playwright workbench smoke
+task smoke-ai-provider # Live provider artifact smoke against a running server
 task clean           # Remove build artifacts
 task update-tools    # Install/update reflex, staticcheck, golangci-lint
 ```
@@ -191,7 +192,7 @@ task test-browser
 
 The browser suite starts an isolated Vite server and uses a fresh closure-scoped API fixture for every test, so workflows do not share mutable models, messages, history, or counters. Independent specs cover signed-out project route protection, shell/panel rendering, source import, transform conflict recovery with Undo/Redo, Assistant draft/save/parameter reload, a mock-provider prompt-to-artifact workflow for a LiteCAD DSL sphere with X/Y/Z through holes, and LiteCAD DSL STEP export; focused frontend tests cover protected project routes, project creation navigation, project selection state, workbench layout shell slots, model upload refresh/error handling, thumbnail publication dedupe, and project detail loading/error states. The browser suite fails on unexpected browser console or page errors and does not require a local database.
 
-`task test-browser` is deterministic and does not call a real OpenAI-compatible provider. Treat it as coverage for the LiteCAD browser/API workflow around generated drafts, saved models, and failure UI, not as proof that a deployment's external provider credentials, model name, network path, or live prompt behavior are working. When changing provider configuration, provider prompts, or production AI setup, also run a manual or environment-gated live-provider smoke against the running server and record whether it created an artifact, showed a provider configuration error, or failed validation.
+`task test-browser` is deterministic and does not call a real OpenAI-compatible provider. Treat it as coverage for the LiteCAD browser/API workflow around generated drafts, saved models, and failure UI, not as proof that a deployment's external provider credentials, model name, network path, or live prompt behavior are working. When changing provider configuration, provider prompts, or production AI setup, also run `task smoke-ai-provider` against the running server and record whether it created an artifact, showed a provider configuration error, or failed validation. The smoke uses `LITECAD_SMOKE_BASE_URL` when the server is not on `http://127.0.0.1:46280`.
 
 CI also runs Go tests, frontend lint/type/test/browser/build, actionlint, dependency review on pull requests, and golangci-lint.
 

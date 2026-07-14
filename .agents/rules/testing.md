@@ -29,12 +29,13 @@ These rules apply to Go tests, frontend tests, and verification commands.
 - Keep shell, import, transform conflict/Undo/Redo, Assistant/parameter persistence, and export workflows in independent specs so failures identify the affected product path.
 - Use condition-based assertions for worker compilation, autosave, and downloads. Do not assert that an unrelated request count or arbitrary timeout remains unchanged while React Query refreshes in the background.
 - Capture page and console errors in every browser-visible workflow. Expected conflict responses may assert their one known browser resource error, but must reject additional errors.
-- Treat `task test-browser` as deterministic fixture coverage. It must not depend on external AI provider credentials or live model behavior. When a change depends on actual provider configuration, run and report a separate manual or environment-gated live-provider smoke against the running server.
+- Treat `task test-browser` as deterministic fixture coverage. It must not depend on external AI provider credentials or live model behavior. When a change depends on actual provider configuration, run and report `task smoke-ai-provider` or an equivalent environment-gated live-provider smoke against the running server.
 
 ## Verification
 
 - Run `task check` before committing.
 - Run `task test` for behavior, API, database, or UI interaction changes.
 - Run `task test-browser` for route, workbench panel, browser CAD worker, and visible interaction changes.
+- Run `task smoke-ai-provider` against an already running server when validating real OpenAI-compatible provider credentials, model names, network reachability, or provider prompt changes.
 - `task lint` may modify files through `go mod tidy` and `gofmt`; inspect the diff afterward.
 - If a command cannot run locally, report the command, the reason, and the remaining risk.

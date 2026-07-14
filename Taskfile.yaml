@@ -129,6 +129,11 @@ tasks:
     cmds:
       - cd {{.WEBSITE_DIR}} && npm run test:e2e
 
+  smoke-ai-provider:
+    desc: Smoke test the running server's live AI provider artifact path
+    cmds:
+      - ./scripts/smoke-ai-provider.sh
+
   # ---------- Internal ----------
 
   kill-vite:

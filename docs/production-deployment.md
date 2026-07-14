@@ -104,3 +104,11 @@ task build
 ```
 
 Run `task test-browser` when the release changes project routing, protected-route behavior, workbench panels, browser-visible CAD interactions, preview/export flows, or frontend route state.
+
+Run the live AI provider smoke after changing provider config, provider prompts, model names, or deployment environment variables:
+
+```bash
+LITECAD_SMOKE_BASE_URL="https://litecad.example.com" task smoke-ai-provider
+```
+
+The smoke script creates a temporary account and project on the running server, asks for a 30 mm sphere with 5 mm through holes along X, Y, and Z, verifies that the backend creates a generated-source artifact, and then soft-deletes the temporary project. It validates live provider reachability and artifact creation; it does not replace `task test-browser` for browser-worker compile/save/canvas coverage.
