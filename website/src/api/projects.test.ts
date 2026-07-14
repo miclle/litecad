@@ -39,6 +39,7 @@ import {
   updateProjectCADModelTransform,
   updateProject,
   updateProjectParametricArtifact,
+  updateProjectFeatureDSLGraph,
   updateProjectParametricModelParameters,
   uploadProjectThumbnailSnapshot,
   uploadProjectModel,
@@ -331,8 +332,16 @@ describe('project API', () => {
 
     createProjectParametricArtifact('prj_01test', payload)
     updateProjectParametricArtifact('prj_01test', 'pma_01test', payload)
+    updateProjectFeatureDSLGraph('prj_01test', 'mdl_01test', {
+      source_code: payload.source_code,
+      expected_revision: 15,
+    })
 
     expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts', payload)
     expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/parametric-artifacts/pma_01test', payload)
+    expect(client.patch).toHaveBeenCalledWith('/projects/prj_01test/models/mdl_01test/feature-dsl-graph', {
+      source_code: payload.source_code,
+      expected_revision: 15,
+    })
   })
 })

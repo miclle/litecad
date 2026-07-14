@@ -18,6 +18,7 @@ type ProjectWorkbenchSidebarProps = {
   isLeftPanelCollapsed: boolean
   isModelTreeLoading: boolean
   isUploading: boolean
+  isFeatureGraphSaving?: boolean
 	isOccurrenceMutationPending?: boolean
   leftPanelWidth: number
   modelCount: number
@@ -29,6 +30,7 @@ type ProjectWorkbenchSidebarProps = {
   onParameterValuesChange: (modelId: string, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
   onSaveGeneratedArtifactAsModel: (artifact: ProjectParametricArtifact, parameterValues: Record<string, OpenSCADParameterValue>) => void
+  onSaveFeatureGraph?: (modelId: string, sourceCode: string) => void
   onSaveModelParameters: (modelId: string, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onRestoreModelRevision?: (modelId: string, revisionId: string) => void
   onToggleModelVisibility: (modelId: string) => void
@@ -57,6 +59,7 @@ export function ProjectWorkbenchSidebar({
   isLeftPanelCollapsed,
   isModelTreeLoading,
   isUploading,
+  isFeatureGraphSaving = false,
 	isOccurrenceMutationPending,
   leftPanelWidth,
   modelCount,
@@ -68,6 +71,7 @@ export function ProjectWorkbenchSidebar({
   onParameterValuesChange,
   onResizePointerDown,
   onSaveGeneratedArtifactAsModel,
+  onSaveFeatureGraph,
   onSaveModelParameters,
   onRestoreModelRevision,
   onToggleModelVisibility,
@@ -172,11 +176,17 @@ export function ProjectWorkbenchSidebar({
                 currentRevisionID={selectedSavedModelRevisionID}
                 currentRevisionSequence={selectedSavedModelRevisionSequence}
                 initialParameterValues={selectedSavedArtifact.parameter_values}
+                isFeatureGraphSaving={isFeatureGraphSaving}
                 isRevisionRestorePending={isRevisionRestorePending}
                 modelRevisions={selectedModelRevisions}
                 onParameterValuesChange={(parameterValues) => onParameterValuesChange(selectedSavedArtifact.preview_model_id, parameterValues)}
                 onSaveParameters={(parameterValues) => onSaveModelParameters(selectedSavedArtifact.preview_model_id, parameterValues)}
                 onRestoreRevision={(revisionID) => onRestoreModelRevision?.(selectedSavedArtifact.preview_model_id, revisionID)}
+                onSaveFeatureGraph={
+                  onSaveFeatureGraph
+                    ? (sourceCode) => onSaveFeatureGraph(selectedSavedArtifact.preview_model_id, sourceCode)
+                    : undefined
+                }
               />
             ) : null}
 

@@ -604,9 +604,18 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 			parameters.numericDefaults[name] = parameter.Default.(float64)
 		}
 	}
+	featureIDs := make(map[string]struct{}, len(document.Features))
 	for _, feature := range document.Features {
-		if feature.Type == "sketch" && strings.TrimSpace(feature.ID) != "" {
-			parameters.sketches[feature.ID] = feature
+		featureID := strings.TrimSpace(feature.ID)
+		if featureID == "" {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		if _, exists := featureIDs[featureID]; exists {
+			return ErrInvalidProjectParametricArtifactInput
+		}
+		featureIDs[featureID] = struct{}{}
+		if feature.Type == "sketch" {
+			parameters.sketches[featureID] = feature
 		}
 	}
 	hasSolid := false

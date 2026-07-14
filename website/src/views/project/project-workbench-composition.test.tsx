@@ -56,6 +56,7 @@ vi.mock('./project-workbench-sidebar', () => ({
     modelCount,
     onModelSelect,
     onSaveGeneratedArtifactAsModel,
+    onSaveFeatureGraph,
     onSaveModelParameters,
     onToggleModelVisibility,
   }: MockProps) => (
@@ -76,6 +77,7 @@ vi.mock('./project-workbench-sidebar', () => ({
       <button onClick={() => (onSaveModelParameters as (modelID: string, parameterValues: Record<string, unknown>) => void)('model_a', { radius: 8 })}>
         save params
       </button>
+      <button onClick={() => (onSaveFeatureGraph as (modelID: string, sourceCode: string) => void)('model_a', '{"features":[]}')}>save graph</button>
     </aside>
   ),
 }))
@@ -123,6 +125,9 @@ describe('ProjectWorkbenchComposition', () => {
 
     click('save params')
     expect(callbacks.saveModelParameters).toHaveBeenCalledWith({ modelID: 'model_a', parameterValues: { radius: 8 } })
+
+    click('save graph')
+    expect(callbacks.saveFeatureGraph).toHaveBeenCalledWith({ modelID: 'model_a', sourceCode: '{"features":[]}' })
 
     click('toggle visibility')
     expect(callbacks.toggleModelVisibility).toHaveBeenCalledWith('model_a')
@@ -187,6 +192,7 @@ function callbackSpies() {
     clearSelection: vi.fn(),
     fetchNextHistoryPage: vi.fn(),
     saveGeneratedArtifactAsModel: vi.fn(),
+    saveFeatureGraph: vi.fn(),
     saveModelParameters: vi.fn(),
     selectModel: vi.fn(),
     setActiveCADTool: vi.fn(),
@@ -347,6 +353,7 @@ function projectThumbnailSnapshot() {
 function parametricModelCommands(callbacks: ReturnType<typeof callbackSpies>) {
   return {
     saveGeneratedArtifactAsModel: callbacks.saveGeneratedArtifactAsModel,
+    saveFeatureGraph: callbacks.saveFeatureGraph,
     saveModelParameters: callbacks.saveModelParameters,
   } as unknown as ReturnType<typeof useProjectWorkbenchParametricModelCommands>
 }

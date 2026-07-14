@@ -182,6 +182,7 @@ export function ProjectWorkbenchComposition({
           isLeftPanelCollapsed={shellState.isLeftPanelCollapsed}
           isModelTreeLoading={modelState.projectModelsQuery.isLoading}
           isUploading={projectModelUpload.isUploading}
+          isFeatureGraphSaving={parametricModelCommands.isSavingFeatureGraph}
 					isOccurrenceMutationPending={cadDocumentCommands.isOccurrenceMutationPending}
           leftPanelWidth={shellState.leftPanelWidth}
           modelCount={modelState.projectModels.length}
@@ -204,6 +205,9 @@ export function ProjectWorkbenchComposition({
           onResizePointerDown={shellState.startLeftPanelResize}
           onSaveGeneratedArtifactAsModel={(artifact, parameterValues) =>
             parametricModelCommands.saveGeneratedArtifactAsModel({ artifact, parameterValues })
+          }
+          onSaveFeatureGraph={(modelID, sourceCode) =>
+            parametricModelCommands.saveFeatureGraph({ modelID, sourceCode })
           }
           onSaveModelParameters={(modelID, parameterValues) =>
             parametricModelCommands.saveModelParameters({ modelID, parameterValues })

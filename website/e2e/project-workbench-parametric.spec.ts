@@ -6,6 +6,7 @@ import {
   installProjectAPIFixture,
   projectId,
   smokeFeatureDSLSource,
+  smokeUpdatedFeatureDSLSource,
   sphereXYZThroughHoleFeatureDSLSource,
 } from './fixtures/project-api'
 
@@ -76,6 +77,39 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
   await expect(page.getByLabel('width value')).toHaveValue('60')
   await page.getByRole('button', { name: 'Operation history' }).click()
   await expect(page.getByText('Restore smoke-bracket-litecad.lcad.json revision 1')).toBeVisible()
+  await page.getByRole('button', { name: 'Operation history' }).click()
+
+  await page.getByRole('button', { name: 'Edit feature graph' }).click()
+  const featureGraphSource = page.getByLabel('Feature graph source')
+  await expect(featureGraphSource).toHaveValue(smokeFeatureDSLSource)
+  await featureGraphSource.fill(smokeUpdatedFeatureDSLSource)
+  const applyGraph = page.getByRole('button', { name: 'Apply graph' })
+  await expect(applyGraph).toBeEnabled()
+  await applyGraph.click()
+  await expect.poll(() => fixture.state.featureGraphUpdateCount).toBe(1)
+  expect(fixture.state.parametricArtifactSourceCode).toBe(smokeUpdatedFeatureDSLSource)
+  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_2')
+
+  await page.getByRole('button', { name: 'Operation history' }).click()
+  await expect(page.getByText('Update feature graph for smoke-bracket-litecad.lcad.json')).toBeVisible()
+  await expect(page.getByText('base · Updated')).toBeVisible()
+  await expect(page.getByText('slot · Added')).toBeVisible()
+  await page.getByRole('button', { name: 'Operation history' }).click()
+
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect.poll(() => fixture.state.undoCount).toBe(1)
+  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_1')
+  if (!(await page.getByLabel('Feature graph source').isVisible())) {
+    await page.getByRole('button', { name: 'Edit feature graph' }).click()
+  }
+  await expect(page.getByLabel('Feature graph source')).toHaveValue(smokeFeatureDSLSource)
+  await page.getByRole('button', { name: 'Redo' }).click()
+  await expect.poll(() => fixture.state.redoCount).toBe(1)
+  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_2')
+  if (!(await page.getByLabel('Feature graph source').isVisible())) {
+    await page.getByRole('button', { name: 'Edit feature graph' }).click()
+  }
+  await expect(page.getByLabel('Feature graph source')).toHaveValue(smokeUpdatedFeatureDSLSource)
   await expect
     .poll(() => page.locator('[data-model-preview] canvas').first().evaluate((canvas) => canvas.getAttribute('data-litecad-stable-canvas')))
     .toBe('saved-parameter-edit')
@@ -83,6 +117,8 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
   await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
   await page.getByRole('option', { name: 'Smoke bracket' }).click()
   await expect(page.getByLabel('width value')).toHaveValue('60')
+  await page.getByRole('button', { name: 'Edit feature graph' }).click()
+  await expect(page.getByLabel('Feature graph source')).toHaveValue(smokeUpdatedFeatureDSLSource)
   await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
 
   expect(browserErrors).toEqual([])

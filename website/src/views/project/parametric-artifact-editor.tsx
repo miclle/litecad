@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Box, History, Save } from 'lucide-react'
+import { AlertTriangle, Box, Braces, History, Save } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { parseOpenSCADParameters } from 'src/cad/openscad-parameters'
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
 import type { ProjectModelRevision, ProjectParametricArtifact } from 'src/types/project'
+import { FeatureDSLGraphEditor } from './feature-dsl-graph-editor'
 import {
   defaultOpenSCADParameterValues,
   useParametricArtifactPreview,
@@ -24,12 +26,14 @@ type ParametricArtifactEditorProps = {
   initialParameterValues?: Record<string, unknown>
   currentRevisionID?: string
   currentRevisionSequence?: number
+  isFeatureGraphSaving?: boolean
   isRevisionRestorePending?: boolean
   modelRevisions?: ProjectModelRevision[]
   onParameterValuesChange?: (parameterValues: Record<string, OpenSCADParameterValue>) => void
   onSaveAsModel?: (parameterValues: Record<string, OpenSCADParameterValue>) => void
   onSaveParameters?: (parameterValues: Record<string, OpenSCADParameterValue>) => void
   onRestoreRevision?: (revisionID: string) => void
+  onSaveFeatureGraph?: (sourceCode: string) => void
   saveLabel?: string
 }
 
@@ -55,12 +59,14 @@ export function ParametricArtifactEditor({
   initialParameterValues,
   currentRevisionID,
   currentRevisionSequence,
+  isFeatureGraphSaving = false,
   isRevisionRestorePending = false,
   modelRevisions = [],
   onParameterValuesChange,
   onSaveAsModel,
   onSaveParameters,
   onRestoreRevision,
+  onSaveFeatureGraph,
   saveLabel,
 }: ParametricArtifactEditorProps) {
   const { t } = useTranslation()
@@ -371,6 +377,28 @@ export function ParametricArtifactEditor({
           </Button>
         )}
       </FieldSet>
+
+      {artifact.source_kind === 'litecad-feature-dsl' && onSaveFeatureGraph ? (
+        <Collapsible className="mt-3 border-t border-[#e2e8f0] pt-3">
+          <CollapsibleTrigger
+            render={
+              <Button aria-label={t('project.parametric.editFeatureGraph')} className="w-full justify-start" size="sm" type="button" variant="outline" />
+            }
+          >
+            <Braces data-icon="inline-start" />
+            {t('project.parametric.editFeatureGraph')}
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-3">
+            <FeatureDSLGraphEditor
+              artifact={artifact}
+              compileFeatureDSL={compileFeatureDSL}
+              debounceMs={debounceMs}
+              isSaving={isFeatureGraphSaving}
+              onSave={onSaveFeatureGraph}
+            />
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
     </section>
   )
 }

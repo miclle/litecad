@@ -282,18 +282,27 @@ export interface CADHistoryEntry {
   parent_entry_id?: string
   status: 'applied' | 'undone' | 'discarded'
   command_type:
-		| 'transform'
-		| 'box-union'
-		| 'delete-node'
-		| 'parameter-change'
-		| 'model-revision-restore'
-		| 'occurrence-create'
-		| 'occurrence-update'
-		| 'occurrence-move'
-		| 'occurrence-delete'
+    | 'transform'
+    | 'box-union'
+    | 'delete-node'
+    | 'parameter-change'
+    | 'feature-graph-change'
+    | 'model-revision-restore'
+    | 'occurrence-create'
+    | 'occurrence-update'
+    | 'occurrence-move'
+    | 'occurrence-delete'
   target_id: string
   summary: string
+  feature_graph_transitions?: CADFeatureGraphNodeTransition[]
   created_at: string
+}
+
+export interface CADFeatureGraphNodeTransition {
+  node_id: string
+  change: 'added' | 'updated' | 'removed'
+  before_type?: string
+  after_type?: string
 }
 
 export interface ProjectCADHistoryResponse {
@@ -444,6 +453,11 @@ export interface ProjectParametricArtifactsResponse {
 
 export interface ProjectParametricModelParametersPayload {
   parameter_values: Record<string, unknown>
+  expected_revision: number
+}
+
+export interface ProjectFeatureDSLGraphPayload {
+  source_code: string
   expected_revision: number
 }
 

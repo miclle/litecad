@@ -124,6 +124,15 @@ export function ProjectHistoryPopover({
                   <p className="truncate text-xs font-semibold text-[#1f2937]" title={entry.summary}>
                     {entry.summary}
                   </p>
+                  {entry.feature_graph_transitions && entry.feature_graph_transitions.length > 0 ? (
+                    <ul aria-label={t('project.history.featureGraphChanges')} className="mt-1.5 space-y-1 border-l border-[#dbe3ec] pl-2">
+                      {entry.feature_graph_transitions.map((transition) => (
+                        <li className="truncate font-mono text-[10px] text-[#475569]" key={`${transition.node_id}:${transition.change}`}>
+                          {transition.node_id} · {t(`project.history.featureGraphChange.${transition.change}`)}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                   <div className="mt-1 flex items-center justify-between gap-3 font-mono text-[10px] uppercase text-[#64748b]">
                     <span>{t(cadHistoryStatusLabelKey(entry.status))}</span>
                     <time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time>

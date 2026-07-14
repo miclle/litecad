@@ -18,6 +18,7 @@ import type {
   ProjectExportArtifactPayload,
   ProjectExportArtifactResponse,
   ProjectExportArtifactsResponse,
+  ProjectFeatureDSLGraphPayload,
   ProjectInspectionRecordPayload,
   ProjectInspectionRecordResponse,
   ProjectInspectionRecordsResponse,
@@ -180,6 +181,10 @@ export function updateProjectParametricModelParameters(
   payload: ProjectParametricModelParametersPayload,
 ) {
   return client.patch<ProjectModelResponse>(`/projects/${projectId}/models/${modelId}/parametric-parameters`, payload)
+}
+
+export function updateProjectFeatureDSLGraph(projectId: string, modelId: string, payload: ProjectFeatureDSLGraphPayload) {
+  return client.patch<ProjectModelResponse>(`/projects/${projectId}/models/${modelId}/feature-dsl-graph`, payload)
 }
 
 export function fetchProjectModelRevisions(projectId: string, modelId: string) {

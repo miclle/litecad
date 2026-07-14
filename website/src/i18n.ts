@@ -327,6 +327,12 @@ const resources = {
           empty: 'Edits will appear here after you move, change parameters, add, or delete model content.',
           loadOlder: 'Load older operations',
           loadingMore: 'Loading…',
+          featureGraphChanges: 'Feature graph changes',
+          featureGraphChange: {
+            added: 'Added',
+            updated: 'Updated',
+            removed: 'Removed',
+          },
           status: {
             applied: 'Applied',
             undone: 'Undone',
@@ -358,6 +364,13 @@ const resources = {
         parametric: {
           artifact: 'Parametric artifact',
           parameters: 'Parameters',
+          featureGraph: 'Feature graph',
+          featureGraphNodes: 'Feature graph nodes',
+          featureGraphSource: 'Feature graph source',
+          editFeatureGraph: 'Edit feature graph',
+          resetFeatureGraph: 'Reset feature graph',
+          applyFeatureGraph: 'Apply graph',
+          featureGraphEnvelopeChanged: 'Only feature nodes can be changed here. Use the parameter controls for parameter values.',
           version: 'Version',
           versionOption: 'Revision {{sequence}}',
           currentVersion: 'r{{sequence}}',
@@ -744,6 +757,12 @@ const resources = {
           empty: '移动、修改参数、添加或删除模型内容后，编辑记录会显示在这里。',
           loadOlder: '加载更早操作',
           loadingMore: '加载中…',
+          featureGraphChanges: '特征图变更',
+          featureGraphChange: {
+            added: '已新增',
+            updated: '已更新',
+            removed: '已删除',
+          },
           status: {
             applied: '已应用',
             undone: '已撤销',
@@ -775,6 +794,13 @@ const resources = {
         parametric: {
           artifact: '参数化产物',
           parameters: '参数',
+          featureGraph: '特征图',
+          featureGraphNodes: '特征图节点',
+          featureGraphSource: '特征图源文件',
+          editFeatureGraph: '编辑特征图',
+          resetFeatureGraph: '重置特征图',
+          applyFeatureGraph: '应用特征图',
+          featureGraphEnvelopeChanged: '这里只能修改特征节点。参数值请使用参数控件修改。',
           version: '版本',
           versionOption: '版本 {{sequence}}',
           currentVersion: 'r{{sequence}}',

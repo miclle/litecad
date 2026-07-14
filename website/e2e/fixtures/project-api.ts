@@ -60,6 +60,13 @@ export type ProjectAPIFixtureState = {
   featureDSLSourceRequestCount: number
   artifactCompileStatus: string
   artifactUpdateCount: number
+  featureGraphUpdateCount: number
+  featureGraphBeforeSourceCode: string
+  featureGraphBeforeRevisionID: string
+  featureGraphBeforeRevisionSequence: number
+  featureGraphAfterSourceCode: string
+  featureGraphAfterRevisionID: string
+  featureGraphAfterRevisionSequence: number
   historyEntries: unknown[]
   modelParameterUpdateCount: number
   modelRevisionRestoreCount: number
@@ -101,6 +108,13 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
     featureDSLSourceRequestCount: 0,
     artifactCompileStatus: 'pending',
     artifactUpdateCount: 0,
+    featureGraphUpdateCount: 0,
+    featureGraphBeforeSourceCode: '',
+    featureGraphBeforeRevisionID: '',
+    featureGraphBeforeRevisionSequence: 0,
+    featureGraphAfterSourceCode: '',
+    featureGraphAfterRevisionID: '',
+    featureGraphAfterRevisionSequence: 0,
     historyEntries: [],
     modelParameterUpdateCount: 0,
     modelRevisionRestoreCount: 0,
@@ -138,6 +152,17 @@ export const smokeFeatureDSLSource = JSON.stringify({
     width: { type: 'number', default: 60, min: 20, max: 120, step: 5 },
   },
   features: [{ id: 'base', type: 'box', origin: [0, 0, 0], size: ['width', 24, 8] }],
+})
+export const smokeUpdatedFeatureDSLSource = JSON.stringify({
+  version: 1,
+  unit: 'millimetre',
+  parameters: {
+    width: { type: 'number', default: 60, min: 20, max: 120, step: 5 },
+  },
+  features: [
+    { id: 'base', type: 'box', origin: [0, 0, 0], size: ['width', 28, 8] },
+    { id: 'slot', type: 'box_cut', origin: [12, 8, -1], size: [24, 12, 10] },
+  ],
 })
 export const sphereXYZThroughHoleFeatureDSLSource = JSON.stringify({
   version: 1,
@@ -471,6 +496,7 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
   }
   if (request.method() === 'GET' && pathname === `/api/v1/projects/${projectId}/models/${state.savedModelID}/revisions`) {
     const currentModel = smokeSavedModel(state)
+    const currentHistoryCommand = (state.historyEntries[0] as { command_type?: string } | undefined)?.command_type
     const revisions = [
       {
         id: state.currentModelRevisionID,
@@ -481,7 +507,12 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
         byte_size: state.parametricArtifactSourceCode.length,
         metadata: currentModel.metadata,
         content_checksum: `checksum-${state.modelRevisionSequence}`,
-        summary: state.modelRevisionSequence > 1 ? 'Updated parametric parameters' : 'Initial model source',
+        summary:
+          state.modelRevisionSequence > 1
+            ? currentHistoryCommand === 'feature-graph-change'
+              ? 'Updated Feature DSL graph'
+              : 'Updated parametric parameters'
+            : 'Initial model source',
         is_current: true,
         created_at: now,
       },
@@ -766,16 +797,23 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
   }
   if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/cad-document/history/undo`) {
     state.undoCount += 1
-		if (state.occurrenceUndoStack.length > 0) {
-			state.occurrenceRedoStack.push(cloneOccurrences(state.occurrences))
-			state.occurrences = state.occurrenceUndoStack.pop()!
-		} else {
-			state.translationX = 0
-			state.occurrences = state.occurrences.map((occurrence) => ({
-				...occurrence,
-				transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
-			}))
-		}
+    const historyEntry = state.historyEntries[0] as { command_type?: string; status?: string } | undefined
+    if (historyEntry?.command_type === 'feature-graph-change') {
+      state.parametricArtifactSourceCode = state.featureGraphBeforeSourceCode
+      state.currentModelRevisionID = state.featureGraphBeforeRevisionID
+      state.modelRevisionSequence = state.featureGraphBeforeRevisionSequence
+      historyEntry.status = 'undone'
+      state.models = [smokeSavedModel(state)]
+    } else if (state.occurrenceUndoStack.length > 0) {
+      state.occurrenceRedoStack.push(cloneOccurrences(state.occurrences))
+      state.occurrences = state.occurrenceUndoStack.pop()!
+    } else {
+      state.translationX = 0
+      state.occurrences = state.occurrences.map((occurrence) => ({
+        ...occurrence,
+        transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+      }))
+    }
     state.cadRevision += 1
     state.canUndo = false
     state.canRedo = true
@@ -784,20 +822,65 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
   }
   if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/cad-document/history/redo`) {
     state.redoCount += 1
-		if (state.occurrenceRedoStack.length > 0) {
-			state.occurrenceUndoStack.push(cloneOccurrences(state.occurrences))
-			state.occurrences = state.occurrenceRedoStack.pop()!
-		} else {
-			state.translationX = 12
-			state.occurrences = state.occurrences.map((occurrence) => ({
-				...occurrence,
-				transform: { matrix: [1, 0, 0, 12, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
-			}))
-		}
+    const historyEntry = state.historyEntries[0] as { command_type?: string; status?: string } | undefined
+    if (historyEntry?.command_type === 'feature-graph-change') {
+      state.parametricArtifactSourceCode = state.featureGraphAfterSourceCode
+      state.currentModelRevisionID = state.featureGraphAfterRevisionID
+      state.modelRevisionSequence = state.featureGraphAfterRevisionSequence
+      historyEntry.status = 'applied'
+      state.models = [smokeSavedModel(state)]
+    } else if (state.occurrenceRedoStack.length > 0) {
+      state.occurrenceUndoStack.push(cloneOccurrences(state.occurrences))
+      state.occurrences = state.occurrenceRedoStack.pop()!
+    } else {
+      state.translationX = 12
+      state.occurrences = state.occurrences.map((occurrence) => ({
+        ...occurrence,
+        transform: { matrix: [1, 0, 0, 12, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+      }))
+    }
     state.cadRevision += 1
     state.canUndo = true
     state.canRedo = false
     await route.fulfill({ json: { document: smokeCADDocument(state) } })
+    return
+  }
+  if (request.method() === 'PATCH' && pathname === `/api/v1/projects/${projectId}/models/${state.savedModelID}/feature-dsl-graph`) {
+    const requestBody = request.postDataJSON() as { source_code?: string; expected_revision?: number }
+    if (requestBody.expected_revision !== state.cadRevision) {
+      await route.fulfill({ json: { message: 'document revision conflict' }, status: 409 })
+      return
+    }
+    state.featureGraphBeforeSourceCode = state.parametricArtifactSourceCode
+    state.featureGraphBeforeRevisionID = state.currentModelRevisionID
+    state.featureGraphBeforeRevisionSequence = state.modelRevisionSequence
+    state.parametricArtifactSourceCode = requestBody.source_code ?? state.parametricArtifactSourceCode
+    state.modelRevisionSequence += 1
+    state.currentModelRevisionID = `mvr_smoke_${state.modelRevisionSequence}`
+    state.featureGraphAfterSourceCode = state.parametricArtifactSourceCode
+    state.featureGraphAfterRevisionID = state.currentModelRevisionID
+    state.featureGraphAfterRevisionSequence = state.modelRevisionSequence
+    state.featureGraphUpdateCount += 1
+    state.cadRevision += 1
+    state.canUndo = true
+    state.canRedo = false
+    state.historyEntries = [
+      {
+        id: 'hist_smoke_feature_graph_change',
+        sequence: 3,
+        status: 'applied',
+        command_type: 'feature-graph-change',
+        target_id: state.savedModelID,
+        summary: `Update feature graph for ${state.savedModelFilename}`,
+        feature_graph_transitions: [
+          { node_id: 'base', change: 'updated', before_type: 'box', after_type: 'box' },
+          { node_id: 'slot', change: 'added', after_type: 'box_cut' },
+        ],
+        created_at: now,
+      },
+    ]
+    state.models = [smokeSavedModel(state)]
+    await route.fulfill({ json: { model: smokeSavedModel(state) } })
     return
   }
   if (request.method() === 'PATCH' && pathname === `/api/v1/projects/${projectId}/models/${state.savedModelID}/parametric-parameters`) {

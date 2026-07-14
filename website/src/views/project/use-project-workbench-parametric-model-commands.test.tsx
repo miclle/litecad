@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   saveProjectParametricArtifactModel,
   restoreProjectModelRevision,
+  updateProjectFeatureDSLGraph,
   updateProjectParametricArtifact,
   updateProjectParametricModelParameters,
 } from 'src/api/projects'
@@ -15,12 +16,14 @@ import type { ProjectModel, ProjectParametricArtifact } from 'src/types/project'
 vi.mock('src/api/projects', () => ({
   saveProjectParametricArtifactModel: vi.fn(),
   restoreProjectModelRevision: vi.fn(),
+  updateProjectFeatureDSLGraph: vi.fn(),
   updateProjectParametricArtifact: vi.fn(),
   updateProjectParametricModelParameters: vi.fn(),
 }))
 
 const mockedSaveProjectParametricArtifactModel = vi.mocked(saveProjectParametricArtifactModel)
 const mockedRestoreProjectModelRevision = vi.mocked(restoreProjectModelRevision)
+const mockedUpdateProjectFeatureDSLGraph = vi.mocked(updateProjectFeatureDSLGraph)
 const mockedUpdateProjectParametricArtifact = vi.mocked(updateProjectParametricArtifact)
 const mockedUpdateProjectParametricModelParameters = vi.mocked(updateProjectParametricModelParameters)
 
@@ -152,6 +155,65 @@ describe('useProjectWorkbenchParametricModelCommands', () => {
     expect(removeQueries).toHaveBeenCalledWith({
       queryKey: ['projects', 'prj_commands', 'models', 'model_parameters', 'parametric-source'],
     })
+  })
+
+  it('saves a Feature DSL graph revision and refreshes source preview and History', async () => {
+    const model = { ...projectModel('model_graph'), revision_sequence: 2 }
+    mockedUpdateProjectFeatureDSLGraph.mockResolvedValue({ data: { model } } as Awaited<ReturnType<typeof updateProjectFeatureDSLGraph>>)
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(['projects', 'prj_commands', 'cad-document'], { revision: 11 })
+    const removeQueries = vi.spyOn(queryClient, 'removeQueries')
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')
+    const onModelSelected = vi.fn()
+    const { result } = renderHook(
+      () =>
+        useProjectWorkbenchParametricModelCommands({
+          onArtifactSaveError: vi.fn(),
+          onModelSelected,
+          projectId: 'prj_commands',
+        }),
+      { wrapper: queryWrapper(queryClient) },
+    )
+
+    act(() => {
+      result.current.saveFeatureGraph({ modelID: 'model_graph', sourceCode: '{"version":1}' })
+    })
+
+    await waitFor(() => expect(onModelSelected).toHaveBeenCalledWith('model_graph'))
+    expect(mockedUpdateProjectFeatureDSLGraph).toHaveBeenCalledWith('prj_commands', 'model_graph', {
+      source_code: '{"version":1}',
+      expected_revision: 11,
+    })
+    expect(removeQueries).toHaveBeenCalledWith({
+      queryKey: ['projects', 'prj_commands', 'models', 'model_graph', 'parametric-source'],
+    })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'models'] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'models', 'model_graph', 'revisions'] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'cad-document'] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'cad-document', 'history'] })
+  })
+
+  it('refreshes model state after a stale Feature DSL graph revision', async () => {
+    mockedUpdateProjectFeatureDSLGraph.mockRejectedValue({ response: { status: 409 } })
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(['projects', 'prj_commands', 'cad-document'], { revision: 12 })
+    const onConflict = vi.fn()
+    const { result } = renderHook(
+      () =>
+        useProjectWorkbenchParametricModelCommands({
+          onArtifactSaveError: vi.fn(),
+          onConflict,
+          onModelSelected: vi.fn(),
+          projectId: 'prj_commands',
+        }),
+      { wrapper: queryWrapper(queryClient) },
+    )
+
+    act(() => {
+      result.current.saveFeatureGraph({ modelID: 'model_graph', sourceCode: '{"version":1}' })
+    })
+
+    await waitFor(() => expect(onConflict).toHaveBeenCalledTimes(1))
   })
 })
 

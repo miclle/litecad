@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   saveProjectParametricArtifactModel,
   restoreProjectModelRevision,
+  updateProjectFeatureDSLGraph,
   updateProjectParametricArtifact,
   updateProjectParametricModelParameters,
 } from 'src/api/projects'
@@ -29,6 +30,11 @@ type SaveModelParametersInput = {
 type RestoreModelRevisionInput = {
   modelID: string
   revisionID: string
+}
+
+type SaveFeatureGraphInput = {
+  modelID: string
+  sourceCode: string
 }
 
 export function useProjectWorkbenchParametricModelCommands({
@@ -115,10 +121,33 @@ export function useProjectWorkbenchParametricModelCommands({
     onError: handleModelMutationError,
   })
 
+  const updateProjectFeatureDSLGraphMutation = useMutation({
+    mutationFn: async ({ modelID, sourceCode }: SaveFeatureGraphInput) =>
+      (
+        await updateProjectFeatureDSLGraph(projectId, modelID, {
+          source_code: sourceCode,
+          expected_revision: currentDocumentRevision(),
+        })
+      ).data.model,
+    onSuccess: async (model: ProjectModel) => {
+      queryClient.removeQueries({ queryKey: ['projects', projectId, 'models', model.id, 'parametric-source'] })
+      onModelSelected(model.id)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] }),
+        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models', model.id, 'revisions'] }),
+        queryClient.invalidateQueries({ queryKey: documentQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] }),
+      ])
+    },
+    onError: handleModelMutationError,
+  })
+
   return {
     saveGeneratedArtifactAsModel: saveProjectParametricArtifactMutation.mutate,
     saveModelParameters: updateProjectParametricModelParametersMutation.mutate,
     restoreModelRevision: restoreProjectModelRevisionMutation.mutate,
+    saveFeatureGraph: updateProjectFeatureDSLGraphMutation.mutate,
+    isSavingFeatureGraph: updateProjectFeatureDSLGraphMutation.isPending,
     isRestoringModelRevision: restoreProjectModelRevisionMutation.isPending,
   }
 }

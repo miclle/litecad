@@ -47,6 +47,13 @@ type cadParameterChangeHistoryCommand struct {
 	AfterRevisionID  string `json:"after_revision_id"`
 }
 
+type cadFeatureGraphHistoryCommand struct {
+	ModelID          string                          `json:"model_id"`
+	BeforeRevisionID string                          `json:"before_revision_id"`
+	AfterRevisionID  string                          `json:"after_revision_id"`
+	NodeTransitions  []CADFeatureGraphNodeTransition `json:"node_transitions"`
+}
+
 type cadDeletedDocumentNode struct {
 	Node  CADDocumentNode `json:"node"`
 	Index int             `json:"index"`
@@ -85,16 +92,25 @@ type ModifyProjectCADHistoryInput struct {
 	ExpectedRevision int
 }
 
+// CADFeatureGraphNodeTransition identifies one top-level Feature DSL node change.
+type CADFeatureGraphNodeTransition struct {
+	NodeID     string `json:"node_id"`
+	Change     string `json:"change"`
+	BeforeType string `json:"before_type,omitempty"`
+	AfterType  string `json:"after_type,omitempty"`
+}
+
 // CADHistoryEntrySummary is the public audit shape for one persisted CAD edit.
 type CADHistoryEntrySummary struct {
-	ID            string `json:"id"`
-	Sequence      int64  `json:"sequence"`
-	ParentEntryID string `json:"parent_entry_id,omitempty"`
-	Status        string `json:"status"`
-	CommandType   string `json:"command_type"`
-	TargetID      string `json:"target_id"`
-	Summary       string `json:"summary"`
-	CreatedAt     string `json:"created_at"`
+	ID                      string                          `json:"id"`
+	Sequence                int64                           `json:"sequence"`
+	ParentEntryID           string                          `json:"parent_entry_id,omitempty"`
+	Status                  string                          `json:"status"`
+	CommandType             string                          `json:"command_type"`
+	TargetID                string                          `json:"target_id"`
+	Summary                 string                          `json:"summary"`
+	FeatureGraphTransitions []CADFeatureGraphNodeTransition `json:"feature_graph_transitions,omitempty"`
+	CreatedAt               string                          `json:"created_at"`
 }
 
 // ProjectCADHistoryPage contains newest-first history summaries.
@@ -125,15 +141,24 @@ func (s *Service) ListProjectCADHistory(ctx context.Context, ownerUserID, projec
 	}
 	publicEntries := make([]CADHistoryEntrySummary, 0, len(entries))
 	for _, entry := range entries {
+		var transitions []CADFeatureGraphNodeTransition
+		if entry.CommandType == "feature-graph-change" {
+			var command cadFeatureGraphHistoryCommand
+			if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
+				return ProjectCADHistoryPage{}, fmt.Errorf("decode feature graph history summary: %w", err)
+			}
+			transitions = command.NodeTransitions
+		}
 		publicEntries = append(publicEntries, CADHistoryEntrySummary{
-			ID:            entry.ID,
-			Sequence:      entry.Sequence,
-			ParentEntryID: entry.ParentEntryID,
-			Status:        entry.Status,
-			CommandType:   entry.CommandType,
-			TargetID:      entry.TargetID,
-			Summary:       entry.Summary,
-			CreatedAt:     entry.CreatedAt.Format(timeFormatRFC3339),
+			ID:                      entry.ID,
+			Sequence:                entry.Sequence,
+			ParentEntryID:           entry.ParentEntryID,
+			Status:                  entry.Status,
+			CommandType:             entry.CommandType,
+			TargetID:                entry.TargetID,
+			Summary:                 entry.Summary,
+			FeatureGraphTransitions: transitions,
+			CreatedAt:               entry.CreatedAt.Format(timeFormatRFC3339),
 		})
 	}
 	page := ProjectCADHistoryPage{Entries: publicEntries}
@@ -443,10 +468,14 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 		} else {
 			state.Assembly.Occurrences = insertCADAssemblyOccurrence(state.Assembly.Occurrences, command.Index, command.Occurrence)
 		}
-	case "parameter-change", "model-revision-restore":
-		var command cadParameterChangeHistoryCommand
+	case "parameter-change", "model-revision-restore", "feature-graph-change":
+		var command struct {
+			ModelID          string `json:"model_id"`
+			BeforeRevisionID string `json:"before_revision_id"`
+			AfterRevisionID  string `json:"after_revision_id"`
+		}
 		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
-			return fmt.Errorf("decode parameter change history command: %w", err)
+			return fmt.Errorf("decode model revision history command: %w", err)
 		}
 		revisionID := command.BeforeRevisionID
 		if forward {
@@ -457,7 +486,7 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrProjectNotFound
 			}
-			return fmt.Errorf("load parameter change revision: %w", err)
+			return fmt.Errorf("load model revision history target: %w", err)
 		}
 		result := tx.WithContext(ctx).
 			Model(&entity.ProjectModel{}).
@@ -469,7 +498,7 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 				"byte_size":           len(revision.SourceData),
 			})
 		if result.Error != nil {
-			return fmt.Errorf("apply parameter change history command: %w", result.Error)
+			return fmt.Errorf("apply model revision history command: %w", result.Error)
 		}
 		if result.RowsAffected != 1 {
 			return ErrProjectNotFound

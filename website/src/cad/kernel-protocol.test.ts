@@ -150,6 +150,26 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(true)
   })
 
+  test('rejects duplicate top-level LiteCAD feature graph node IDs', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-duplicate-feature-id',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'duplicate-nodes.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            features: [
+              { id: 'base', type: 'box', size: [20, 20, 4] },
+              { id: 'base', type: 'box_cut', origin: [4, 4, -1], size: [12, 12, 6] },
+            ],
+          },
+        },
+      }),
+    ).toBe(false)
+  })
+
   test('accepts LiteCAD feature DSL cylinder and cylinder-cut features', () => {
     const document = {
       version: 1,

@@ -8,8 +8,8 @@ For a short cross-machine status snapshot and the recommended next branch, see [
 
 - Extend the persisted CAD document model beyond the current uploaded-source nodes, independently selectable lightweight STEP component child nodes, transform/delete-node/box-union operations, database-backed reversible operation History, schema version, revision, and unit.
   - Add durable kernel shape state or an explicit LiteCAD operation graph that can be reloaded without treating preview meshes as source of truth.
-  - Extend the implemented immutable source/metadata model revisions into durable kernel feature graph versions without treating preview meshes as source of truth.
-  - Decide how generated Feature DSL graph nodes become, or deliberately do not become, CAD document History operations.
+  - Extend the implemented immutable complete-source Feature DSL graph revisions into durable kernel shape/feature state without treating preview meshes as source of truth.
+  - Define node-level editing and version semantics below the current stable top-level Feature DSL node transitions, including nested boolean operands and future sketch constraints.
   - Do not claim true geometric STEP decomposition, preserved source-application history, or a general B-rep feature graph until those flows exist end to end.
 - Continue the CAD import and geometry pipeline beyond completed STEP/STP/self-contained GLTF/GLB/STL source upload, lightweight metadata extraction, browser-kernel STEP preview tessellation, GLB/self-contained GLTF preview publishing, STL-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API.
   - Treat OBJ/GLB/STL preview meshes as derived display artifacts, not editable CAD source of truth.
@@ -34,11 +34,11 @@ For a short cross-machine status snapshot and the recommended next branch, see [
   - Expand the LiteCAD Feature DSL only when schema validation, backend prompting, browser preview, STEP export, tests, and Assistant UX can ship together.
   - Choose the next DSL slice only after defining a narrow end-to-end boundary across backend validation, provider prompting, worker preview/export, tests, and docs.
   - Remaining DSL geometry gaps include full sketch constraints, freeform profiles, arbitrary sweep paths, arbitrary/freeform revolve profiles beyond the completed full-turn XZ rectangular solid/hollow path, robust true chamfer edge-face selection, mirrored/negative transforms, arbitrary draft-face tapering beyond restricted `tapered_extrude`, infix formulas, functions, unit math, comparisons, and conditionals.
-  - Remaining DSL data-model gaps include durable kernel feature graph state and CAD document History integration for generated feature graph nodes.
+  - Remaining DSL data-model gaps include durable serialized kernel shape state, nested feature-node editing, sketch-constraint state, and full B-rep feature history beyond current complete-source revisions with stable top-level node transitions.
   - Decide whether Assistant revision requests should eventually overwrite a selected saved source model in place with History semantics, or keep the current safer corrected-draft/new-source-model workflow.
   - Unsupported primitive requests should fail explicitly rather than create substitute geometry.
   - Add provider-stage telemetry, full provider analytics, richer long-run progress details, and provider-specific tuning before exposing longer generation workflows.
-  - Add source-code editing and diff review for generated parametric artifacts only if product usage demands direct code control.
+  - Add structured node-level editing and source diff review beyond the current compact validated whole-source graph editor only if product usage demands that extra control.
 
 ## Backend And Data
 

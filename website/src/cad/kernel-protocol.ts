@@ -483,8 +483,20 @@ function isCadKernelFeatureDSLDocument(value: unknown): value is CadKernelFeatur
     (value.parameters === undefined || (isRecord(value.parameters) && Object.values(value.parameters).every(isFeatureDSLParameter))) &&
     Array.isArray(value.features) &&
     value.features.length > 0 &&
-    value.features.every(isFeatureDSLFeature)
+    value.features.every(isFeatureDSLFeature) &&
+    hasUniqueTopLevelFeatureIDs(value.features)
   )
+}
+
+function hasUniqueTopLevelFeatureIDs(features: unknown[]) {
+  const ids = new Set<string>()
+  for (const feature of features) {
+    if (!isRecord(feature) || typeof feature.id !== 'string' || ids.has(feature.id)) {
+      return false
+    }
+    ids.add(feature.id)
+  }
+  return true
 }
 
 function isFeatureDSLParameter(value: unknown): value is CadKernelFeatureDSLParameter {

@@ -74,4 +74,43 @@ describe('ProjectHistoryPopover', () => {
     expect(onHistoryAction).toHaveBeenCalledWith('undo')
     expect((screen.getByRole('button', { name: 'Redo' }) as HTMLButtonElement).disabled).toBe(true)
   })
+
+  it('shows stable feature node transitions for graph history entries', () => {
+    render(
+      <TooltipProvider>
+        <ProjectHistoryPopover
+          canRedo={false}
+          canUndo
+          entries={[
+            {
+              id: 'history_graph',
+              sequence: 4,
+              status: 'applied',
+              command_type: 'feature-graph-change',
+              target_id: 'model_one',
+              summary: 'Update feature graph for bracket.lcad.json',
+              feature_graph_transitions: [
+                { node_id: 'base', change: 'updated', before_type: 'box', after_type: 'box' },
+                { node_id: 'slot', change: 'added', after_type: 'box_cut' },
+              ],
+              created_at: '2026-07-14T00:00:00Z',
+            },
+          ]}
+          error=""
+          hasNextPage={false}
+          isFetchingNextPage={false}
+          isLoading={false}
+          isMutationPending={false}
+          loadError={false}
+          onFetchNextPage={vi.fn()}
+          onHistoryAction={vi.fn()}
+          onOpenChange={vi.fn()}
+          open
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('base · Updated')).not.toBeNull()
+    expect(screen.getByText('slot · Added')).not.toBeNull()
+  })
 })

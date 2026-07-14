@@ -125,6 +125,57 @@ describe('ParametricArtifactEditor', () => {
     expect(screen.queryByRole('button', { name: 'Hide source' })).toBeNull()
   })
 
+  it('edits the feature graph only for saved LiteCAD models after browser kernel validation', async () => {
+    const compileFeatureDSL = vi.fn().mockResolvedValue({
+      mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0] },
+      meshSummary: { vertexCount: 1, triangleCount: 0, hasNormals: true },
+    })
+    const onSaveFeatureGraph = vi.fn()
+    const sourceCode =
+      '{"version":1,"unit":"millimetre","parameters":{},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":[80,40,6]}]}'
+    const updatedSourceCode =
+      '{"version":1,"unit":"millimetre","parameters":{},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":[80,40,8]}]}'
+    const savedArtifact = {
+      ...artifact,
+      id: 'pma_saved_lcad',
+      source_kind: 'litecad-feature-dsl',
+      source_code: sourceCode,
+      preview_model_id: 'mdl_saved_lcad',
+    } satisfies ProjectParametricArtifact
+
+    render(
+      <ParametricArtifactEditor
+        artifact={savedArtifact}
+        compileFeatureDSL={compileFeatureDSL}
+        debounceMs={0}
+        onSaveFeatureGraph={onSaveFeatureGraph}
+      />,
+    )
+
+    expect(screen.queryByLabelText('Feature graph source')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit feature graph' }))
+    const sourceEditor = screen.getByLabelText<HTMLTextAreaElement>('Feature graph source')
+    expect(sourceEditor.value).toBe(sourceCode)
+
+    fireEvent.change(sourceEditor, { target: { value: updatedSourceCode } })
+    await waitFor(() =>
+      expect(compileFeatureDSL).toHaveBeenLastCalledWith(
+        expect.objectContaining({ document: expect.objectContaining({ features: [expect.objectContaining({ id: 'base', size: [80, 40, 8] })] }) }),
+      ),
+    )
+    const applyButton = screen.getByRole<HTMLButtonElement>('button', { name: 'Apply graph' })
+    await waitFor(() => expect(applyButton.disabled).toBe(false))
+    fireEvent.click(applyButton)
+
+    expect(onSaveFeatureGraph).toHaveBeenCalledWith(updatedSourceCode)
+  })
+
+  it('does not offer feature graph editing for OpenSCAD models', () => {
+    render(<ParametricArtifactEditor artifact={artifact} onSaveFeatureGraph={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: 'Edit feature graph' })).toBeNull()
+  })
+
   it('automatically saves generated LiteCAD feature DSL drafts after preview succeeds', async () => {
     const compile = vi.fn()
     const compileFeatureDSL = vi.fn().mockResolvedValue({

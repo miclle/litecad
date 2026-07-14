@@ -4,7 +4,7 @@
 
 **Goal:** Complete every unfinished follow-up listed in `docs/current-work-handoff.md` as separately verified, documented, and committed deliverables.
 
-**Architecture:** Treat each handoff follow-up as a narrow product slice with its own persistence/API/UI/test boundary before moving to the next slice. Start with backend-stored export artifact history because it is independent of future nested assembly and feature-graph semantics; then continue through durable measurement/section records, generated Feature DSL feature graph history, OpenSCAD runtime selection, and nested assembly semantics.
+**Architecture:** Treat each handoff follow-up as a narrow product slice with its own persistence/API/UI/test boundary before moving to the next slice. Start with backend-stored export artifact history because it is independent of future nested assembly and feature-graph semantics; then continue through saved inspection records, generated Feature DSL feature graph history, OpenSCAD runtime selection, nested assembly semantics, and richer measurement plus durable section geometry.
 
 **Tech Stack:** Go 1.26, GORM, fox handlers, React 19, TypeScript, React Query, Three.js, Vitest, Playwright, Codex in-app browser verification.
 
@@ -177,17 +177,122 @@
 
   Ran `task check`, `task test`, and `task test-browser`. Verified the UI in the in-app browser against a local Vite/mock API stack.
 
-- [ ] **Step 6: Commit Phase 2**
+- [x] **Step 6: Commit Phase 2**
+
+  Committed as `bacb659 feat(cad): persist inspection records`.
 
 ### Phase 3: Durable Feature DSL Graph History
 
 **Files:**
-- Extend model revision metadata and CAD document History tests for generated Feature DSL graph node transitions.
-- Add a narrow API/UI path that records generated graph-node edits as reversible document commands.
-- Extend Playwright to edit a saved `.lcad.json` parameter, verify preview update, Undo/Redo, reload, and restore.
-- Update docs and commit `feat(cad): record feature dsl graph history`.
+- Create: `internal/service/feature_dsl_graph.go`
+- Create: `internal/service/feature_dsl_graph_test.go`
+- Create: `internal/handler/project_feature_dsl_graph.go`
+- Create: `internal/handler/project_feature_dsl_graph_test.go`
+- Create: `website/src/views/project/feature-dsl-graph-editor.tsx`
+- Create: `website/src/views/project/feature-dsl-graph-editor.test.tsx`
+- Modify: `internal/service/cad_document_history.go`
+- Modify: `internal/handler/handler.go`
+- Modify: `website/src/api/projects.ts`
+- Modify: `website/src/api/projects.test.ts`
+- Modify: `website/src/types/project.ts`
+- Modify: `website/src/views/project/use-project-workbench-parametric-model-commands.ts`
+- Modify: `website/src/views/project/use-project-workbench-parametric-model-commands.test.tsx`
+- Modify: `website/src/views/project/parametric-artifact-editor.tsx`
+- Modify: `website/src/views/project/parametric-artifact-editor.test.tsx`
+- Modify: `website/src/views/project/project-history-popover.tsx`
+- Modify: `website/src/views/project/project-history-popover.test.tsx`
+- Modify: `website/src/views/project/project-workbench-sidebar.tsx`
+- Modify: `website/src/views/project/project-workbench-composition.tsx`
+- Modify: `website/src/i18n.ts`
+- Modify: `website/e2e/fixtures/project-api.ts`
+- Modify: `website/e2e/project-workbench-parametric.spec.ts`
+- Modify shipped-truth docs and this plan.
 
-**Boundary:** Record generated feature graph node changes as durable LiteCAD document history. Do not claim arbitrary B-rep feature history or editable imported STEP history.
+**Interfaces:**
+- Produces: `PATCH /api/v1/projects/:projectID/models/:modelID/feature-dsl-graph` with `source_code` and `expected_revision`.
+- Produces: immutable model source/metadata revisions for accepted graph edits and a reversible `feature-graph-change` CAD History command.
+- Produces: deterministic top-level node transitions with `node_id`, `change`, `before_type`, and `after_type` for `added`, `updated`, and `removed` nodes.
+- Consumes: saved project-owned `.lcad.json` source, the existing model revision store, CAD document expected-revision envelope, and browser `feature-dsl-preview` worker.
+
+**Boundary:** The durable graph is the validated `.lcad.json` source snapshot pinned by the flat assembly document. This phase edits and reports top-level generated Feature DSL nodes with stable unique IDs. It does not expose arbitrary imported STEP/B-rep feature history, nested boolean operand editing, sketch-constraint solving, or durable OCCT shape serialization.
+
+- [x] **Step 1: Write failing service tests**
+
+  Cover a saved `.lcad.json` graph update that changes one node and adds one node, persists source and metadata revision 2, stores deterministic node transitions, and supports Undo/Redo. Cover stale revision, unchanged graph, duplicate node IDs, non-LCAD models, invalid source, and foreign ownership.
+
+  Run: `go test ./internal/service -run 'TestUpdateLiteCADFeatureGraph'`
+
+  Expected: fail because the graph update service does not exist.
+
+- [x] **Step 2: Implement graph revision service and History replay**
+
+  Parse and validate old/new top-level feature nodes, require unique stable IDs and at least one semantic node transition, preserve compatible current parameter values, create the immutable source/metadata revision, update occurrence revision bindings, append `feature-graph-change`, and persist the CAD document in one transaction. Reuse model-revision replay for Undo/Redo and expose transitions in History summaries.
+
+  Run: `go test ./internal/service -run 'TestUpdateLiteCADFeatureGraph|TestUpdateParametricModelParametersCreatesReversibleHistoryEntry|TestProjectModelRevisionListAndRestore'`
+
+  Expected: pass.
+
+- [x] **Step 3: Write failing handler and frontend API tests**
+
+  Cover authenticated graph update, invalid source `400`, stale expected revision `409`, signed-out `401`, foreign owner `404`, and the typed frontend API helper.
+
+  Run: `go test ./internal/handler -run 'TestProjectFeatureDSLGraph'`
+
+  Run: `cd website && npx vitest run src/api/projects.test.ts`
+
+  Expected: fail because the route/helper do not exist.
+
+- [x] **Step 4: Implement route, DTO, types, and API helper**
+
+  Register the owner-scoped route through the existing handler/service layering. Add `feature-graph-change` and graph transition shapes to frontend History types.
+
+  Re-run the Step 3 commands.
+
+  Expected: pass.
+
+- [x] **Step 5: Write failing workbench UI/controller tests**
+
+  Cover a saved LCAD-only graph editor, source reset, browser-worker compile gating, graph-save mutation, cache invalidation, conflict handling, and History transition rendering. Keep generated drafts and OpenSCAD saved models on their existing UI paths.
+
+  Run: `cd website && npx vitest run src/views/project/feature-dsl-graph-editor.test.tsx src/views/project/parametric-artifact-editor.test.tsx src/views/project/use-project-workbench-parametric-model-commands.test.tsx src/views/project/project-history-popover.test.tsx`
+
+  Expected: fail because the graph editor and mutation are not wired.
+
+- [x] **Step 6: Implement workbench graph editor and History details**
+
+  Add a compact Inspector graph-source editor using existing shadcn controls and Lucide icons. Compile edited source through `feature-dsl-preview`; enable Apply only for a current successful compile and a changed source; then save through the expected-revision API and refresh model/source/revision/document/history caches.
+
+  Re-run the Step 5 command.
+
+  Expected: pass.
+
+- [x] **Step 7: Add deterministic Playwright coverage**
+
+  Extend the project fixture and parametric workbench spec to edit a saved graph, wait for preview compilation, save, verify the History transition, Undo, Redo, reload, and confirm the edited source/revision remains active.
+
+  Run: `task test-browser`
+
+  Expected: pass.
+
+- [x] **Step 8: In-app browser verification**
+
+  Open the workbench against the local deterministic stack, edit and apply one graph node, verify canvas preview stability, inspect Operation History transition details, exercise Undo/Redo and reload, and confirm no browser console errors.
+
+- [x] **Step 9: Full verification and docs**
+
+  Run: `task check`
+
+  Run: `task test`
+
+  Run: `task test-browser`
+
+  Update `README.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, `docs/browser-cad-kernel-roadmap.md`, and `docs/current-work-handoff.md` to describe the exact shipped graph-revision boundary and remaining B-rep limitations.
+
+- [x] **Step 10: Commit Phase 3**
+
+  Run: `git diff --check`
+
+  Commit message: `feat(cad): record feature dsl graph history`
 
 ### Phase 4: License-Compatible OpenSCAD Browser Runtime
 
@@ -209,6 +314,17 @@
 - Update docs and commit `feat(cad): add nested assembly grouping`.
 
 **Boundary:** This phase completes the handoff item by establishing real nested assembly semantics and a documented mate/constraint boundary. Constraint solving is only shipped when backed by code and tests.
+
+### Phase 6: Richer Measurement And Durable Section Geometry
+
+**Files:**
+- Extend the browser CAD kernel worker with a narrowly defined section-geometry output that is derived from the current immutable source revisions and occurrence placements.
+- Add a project-owned durable section artifact entity/service/API with document revision, plane, source revision/occurrence inputs, generated geometry bytes, and download/restore lifecycle.
+- Add at least one measurement type beyond whole-visible-bounds size while keeping its derivation and units explicit.
+- Extend the workbench inspection UI, deterministic Playwright workflow, and in-app browser verification.
+- Update docs and commit `feat(cad): persist section geometry artifacts`.
+
+**Boundary:** The durable section result must contain actual kernel-derived geometry or a clearly typed empty result, not only a saved viewer clipping-plane definition. Richer measurements must identify their derivation and must not imply exact B-rep metrology beyond what the kernel computes.
 
 ## Completion Gate
 
