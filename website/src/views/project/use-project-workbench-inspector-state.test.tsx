@@ -116,6 +116,36 @@ describe('useProjectWorkbenchInspectorState', () => {
     }))
 
     expect(result.current.inspectorSelection?.transformLocked).toBe(true)
+    expect(result.current.inspectorSelection?.transformLockMessage).toBe('Placement is controlled by a solved point mate. Move its driver or delete the mate.')
+  })
+
+  it('marks a reusable subassembly member as transform locked', () => {
+    const model = projectModel()
+    const node = cadNode({ model_id: model.id, source_format: 'step' })
+    const member = { ...cadOccurrence('occ_member', node.id, 'Drive member'), subassembly_member_id: 'smb_drive' }
+    const document = cadDocument([node])
+    document.schema_version = 4
+    document.assembly = {
+      id: 'assembly_inspector',
+      name: 'Inspector assembly',
+      occurrences: [member],
+      groups: [{
+        id: 'grp_drive', parent_group_id: '', name: 'Drive A', suppressed: false,
+        subassembly_definition_id: 'sub_drive', subassembly_definition_revision: 1,
+      }],
+      constraints: [],
+      subassemblies: [],
+    }
+
+    const { result } = renderHook(() => useInspectorStateScenario({
+      projectCADDocument: document,
+      selectedDocumentNode: node,
+      selectedOccurrence: member,
+      selectedSourceModel: model,
+    }))
+
+    expect(result.current.inspectorSelection?.transformLocked).toBe(true)
+    expect(result.current.inspectorSelection?.transformLockMessage).toBe('Placement is pinned by a reusable assembly instance. Suppress the whole instance or create another instance.')
   })
 })
 

@@ -43,6 +43,7 @@ export type ProjectModelTreeGroup = {
   suppressed?: boolean
   effectivelySuppressed?: boolean
   parentGroupId?: string
+  isSubassemblyMember?: boolean
   occurrenceName?: string
   model: ProjectModel
   sourceNodeId: string
@@ -146,6 +147,7 @@ export function buildProjectModelTree(models: ProjectModel[], cadDocument?: Proj
             suppressed: occurrence.suppressed,
             effectivelySuppressed: isCADAssemblyOccurrenceEffectivelySuppressed(cadDocument?.assembly, occurrence),
             parentGroupId: occurrence.parent_group_id ?? '',
+            isSubassemblyMember: Boolean(occurrence.subassembly_member_id),
           }
         : {}),
       ...(occurrence ? { occurrenceName: baseDisplayName } : {}),

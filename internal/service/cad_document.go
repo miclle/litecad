@@ -56,19 +56,41 @@ type ProjectCADDocument struct {
 
 // CADAssembly is the durable assembly tree owned by a project document.
 type CADAssembly struct {
-	ID          string                        `json:"id"`
-	Name        string                        `json:"name"`
-	Groups      []CADAssemblyGroup            `json:"groups"`
-	Occurrences []CADAssemblyOccurrence       `json:"occurrences"`
-	Constraints []CADAssemblyConstraintRecord `json:"constraints"`
+	ID            string                             `json:"id"`
+	Name          string                             `json:"name"`
+	Groups        []CADAssemblyGroup                 `json:"groups"`
+	Occurrences   []CADAssemblyOccurrence            `json:"occurrences"`
+	Constraints   []CADAssemblyConstraintRecord      `json:"constraints"`
+	Subassemblies []CADSubassemblyDefinitionRevision `json:"subassemblies"`
 }
 
 // CADAssemblyGroup provides nested organization and hierarchical suppression.
 type CADAssemblyGroup struct {
-	ID            string `json:"id"`
-	ParentGroupID string `json:"parent_group_id"`
-	Name          string `json:"name"`
-	Suppressed    bool   `json:"suppressed"`
+	ID                            string `json:"id"`
+	ParentGroupID                 string `json:"parent_group_id"`
+	Name                          string `json:"name"`
+	Suppressed                    bool   `json:"suppressed"`
+	SubassemblyDefinitionID       string `json:"subassembly_definition_id,omitempty"`
+	SubassemblyDefinitionRevision int    `json:"subassembly_definition_revision,omitempty"`
+}
+
+// CADSubassemblyDefinitionRevision is one immutable project-local reusable assembly snapshot.
+type CADSubassemblyDefinitionRevision struct {
+	ID       string                 `json:"id"`
+	Revision int                    `json:"revision"`
+	Name     string                 `json:"name"`
+	Members  []CADSubassemblyMember `json:"members"`
+}
+
+// CADSubassemblyMember pins one source model revision and transform relative to the capture origin.
+type CADSubassemblyMember struct {
+	ID                string       `json:"id"`
+	NodeID            string       `json:"node_id"`
+	ModelID           string       `json:"model_id"`
+	ModelRevisionID   string       `json:"model_revision_id"`
+	Name              string       `json:"name"`
+	Suppressed        bool         `json:"suppressed"`
+	RelativeTransform CADTransform `json:"relative_transform"`
 }
 
 // CADAssemblyConstraintRecord stores either a legacy unresolved relationship or one solved point mate.
@@ -88,14 +110,15 @@ type CADAssemblyConstraintRecord struct {
 
 // CADAssemblyOccurrence binds one source model revision to an assembly placement.
 type CADAssemblyOccurrence struct {
-	ID              string       `json:"id"`
-	NodeID          string       `json:"node_id"`
-	ModelID         string       `json:"model_id"`
-	ModelRevisionID string       `json:"model_revision_id"`
-	ParentGroupID   string       `json:"parent_group_id"`
-	Name            string       `json:"name"`
-	Suppressed      bool         `json:"suppressed"`
-	Transform       CADTransform `json:"transform"`
+	ID                  string       `json:"id"`
+	NodeID              string       `json:"node_id"`
+	ModelID             string       `json:"model_id"`
+	ModelRevisionID     string       `json:"model_revision_id"`
+	ParentGroupID       string       `json:"parent_group_id"`
+	SubassemblyMemberID string       `json:"subassembly_member_id,omitempty"`
+	Name                string       `json:"name"`
+	Suppressed          bool         `json:"suppressed"`
+	Transform           CADTransform `json:"transform"`
 }
 
 // CADHistoryState describes the current server-side Undo/Redo position.
@@ -377,6 +400,13 @@ func (s *Service) deleteProjectCADNode(ctx context.Context, project entity.Proje
 		deletedOccurrenceIndex := -1
 		deletedOccurrences := []cadDeletedAssemblyOccurrence{}
 		if deletedNode.ParentNodeID == "" {
+			for _, definition := range state.Assembly.Subassemblies {
+				for _, member := range definition.Members {
+					if member.NodeID == deletedNode.ID || member.ModelID == deletedNode.ModelID {
+						return ErrInvalidCADDocumentInput
+					}
+				}
+			}
 			removedOccurrenceIDs := make(map[string]struct{})
 			for _, occurrence := range state.Assembly.Occurrences {
 				if occurrence.NodeID == deletedNode.ID {
@@ -498,6 +528,9 @@ func (s *Service) updateProjectCADNodeTransform(ctx context.Context, project ent
 			}
 		}
 		if occurrenceIndex >= 0 {
+			if cadAssemblyOccurrenceIsSubassemblyMember(state.Assembly, state.Assembly.Occurrences[occurrenceIndex]) {
+				return ErrInvalidCADDocumentInput
+			}
 			occurrenceID := state.Assembly.Occurrences[occurrenceIndex].ID
 			for _, constraint := range state.Assembly.Constraints {
 				if constraint.Status == cadAssemblyConstraintStatusSolved && constraint.Solver == cadAssemblyConstraintSolverPointV1 && constraint.SecondOccurrenceID == occurrenceID {
@@ -769,6 +802,10 @@ func upgradeCADDocumentState(project entity.Project, schemaVersion int, state ca
 		state.Assembly.Constraints = []CADAssemblyConstraintRecord{}
 		changed = true
 	}
+	if state.Assembly.Subassemblies == nil {
+		state.Assembly.Subassemblies = []CADSubassemblyDefinitionRevision{}
+		changed = true
+	}
 	if schemaVersion < cadDocumentFlatAssemblySchemaVersion {
 		for index := range state.Nodes {
 			node := &state.Nodes[index]
@@ -803,6 +840,9 @@ func syncCADAssemblyOccurrence(state cadDocumentState, node CADDocumentNode, mod
 			continue
 		}
 		found = true
+		if cadAssemblyOccurrenceIsSubassemblyMember(state.Assembly, *occurrence) {
+			continue
+		}
 		if occurrence.NodeID != node.ID {
 			occurrence.NodeID = node.ID
 			changed = true
@@ -936,8 +976,11 @@ func setCADDocumentModelRevision(state *cadDocumentState, modelID, revisionID st
 	found := false
 	for index := range state.Assembly.Occurrences {
 		if state.Assembly.Occurrences[index].ModelID == modelID {
-			state.Assembly.Occurrences[index].ModelRevisionID = revisionID
 			found = true
+			if cadAssemblyOccurrenceIsSubassemblyMember(state.Assembly, state.Assembly.Occurrences[index]) {
+				continue
+			}
+			state.Assembly.Occurrences[index].ModelRevisionID = revisionID
 		}
 	}
 	if !found {
@@ -963,6 +1006,10 @@ func publicProjectCADDocument(document entity.ProjectCADDocument, state cadDocum
 	if constraints == nil {
 		constraints = []CADAssemblyConstraintRecord{}
 	}
+	subassemblies := append([]CADSubassemblyDefinitionRevision(nil), state.Assembly.Subassemblies...)
+	if subassemblies == nil {
+		subassemblies = []CADSubassemblyDefinitionRevision{}
+	}
 	occurrenceByNodeID := make(map[string]CADAssemblyOccurrence, len(occurrences))
 	for _, occurrence := range occurrences {
 		if _, exists := occurrenceByNodeID[occurrence.NodeID]; !exists {
@@ -986,11 +1033,12 @@ func publicProjectCADDocument(document entity.ProjectCADDocument, state cadDocum
 		Revision:      document.Revision,
 		Unit:          state.Unit,
 		Assembly: CADAssembly{
-			ID:          state.Assembly.ID,
-			Name:        state.Assembly.Name,
-			Groups:      groups,
-			Occurrences: occurrences,
-			Constraints: constraints,
+			ID:            state.Assembly.ID,
+			Name:          state.Assembly.Name,
+			Groups:        groups,
+			Occurrences:   occurrences,
+			Constraints:   constraints,
+			Subassemblies: subassemblies,
 		},
 		Nodes:      nodes,
 		Operations: operations,

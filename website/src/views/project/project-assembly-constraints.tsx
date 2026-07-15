@@ -25,23 +25,24 @@ function parseVector(values: readonly string[]): [number, number, number] | null
 
 export function ProjectAssemblyConstraints({ constraints, error = '', isPending = false, occurrences, onCreate, onDelete }: ProjectAssemblyConstraintsProps) {
   const { t } = useTranslation()
+  const mateOccurrences = occurrences.filter((occurrence) => !occurrence.subassembly_member_id)
   const [name, setName] = useState(t('project.assemblyConstraints.defaultName', { count: constraints.length + 1 }))
-  const [firstOccurrenceID, setFirstOccurrenceID] = useState(occurrences[0]?.id ?? '')
-  const [secondOccurrenceID, setSecondOccurrenceID] = useState(occurrences[1]?.id ?? '')
+  const [firstOccurrenceID, setFirstOccurrenceID] = useState(mateOccurrences[0]?.id ?? '')
+  const [secondOccurrenceID, setSecondOccurrenceID] = useState(mateOccurrences[1]?.id ?? '')
   const [firstAnchor, setFirstAnchor] = useState<readonly string[]>(zeroVector)
   const [secondAnchor, setSecondAnchor] = useState<readonly string[]>(zeroVector)
   const [offset, setOffset] = useState<readonly string[]>(zeroVector)
 
-  const selectedFirstOccurrenceID = occurrences.some((occurrence) => occurrence.id === firstOccurrenceID) ? firstOccurrenceID : (occurrences[0]?.id ?? '')
-  const selectedSecondOccurrenceID = occurrences.some((occurrence) => occurrence.id === secondOccurrenceID && occurrence.id !== selectedFirstOccurrenceID)
+  const selectedFirstOccurrenceID = mateOccurrences.some((occurrence) => occurrence.id === firstOccurrenceID) ? firstOccurrenceID : (mateOccurrences[0]?.id ?? '')
+  const selectedSecondOccurrenceID = mateOccurrences.some((occurrence) => occurrence.id === secondOccurrenceID && occurrence.id !== selectedFirstOccurrenceID)
     ? secondOccurrenceID
-    : (occurrences.find((occurrence) => occurrence.id !== selectedFirstOccurrenceID)?.id ?? '')
+    : (mateOccurrences.find((occurrence) => occurrence.id !== selectedFirstOccurrenceID)?.id ?? '')
 
   const parsedFirstAnchor = parseVector(firstAnchor)
   const parsedSecondAnchor = parseVector(secondAnchor)
   const parsedOffset = parseVector(offset)
   const canCreate =
-    occurrences.length >= 2 &&
+    mateOccurrences.length >= 2 &&
     name.trim() !== '' &&
     selectedFirstOccurrenceID !== '' &&
     selectedSecondOccurrenceID !== '' &&
@@ -63,17 +64,25 @@ export function ProjectAssemblyConstraints({ constraints, error = '', isPending 
         <span className="font-mono text-[10px] text-[#94a3b8]">{t('project.assemblyConstraints.count', { count: constraints.length })}</span>
       </div>
 
-      {occurrences.length >= 2 ? (
+      {mateOccurrences.length >= 2 ? (
         <div className="mt-2 grid gap-2 rounded-md border border-[#e2e8f0] bg-[#f8fafc] p-2">
           <Input aria-label={t('project.assemblyConstraints.name')} className="h-8 text-xs" onChange={(event) => setName(event.target.value)} value={name} />
           <div className="grid grid-cols-2 gap-2">
-            <Select onValueChange={(value) => setFirstOccurrenceID(value ?? '')} value={selectedFirstOccurrenceID}>
+            <Select
+              items={mateOccurrences.map((occurrence) => ({ label: occurrence.name, value: occurrence.id }))}
+              onValueChange={(value) => setFirstOccurrenceID(value ?? '')}
+              value={selectedFirstOccurrenceID}
+            >
               <SelectTrigger aria-label={t('project.assemblyConstraints.driver')} className="w-full" size="sm"><SelectValue /></SelectTrigger>
-              <SelectContent>{occurrences.map((occurrence) => <SelectItem key={occurrence.id} value={occurrence.id}>{occurrence.name}</SelectItem>)}</SelectContent>
+              <SelectContent>{mateOccurrences.map((occurrence) => <SelectItem key={occurrence.id} value={occurrence.id}>{occurrence.name}</SelectItem>)}</SelectContent>
             </Select>
-            <Select onValueChange={(value) => setSecondOccurrenceID(value ?? '')} value={selectedSecondOccurrenceID}>
+            <Select
+              items={mateOccurrences.map((occurrence) => ({ label: occurrence.name, value: occurrence.id }))}
+              onValueChange={(value) => setSecondOccurrenceID(value ?? '')}
+              value={selectedSecondOccurrenceID}
+            >
               <SelectTrigger aria-label={t('project.assemblyConstraints.driven')} className="w-full" size="sm"><SelectValue /></SelectTrigger>
-              <SelectContent>{occurrences.map((occurrence) => <SelectItem key={occurrence.id} value={occurrence.id}>{occurrence.name}</SelectItem>)}</SelectContent>
+              <SelectContent>{mateOccurrences.map((occurrence) => <SelectItem key={occurrence.id} value={occurrence.id}>{occurrence.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <VectorInputs labelKey="driverAnchor" onChange={(axis, value) => updateVector(firstAnchor, axis, value, setFirstAnchor)} values={firstAnchor} />

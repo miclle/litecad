@@ -6,10 +6,10 @@ This note is the short cross-machine handoff for the current LiteCAD development
 
 ## Current Mainline
 
-- The solver-backed assembly phase started from synchronized `main`, `origin/main`, and `origin/HEAD` at `f5db780 feat(cad): add stable topology inspection semantics` on 2026-07-15.
+- The assembly-semantics stream started from synchronized `main`, `origin/main`, and `origin/HEAD` at `f5db780 feat(cad): add stable topology inspection semantics` on 2026-07-15.
 - Work continues directly on `main` as requested. Each roadmap phase must pass automated E2E, in-app browser verification for UI-visible behavior, code review, documentation refresh, commit, and push before the next phase begins.
 - The old assembly and tapered-extrude feature branches have already been merged and cleaned up.
-- The topology inspection/section-lineage phase is committed and pushed. The schema v4 point-mate solver is the current phase; after its commit and push, the next phase is the project-local reusable subassembly snapshot contract.
+- The topology inspection/section-lineage phase, schema v4 point-mate solver, and project-local reusable subassembly snapshot contract are complete on `main`. The latest implementation commit is `feat(cad): add reusable subassembly snapshots`.
 
 ## Completed Phases
 
@@ -44,7 +44,15 @@ This note is the short cross-machine handoff for the current LiteCAD development
 - Solver constraints form an acyclic graph with at most one inbound driver per occurrence. A driver may feed multiple downstream mates; one driver edit resolves the complete downstream graph inside the same `expected_revision` transaction.
 - Creating a mate and moving a driver record every affected occurrence in database-backed History. Undo/Redo restores all placements atomically. The legacy model/node transform route follows the same rules and cannot bypass the solver.
 - The workbench authors and deletes point mates, displays solved residuals, and keeps driven occurrence placement read-only in both Inspector inputs and the Three.js transform control.
-- Schema v3 unresolved mate records upgrade without a solver and without moving geometry. The shipped solver does not handle rotation, planes, axes, concentricity, tangency, tolerances, over-constraint optimization, topology-selected references, or reusable subassembly documents.
+- Schema v3 unresolved mate records upgrade without a solver and without moving geometry. The shipped solver does not handle rotation, planes, axes, concentricity, tangency, tolerances, over-constraint optimization, or topology-selected references.
+
+### Immutable Reusable Subassembly Snapshots
+
+- CAD document schema v4 stores project-local immutable revision-1 subassembly definitions captured from the direct ordinary occurrences of one ordinary leaf group. Captured members pin node/model/revision identity, name, suppression, and transforms normalized to the first member's translation.
+- Instantiation creates a tagged group plus expanded ordinary occurrences at an explicit XYZ translation. Preview, inspection, ancestor suppression, and separate/compound STEP export continue through the existing occurrence pipeline.
+- Linked member occurrences are read-only: they cannot be renamed, reordered, regrouped, independently suppressed, duplicated, deleted, transformed, used in mates, deleted through their source, or advanced to a newer current model revision. The tagged group supports whole-instance suppression only.
+- Capture and instantiation are owner-scoped `expected_revision` mutations. Each creates one reversible database-backed History command; Undo/Redo restores the complete definition or instance across reloads.
+- Definitions do not live-update instances. Definition revision evolution/deletion, editable members, nested definitions/instances, live propagation, cross-project libraries, source STEP hierarchy preservation, serialized kernel state, and nested STEP serialization remain future work.
 
 ### Export Artifact History
 
@@ -71,7 +79,7 @@ This note is the short cross-machine handoff for the current LiteCAD development
 
 - CAD document schema v3 adds nested organizational groups, occurrence `parent_group_id` bindings, and hierarchical suppression. Direct or ancestor suppression keeps occurrences durable but excludes them from preview and STEP export.
 - Owner-scoped expected-revision APIs validate group trees, reject cycles and dangling parents, require groups to be empty before deletion, and persist group create/update/delete plus occurrence regrouping in reversible History.
-- Validated `mate` records connect two distinct existing occurrences only with status `unresolved`. They are reversible referential records and do not solve placement, move geometry, or imply reusable subassembly documents.
+- At the schema v3 milestone, validated `mate` records connected two distinct existing occurrences only with status `unresolved`. Those legacy records remain reversible and migration-safe; schema v4 adds the point-translation solver described above without silently moving them.
 - The workbench tree creates, renames, suppresses, and deletes groups, creates subgroups, and moves occurrences between groups. Preview/export filtering, Undo/Redo, and reload persistence share the same ancestor-suppression semantics.
 - The exact boundary is documented in `docs/nested-assembly-semantics.md`.
 
@@ -85,7 +93,7 @@ This note is the short cross-machine handoff for the current LiteCAD development
 
 ## Last Verification
 
-The point-mate phase was verified in the Codex in-app browser against the real local backend. A solved mate with a 25 mm X offset placed the driven occurrence at X=25; moving the driver to X=8 propagated the driven placement to X=33. Reload preserved the solved record and residual 0. After code-review fixes, selecting the driven occurrence showed X=33 in a disabled Inspector input with explicit solver-owned guidance, and the browser reported no warnings or errors.
+The reusable-subassembly phase was verified in the Codex in-app browser against the real local PostgreSQL backend. An ordinary two-member leaf group was captured as `驱动模块 QA` revision 1, then instantiated as `驱动模块 A` at X=100 and `驱动模块 B` at X=200. Preview composition increased from two source occurrences to six total occurrences. Selecting a linked member showed the reusable-member lock in the tree and Inspector with disabled placement input. Suppressing A reduced preview composition to four; Undo restored six, Redo returned to four, and reload preserved the definition, both instances, and suppression state. The current-flow console had no new warnings or errors; the deterministic E2E error collector was also empty.
 
 Full phase gates passed:
 
@@ -96,13 +104,13 @@ task test-browser
 ```
 
 - `task check` passed backend formatting/vet/lint, frontend TypeScript, and module-tidy checks.
-- `task test` passed Go race/coverage tests and 81 Vitest files / 411 tests. Vitest still prints the existing `MaxListenersExceededWarning` warnings during the full run.
-- `task test-browser` passed all 17 deterministic Playwright workbench tests, including point-mate creation, driver propagation, reload, Undo/Redo, deletion, and the existing CAD workflows.
-- Focused solver/service/handler, API/controller/component, and Inspector/Three.js selection tests also passed during TDD and after code-review fixes.
+- `task test` passed Go race/coverage tests and 82 Vitest files / 421 tests. Vitest still prints the existing `MaxListenersExceededWarning` warnings during the full run.
+- `task test-browser` passed all 18 deterministic Playwright workbench tests, including reusable definition capture, two translated instances, preview/export composition, whole-instance suppression, reload, Undo/Redo, and the existing CAD workflows.
+- Focused reusable-subassembly service/handler, API/controller/component, Inspector/Three.js lock, mate-filter, and model-revision-pinning tests also passed during TDD and after code-review fixes.
 
 ## Active Roadmap
 
-The original handoff follow-up list remains closed. True chamfer, the versioned recursive LiteCAD Feature DSL source graph, exact aggregate topology inspection, explicit section association generations, and the deterministic point-translation mate solver are complete. The active roadmap now continues with the project-local immutable reusable subassembly snapshot contract.
+The original handoff follow-up list remains closed. True chamfer, the versioned recursive LiteCAD Feature DSL source graph, exact aggregate topology inspection, explicit section association generations, the deterministic point-translation mate solver, and the project-local immutable reusable subassembly snapshot contract are complete. The next assembly design decision is definition revision evolution/deletion; only after that boundary is explicit should LiteCAD consider nested definitions, live propagation, cross-project libraries, or nested STEP serialization.
 
 These phases must preserve the existing source-of-truth boundary: replayable versioned graph data is durable, while OCCT shapes and Three.js buffers remain derived runtime state.
 
@@ -119,6 +127,6 @@ task install
 task check
 ```
 
-For a fresh machine, clone the repository, switch to `main`, and then run the same `task install` and `task check` steps. Confirm `git rev-parse HEAD` is at least `f5db780` before relying on the completed topology descriptions above, then pull the latest point-mate phase commit from `origin/main`.
+For a fresh machine, clone the repository, switch to `main`, and then run the same `task install` and `task check` steps. Confirm the latest `origin/main` includes `feat(cad): add reusable subassembly snapshots` before relying on the completed schema v4 snapshot descriptions above.
 
 No database contents, browser-local panel preferences, AI provider secrets, or `cmd/litecad/config.local.yaml` settings are transferred through Git. Recreate machine-local configuration from `cmd/litecad/config.example.yaml`; do not copy credentials into this handoff or commit them.

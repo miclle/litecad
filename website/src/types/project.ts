@@ -335,6 +335,7 @@ export interface CADAssemblyOccurrence {
   model_id: string
   model_revision_id: string
   parent_group_id?: string
+  subassembly_member_id?: string
   name: string
   suppressed: boolean
   transform: CADTransform
@@ -352,6 +353,8 @@ export interface CADAssemblyGroup {
   parent_group_id: string
   name: string
   suppressed: boolean
+  subassembly_definition_id?: string
+  subassembly_definition_revision?: number
 }
 
 export interface UpdateCADAssemblyGroupPayload {
@@ -384,12 +387,41 @@ export interface CreateCADAssemblyConstraintPayload {
   offset: [number, number, number]
 }
 
+export interface CADSubassemblyMember {
+  id: string
+  node_id: string
+  model_id: string
+  model_revision_id: string
+  name: string
+  suppressed: boolean
+  relative_transform: CADTransform
+}
+
+export interface CADSubassemblyDefinitionRevision {
+  id: string
+  revision: number
+  name: string
+  members: CADSubassemblyMember[]
+}
+
+export interface CaptureCADSubassemblyPayload {
+  group_id: string
+  name: string
+}
+
+export interface InstantiateCADSubassemblyPayload {
+  name: string
+  parent_group_id: string
+  translation: [number, number, number]
+}
+
 export interface CADAssembly {
   id: string
   name: string
   groups?: CADAssemblyGroup[]
   occurrences: CADAssemblyOccurrence[]
   constraints?: CADAssemblyConstraintRecord[]
+  subassemblies?: CADSubassemblyDefinitionRevision[]
 }
 
 export interface CADOperation {

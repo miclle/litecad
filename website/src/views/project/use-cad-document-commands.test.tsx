@@ -10,6 +10,8 @@ import {
   duplicateProjectCADOccurrence,
   createProjectCADAssemblyGroup,
   createProjectCADAssemblyConstraint,
+  captureProjectCADSubassembly,
+  instantiateProjectCADSubassembly,
   deleteProjectCADAssemblyGroup,
   deleteProjectCADAssemblyConstraint,
   moveProjectCADOccurrence,
@@ -29,6 +31,8 @@ vi.mock('src/api/projects', () => ({
   duplicateProjectCADOccurrence: vi.fn(),
   createProjectCADAssemblyGroup: vi.fn(),
   createProjectCADAssemblyConstraint: vi.fn(),
+  captureProjectCADSubassembly: vi.fn(),
+  instantiateProjectCADSubassembly: vi.fn(),
   deleteProjectCADAssemblyGroup: vi.fn(),
   deleteProjectCADAssemblyConstraint: vi.fn(),
   moveProjectCADOccurrence: vi.fn(),
@@ -287,5 +291,22 @@ describe('useCADDocumentCommands', () => {
     await waitFor(() => expect(createProjectCADAssemblyConstraint).toHaveBeenCalledWith(projectId, payload, 7))
     act(() => result.current.deleteAssemblyConstraint('cst_point'))
     await waitFor(() => expect(deleteProjectCADAssemblyConstraint).toHaveBeenCalledWith(projectId, 'cst_point', 8))
+  })
+
+  it('serializes subassembly capture and instantiation through document revisions', async () => {
+    vi.mocked(captureProjectCADSubassembly).mockResolvedValue({
+      data: { document: projectDocument(8) },
+    } as Awaited<ReturnType<typeof captureProjectCADSubassembly>>)
+    vi.mocked(instantiateProjectCADSubassembly).mockResolvedValue({
+      data: { document: projectDocument(9) },
+    } as Awaited<ReturnType<typeof instantiateProjectCADSubassembly>>)
+    const { wrapper } = createHarness()
+    const { result } = renderHook(() => useCADDocumentCommands({ projectId }), { wrapper })
+    const instantiatePayload = { name: 'Drive module A', parent_group_id: '', translation: [100, 20, 0] as [number, number, number] }
+
+    act(() => result.current.captureSubassembly({ group_id: 'grp_source', name: 'Drive module' }))
+    await waitFor(() => expect(captureProjectCADSubassembly).toHaveBeenCalledWith(projectId, { group_id: 'grp_source', name: 'Drive module' }, 7))
+    act(() => result.current.instantiateSubassembly('sub_drive', instantiatePayload))
+    await waitFor(() => expect(instantiateProjectCADSubassembly).toHaveBeenCalledWith(projectId, 'sub_drive', instantiatePayload, 8))
   })
 })

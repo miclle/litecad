@@ -77,7 +77,7 @@ function buildAssemblyTreeEntries(assemblyGroups: CADAssemblyGroup[], modelGroup
 }
 
 function assemblyGroupOptions(assemblyGroups: CADAssemblyGroup[]) {
-  const entries = buildAssemblyTreeEntries(assemblyGroups, [])
+  const entries = buildAssemblyTreeEntries(assemblyGroups.filter((group) => !group.subassembly_definition_id), [])
   return entries.flatMap((entry) =>
     entry.type === 'assembly-group'
       ? [
@@ -176,6 +176,7 @@ export function ProjectModelTree({
         {treeEntries.map((entry) => {
           if (entry.type === 'assembly-group') {
             const group = entry.assemblyGroup
+            const isSubassemblyInstance = Boolean(group.subassembly_definition_id)
             return (
               <div
                 className="group/assembly-row flex min-w-0 items-center gap-1 rounded-md px-2 py-1.5 text-sm text-[#334155] hover:bg-[#f1f5f9]"
@@ -183,7 +184,11 @@ export function ProjectModelTree({
                 key={group.id}
                 style={{ marginLeft: `${entry.depth * 16}px` }}
               >
-                <Folder className={group.suppressed ? 'size-4 shrink-0 text-[#94a3b8]' : 'size-4 shrink-0 text-[#475569]'} />
+                {isSubassemblyInstance ? (
+                  <Boxes className={group.suppressed ? 'size-4 shrink-0 text-[#94a3b8]' : 'size-4 shrink-0 text-[#2563eb]'} />
+                ) : (
+                  <Folder className={group.suppressed ? 'size-4 shrink-0 text-[#94a3b8]' : 'size-4 shrink-0 text-[#475569]'} />
+                )}
                 {renamingGroupID === group.id ? (
                   <>
                     <Input
@@ -221,11 +226,16 @@ export function ProjectModelTree({
                     <span className={group.suppressed ? 'min-w-0 flex-1 truncate text-[#94a3b8]' : 'min-w-0 flex-1 truncate'} title={group.name}>
                       {group.name}
                     </span>
+                    {isSubassemblyInstance ? (
+                      <span className="shrink-0 font-mono text-[9px] uppercase text-[#2563eb]">
+                        {t('project.modelTree.reusableRevision', { revision: group.subassembly_definition_revision })}
+                      </span>
+                    ) : null}
                     <Button
                       aria-label={t('project.modelTree.createSubgroup', {
                         name: group.name,
                       })}
-                      disabled={isOccurrenceMutationPending}
+                      disabled={isSubassemblyInstance || isOccurrenceMutationPending}
                       onClick={() =>
                         onCreateAssemblyGroup?.(
                           t('project.modelTree.defaultSubgroupName', {
@@ -247,7 +257,7 @@ export function ProjectModelTree({
                       aria-label={t('project.modelTree.renameGroup', {
                         name: group.name,
                       })}
-                      disabled={isOccurrenceMutationPending}
+                      disabled={isSubassemblyInstance || isOccurrenceMutationPending}
                       onClick={() => {
                         setGroupNameDraft(group.name)
                         setRenamingGroupID(group.id)
@@ -281,7 +291,7 @@ export function ProjectModelTree({
                       aria-label={t('project.modelTree.deleteGroup', {
                         name: group.name,
                       })}
-                      disabled={!entry.isEmpty || isOccurrenceMutationPending}
+                      disabled={isSubassemblyInstance || !entry.isEmpty || isOccurrenceMutationPending}
                       onClick={() => onDeleteAssemblyGroup?.(group.id)}
                       size="icon-xs"
                       title={
@@ -289,7 +299,9 @@ export function ProjectModelTree({
                           ? t('project.modelTree.deleteGroup', {
                               name: group.name,
                             })
-                          : t('project.modelTree.groupNotEmpty')
+                          : isSubassemblyInstance
+                            ? t('project.modelTree.reusableGroupLocked')
+                            : t('project.modelTree.groupNotEmpty')
                       }
                       type="button"
                       variant="ghost"
@@ -313,6 +325,7 @@ export function ProjectModelTree({
           const canMoveDown =
             (group.occurrenceIndex ?? (group.assemblyOccurrenceCount ?? groups.length) - 1) < (group.assemblyOccurrenceCount ?? groups.length) - 1
           const canDeleteOccurrence = (group.modelOccurrenceCount ?? 1) > 1
+          const isSubassemblyMember = Boolean(group.isSubassemblyMember)
 
           return (
             <div
@@ -372,7 +385,10 @@ export function ProjectModelTree({
               </div>
               {isSelectedOccurrence && group.occurrenceId ? (
                 <div className="mt-1 grid min-w-0 gap-1 border-t border-[#dbeafe] pt-1">
-                  <div className="flex min-w-0 items-center gap-1">
+                  {isSubassemblyMember ? (
+                    <p className="px-1 py-1 text-[11px] leading-4 text-[#64748b]">{t('project.modelTree.reusableMemberLocked')}</p>
+                  ) : (
+                    <div className="flex min-w-0 items-center gap-1">
                     {renamingOccurrenceID === group.occurrenceId ? (
                       <>
                         <Input
@@ -484,14 +500,15 @@ export function ProjectModelTree({
                         </Button>
                       </>
                     )}
-                  </div>
-                  {assemblyGroups.length > 0 ? (
+                    </div>
+                  )}
+                  {!isSubassemblyMember && assemblyGroups.length > 0 ? (
                     <Select
                       items={[
                         {
                           label: t('project.modelTree.assemblyRoot'),
                           value: '__assembly_root__',
-                        },
+        },
                         ...groupOptions,
                       ]}
                       onValueChange={(value) =>

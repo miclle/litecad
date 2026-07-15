@@ -222,4 +222,65 @@ describe('ProjectModelTree', () => {
       parent_group_id: '',
     })
   })
+
+  it('keeps reusable instance groups and their expanded members immutable', () => {
+    render(
+      <ProjectModelTree
+        assemblyGroups={[
+          {
+            id: 'grp_instance',
+            parent_group_id: '',
+            name: 'Drive A',
+            suppressed: false,
+            subassembly_definition_id: 'sub_drive',
+            subassembly_definition_revision: 1,
+          },
+        ]}
+        groups={[{ ...groups[0], isSubassemblyMember: true, parentGroupId: 'grp_instance' }]}
+        hiddenModelIds={new Set()}
+        isLoading={false}
+        isUploading={false}
+        onSelect={vi.fn()}
+        onToggleVisibility={vi.fn()}
+        previewAssetModelIds={new Set(['occurrence_model_one'])}
+        selectedNodeId="node_model_one"
+        selectedOccurrenceId="occurrence_model_one"
+        uploadError=""
+      />,
+    )
+
+    expect(screen.getByText('Pinned reusable assembly member')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Duplicate occurrence' })).toBeNull()
+    expect((screen.getByRole('button', { name: 'Rename Drive A' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Create subgroup in Drive A' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Suppress Drive A' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('does not offer reusable instance groups as destinations for ordinary occurrences', async () => {
+    const user = userEvent.setup()
+    render(
+      <ProjectModelTree
+        assemblyGroups={[
+          {
+            id: 'grp_instance', parent_group_id: '', name: 'Drive A', suppressed: false,
+            subassembly_definition_id: 'sub_drive', subassembly_definition_revision: 1,
+          },
+        ]}
+        groups={groups}
+        hiddenModelIds={new Set()}
+        isLoading={false}
+        isUploading={false}
+        onSelect={vi.fn()}
+        onToggleVisibility={vi.fn()}
+        previewAssetModelIds={new Set(['occurrence_model_one'])}
+        selectedNodeId="node_model_one"
+        selectedOccurrenceId="occurrence_model_one"
+        uploadError=""
+      />,
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Assembly group' }))
+
+    expect(screen.queryByRole('option', { name: 'Drive A' })).toBeNull()
+  })
 })

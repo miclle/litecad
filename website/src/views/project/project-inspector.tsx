@@ -17,6 +17,7 @@ export type ProjectInspectorSelection = {
   stepExportStatus: string
   transformDraft: TransformDraft
   transformError: string
+  transformLockMessage?: string
   transformLocked?: boolean
 }
 
@@ -111,7 +112,9 @@ export function ProjectInspector({
                 />
               ))}
             </div>
-            {selected.transformLocked ? <p className="mt-2 text-[11px] leading-4 text-[#64748b]">{t('project.inspector.solverOwned')}</p> : null}
+            {selected.transformLocked ? (
+              <p className="mt-2 text-[11px] leading-4 text-[#64748b]">{selected.transformLockMessage || t('project.inspector.solverOwned')}</p>
+            ) : null}
             {selected.transformError ? <p className="mt-2 text-[11px] leading-4 text-[#8a2f24]">{selected.transformError}</p> : null}
           </div>
 

@@ -24,6 +24,7 @@ vi.mock('./model-preview', () => ({
       }) => void
       selectedModelId: string
       selectedNodeId: string
+      transformControlsLocked?: boolean
     }) => {
       useEffect(() => {
         props.onMeasurementChange?.({
@@ -42,6 +43,7 @@ vi.mock('./model-preview', () => ({
         data-section={String(props.displayOptions.section)}
         data-selected-model={props.selectedModelId}
         data-selected-node={props.selectedNodeId}
+        data-transform-locked={String(Boolean(props.transformControlsLocked))}
       />
     },
   ),
@@ -71,6 +73,29 @@ describe('ProjectCanvas', () => {
     renderCanvas()
 
     expect(document.querySelector('[data-model-preview]')?.getAttribute('data-measurement-overlay-class')).toContain('sm:top-[168px]')
+  })
+
+  test('locks viewport transforms for reusable assembly members', () => {
+    const projectDocument = cadDocument()
+    projectDocument.assembly = {
+      id: 'assembly_demo',
+      name: 'Demo assembly',
+      groups: [{
+        id: 'grp_drive', parent_group_id: '', name: 'Drive A', suppressed: false,
+        subassembly_definition_id: 'sub_drive', subassembly_definition_revision: 1,
+      }],
+      occurrences: [{
+        id: 'occ_member', node_id: 'node_mdl_step', model_id: 'mdl_step', model_revision_id: 'mvr_step',
+        parent_group_id: 'grp_drive', subassembly_member_id: 'smb_drive', name: 'Drive', suppressed: false,
+        transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+      }],
+      constraints: [],
+      subassemblies: [],
+    }
+
+    renderCanvas({ projectCADDocument: projectDocument, selectedOccurrenceId: 'occ_member' })
+
+    expect(document.querySelector('[data-model-preview]')?.getAttribute('data-transform-locked')).toBe('true')
   })
 
   test('toggles preview analysis tools for loaded preview assets', async () => {

@@ -183,10 +183,13 @@ export function ProjectCanvas({
   const [displayOptions, setDisplayOptions] = useState<ModelPreviewDisplayOptions>(defaultModelPreviewDisplayOptions)
   const [currentMeasurement, setCurrentMeasurement] = useState<ModelPreviewMeasurement | undefined>(undefined)
   const [sectionPlaneOrigin, setSectionPlaneOrigin] = useState<{ x: number; y: number; z: number } | undefined>(undefined)
+  const selectedOccurrence = projectCADDocument?.assembly?.occurrences.find((occurrence) => occurrence.id === selectedOccurrenceId)
   const selectedTransformLocked = Boolean(
-    selectedOccurrenceId && projectCADDocument?.assembly?.constraints?.some(
-      (constraint) => constraint.status === 'solved' && constraint.solver === 'point-coincident-v1' && constraint.second_occurrence_id === selectedOccurrenceId,
-    ),
+    selectedOccurrence?.subassembly_member_id ||
+      (selectedOccurrenceId &&
+        projectCADDocument?.assembly?.constraints?.some(
+          (constraint) => constraint.status === 'solved' && constraint.solver === 'point-coincident-v1' && constraint.second_occurrence_id === selectedOccurrenceId,
+        )),
   )
   const previewTools: PreviewTool[] = [
     { description: t('project.canvas.edgesDescription'), icon: Layers, key: 'showEdges', label: t('project.canvas.edges') },

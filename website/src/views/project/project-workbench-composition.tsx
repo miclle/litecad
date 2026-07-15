@@ -196,6 +196,7 @@ export function ProjectWorkbenchComposition({
           assemblyConstraints={modelState.projectCADDocument?.assembly?.constraints ?? []}
           assemblyGroups={modelState.projectCADDocument?.assembly?.groups ?? []}
           assemblyOccurrences={modelState.projectCADDocument?.assembly?.occurrences ?? []}
+          assemblySubassemblies={modelState.projectCADDocument?.assembly?.subassemblies ?? []}
           documentDetails={inspectorState.documentDetails}
           hiddenModelIds={visibilityState.hiddenModelIDs}
           inspectorSelection={inspectorState.inspectorSelection}
@@ -205,6 +206,7 @@ export function ProjectWorkbenchComposition({
           isFeatureGraphSaving={parametricModelCommands.isSavingFeatureGraph}
 					isAssemblyConstraintMutationPending={cadDocumentCommands.isAssemblyConstraintMutationPending}
 					isOccurrenceMutationPending={cadDocumentCommands.isOccurrenceMutationPending}
+          isSubassemblyMutationPending={cadDocumentCommands.isSubassemblyMutationPending}
           leftPanelWidth={shellState.leftPanelWidth}
           modelCount={modelState.projectModels.length}
           onCollapseChange={shellState.setIsLeftPanelCollapsed}
@@ -218,6 +220,8 @@ export function ProjectWorkbenchComposition({
 					}}
 					onDuplicateOccurrence={cadDocumentCommands.duplicateOccurrence}
 					onMoveOccurrence={cadDocumentCommands.moveOccurrence}
+					onCaptureSubassembly={cadDocumentCommands.captureSubassembly}
+					onInstantiateSubassembly={cadDocumentCommands.instantiateSubassembly}
 			onModelSelect={(modelId, nodeId, occurrenceId) => {
 				if (occurrenceId) {
 					selectModel(modelId, nodeId, occurrenceId)
@@ -245,6 +249,7 @@ export function ProjectWorkbenchComposition({
 					onUpdateOccurrence={cadDocumentCommands.updateOccurrence}
 					constraintError={cadDocumentCommands.constraintError}
 					occurrenceError={cadDocumentCommands.occurrenceError}
+					subassemblyError={cadDocumentCommands.subassemblyError}
           onTransformChange={draftCommands.updateTransformDraftField}
           previewAssetModelIds={modelState.previewAssetModelIDs}
           projectModelTree={modelState.projectModelTree}

@@ -11,6 +11,7 @@ type FixtureOccurrence = {
 	model_id: string
 	model_revision_id: string
 	parent_group_id: string
+	subassembly_member_id?: string
 	name: string
 	suppressed: boolean
 	transform: { matrix: number[] }
@@ -21,6 +22,25 @@ type FixtureAssemblyGroup = {
 	parent_group_id: string
 	name: string
 	suppressed: boolean
+	subassembly_definition_id?: string
+	subassembly_definition_revision?: number
+}
+
+type FixtureSubassemblyMember = {
+	id: string
+	node_id: string
+	model_id: string
+	model_revision_id: string
+	name: string
+	suppressed: boolean
+	relative_transform: { matrix: number[] }
+}
+
+type FixtureSubassemblyDefinition = {
+	id: string
+	revision: number
+	name: string
+	members: FixtureSubassemblyMember[]
 }
 
 type FixtureAssemblyConstraint = {
@@ -41,6 +61,7 @@ type FixtureAssemblySnapshot = {
 	occurrences: FixtureOccurrence[]
 	groups: FixtureAssemblyGroup[]
 	constraints: FixtureAssemblyConstraint[]
+	subassemblies: FixtureSubassemblyDefinition[]
 }
 
 type FixtureExportArtifact = {
@@ -141,6 +162,7 @@ export type ProjectAPIFixtureState = {
 	occurrences: FixtureOccurrence[]
 	assemblyGroups: FixtureAssemblyGroup[]
 	assemblyConstraints: FixtureAssemblyConstraint[]
+	assemblySubassemblies: FixtureSubassemblyDefinition[]
 	assemblyUndoStack: FixtureAssemblySnapshot[]
 	assemblyRedoStack: FixtureAssemblySnapshot[]
 	assemblyGroupCreateCount: number
@@ -148,6 +170,8 @@ export type ProjectAPIFixtureState = {
 	assemblyGroupDeleteCount: number
 	assemblyConstraintCreateCount: number
 	assemblyConstraintDeleteCount: number
+	subassemblyDefinitionCreateCount: number
+	subassemblyInstanceCreateCount: number
 	occurrenceDuplicateCount: number
 	occurrenceUpdateCount: number
 	occurrenceMoveCount: number
@@ -198,6 +222,7 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
 		occurrences: [],
 		assemblyGroups: [],
 		assemblyConstraints: [],
+		assemblySubassemblies: [],
 		assemblyUndoStack: [],
 		assemblyRedoStack: [],
 		assemblyGroupCreateCount: 0,
@@ -205,6 +230,8 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
 		assemblyGroupDeleteCount: 0,
 		assemblyConstraintCreateCount: 0,
 		assemblyConstraintDeleteCount: 0,
+		subassemblyDefinitionCreateCount: 0,
+		subassemblyInstanceCreateCount: 0,
 		occurrenceDuplicateCount: 0,
 		occurrenceUpdateCount: 0,
 		occurrenceMoveCount: 0,
@@ -404,8 +431,12 @@ function smokeCADDocument(state: ProjectAPIFixtureState) {
 		id: `assembly_${projectId}`,
 		name: 'Workbench Smoke',
 		groups: state.assemblyGroups,
-		occurrences: occurrences.map((occurrence) => ({ ...occurrence, model_revision_id: state.currentModelRevisionID })),
+		occurrences: occurrences.map((occurrence) => ({
+			...occurrence,
+			model_revision_id: occurrence.subassembly_member_id ? occurrence.model_revision_id : state.currentModelRevisionID,
+		})),
 		constraints: state.assemblyConstraints,
+		subassemblies: state.assemblySubassemblies,
 	},
     nodes:
       state.models.length > 0
@@ -466,11 +497,22 @@ function cloneAssemblyConstraints(constraints: FixtureAssemblyConstraint[]) {
 	}))
 }
 
+function cloneSubassemblies(definitions: FixtureSubassemblyDefinition[]) {
+	return definitions.map((definition) => ({
+		...definition,
+		members: definition.members.map((member) => ({
+			...member,
+			relative_transform: { matrix: [...member.relative_transform.matrix] },
+		})),
+	}))
+}
+
 function assemblySnapshot(state: ProjectAPIFixtureState): FixtureAssemblySnapshot {
 	return {
 		occurrences: cloneOccurrences(state.occurrences),
 		groups: cloneAssemblyGroups(state.assemblyGroups),
 		constraints: cloneAssemblyConstraints(state.assemblyConstraints),
+		subassemblies: cloneSubassemblies(state.assemblySubassemblies),
 	}
 }
 
@@ -478,6 +520,7 @@ function restoreAssemblySnapshot(state: ProjectAPIFixtureState, snapshot: Fixtur
 	state.occurrences = cloneOccurrences(snapshot.occurrences)
 	state.assemblyGroups = cloneAssemblyGroups(snapshot.groups)
 	state.assemblyConstraints = cloneAssemblyConstraints(snapshot.constraints)
+	state.assemblySubassemblies = cloneSubassemblies(snapshot.subassemblies)
 }
 
 function fixtureTransformPoint(transform: { matrix: number[] }, point: readonly number[]) {
@@ -898,6 +941,93 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     return
   }
 	const assemblyConstraintRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/cad-document/constraints(?:/([^/]+))?$`))
+	const subassemblyRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/cad-document/subassemblies(?:/([^/]+)/instances)?$`))
+	if (request.method() === 'POST' && subassemblyRoute) {
+		const definitionID = decodeURIComponent(subassemblyRoute[1] ?? '')
+		if (!definitionID) {
+			const requestBody = request.postDataJSON() as { group_id?: string; name?: string }
+			const group = state.assemblyGroups.find((candidate) => candidate.id === requestBody.group_id)
+			const members = state.occurrences.filter((occurrence) => occurrence.parent_group_id === requestBody.group_id && !occurrence.subassembly_member_id)
+			const hasChildGroup = state.assemblyGroups.some((candidate) => candidate.parent_group_id === requestBody.group_id)
+			if (!group || group.subassembly_definition_id || hasChildGroup || members.length === 0 || !requestBody.name?.trim()) {
+				await route.fulfill({ json: { message: 'invalid subassembly source group' }, status: 400 })
+				return
+			}
+			recordAssemblyMutation(state)
+			state.subassemblyDefinitionCreateCount += 1
+			const base = [members[0]!.transform.matrix[3] ?? 0, members[0]!.transform.matrix[7] ?? 0, members[0]!.transform.matrix[11] ?? 0]
+			const definition: FixtureSubassemblyDefinition = {
+				id: `sub_smoke_${state.subassemblyDefinitionCreateCount}`,
+				revision: 1,
+				name: requestBody.name.trim(),
+				members: members.map((occurrence, index) => {
+					const matrix = [...occurrence.transform.matrix]
+					matrix[3] = (matrix[3] ?? 0) - base[0]!
+					matrix[7] = (matrix[7] ?? 0) - base[1]!
+					matrix[11] = (matrix[11] ?? 0) - base[2]!
+					return {
+						id: `smb_smoke_${state.subassemblyDefinitionCreateCount}_${index + 1}`,
+						node_id: occurrence.node_id,
+						model_id: occurrence.model_id,
+						model_revision_id: occurrence.model_revision_id,
+						name: occurrence.name,
+						suppressed: occurrence.suppressed,
+						relative_transform: { matrix },
+					}
+				}),
+			}
+			state.assemblySubassemblies.push(definition)
+			state.historyEntries = [{
+				id: `hist_subassembly_capture_${state.subassemblyDefinitionCreateCount}`, sequence: state.cadRevision,
+				status: 'applied', command_type: 'subassembly-definition-create', target_id: definition.id,
+				summary: `Capture subassembly ${definition.name}`, created_at: now,
+			}]
+			await route.fulfill({ json: { document: smokeCADDocument(state) } })
+			return
+		}
+
+		const definition = state.assemblySubassemblies.find((candidate) => candidate.id === definitionID)
+		const requestBody = request.postDataJSON() as { name?: string; parent_group_id?: string; translation?: [number, number, number] }
+		if (!definition || !requestBody.name?.trim() || !requestBody.translation?.every(Number.isFinite)) {
+			await route.fulfill({ json: { message: 'invalid subassembly instance' }, status: 400 })
+			return
+		}
+		recordAssemblyMutation(state)
+		state.subassemblyInstanceCreateCount += 1
+		const group: FixtureAssemblyGroup = {
+			id: `grp_subassembly_${state.subassemblyInstanceCreateCount}`,
+			parent_group_id: requestBody.parent_group_id ?? '',
+			name: requestBody.name.trim(),
+			suppressed: false,
+			subassembly_definition_id: definition.id,
+			subassembly_definition_revision: definition.revision,
+		}
+		state.assemblyGroups.push(group)
+		for (const [index, member] of definition.members.entries()) {
+			const matrix = [...member.relative_transform.matrix]
+			matrix[3] = (matrix[3] ?? 0) + requestBody.translation[0]
+			matrix[7] = (matrix[7] ?? 0) + requestBody.translation[1]
+			matrix[11] = (matrix[11] ?? 0) + requestBody.translation[2]
+			state.occurrences.push({
+				id: `occ_subassembly_${state.subassemblyInstanceCreateCount}_${index + 1}`,
+				node_id: member.node_id,
+				model_id: member.model_id,
+				model_revision_id: member.model_revision_id,
+				parent_group_id: group.id,
+				subassembly_member_id: member.id,
+				name: member.name,
+				suppressed: member.suppressed,
+				transform: { matrix },
+			})
+		}
+		state.historyEntries = [{
+			id: `hist_subassembly_instance_${state.subassemblyInstanceCreateCount}`, sequence: state.cadRevision,
+			status: 'applied', command_type: 'subassembly-instance-create', target_id: group.id,
+			summary: `Instantiate subassembly ${group.name}`, created_at: now,
+		}]
+		await route.fulfill({ json: { document: smokeCADDocument(state) } })
+		return
+	}
 	if (assemblyConstraintRoute) {
 		const constraintID = decodeURIComponent(assemblyConstraintRoute[1] ?? '')
 		if (request.method() === 'POST' && !constraintID) {
@@ -984,6 +1114,10 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
 		}
 		if (request.method() === 'PATCH') {
 			const requestBody = request.postDataJSON() as { name?: string; parent_group_id?: string; suppressed?: boolean }
+			if (state.assemblyGroups[groupIndex]!.subassembly_definition_id && (requestBody.name !== undefined || requestBody.parent_group_id !== undefined)) {
+				await route.fulfill({ json: { message: 'subassembly instance group is immutable' }, status: 400 })
+				return
+			}
 			recordAssemblyMutation(state)
 			state.assemblyGroupUpdateCount += 1
 			state.assemblyGroups[groupIndex] = {
@@ -1023,6 +1157,10 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
 		const occurrenceIndex = state.occurrences.findIndex((occurrence) => occurrence.id === occurrenceID)
 		if (occurrenceIndex < 0) {
 			await route.fulfill({ json: { message: 'occurrence not found' }, status: 404 })
+			return
+		}
+		if (state.occurrences[occurrenceIndex]!.subassembly_member_id) {
+			await route.fulfill({ json: { message: 'subassembly instance member is immutable' }, status: 400 })
 			return
 		}
 		if (request.method() === 'POST' && action === 'duplicate') {
@@ -1382,6 +1520,20 @@ export async function installProjectAPIFixture(page: Page, state = createProject
     seedSavedModel() {
       state.models = [smokeSavedModel(state)]
 			state.occurrences = [defaultSmokeOccurrence(state)]
+    },
+    seedSubassemblySource() {
+      state.models = [smokeSavedModel(state)]
+			state.assemblyGroups = [{ id: 'grp_subassembly_source', parent_group_id: '', name: 'Drive source', suppressed: false }]
+			const first = { ...defaultSmokeOccurrence(state), parent_group_id: 'grp_subassembly_source', name: 'Drive left' }
+			state.occurrences = [
+				first,
+				{
+					...first,
+					id: 'occurrence_subassembly_source_right',
+					name: 'Drive right',
+					transform: { matrix: [1, 0, 0, 15, 0, 1, 0, 5, 0, 0, 1, 0, 0, 0, 0, 1] },
+				},
+			]
     },
     seedTransformModel() {
       state.models = [

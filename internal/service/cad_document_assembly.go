@@ -106,6 +106,9 @@ func (s *Service) UpdateProjectCADAssemblyGroup(ctx context.Context, input Updat
 			return ErrProjectNotFound
 		}
 		before := state.Assembly.Groups[index]
+		if before.SubassemblyDefinitionID != "" && (input.Name != nil || input.ParentGroupID != nil) {
+			return ErrInvalidCADDocumentInput
+		}
 		after := before
 		if input.Name != nil {
 			after.Name = strings.TrimSpace(*input.Name)
@@ -257,7 +260,7 @@ func validateCADAssembly(assembly CADAssembly) error {
 	}
 	occurrenceByID := make(map[string]struct{}, len(assembly.Occurrences))
 	for _, occurrence := range assembly.Occurrences {
-		if strings.TrimSpace(occurrence.ID) == "" {
+		if strings.TrimSpace(occurrence.ID) == "" || !isValidCADTransform(occurrence.Transform) {
 			return ErrInvalidCADDocumentInput
 		}
 		if _, exists := occurrenceByID[occurrence.ID]; exists {
@@ -269,6 +272,10 @@ func validateCADAssembly(assembly CADAssembly) error {
 				return ErrInvalidCADDocumentInput
 			}
 		}
+	}
+	linkedOccurrenceIDs, err := validateCADSubassemblies(assembly)
+	if err != nil {
+		return err
 	}
 	constraintByID := make(map[string]struct{}, len(assembly.Constraints))
 	driverByOccurrenceID := make(map[string]string, len(assembly.Constraints))
@@ -284,6 +291,12 @@ func validateCADAssembly(assembly CADAssembly) error {
 			return ErrInvalidCADDocumentInput
 		}
 		if _, exists := occurrenceByID[constraint.SecondOccurrenceID]; !exists {
+			return ErrInvalidCADDocumentInput
+		}
+		if _, linked := linkedOccurrenceIDs[constraint.FirstOccurrenceID]; linked {
+			return ErrInvalidCADDocumentInput
+		}
+		if _, linked := linkedOccurrenceIDs[constraint.SecondOccurrenceID]; linked {
 			return ErrInvalidCADDocumentInput
 		}
 		if constraint.Status == cadAssemblyConstraintStatusUnresolved && constraint.Solver == "" {

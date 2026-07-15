@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import {
   addProjectCADModelBoxUnion,
+  captureProjectCADSubassembly,
   createProjectCADAssemblyConstraint,
   createProjectCADAssemblyGroup,
   deleteProjectCADAssemblyConstraint,
@@ -11,6 +12,7 @@ import {
   deleteProjectCADAssemblyGroup,
   deleteProjectCADNode,
   duplicateProjectCADOccurrence,
+  instantiateProjectCADSubassembly,
   moveProjectCADOccurrence,
   redoProjectCADDocument,
   undoProjectCADDocument,
@@ -18,7 +20,7 @@ import {
   updateProjectCADOccurrence,
   updateProjectCADAssemblyGroup,
 } from 'src/api/projects'
-import type { CADBoxFeature, CreateCADAssemblyConstraintPayload, ProjectCADDocument, UpdateCADAssemblyGroupPayload, UpdateCADAssemblyOccurrencePayload } from 'src/types/project'
+import type { CADBoxFeature, CaptureCADSubassemblyPayload, CreateCADAssemblyConstraintPayload, InstantiateCADSubassemblyPayload, ProjectCADDocument, UpdateCADAssemblyGroupPayload, UpdateCADAssemblyOccurrencePayload } from 'src/types/project'
 import { cadTransformWithTranslation, type CADTranslation } from './cad-document-transforms'
 
 const defaultTransformAutosaveDelayMS = 500
@@ -60,6 +62,10 @@ type AssemblyConstraintMutationVariables =
   | { action: 'create'; payload: CreateCADAssemblyConstraintPayload }
   | { action: 'delete'; constraintId: string }
 
+type SubassemblyMutationVariables =
+  | { action: 'capture'; payload: CaptureCADSubassemblyPayload }
+  | { action: 'instantiate'; definitionId: string; payload: InstantiateCADSubassemblyPayload }
+
 function isCADDocumentConflict(error: unknown) {
   return (error as { response?: { status?: number } }).response?.status === 409
 }
@@ -81,6 +87,7 @@ export function useCADDocumentCommands({
   const [deleteError, setDeleteError] = useState('')
   const [occurrenceError, setOccurrenceError] = useState('')
   const [constraintError, setConstraintError] = useState('')
+  const [subassemblyError, setSubassemblyError] = useState('')
   const [transformErrorsByNodeId, setTransformErrorsByNodeId] = useState<Record<string, string>>({})
   const [boxErrorsByModelId, setBoxErrorsByModelId] = useState<Record<string, string>>({})
 
@@ -361,6 +368,34 @@ export function useCADDocumentCommands({
     },
   })
 
+  const subassemblyMutation = useMutation({
+    mutationFn: (variables: SubassemblyMutationVariables) =>
+      enqueueCommand(async () => {
+        const document = currentDocument()
+        if (!document) {
+          throw new Error(t('project.errors.documentNotLoaded'))
+        }
+        const request =
+          variables.action === 'capture'
+            ? captureProjectCADSubassembly(projectId, variables.payload, document.revision)
+            : instantiateProjectCADSubassembly(projectId, variables.definitionId, variables.payload, document.revision)
+        const updatedDocument = (await request).data.document
+        queryClient.setQueryData(documentQueryKey, updatedDocument)
+        return updatedDocument
+      }),
+    onSuccess: async (document) => {
+      setSubassemblyError('')
+      setHistoryError('')
+      queryClient.setQueryData(documentQueryKey, document)
+      await queryClient.invalidateQueries({ queryKey: historyQueryKey })
+    },
+    onError: async (error) => {
+      if (!(await refreshAfterConflict(error))) {
+        setSubassemblyError(t('project.errors.subassemblyFailed'))
+      }
+    },
+  })
+
   const historyMutation = useMutation({
     mutationFn: (action: 'undo' | 'redo') =>
       enqueueCommand(async () => {
@@ -389,6 +424,7 @@ export function useCADDocumentCommands({
   const mutateOccurrence = occurrenceMutation.mutate
   const mutateAssemblyGroup = assemblyGroupMutation.mutate
   const mutateAssemblyConstraint = assemblyConstraintMutation.mutate
+  const mutateSubassembly = subassemblyMutation.mutate
 
   useEffect(
     () => () => {
@@ -425,6 +461,14 @@ export function useCADDocumentCommands({
     (constraintId: string) => mutateAssemblyConstraint({ action: 'delete', constraintId }),
     [mutateAssemblyConstraint],
   )
+  const captureSubassembly = useCallback(
+    (payload: CaptureCADSubassemblyPayload) => mutateSubassembly({ action: 'capture', payload }),
+    [mutateSubassembly],
+  )
+  const instantiateSubassembly = useCallback(
+    (definitionId: string, payload: InstantiateCADSubassemblyPayload) => mutateSubassembly({ action: 'instantiate', definitionId, payload }),
+    [mutateSubassembly],
+  )
   const deleteAssemblyGroup = useCallback((groupId: string) => mutateAssemblyGroup({ action: 'delete', groupId }), [mutateAssemblyGroup])
   const updateAssemblyGroup = useCallback(
     (groupId: string, payload: UpdateCADAssemblyGroupPayload) => mutateAssemblyGroup({ action: 'update', groupId, payload }),
@@ -450,6 +494,7 @@ export function useCADDocumentCommands({
     clearHistoryError,
     createAssemblyGroup,
     createAssemblyConstraint,
+    captureSubassembly,
     constraintError,
     deleteError,
     deleteNode,
@@ -460,8 +505,10 @@ export function useCADDocumentCommands({
     historyError,
     isBoxUnionPendingFor: (modelId: string) => addBoxUnionMutation.isPending && addBoxUnionMutation.variables?.modelId === modelId,
     isDeletingNode: (nodeId: string) => deleteNodeMutation.isPending && deleteNodeMutation.variables?.nodeId === nodeId,
-    isOccurrenceMutationPending: occurrenceMutation.isPending || assemblyGroupMutation.isPending || assemblyConstraintMutation.isPending,
+    isOccurrenceMutationPending:
+      occurrenceMutation.isPending || assemblyGroupMutation.isPending || assemblyConstraintMutation.isPending || subassemblyMutation.isPending,
     isAssemblyConstraintMutationPending: assemblyConstraintMutation.isPending,
+    isSubassemblyMutationPending: subassemblyMutation.isPending,
     isPending:
       updateTransformMutation.isPending ||
       deleteNodeMutation.isPending ||
@@ -469,9 +516,12 @@ export function useCADDocumentCommands({
       occurrenceMutation.isPending ||
       assemblyGroupMutation.isPending ||
       assemblyConstraintMutation.isPending ||
+      subassemblyMutation.isPending ||
       historyMutation.isPending,
+    instantiateSubassembly,
     moveOccurrence,
     occurrenceError,
+    subassemblyError,
     hasPendingTransform,
     scheduleTransformAutosave,
     setBoxValidationError,

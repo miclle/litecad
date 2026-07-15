@@ -20,16 +20,16 @@ Reusable subassemblies are immutable project-local definition revisions captured
 
 ## Milestone 4B: Reusable Subassembly Snapshot Contract
 
-- [ ] Add failing schema/service tests for immutable revision-1 capture, relative member transforms, multiple instances, revision pinning, invalid child groups, empty groups, stale revisions, and History Undo/Redo.
-- [ ] Persist project-local subassembly definitions in schema v4 and tag instantiated groups with definition ID/revision.
-- [ ] Add owner-scoped create-definition and create-instance routes with strict validation and ordinary occurrence expansion.
-- [ ] Keep linked instance member occurrences immutable in v1; allow instance suppression through the tagged group.
-- [ ] Add frontend API/types/controller support and a compact Subassemblies card for capture and repeated instantiation with explicit XYZ translation.
-- [ ] Add deterministic Playwright coverage for capture, two instances, preview/export visibility, reload, suppression, and Undo/Redo.
-- [ ] Run `task check`, `task test`, `task test-browser`, verify the real UI in the Codex in-app browser, run code review, fix findings, synchronize docs, commit, and push `main`.
+- [x] Add failing schema/service tests for immutable revision-1 capture, relative member transforms, multiple instances, revision pinning, invalid child groups, empty groups, stale revisions, and History Undo/Redo.
+- [x] Persist project-local subassembly definitions in schema v4 and tag instantiated groups with definition ID/revision.
+- [x] Add owner-scoped create-definition and create-instance routes with strict validation and ordinary occurrence expansion.
+- [x] Keep linked instance member occurrences immutable in v1; allow instance suppression through the tagged group.
+- [x] Add frontend API/types/controller support and a compact Subassemblies card for capture and repeated instantiation with explicit XYZ translation.
+- [x] Add deterministic Playwright coverage for capture, two instances, preview/export visibility, reload, suppression, and Undo/Redo.
+- [x] Run `task check`, `task test`, `task test-browser`, verify the real UI in the Codex in-app browser, run code review, fix findings, synchronize docs, commit, and push `main`.
 
 ## Final Audit
 
-- [ ] Run repository-wide `git diff --check`, `task check`, `task test`, and `task test-browser` from synchronized `main`.
-- [ ] Confirm docs distinguish point-translation solving and expanded immutable snapshots from a general solver or live subassembly document system.
-- [ ] Confirm `main == origin/main`, update the handoff, and close the active goal.
+- [x] Run repository-wide `git diff --check`, `task check`, `task test`, and `task test-browser` from synchronized `main`.
+- [x] Confirm docs distinguish point-translation solving and expanded immutable snapshots from a general solver or live subassembly document system.
+- [x] Confirm `main == origin/main`, update the handoff, and close the active goal.

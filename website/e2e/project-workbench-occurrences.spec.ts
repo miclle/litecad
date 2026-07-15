@@ -44,7 +44,7 @@ test('authors repeated assembly occurrences through reload, history, preview, an
 	await expect(page.getByText('Group 1', { exact: true })).toBeVisible()
 	await page.getByRole('button', { name: 'Create subgroup in Group 1' }).click()
 	await expect.poll(() => fixture.state.assemblyGroupCreateCount).toBe(2)
-	await expect(page.getByText('Group 1 subgroup', { exact: true })).toBeVisible()
+	await expect(page.getByTestId('assembly-group-grp_smoke_2').getByText('Group 1 subgroup', { exact: true })).toBeVisible()
 
 	await page.getByRole('combobox', { name: 'Assembly group' }).click()
 	await page.getByRole('option', { name: /Group 1 subgroup/ }).click()
@@ -67,7 +67,7 @@ test('authors repeated assembly occurrences through reload, history, preview, an
 
 	await page.reload()
 	await expect(page.getByRole('option', { name: /Fixture right/ })).toBeVisible()
-	await expect(page.getByText('Group 1 subgroup', { exact: true })).toBeVisible()
+	await expect(page.getByTestId('assembly-group-grp_smoke_2').getByText('Group 1 subgroup', { exact: true })).toBeVisible()
 	await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
 	expect(fixture.state.occurrences[0]?.name).toBe('Fixture right')
 	expect(fixture.state.occurrences[0]?.transform.matrix[3]).toBe(24)

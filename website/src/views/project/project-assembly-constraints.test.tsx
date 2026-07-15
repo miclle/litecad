@@ -64,4 +64,23 @@ describe('ProjectAssemblyConstraints', () => {
     await user.click(screen.getByRole('button', { name: 'Delete Driver to driven' }))
     expect(onDelete).toHaveBeenCalledWith('cst_point')
   })
+
+  test('does not offer immutable reusable assembly members as mate endpoints', async () => {
+    const user = userEvent.setup()
+    render(
+      <ProjectAssemblyConstraints
+        constraints={[]}
+        occurrences={[
+          ...occurrences,
+          { ...occurrences[1], id: 'occ_linked', name: 'Linked member', subassembly_member_id: 'smb_drive' },
+        ]}
+        onCreate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Driver occurrence' }))
+
+    expect(screen.queryByRole('option', { name: 'Linked member' })).toBeNull()
+  })
 })

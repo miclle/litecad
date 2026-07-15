@@ -54,6 +54,9 @@ func (s *Service) DuplicateProjectCADOccurrence(ctx context.Context, input Dupli
 			return ErrProjectNotFound
 		}
 		occurrence := state.Assembly.Occurrences[index]
+		if cadAssemblyOccurrenceIsSubassemblyMember(state.Assembly, occurrence) {
+			return ErrInvalidCADDocumentInput
+		}
 		occurrence.ID, err = id.NewPrefixed("occ")
 		if err != nil {
 			return err
@@ -88,6 +91,9 @@ func (s *Service) UpdateProjectCADOccurrence(ctx context.Context, input UpdatePr
 			return ErrProjectNotFound
 		}
 		before := state.Assembly.Occurrences[index]
+		if cadAssemblyOccurrenceIsSubassemblyMember(state.Assembly, before) {
+			return ErrInvalidCADDocumentInput
+		}
 		if input.Transform != nil {
 			for _, constraint := range state.Assembly.Constraints {
 				if constraint.Status == cadAssemblyConstraintStatusSolved && constraint.Solver == cadAssemblyConstraintSolverPointV1 && constraint.SecondOccurrenceID == before.ID {
@@ -143,6 +149,9 @@ func (s *Service) MoveProjectCADOccurrence(ctx context.Context, input MoveProjec
 			return ErrInvalidCADDocumentInput
 		}
 		occurrence := state.Assembly.Occurrences[beforeIndex]
+		if cadAssemblyOccurrenceIsSubassemblyMember(state.Assembly, occurrence) {
+			return ErrInvalidCADDocumentInput
+		}
 		if err := moveCADAssemblyOccurrence(state, occurrence.ID, input.TargetIndex); err != nil {
 			return err
 		}
@@ -164,6 +173,9 @@ func (s *Service) DeleteProjectCADOccurrence(ctx context.Context, input DeletePr
 			return ErrProjectNotFound
 		}
 		occurrence := state.Assembly.Occurrences[index]
+		if cadAssemblyOccurrenceIsSubassemblyMember(state.Assembly, occurrence) {
+			return ErrInvalidCADDocumentInput
+		}
 		modelOccurrenceCount := 0
 		for _, candidate := range state.Assembly.Occurrences {
 			if candidate.ModelID == occurrence.ModelID {

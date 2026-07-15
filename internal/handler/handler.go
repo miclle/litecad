@@ -72,6 +72,8 @@ func (ctrl *Ctrl) RegisterRoutes(r *fox.Engine) {
 	api.DELETE("/projects/:projectID/cad-document/groups/:groupID", ctrl.DeleteProjectCADAssemblyGroup)
 	api.POST("/projects/:projectID/cad-document/constraints", ctrl.CreateProjectCADAssemblyConstraint)
 	api.DELETE("/projects/:projectID/cad-document/constraints/:constraintID", ctrl.DeleteProjectCADAssemblyConstraint)
+	api.POST("/projects/:projectID/cad-document/subassemblies", ctrl.CaptureProjectCADSubassembly)
+	api.POST("/projects/:projectID/cad-document/subassemblies/:definitionID/instances", ctrl.InstantiateProjectCADSubassembly)
 	api.POST("/projects/:projectID/cad-document/occurrences/:occurrenceID/duplicate", ctrl.DuplicateProjectCADOccurrence)
 	api.PATCH("/projects/:projectID/cad-document/occurrences/:occurrenceID", ctrl.UpdateProjectCADOccurrence)
 	api.POST("/projects/:projectID/cad-document/occurrences/:occurrenceID/move", ctrl.MoveProjectCADOccurrence)

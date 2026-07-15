@@ -13,6 +13,8 @@ import {
   duplicateProjectCADOccurrence,
   createProjectCADAssemblyGroup,
   createProjectCADAssemblyConstraint,
+  captureProjectCADSubassembly,
+  instantiateProjectCADSubassembly,
   deleteProjectCADAssemblyGroup,
   deleteProjectCADAssemblyConstraint,
   fetchProjectCADDocument,
@@ -322,6 +324,28 @@ describe('project API', () => {
     })
     expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/cad-document/constraints/cst_01test', {
       data: { expected_revision: 12 },
+    })
+  })
+
+  test('captures and instantiates a reusable subassembly snapshot', () => {
+    captureProjectCADSubassembly('prj_01test', { group_id: 'grp_source', name: 'Drive module' }, 13)
+    instantiateProjectCADSubassembly(
+      'prj_01test',
+      'sub_drive',
+      { name: 'Drive module A', parent_group_id: '', translation: [100, 20, 0] },
+      14,
+    )
+
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/subassemblies', {
+      group_id: 'grp_source',
+      name: 'Drive module',
+      expected_revision: 13,
+    })
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/subassemblies/sub_drive/instances', {
+      name: 'Drive module A',
+      parent_group_id: '',
+      translation: [100, 20, 0],
+      expected_revision: 14,
     })
   })
 

@@ -7,7 +7,10 @@ import type {
   CADAssemblyGroup,
   CADAssemblyConstraintRecord,
   CADAssemblyOccurrence,
+  CADSubassemblyDefinitionRevision,
+  CaptureCADSubassemblyPayload,
   CreateCADAssemblyConstraintPayload,
+  InstantiateCADSubassemblyPayload,
   ProjectModelRevision,
   ProjectParametricArtifact,
   UpdateCADAssemblyGroupPayload,
@@ -18,12 +21,14 @@ import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { ProjectInspector, type InspectorDetail, type ProjectInspectorSelection } from './project-inspector'
 import { ProjectModelTree } from './project-model-tree'
 import { ProjectAssemblyConstraints } from './project-assembly-constraints'
+import { ProjectSubassemblies } from './project-subassemblies'
 import type { ProjectModelTreeGroup } from './project-preview-assets'
 
 type ProjectWorkbenchSidebarProps = {
   assemblyGroups?: CADAssemblyGroup[]
   assemblyConstraints?: CADAssemblyConstraintRecord[]
   assemblyOccurrences?: CADAssemblyOccurrence[]
+  assemblySubassemblies?: CADSubassemblyDefinitionRevision[]
   documentDetails: InspectorDetail[]
   hiddenModelIds: ReadonlySet<string>
   inspectorSelection?: ProjectInspectorSelection
@@ -32,6 +37,7 @@ type ProjectWorkbenchSidebarProps = {
   isUploading: boolean
   isFeatureGraphSaving?: boolean
 	isOccurrenceMutationPending?: boolean
+  isSubassemblyMutationPending?: boolean
   leftPanelWidth: number
   modelCount: number
   onCollapseChange: (isCollapsed: boolean) => void
@@ -42,6 +48,8 @@ type ProjectWorkbenchSidebarProps = {
 	onDeleteAssemblyGroup?: (groupId: string) => void
 	onDuplicateOccurrence?: (occurrenceId: string) => void
 	onMoveOccurrence?: (occurrenceId: string, targetIndex: number) => void
+  onCaptureSubassembly?: (payload: CaptureCADSubassemblyPayload) => void
+  onInstantiateSubassembly?: (definitionID: string, payload: InstantiateCADSubassemblyPayload) => void
 	onModelSelect: (modelId: string, nodeId: string, occurrenceId?: string) => void
   onParameterValuesChange: (modelId: string, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
@@ -54,6 +62,7 @@ type ProjectWorkbenchSidebarProps = {
   onUpdateOccurrence?: (occurrenceId: string, payload: UpdateCADAssemblyOccurrencePayload) => void
 	occurrenceError?: string
 	constraintError?: string
+	subassemblyError?: string
 	isAssemblyConstraintMutationPending?: boolean
   onTransformChange: (nodeId: string, axis: keyof CADTranslation, value: string) => void
   previewAssetModelIds: ReadonlySet<string>
@@ -75,6 +84,7 @@ export function ProjectWorkbenchSidebar({
   assemblyGroups = [],
   assemblyConstraints = [],
   assemblyOccurrences = [],
+  assemblySubassemblies = [],
   documentDetails,
   hiddenModelIds,
   inspectorSelection,
@@ -83,6 +93,7 @@ export function ProjectWorkbenchSidebar({
   isUploading,
   isFeatureGraphSaving = false,
 	isOccurrenceMutationPending,
+  isSubassemblyMutationPending,
   leftPanelWidth,
   modelCount,
   onCollapseChange,
@@ -93,6 +104,8 @@ export function ProjectWorkbenchSidebar({
 	onDeleteAssemblyGroup,
 	onDuplicateOccurrence,
 	onMoveOccurrence,
+  onCaptureSubassembly,
+  onInstantiateSubassembly,
   onModelSelect,
   onParameterValuesChange,
   onResizePointerDown,
@@ -105,6 +118,7 @@ export function ProjectWorkbenchSidebar({
   onUpdateOccurrence,
 	occurrenceError,
 	constraintError,
+	subassemblyError,
 	isAssemblyConstraintMutationPending,
   onTransformChange,
   previewAssetModelIds,
@@ -195,6 +209,16 @@ export function ProjectWorkbenchSidebar({
               selectedNodeId={selectedNodeId}
 						selectedOccurrenceId={selectedOccurrenceId}
               uploadError={uploadError}
+            />
+
+            <ProjectSubassemblies
+              definitions={assemblySubassemblies}
+              error={subassemblyError}
+              groups={assemblyGroups}
+              isPending={isSubassemblyMutationPending}
+              occurrences={assemblyOccurrences}
+              onCapture={onCaptureSubassembly}
+              onInstantiate={onInstantiateSubassembly}
             />
 
             <ProjectAssemblyConstraints

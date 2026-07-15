@@ -58,6 +58,19 @@ type createProjectCADAssemblyConstraintRequest struct {
 	ExpectedRevision   int        `json:"expected_revision" binding:"required,min=1"`
 }
 
+type captureProjectCADSubassemblyRequest struct {
+	GroupID          string `json:"group_id" binding:"required"`
+	Name             string `json:"name" binding:"required"`
+	ExpectedRevision int    `json:"expected_revision" binding:"required,min=1"`
+}
+
+type instantiateProjectCADSubassemblyRequest struct {
+	Name             string     `json:"name" binding:"required"`
+	ParentGroupID    string     `json:"parent_group_id"`
+	Translation      [3]float64 `json:"translation"`
+	ExpectedRevision int        `json:"expected_revision" binding:"required,min=1"`
+}
+
 type moveProjectCADOccurrenceRequest struct {
 	TargetIndex      int `json:"target_index" binding:"min=0"`
 	ExpectedRevision int `json:"expected_revision" binding:"required,min=1"`
@@ -160,7 +173,7 @@ func (ctrl *Ctrl) DeleteProjectCADAssemblyGroup(c *fox.Context, req *modifyProje
 	return projectCADDocumentResponse{Document: document}, nil
 }
 
-// CreateProjectCADAssemblyConstraint records an unresolved mate relationship.
+// CreateProjectCADAssemblyConstraint creates one deterministic point mate.
 func (ctrl *Ctrl) CreateProjectCADAssemblyConstraint(c *fox.Context, req *createProjectCADAssemblyConstraintRequest) (projectCADDocumentResponse, error) {
 	user, err := ctrl.currentUser(c)
 	if err != nil {
@@ -177,7 +190,7 @@ func (ctrl *Ctrl) CreateProjectCADAssemblyConstraint(c *fox.Context, req *create
 	return projectCADDocumentResponse{Document: document}, nil
 }
 
-// DeleteProjectCADAssemblyConstraint removes a recorded unresolved relationship.
+// DeleteProjectCADAssemblyConstraint removes one mate relationship.
 func (ctrl *Ctrl) DeleteProjectCADAssemblyConstraint(c *fox.Context, req *modifyProjectCADHistoryRequest) (projectCADDocumentResponse, error) {
 	user, err := ctrl.currentUser(c)
 	if err != nil {
@@ -185,6 +198,38 @@ func (ctrl *Ctrl) DeleteProjectCADAssemblyConstraint(c *fox.Context, req *modify
 	}
 	document, err := ctrl.service.DeleteProjectCADAssemblyConstraint(c.Request.Context(), service.DeleteProjectCADAssemblyConstraintInput{
 		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), ConstraintID: c.Param("constraintID"), ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// CaptureProjectCADSubassembly captures one direct-occurrence group as an immutable reusable definition.
+func (ctrl *Ctrl) CaptureProjectCADSubassembly(c *fox.Context, req *captureProjectCADSubassemblyRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.CaptureProjectCADSubassembly(c.Request.Context(), service.CaptureProjectCADSubassemblyInput{
+		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), GroupID: req.GroupID,
+		Name: req.Name, ExpectedRevision: req.ExpectedRevision,
+	})
+	if err != nil {
+		return projectCADDocumentResponse{}, projectError(err)
+	}
+	return projectCADDocumentResponse{Document: document}, nil
+}
+
+// InstantiateProjectCADSubassembly expands one reusable definition at an explicit translation.
+func (ctrl *Ctrl) InstantiateProjectCADSubassembly(c *fox.Context, req *instantiateProjectCADSubassemblyRequest) (projectCADDocumentResponse, error) {
+	user, err := ctrl.currentUser(c)
+	if err != nil {
+		return projectCADDocumentResponse{}, err
+	}
+	document, err := ctrl.service.InstantiateProjectCADSubassembly(c.Request.Context(), service.InstantiateProjectCADSubassemblyInput{
+		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), DefinitionID: c.Param("definitionID"),
+		ParentGroupID: req.ParentGroupID, Name: req.Name, Translation: req.Translation, ExpectedRevision: req.ExpectedRevision,
 	})
 	if err != nil {
 		return projectCADDocumentResponse{}, projectError(err)

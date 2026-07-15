@@ -4,7 +4,9 @@ import type {
   UpdateProjectPayload,
   CADBoxFeature,
   CADTransform,
+  CaptureCADSubassemblyPayload,
   CreateCADAssemblyConstraintPayload,
+  InstantiateCADSubassemblyPayload,
   UpdateCADAssemblyOccurrencePayload,
   UpdateCADAssemblyGroupPayload,
   CreateProjectAgentConversationPayload,
@@ -113,6 +115,20 @@ export function createProjectCADAssemblyConstraint(projectId: string, payload: C
 export function deleteProjectCADAssemblyConstraint(projectId: string, constraintId: string, expectedRevision: number) {
   return client.delete<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/constraints/${constraintId}`, {
     data: { expected_revision: expectedRevision },
+  })
+}
+
+export function captureProjectCADSubassembly(projectId: string, payload: CaptureCADSubassemblyPayload, expectedRevision: number) {
+  return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/subassemblies`, {
+    ...payload,
+    expected_revision: expectedRevision,
+  })
+}
+
+export function instantiateProjectCADSubassembly(projectId: string, definitionId: string, payload: InstantiateCADSubassemblyPayload, expectedRevision: number) {
+  return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/subassemblies/${definitionId}/instances`, {
+    ...payload,
+    expected_revision: expectedRevision,
   })
 }
 

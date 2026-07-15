@@ -56,6 +56,8 @@ vi.mock('./project-workbench-sidebar', () => ({
   ProjectWorkbenchSidebar: ({
     modelCount,
     onModelSelect,
+    onCaptureSubassembly,
+    onInstantiateSubassembly,
     onSaveGeneratedArtifactAsModel,
     onSaveFeatureGraph,
     onSaveModelParameters,
@@ -65,6 +67,18 @@ vi.mock('./project-workbench-sidebar', () => ({
       sidebar {String(modelCount)}
       <button onClick={() => (onModelSelect as (modelID: string, nodeID: string) => void)('model_a', 'node_a')}>select model</button>
       <button onClick={() => (onToggleModelVisibility as (modelID: string) => void)('model_a')}>toggle visibility</button>
+      <button onClick={() => (onCaptureSubassembly as (payload: unknown) => void)({ group_id: 'grp_source', name: 'Drive module' })}>capture subassembly</button>
+      <button
+        onClick={() =>
+          (onInstantiateSubassembly as (definitionID: string, payload: unknown) => void)('sub_drive', {
+            name: 'Drive A',
+            parent_group_id: '',
+            translation: [100, 0, 0],
+          })
+        }
+      >
+        instantiate subassembly
+      </button>
       <button
         onClick={() =>
           (onSaveGeneratedArtifactAsModel as (artifact: unknown, parameterValues: Record<string, unknown>) => void)(
@@ -133,6 +147,16 @@ describe('ProjectWorkbenchComposition', () => {
     click('toggle visibility')
     expect(callbacks.toggleModelVisibility).toHaveBeenCalledWith('model_a')
 
+    click('capture subassembly')
+    expect(callbacks.captureSubassembly).toHaveBeenCalledWith({ group_id: 'grp_source', name: 'Drive module' })
+
+    click('instantiate subassembly')
+    expect(callbacks.instantiateSubassembly).toHaveBeenCalledWith('sub_drive', {
+      name: 'Drive A',
+      parent_group_id: '',
+      translation: [100, 0, 0],
+    })
+
     click('toggle assistant')
     expect(callbacks.toggleAiChat).toHaveBeenCalledTimes(1)
 
@@ -190,9 +214,11 @@ function click(label: string) {
 
 function callbackSpies() {
   return {
+    captureSubassembly: vi.fn(),
     clearDeleteError: vi.fn(),
     clearSelection: vi.fn(),
     fetchNextHistoryPage: vi.fn(),
+    instantiateSubassembly: vi.fn(),
     saveGeneratedArtifactAsModel: vi.fn(),
     saveFeatureGraph: vi.fn(),
     saveModelParameters: vi.fn(),
@@ -274,10 +300,12 @@ function shellState(callbacks: ReturnType<typeof callbackSpies>) {
 
 function cadDocumentCommands(callbacks: ReturnType<typeof callbackSpies>) {
   return {
+    captureSubassembly: callbacks.captureSubassembly,
     changeHistory: vi.fn(),
     clearDeleteError: callbacks.clearDeleteError,
     historyError: '',
     isPending: false,
+    instantiateSubassembly: callbacks.instantiateSubassembly,
   } as unknown as ReturnType<typeof useCADDocumentCommands>
 }
 
