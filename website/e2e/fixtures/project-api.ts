@@ -272,6 +272,20 @@ export const hollowRevolveFeatureDSLSource = JSON.stringify({
     },
   ],
 })
+export const chamferedBoxFeatureDSLSource = JSON.stringify({
+  version: 1,
+  unit: 'millimetre',
+  parameters: {
+    WIDTH: { type: 'number', default: 40, min: 4, max: 200, step: 1 },
+    DEPTH: { type: 'number', default: 24, min: 4, max: 200, step: 1 },
+    HEIGHT: { type: 'number', default: 12, min: 4, max: 200, step: 1 },
+    CHAMFER: { type: 'number', default: 1, min: 0.1, max: 5, step: 0.1 },
+  },
+  features: [
+    { id: 'base', type: 'box', origin: [0, 0, 0], size: ['WIDTH', 'DEPTH', 'HEIGHT'] },
+    { id: 'bevel', type: 'chamfer', distance: 'CHAMFER' },
+  ],
+})
 const smokeParametricArtifact = {
   id: 'pma_smoke',
   project_id: projectId,

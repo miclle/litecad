@@ -282,7 +282,7 @@ describe('runOpenCascadeFeatureDSLPreview', () => {
     expect(bounds.maxZ).toBeCloseTo(10, 1)
   }, 30000)
 
-  it('tessellates feature graph AST nodes for revolve, sweep, loft, boolean, fillet, and chamfer', async () => {
+  it('tessellates feature graph AST nodes for revolve, sweep, loft, boolean, and fillet', async () => {
     const loadOpenCascade = createOpenCascadeLoader(
       initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
       `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
@@ -326,7 +326,6 @@ describe('runOpenCascadeFeatureDSLPreview', () => {
             ],
           },
           { id: 'soften', type: 'fillet', radius: 0.75 },
-          { id: 'bevel', type: 'chamfer', distance: 0.4 },
         ],
       },
       parameterValues: {},
@@ -337,6 +336,59 @@ describe('runOpenCascadeFeatureDSLPreview', () => {
     expect(bounds.minX).toBeLessThan(-11)
     expect(bounds.maxX).toBeGreaterThan(89)
     expect(bounds.maxZ).toBeGreaterThan(23)
+  }, 30000)
+
+  it('changes box geometry when applying a chamfer', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+    const base = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'box.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [{ id: 'base', type: 'box', origin: [0, 0, 0], size: [10, 10, 10] }],
+      },
+      parameterValues: {},
+    })
+    const chamfered = await runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'chamfered-box.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          { id: 'base', type: 'box', origin: [0, 0, 0], size: [10, 10, 10] },
+          { id: 'bevel', type: 'chamfer', distance: 1 },
+        ],
+      },
+      parameterValues: {},
+    })
+
+    expect(chamfered.mesh.positions.length).toBeGreaterThan(base.mesh.positions.length)
+    expect(Array.from(chamfered.mesh.positions)).not.toEqual(Array.from(base.mesh.positions))
+  }, 30000)
+
+  it('rejects a chamfer that OCCT cannot build', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+
+    await expect(runFeatureDSLPreviewWithKernel(openCascade, {
+      filename: 'invalid-chamfer.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [
+          { id: 'base', type: 'box', origin: [0, 0, 0], size: [10, 10, 10] },
+          { id: 'bevel', type: 'chamfer', distance: 20 },
+        ],
+      },
+      parameterValues: {},
+    })).rejects.toThrow('Feature bevel chamfer could not be built')
   }, 30000)
 
   it('tessellates an offset full-turn XZ rectangle as a hollow revolve', async () => {

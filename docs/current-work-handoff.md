@@ -6,12 +6,19 @@ This note is the short cross-machine handoff for the current LiteCAD development
 
 ## Current Mainline
 
-- `main`, `origin/main`, and `origin/HEAD` were all at `2ae0a13 docs(cad): close handoff follow-ups` after `git fetch origin` on 2026-07-15.
-- The worktree was clean, and `git status --short --branch` reported no ahead/behind commits. There is no local-only code or documentation state to transfer manually.
+- The true-chamfer phase started from synchronized `main`, `origin/main`, and `origin/HEAD` at `1d3895b docs: refresh cross-machine handoff` on 2026-07-15.
+- Work continues directly on `main` as requested. Each roadmap phase must pass automated E2E, in-app browser verification for UI-visible behavior, code review, documentation refresh, commit, and push before the next phase begins.
 - The old assembly and tapered-extrude feature branches have already been merged and cleaned up.
-- There is no active implementation branch to resume. Start the next scoped phase from the synchronized `main` branch and choose unfinished work from `TODO.md`.
+- After the true-chamfer commit is pushed, the next active phase is the versioned durable LiteCAD Feature/Operation Graph with stable nested-node editing and reversible History.
 
 ## Completed Phases
+
+### True Feature DSL Chamfer
+
+- `chamfer` now builds real OCCT bevel geometry in both `feature-dsl-preview` and `feature-dsl-export` instead of preserving the source shape.
+- Version 1 applies one symmetric distance to every eligible edge of the accumulated shape. A model with no edges or an OCCT build failure is rejected explicitly.
+- Assistant prompting and tool-schema guidance describe the shipped behavior, and the deterministic browser workflow covers prompt-to-draft compilation, automatic `.lcad.json` save, canvas preview, and STEP export selection.
+- Stable user-selectable topology references, per-edge distances, and edge/face remapping across revisions remain future work.
 
 ### Export Artifact History
 
@@ -60,7 +67,7 @@ This note is the short cross-machine handoff for the current LiteCAD development
 
 ## Last Verification
 
-The section artifact phase added real worker-side OCCT intersection geometry, durable project storage, and the workbench lifecycle. In-app browser verification against the real local backend loaded a 60 x 24 x 8 mm LiteCAD box, displayed a 65.12 mm visible-AABB diagonal, generated a four-edge STEP section, confirmed the record survived reload, restored its plane, deleted it, and found no console warnings or errors.
+The true-chamfer phase added real worker-side OCCT bevel geometry without changing the Feature DSL wire format. In-app browser verification against the real local backend asked the configured Provider for a 40 x 24 x 12 mm box with a 1 mm chamfer, created and saved `box-with-chamfer-litecad`, displayed its browser-kernel preview as ready in the workbench, exposed it in the STEP export selection, and found no console warnings or errors.
 
 Full phase gates passed:
 
@@ -71,15 +78,15 @@ task test-browser
 ```
 
 - `task check` passed backend formatting/vet/lint, frontend TypeScript, and module-tidy checks.
-- `task test` passed Go race/coverage tests and 77 Vitest files / 385 tests. Vitest still prints the existing localStorage and `MaxListenersExceededWarning` warnings during the full run.
-- `task test-browser` passed all 14 deterministic Playwright workbench tests, including derived measurement and browser-kernel section artifact persistence.
-- Focused Go service/handler tests, 116 targeted Vitest tests, and the section workbench Playwright workflow also passed before the full phase gates.
+- `task test` passed Go race/coverage tests and 77 Vitest files / 387 tests. Vitest still prints the existing `MaxListenersExceededWarning` warnings during the full run.
+- `task test-browser` passed all 15 deterministic Playwright workbench tests, including prompt-to-chamfer preview/save/export.
+- Focused Go provider-contract tests, 74 selected browser-kernel tests, the focused chamfer kernel tests, and the chamfer workbench Playwright workflow also passed before the full phase gates.
 
-## Handoff Closure
+## Active Roadmap
 
-Every unfinished item carried by the original handoff follow-up list is implemented or closed by an explicit architecture decision. There is no remaining implementation task in this handoff.
+The original handoff follow-up list remains closed, and true chamfer is now complete. The active roadmap continues with a versioned durable LiteCAD Feature/Operation Graph and stable nested-node editing, followed by stable topology references with exact measurements and associative section regeneration, then solver-backed assembly constraints and a reusable subassembly contract.
 
-Broader durable kernel shape state, topology-aware measurement types, associative section features, nested Feature DSL node editing, solver-backed assembly constraints, and reusable subassembly documents remain active product roadmap work in `TODO.md`; they are not incomplete work from these closed phases.
+These phases must preserve the existing source-of-truth boundary: replayable versioned graph data is durable, while OCCT shapes and Three.js buffers remain derived runtime state.
 
 ## Resume Checklist
 
@@ -94,6 +101,6 @@ task install
 task check
 ```
 
-For a fresh machine, clone the repository, switch to `main`, and then run the same `task install` and `task check` steps. Confirm `git rev-parse HEAD` is at least `2ae0a13` before relying on the completed-phase descriptions above.
+For a fresh machine, clone the repository, switch to `main`, and then run the same `task install` and `task check` steps. Confirm `git rev-parse HEAD` is at least `1d3895b` before relying on the completed-phase descriptions above, then pull the latest phase commit from `origin/main`.
 
 No database contents, browser-local panel preferences, AI provider secrets, or `cmd/litecad/config.local.yaml` settings are transferred through Git. Recreate machine-local configuration from `cmd/litecad/config.example.yaml`; do not copy credentials into this handoff or commit them.

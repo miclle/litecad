@@ -30,6 +30,27 @@ export function applyFeatureDSLChamfer(openCascade: OpenCascadeModule, shape: an
   if (distance <= 0) {
     throw new Error(`Feature ${featureID} chamfer distance must be positive`)
   }
-  void openCascade
-  return shape
+  const chamferBuilder = new openCascade.BRepFilletAPI_MakeChamfer(shape)
+  let edgeCount = 0
+  const explorer = new openCascade.TopExp_Explorer_1()
+  for (
+    explorer.Init(shape, openCascade.TopAbs_ShapeEnum.TopAbs_EDGE, openCascade.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    explorer.More();
+    explorer.Next()
+  ) {
+    chamferBuilder.Add_2(distance, openCascade.TopoDS.Edge_1(explorer.Current()))
+    edgeCount += 1
+  }
+  if (edgeCount === 0) {
+    throw new Error(`Feature ${featureID} chamfer found no edges`)
+  }
+  try {
+    chamferBuilder.Build(new openCascade.Message_ProgressRange_1())
+  } catch (error) {
+    throw new Error(`Feature ${featureID} chamfer could not be built`, { cause: error })
+  }
+  if (!chamferBuilder.IsDone()) {
+    throw new Error(`Feature ${featureID} chamfer could not be built`)
+  }
+  return chamferBuilder.Shape()
 }

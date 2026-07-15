@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 
 import {
   captureBrowserErrors,
+  chamferedBoxFeatureDSLSource,
   hollowRevolveFeatureDSLSource,
   installProjectAPIFixture,
   projectId,
@@ -162,6 +163,39 @@ test('generates a sphere with X Y Z through holes through the mock provider work
     },
   })
 
+  expect(browserErrors).toEqual([])
+})
+
+test('generates previews saves and exposes STEP export for a chamfered box', async ({ page }) => {
+  test.slow()
+  const browserErrors = captureBrowserErrors(page)
+  const fixture = await installProjectAPIFixture(page)
+  fixture.state.parametricArtifactTitle = 'Chamfered box'
+  fixture.state.parametricArtifactSourceCode = chamferedBoxFeatureDSLSource
+  fixture.state.savedModelID = 'mdl_chamfered_box_lcad'
+  fixture.state.savedModelFilename = 'chamfered-box.lcad.json'
+
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await page.getByRole('button', { name: 'Toggle Assistant' }).click()
+  await page
+    .getByLabel('Message Assistant')
+    .fill('Create a 40 by 24 by 12 millimeter box with a 1 millimeter chamfer')
+  await page.getByRole('button', { name: 'Generate parametric model' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Chamfered box' })).toBeVisible()
+  await expect(page.getByLabel('WIDTH parameter')).toBeVisible()
+  await expect(page.getByLabel('CHAMFER parameter')).toBeVisible()
+  await expect(page.getByRole('option', { name: 'Chamfered box' })).toBeVisible()
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+  await expect(page.locator('[data-model-preview] canvas').first()).toBeVisible()
+  await expect.poll(() => fixture.state.artifactUpdateCount).toBe(1)
+  await expect.poll(() => fixture.state.featureDSLSourceRequestCount).toBeGreaterThan(0)
+  expect(fixture.state.models).toHaveLength(1)
+
+  await page.getByRole('button', { name: 'Export STEP' }).click()
+  await expect(page.getByRole('dialog', { name: 'Export STEP' })).toBeVisible()
+  await expect(page.getByText('1/1 selected')).toBeVisible()
   expect(browserErrors).toEqual([])
 })
 

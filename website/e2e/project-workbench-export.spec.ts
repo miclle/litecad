@@ -9,6 +9,8 @@ test('exports a selected LiteCAD model as merged STEP', async ({ page }) => {
   fixture.seedSavedModel()
 
   await page.goto(`/projects/${projectId}`)
+	const exportStepButton = page.getByRole('button', { name: 'Export STEP' })
+	await expect(exportStepButton).toBeEnabled({ timeout: 30_000 })
 	const assemblyRoot = page.getByTestId('assembly-root')
 	await expect(assemblyRoot).toContainText('Workbench Smoke')
   await expect(page.getByRole('option', { name: 'Smoke bracket' })).toBeVisible()
@@ -22,7 +24,7 @@ test('exports a selected LiteCAD model as merged STEP', async ({ page }) => {
 	expect(narrowAssemblyBounds).not.toBeNull()
 	expect(narrowAssemblyBounds?.x ?? -1).toBeGreaterThanOrEqual(0)
 	expect((narrowAssemblyBounds?.x ?? 0) + (narrowAssemblyBounds?.width ?? 0)).toBeLessThanOrEqual(1024)
-  await page.getByRole('button', { name: 'Export STEP' }).click()
+	await exportStepButton.click()
 	const exportDialog = page.getByRole('dialog', { name: 'Export STEP' })
 	await expect(exportDialog).toBeVisible()
 	const dialogBounds = await exportDialog.boundingBox()
@@ -39,8 +41,9 @@ test('exports a selected LiteCAD model as merged STEP', async ({ page }) => {
   await expect.poll(() => fixture.state.exportArtifacts.length).toBe(1)
 
   await page.reload()
+  await expect(exportStepButton).toBeEnabled({ timeout: 30_000 })
   await expect(assemblyRoot).toContainText('Workbench Smoke')
-  await page.getByRole('button', { name: 'Export STEP' }).click()
+  await exportStepButton.click()
   await expect(page.getByText('Export history')).toBeVisible()
   await expect(page.getByText('Workbench Smoke-litecad-assembly-r2.step')).toBeVisible()
 
