@@ -166,6 +166,7 @@ For feature work that changes the browser experience, combine the relevant front
 
 - Keep `README.md`, `TODO.md`, `AGENTS.md`, and `.agents/rules/` synchronized with the current code.
 - Put future work in `TODO.md`, not in README sections that imply shipped behavior.
+- Keep `docs/superpowers/plans/` limited to active plans or deliberately retained short historical summaries. After a plan is complete, move its shipped facts into the live docs and remove the step-by-step checklist; git history remains the execution record.
 - Keep `docs/current-work-handoff.md` current before switching machines or pausing an active CAD semantics branch.
 - When removing template leftovers, verify whether they still exist in code first.
 - Do not write personal machine paths, credentials, private hosts, or production DSNs into docs.

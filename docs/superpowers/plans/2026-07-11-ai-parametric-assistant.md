@@ -1,6 +1,6 @@
 # AI Parametric Assistant Completed Implementation Summary
 
-This file is a completed historical summary for the AI Parametric Assistant implementation. The original phase-by-phase checklist was intentionally collapsed after completion so current readers can understand the shipped boundary without re-reading the execution log. Detailed task history remains available in git history.
+This file is a completed historical summary for the AI Parametric Assistant implementation. The original phase-by-phase checklist was intentionally collapsed after completion so current readers can understand that milestone without re-reading the execution log. Detailed task history remains available in git history. This is not the current capability index; later milestones added restricted tapered extrusion, true all-eligible-edge chamfer, backend export artifact history, and versioned recursive source-graph editing. Use `docs/ai-parametric-assistant.md`, `README.md`, and `TODO.md` for current status.
 
 ## Original Goal
 
@@ -32,15 +32,15 @@ The shipped generated-model path is LiteCAD's native Feature DSL:
 - Saved `.lcad.json` preview refresh, STEP export, local-first parameter preview, automatic debounced/settled persistence, reload preservation, and Operation History integration.
 - Documentation updates in `README.md`, `TODO.md`, `AGENTS.md`, `.agents/rules/litecad-architecture.md`, and `docs/ai-parametric-assistant.md` separating shipped behavior from future CAD semantics.
 
-## Deferred Or Future Work
+## Deferred At Plan Completion
 
-These items are intentionally not claimed as shipped by this completed plan:
+These items were intentionally outside this completed plan. Some were delivered by later milestones, as noted above:
 
 - OpenSCAD browser mesh compilation and normal OpenSCAD save-to-canvas behavior, pending an accepted runtime/license/distribution decision.
 - Full prompt-to-geometry mutation of existing CAD documents.
 - Durable editable B-rep feature history or durable browser-kernel shape state.
-- Full sketch constraints, freeform profiles, arbitrary sweep paths, arbitrary/freeform revolve profiles, robust true chamfer selection, mirrored/negative transforms, tapers, infix formulas, functions, unit math, comparisons, and conditionals.
-- Backend export artifact history and broader long-running provider analytics/progress UX.
+- Full sketch constraints, freeform profiles, arbitrary sweep paths, arbitrary/freeform revolve profiles, user-selectable per-edge chamfer semantics, mirrored/negative transforms, arbitrary draft-face tapering, infix formulas, functions, unit math, comparisons, and conditionals.
+- Broader long-running provider analytics and progress UX.
 
 Current follow-up work lives in `TODO.md`; current product and architecture status lives in `docs/ai-parametric-assistant.md`, `docs/browser-cad-kernel-roadmap.md`, `AGENTS.md`, and `.agents/rules/litecad-architecture.md`.
 

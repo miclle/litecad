@@ -89,7 +89,7 @@ The production binary does not need a Vite dev server. Development builds use `w
 
 - Put LiteCAD behind TLS at the reverse proxy or platform edge.
 - Ensure the configured database is reachable before starting the process; startup fails fast on connection or migration errors.
-- Configure persistent database backups outside LiteCAD. The app currently stores project metadata, source bytes, preview artifacts, CAD documents, History, conversations, and parametric artifacts in the database.
+- Configure persistent database backups outside LiteCAD. The app currently stores project metadata, source and immutable model-revision bytes, preview artifacts, thumbnails, CAD documents, History, conversations, parametric artifacts, generated STEP export artifacts, inspection records, and section artifact generations in the database.
 - Do not write local `config.local.yaml` values, API keys, private hosts, or production DSNs into the repository.
 - If deploying behind a path-rewriting proxy, preserve `/api/v1/*`, `/assets/*`, and SPA fallback behavior.
 
