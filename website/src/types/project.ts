@@ -369,15 +369,20 @@ export interface CADHistoryEntry {
     | 'occurrence-delete'
   target_id: string
   summary: string
+  feature_graph_version?: number
   feature_graph_transitions?: CADFeatureGraphNodeTransition[]
   created_at: string
 }
 
 export interface CADFeatureGraphNodeTransition {
   node_id: string
-  change: 'added' | 'updated' | 'removed'
+  change: 'added' | 'updated' | 'moved' | 'removed'
   before_type?: string
   after_type?: string
+  before_path?: string
+  after_path?: string
+  before_index?: number
+  after_index?: number
 }
 
 export interface ProjectCADHistoryResponse {

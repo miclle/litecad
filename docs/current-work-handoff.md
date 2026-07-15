@@ -6,10 +6,10 @@ This note is the short cross-machine handoff for the current LiteCAD development
 
 ## Current Mainline
 
-- The true-chamfer phase started from synchronized `main`, `origin/main`, and `origin/HEAD` at `1d3895b docs: refresh cross-machine handoff` on 2026-07-15.
+- The versioned recursive Feature DSL graph phase started from synchronized `main`, `origin/main`, and `origin/HEAD` at `bc64923 feat(cad): implement true feature dsl chamfer` on 2026-07-15.
 - Work continues directly on `main` as requested. Each roadmap phase must pass automated E2E, in-app browser verification for UI-visible behavior, code review, documentation refresh, commit, and push before the next phase begins.
 - The old assembly and tapered-extrude feature branches have already been merged and cleaned up.
-- After the true-chamfer commit is pushed, the next active phase is the versioned durable LiteCAD Feature/Operation Graph with stable nested-node editing and reversible History.
+- After the recursive source-graph phase is committed and pushed, the next active phase is stable geometric references with topology-aware measurement and associative section regeneration.
 
 ## Completed Phases
 
@@ -19,6 +19,15 @@ This note is the short cross-machine handoff for the current LiteCAD development
 - Version 1 applies one symmetric distance to every eligible edge of the accumulated shape. A model with no edges or an OCCT build failure is rejected explicitly.
 - Assistant prompting and tool-schema guidance describe the shipped behavior, and the deterministic browser workflow covers prompt-to-draft compilation, automatic `.lcad.json` save, canvas preview, and STEP export selection.
 - Stable user-selectable topology references, per-edge distances, and edge/face remapping across revisions remain future work.
+
+### Versioned Recursive Feature DSL Source Graph
+
+- Every top-level feature and recursive boolean operand now shares one globally unique, already-trimmed stable node-ID namespace in both Go validation and browser protocol validation.
+- The Inspector exposes an indented graph rail and edits one selected node's local JSON while preserving its stable ID. An advanced complete-source editor remains available for structural additions, removals, and reordering.
+- Apply remains disabled until the browser `feature-dsl-preview` worker compiles the candidate source. Reset remains available even when node or complete-source JSON is invalid.
+- The existing owner-scoped graph-update transaction preserves the parameter schema/value envelope, creates one immutable model revision, updates occurrence revision bindings, and appends one graph-versioned `feature-graph-change` History command under `expected_revision`.
+- History transitions are recursive and deterministic: they record added, updated, moved, or removed stable nodes with JSON-Pointer-safe before/after paths and explicit sibling indexes. Undo/Redo restores the exact source revisions across reloads and devices.
+- This is durable source-graph versioning. It is not serialized OCCT shape state, stable B-rep topology naming, sketch constraints, imported source history, or full B-rep feature history.
 
 ### Export Artifact History
 
@@ -32,14 +41,6 @@ This note is the short cross-machine handoff for the current LiteCAD development
 - The workbench can save, restore after reload, and delete records. Stored records include the CAD document revision, unit, visible model IDs, and the measurement snapshot or section-plane definition.
 - These records are not durable B-rep section bodies or serialized kernel shape state.
 - Focused Go/Vitest/Playwright coverage, full `task check`, `task test`, `task test-browser`, and in-app browser verification passed before commit `bacb659`.
-
-### Saved Feature DSL Graph History
-
-- Saved `.lcad.json` models expose a compact complete-source graph editor in the Inspector.
-- Apply remains disabled until the browser `feature-dsl-preview` worker compiles the edited graph successfully.
-- `PATCH /api/v1/projects/:projectID/models/:modelID/feature-dsl-graph` requires `expected_revision`, preserves the parameter schema/value envelope, rejects duplicate top-level feature IDs, creates an immutable model revision, updates occurrence revision bindings, and appends one `feature-graph-change` History command atomically.
-- History reports stable top-level node IDs as added, updated, or removed; Undo/Redo replays the before/after model revisions across reloads and devices.
-- This is complete-source graph versioning. It is not nested boolean-operand editing, sketch constraints, durable serialized OCCT shape state, imported STEP feature history, or full B-rep feature history.
 
 ### OpenSCAD Browser Runtime Decision
 
@@ -67,7 +68,7 @@ This note is the short cross-machine handoff for the current LiteCAD development
 
 ## Last Verification
 
-The true-chamfer phase added real worker-side OCCT bevel geometry without changing the Feature DSL wire format. In-app browser verification against the real local backend asked the configured Provider for a 40 x 24 x 12 mm box with a 1 mm chamfer, created and saved `box-with-chamfer-litecad`, displayed its browser-kernel preview as ready in the workbench, exposed it in the STEP export selection, and found no console warnings or errors.
+The recursive source-graph phase was verified in the Codex in-app browser against the real local backend and configured Provider. A prompt created and saved `rectangular-block-with-hole-litecad` as a recursive boolean subtract graph with stable `boolean_1`, `blank`, and `bore` nodes. The graph rail changed `bore.radius` from `3` to `4`, browser-kernel preview remained ready, Apply created revision 2, History showed graph version 1 and `features/boolean_1/operands/bore` as updated, Undo restored radius 3/revision 1, Redo restored radius 4/revision 2, reload preserved the edit, STEP export listed the model, and the browser reported no warnings or errors.
 
 Full phase gates passed:
 
@@ -78,13 +79,13 @@ task test-browser
 ```
 
 - `task check` passed backend formatting/vet/lint, frontend TypeScript, and module-tidy checks.
-- `task test` passed Go race/coverage tests and 77 Vitest files / 387 tests. Vitest still prints the existing `MaxListenersExceededWarning` warnings during the full run.
-- `task test-browser` passed all 15 deterministic Playwright workbench tests, including prompt-to-chamfer preview/save/export.
-- Focused Go provider-contract tests, 74 selected browser-kernel tests, the focused chamfer kernel tests, and the chamfer workbench Playwright workflow also passed before the full phase gates.
+- `task test` passed Go race/coverage tests and 78 Vitest files / 396 tests. Vitest still prints the existing `MaxListenersExceededWarning` warnings during the full run.
+- `task test-browser` passed all 16 deterministic Playwright workbench tests, including stable nested-node editing, path-aware History, Undo/Redo, reload persistence, and export availability.
+- Focused Go graph validation/transition tests, 5 focused frontend files / 59 tests, TypeScript validation, and the isolated nested-graph Playwright workflow also passed during implementation and review.
 
 ## Active Roadmap
 
-The original handoff follow-up list remains closed, and true chamfer is now complete. The active roadmap continues with a versioned durable LiteCAD Feature/Operation Graph and stable nested-node editing, followed by stable topology references with exact measurements and associative section regeneration, then solver-backed assembly constraints and a reusable subassembly contract.
+The original handoff follow-up list remains closed, and the versioned recursive LiteCAD Feature DSL source graph is complete. The active roadmap continues with stable geometric references, topology-aware measurement, and associative section regeneration, followed by solver-backed assembly constraints and a reusable subassembly contract.
 
 These phases must preserve the existing source-of-truth boundary: replayable versioned graph data is durable, while OCCT shapes and Three.js buffers remain derived runtime state.
 
@@ -101,6 +102,6 @@ task install
 task check
 ```
 
-For a fresh machine, clone the repository, switch to `main`, and then run the same `task install` and `task check` steps. Confirm `git rev-parse HEAD` is at least `1d3895b` before relying on the completed-phase descriptions above, then pull the latest phase commit from `origin/main`.
+For a fresh machine, clone the repository, switch to `main`, and then run the same `task install` and `task check` steps. Confirm `git rev-parse HEAD` is at least `bc64923` before relying on the completed-phase descriptions above, then pull the latest phase commit from `origin/main`.
 
 No database contents, browser-local panel preferences, AI provider secrets, or `cmd/litecad/config.local.yaml` settings are transferred through Git. Recreate machine-local configuration from `cmd/litecad/config.example.yaml`; do not copy credentials into this handoff or commit them.

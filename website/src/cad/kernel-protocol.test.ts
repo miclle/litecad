@@ -195,6 +195,56 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(false)
   })
 
+  test('rejects duplicate recursive LiteCAD feature graph node IDs', () => {
+    expect(
+      isCadKernelRequest({
+        id: 'job-dsl-duplicate-recursive-feature-id',
+        type: 'feature-dsl-preview',
+        payload: {
+          filename: 'duplicate-recursive-nodes.lcad.json',
+          document: {
+            version: 1,
+            unit: 'millimetre',
+            features: [
+              {
+                id: 'body',
+                type: 'boolean',
+                operation: 'subtract',
+                operands: [
+                  { id: 'blank', type: 'box', size: [20, 20, 4] },
+                  { id: 'body', type: 'cylinder', origin: [10, 10, -1], diameter: 6, height: 6 },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    ).toBe(false)
+  })
+
+  test('rejects unstable whitespace IDs and operands on non-boolean nodes', () => {
+    for (const feature of [
+      { id: ' base ', type: 'box', size: [20, 20, 4] },
+      {
+        id: 'base',
+        type: 'box',
+        size: [20, 20, 4],
+        operands: [{ id: 'hidden', type: 'box', size: [1, 1, 1] }],
+      },
+    ]) {
+      expect(
+        isCadKernelRequest({
+          id: 'job-dsl-invalid-graph-identity',
+          type: 'feature-dsl-preview',
+          payload: {
+            filename: 'invalid-graph-identity.lcad.json',
+            document: { version: 1, unit: 'millimetre', features: [feature] },
+          },
+        }),
+      ).toBe(false)
+    }
+  })
+
   test('accepts LiteCAD feature DSL cylinder and cylinder-cut features', () => {
     const document = {
       version: 1,

@@ -522,17 +522,26 @@ function isCadKernelFeatureDSLDocument(value: unknown): value is CadKernelFeatur
     Array.isArray(value.features) &&
     value.features.length > 0 &&
     value.features.every(isFeatureDSLFeature) &&
-    hasUniqueTopLevelFeatureIDs(value.features)
+    hasUniqueFeatureDSLNodeIDs(value.features)
   )
 }
 
-function hasUniqueTopLevelFeatureIDs(features: unknown[]) {
+function hasUniqueFeatureDSLNodeIDs(features: unknown[]) {
   const ids = new Set<string>()
-  for (const feature of features) {
-    if (!isRecord(feature) || typeof feature.id !== 'string' || ids.has(feature.id)) {
+  const pending = [...features]
+  while (pending.length > 0) {
+    const feature = pending.pop()
+    if (!isRecord(feature) || typeof feature.id !== 'string') {
       return false
     }
-    ids.add(feature.id)
+    const featureID = feature.id.trim()
+    if (!featureID || featureID !== feature.id || ids.has(featureID)) {
+      return false
+    }
+    ids.add(featureID)
+    if (feature.type === 'boolean' && Array.isArray(feature.operands)) {
+      pending.push(...feature.operands)
+    }
   }
   return true
 }
@@ -562,6 +571,9 @@ function isFeatureDSLParameter(value: unknown): value is CadKernelFeatureDSLPara
 
 function isFeatureDSLFeature(value: unknown): value is CadKernelFeatureDSLFeature {
   if (!isRecord(value) || typeof value.id !== 'string' || !isSupportedFeatureDSLType(value.type)) {
+    return false
+  }
+  if (value.type !== 'boolean' && value.operands !== undefined) {
     return false
   }
   if (value.transform !== undefined && !isFeatureDSLTransform(value.transform)) {

@@ -33,6 +33,82 @@ const featureDSLGraphUpdatedSource = `{
   ]
 }`
 
+const featureDSLGraphDuplicateNestedIDSource = `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 40 }
+  },
+  "features": [
+    {
+      "id": "body",
+      "type": "boolean",
+      "operation": "subtract",
+      "operands": [
+        { "id": "blank", "type": "box", "origin": [0, 0, 0], "size": ["width", 20, 6] },
+        { "id": "body", "type": "cylinder", "origin": [20, 10, -1], "diameter": 4, "height": 8 }
+      ]
+    }
+  ]
+}`
+
+const featureDSLGraphNestedInitialSource = `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 40 }
+  },
+  "features": [
+    {
+      "id": "body",
+      "type": "boolean",
+      "operation": "subtract",
+      "operands": [
+        { "id": "blank", "type": "box", "origin": [0, 0, 0], "size": ["width", 20, 6] },
+        { "id": "bore", "type": "cylinder", "origin": [20, 10, -1], "diameter": 4, "height": 8 }
+      ]
+    }
+  ]
+}`
+
+const featureDSLGraphNestedUpdatedSource = `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 40 }
+  },
+  "features": [
+    {
+      "id": "body",
+      "type": "boolean",
+      "operation": "subtract",
+      "operands": [
+        { "id": "blank", "type": "box", "origin": [0, 0, 0], "size": ["width", 20, 6] },
+        { "id": "bore", "type": "cylinder", "origin": [20, 10, -1], "diameter": 6, "height": 8 }
+      ]
+    }
+  ]
+}`
+
+const featureDSLGraphNestedReorderedSource = `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 40 }
+  },
+  "features": [
+    {
+      "id": "body",
+      "type": "boolean",
+      "operation": "subtract",
+      "operands": [
+        { "id": "bore", "type": "cylinder", "origin": [20, 10, -1], "diameter": 6, "height": 8 },
+        { "id": "blank", "type": "box", "origin": [0, 0, 0], "size": ["width", 20, 6] }
+      ]
+    }
+  ]
+}`
+
 func TestUpdateLiteCADFeatureGraphPersistsReversibleNodeTransitions(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
@@ -82,8 +158,14 @@ func TestUpdateLiteCADFeatureGraphPersistsReversibleNodeTransitions(t *testing.T
 		t.Fatalf("history entries = %+v, want one feature-graph-change", history.Entries)
 	}
 	wantTransitions := []CADFeatureGraphNodeTransition{
-		{NodeID: "base", Change: "updated", BeforeType: "box", AfterType: "box"},
-		{NodeID: "slot", Change: "added", AfterType: "box_cut"},
+		{
+			NodeID: "base", Change: "updated", BeforeType: "box", AfterType: "box",
+			BeforePath: "features/base", AfterPath: "features/base", BeforeIndex: featureGraphIndex(0), AfterIndex: featureGraphIndex(0),
+		},
+		{NodeID: "slot", Change: "added", AfterType: "box_cut", AfterPath: "features/slot", AfterIndex: featureGraphIndex(1)},
+	}
+	if history.Entries[0].FeatureGraphVersion != 1 {
+		t.Fatalf("public graph version = %d, want 1", history.Entries[0].FeatureGraphVersion)
 	}
 	if !equalFeatureGraphTransitions(history.Entries[0].FeatureGraphTransitions, wantTransitions) {
 		t.Fatalf("public transitions = %+v, want %+v", history.Entries[0].FeatureGraphTransitions, wantTransitions)
@@ -97,7 +179,7 @@ func TestUpdateLiteCADFeatureGraphPersistsReversibleNodeTransitions(t *testing.T
 	if err := json.Unmarshal(storedEntry.CommandJSON, &command); err != nil {
 		t.Fatalf("decode stored graph history command: %v", err)
 	}
-	if command.ModelID != model.ID || command.BeforeRevisionID != initialRevisionID || command.AfterRevisionID != updated.CurrentRevisionID {
+	if command.ModelID != model.ID || command.BeforeRevisionID != initialRevisionID || command.AfterRevisionID != updated.CurrentRevisionID || command.GraphVersion != 1 {
 		t.Fatalf("stored graph history command = %+v", command)
 	}
 	if !equalFeatureGraphTransitions(command.NodeTransitions, wantTransitions) {
@@ -127,6 +209,108 @@ func TestUpdateLiteCADFeatureGraphPersistsReversibleNodeTransitions(t *testing.T
 		t.Fatalf("RedoProjectCADDocument returned error: %v", err)
 	}
 	assertFeatureDSLGraphSource(t, svc, ctx, owner.ID, project.ID, model.ID, featureDSLGraphUpdatedSource, updated.CurrentRevisionID, 2)
+}
+
+func TestUpdateLiteCADFeatureGraphPersistsRecursiveVersionedTransitions(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	owner, project, model := createFeatureDSLGraphTestModel(t, svc, ctx, "graph-recursive-history@example.com", featureDSLGraphNestedInitialSource)
+	initialRevisionID := model.CurrentRevisionID
+
+	updated, err := svc.UpdateLiteCADFeatureGraph(ctx, UpdateLiteCADFeatureGraphInput{
+		OwnerUserID:      owner.ID,
+		ProjectID:        project.ID,
+		ModelID:          model.ID,
+		SourceCode:       featureDSLGraphNestedUpdatedSource,
+		ExpectedRevision: projectCADRevision(t, svc, ctx, owner.ID, project.ID),
+	})
+	if err != nil {
+		t.Fatalf("UpdateLiteCADFeatureGraph nested update returned error: %v", err)
+	}
+	history, err := svc.ListProjectCADHistory(ctx, owner.ID, project.ID, 10, 0)
+	if err != nil {
+		t.Fatalf("ListProjectCADHistory nested update returned error: %v", err)
+	}
+	if len(history.Entries) != 1 || history.Entries[0].FeatureGraphVersion != 1 || len(history.Entries[0].FeatureGraphTransitions) != 1 {
+		t.Fatalf("nested update history = %+v, want one v1 transition", history.Entries)
+	}
+	transition := history.Entries[0].FeatureGraphTransitions[0]
+	if transition.NodeID != "bore" || transition.Change != "updated" || transition.BeforePath != "features/body/operands/bore" || transition.AfterPath != "features/body/operands/bore" {
+		t.Fatalf("nested update transition = %+v", transition)
+	}
+	if transition.BeforeIndex == nil || *transition.BeforeIndex != 1 || transition.AfterIndex == nil || *transition.AfterIndex != 1 {
+		t.Fatalf("nested update indexes = %+v", transition)
+	}
+
+	document, err := svc.GetProjectCADDocument(ctx, owner.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectCADDocument nested update returned error: %v", err)
+	}
+	undone, err := svc.UndoProjectCADDocument(ctx, ModifyProjectCADHistoryInput{
+		OwnerUserID:      owner.ID,
+		ProjectID:        project.ID,
+		ExpectedRevision: document.Revision,
+	})
+	if err != nil {
+		t.Fatalf("UndoProjectCADDocument nested update returned error: %v", err)
+	}
+	assertFeatureDSLGraphSource(t, svc, ctx, owner.ID, project.ID, model.ID, featureDSLGraphNestedInitialSource, initialRevisionID, 1)
+	_, err = svc.RedoProjectCADDocument(ctx, ModifyProjectCADHistoryInput{
+		OwnerUserID:      owner.ID,
+		ProjectID:        project.ID,
+		ExpectedRevision: undone.Revision,
+	})
+	if err != nil {
+		t.Fatalf("RedoProjectCADDocument nested update returned error: %v", err)
+	}
+	assertFeatureDSLGraphSource(t, svc, ctx, owner.ID, project.ID, model.ID, featureDSLGraphNestedUpdatedSource, updated.CurrentRevisionID, 2)
+
+	reordered, err := svc.UpdateLiteCADFeatureGraph(ctx, UpdateLiteCADFeatureGraphInput{
+		OwnerUserID:      owner.ID,
+		ProjectID:        project.ID,
+		ModelID:          model.ID,
+		SourceCode:       featureDSLGraphNestedReorderedSource,
+		ExpectedRevision: projectCADRevision(t, svc, ctx, owner.ID, project.ID),
+	})
+	if err != nil {
+		t.Fatalf("UpdateLiteCADFeatureGraph nested reorder returned error: %v", err)
+	}
+	history, err = svc.ListProjectCADHistory(ctx, owner.ID, project.ID, 10, 0)
+	if err != nil {
+		t.Fatalf("ListProjectCADHistory nested reorder returned error: %v", err)
+	}
+	if len(history.Entries) != 2 || history.Entries[0].FeatureGraphVersion != 1 || len(history.Entries[0].FeatureGraphTransitions) != 2 {
+		t.Fatalf("nested reorder history = %+v, want two v1 move transitions", history.Entries)
+	}
+	for index, wantNodeID := range []string{"bore", "blank"} {
+		move := history.Entries[0].FeatureGraphTransitions[index]
+		if move.NodeID != wantNodeID || move.Change != "moved" || move.BeforeIndex == nil || move.AfterIndex == nil || *move.BeforeIndex == *move.AfterIndex {
+			t.Fatalf("nested reorder transition %d = %+v", index, move)
+		}
+	}
+
+	document, err = svc.GetProjectCADDocument(ctx, owner.ID, project.ID)
+	if err != nil {
+		t.Fatalf("GetProjectCADDocument nested reorder returned error: %v", err)
+	}
+	undone, err = svc.UndoProjectCADDocument(ctx, ModifyProjectCADHistoryInput{
+		OwnerUserID:      owner.ID,
+		ProjectID:        project.ID,
+		ExpectedRevision: document.Revision,
+	})
+	if err != nil {
+		t.Fatalf("UndoProjectCADDocument nested reorder returned error: %v", err)
+	}
+	assertFeatureDSLGraphSource(t, svc, ctx, owner.ID, project.ID, model.ID, featureDSLGraphNestedUpdatedSource, updated.CurrentRevisionID, 2)
+	_, err = svc.RedoProjectCADDocument(ctx, ModifyProjectCADHistoryInput{
+		OwnerUserID:      owner.ID,
+		ProjectID:        project.ID,
+		ExpectedRevision: undone.Revision,
+	})
+	if err != nil {
+		t.Fatalf("RedoProjectCADDocument nested reorder returned error: %v", err)
+	}
+	assertFeatureDSLGraphSource(t, svc, ctx, owner.ID, project.ID, model.ID, featureDSLGraphNestedReorderedSource, reordered.CurrentRevisionID, 3)
 }
 
 func TestUpdateLiteCADFeatureGraphRejectsInvalidTransitionsAndAccess(t *testing.T) {
@@ -172,6 +356,14 @@ func TestUpdateLiteCADFeatureGraphRejectsInvalidTransitionsAndAccess(t *testing.
 			ownerID:    owner.ID,
 			modelID:    model.ID,
 			sourceCode: strings.Replace(featureDSLGraphUpdatedSource, `"id": "slot"`, `"id": "base"`, 1),
+			revision:   revision,
+			wantErr:    ErrInvalidProjectParametricArtifactInput,
+		},
+		{
+			name:       "duplicate nested node ids",
+			ownerID:    owner.ID,
+			modelID:    model.ID,
+			sourceCode: featureDSLGraphDuplicateNestedIDSource,
 			revision:   revision,
 			wantErr:    ErrInvalidProjectParametricArtifactInput,
 		},
@@ -274,6 +466,56 @@ func TestCreateProjectParametricArtifactRejectsDuplicateFeatureGraphNodeIDs(t *t
 	if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
 		t.Fatalf("CreateProjectParametricArtifact error = %v, want ErrInvalidProjectParametricArtifactInput", err)
 	}
+
+	_, err = svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+		OwnerUserID:   owner.ID,
+		ProjectID:     project.ID,
+		Title:         "Duplicate nested graph IDs",
+		SourceKind:    "litecad-feature-dsl",
+		SourceCode:    featureDSLGraphDuplicateNestedIDSource,
+		CompileStatus: "success",
+	})
+	if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+		t.Fatalf("CreateProjectParametricArtifact nested duplicate error = %v, want ErrInvalidProjectParametricArtifactInput", err)
+	}
+
+	for name, sourceCode := range map[string]string{
+		"surrounding whitespace": strings.Replace(featureDSLGraphInitialSource, `"id": "base"`, `"id": " base "`, 1),
+		"non-boolean operands":   strings.Replace(featureDSLGraphInitialSource, `"size": ["width", 20, 6]`, `"size": ["width", 20, 6], "operands": [{"id":"hidden","type":"box","size":[1,1,1]}]`, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := svc.CreateProjectParametricArtifact(ctx, CreateProjectParametricArtifactInput{
+				OwnerUserID:   owner.ID,
+				ProjectID:     project.ID,
+				Title:         name,
+				SourceKind:    "litecad-feature-dsl",
+				SourceCode:    sourceCode,
+				CompileStatus: "success",
+			})
+			if !errors.Is(err, ErrInvalidProjectParametricArtifactInput) {
+				t.Fatalf("CreateProjectParametricArtifact error = %v, want ErrInvalidProjectParametricArtifactInput", err)
+			}
+		})
+	}
+}
+
+func TestParseLiteCADFeatureGraphEscapesStablePathSegments(t *testing.T) {
+	source := strings.ReplaceAll(featureDSLGraphNestedInitialSource, `"id": "body"`, `"id": "body/root~v1"`)
+	source = strings.Replace(source, `"id": "bore"`, `"id": "bore/primary~"`, 1)
+	nodes, _, _, err := parseLiteCADFeatureGraph([]byte(source))
+	if err != nil {
+		t.Fatalf("parseLiteCADFeatureGraph returned error: %v", err)
+	}
+	wantPaths := []string{
+		"features/body~1root~0v1",
+		"features/body~1root~0v1/operands/blank",
+		"features/body~1root~0v1/operands/bore~1primary~0",
+	}
+	for index, wantPath := range wantPaths {
+		if nodes[index].Path != wantPath {
+			t.Fatalf("nodes[%d].Path = %q, want %q", index, nodes[index].Path, wantPath)
+		}
+	}
 }
 
 func createFeatureDSLGraphTestModel(
@@ -348,9 +590,23 @@ func equalFeatureGraphTransitions(got, want []CADFeatureGraphNodeTransition) boo
 		return false
 	}
 	for index := range got {
-		if got[index] != want[index] {
+		if got[index].NodeID != want[index].NodeID ||
+			got[index].Change != want[index].Change ||
+			got[index].BeforeType != want[index].BeforeType ||
+			got[index].AfterType != want[index].AfterType ||
+			got[index].BeforePath != want[index].BeforePath ||
+			got[index].AfterPath != want[index].AfterPath ||
+			!equalOptionalInt(got[index].BeforeIndex, want[index].BeforeIndex) ||
+			!equalOptionalInt(got[index].AfterIndex, want[index].AfterIndex) {
 			return false
 		}
 	}
 	return true
+}
+
+func equalOptionalInt(left, right *int) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
 }

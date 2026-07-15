@@ -606,16 +606,11 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 	}
 	featureIDs := make(map[string]struct{}, len(document.Features))
 	for _, feature := range document.Features {
-		featureID := strings.TrimSpace(feature.ID)
-		if featureID == "" {
+		if err := collectLiteCADFeatureDSLFeatureIDs(feature, featureIDs); err != nil {
 			return ErrInvalidProjectParametricArtifactInput
 		}
-		if _, exists := featureIDs[featureID]; exists {
-			return ErrInvalidProjectParametricArtifactInput
-		}
-		featureIDs[featureID] = struct{}{}
 		if feature.Type == "sketch" {
-			parameters.sketches[featureID] = feature
+			parameters.sketches[strings.TrimSpace(feature.ID)] = feature
 		}
 	}
 	hasSolid := false
@@ -625,6 +620,26 @@ func validateLiteCADFeatureDSLSource(data []byte) error {
 		}
 		if isLiteCADFeatureDSLSolidFeature(feature.Type) {
 			hasSolid = true
+		}
+	}
+	return nil
+}
+
+func collectLiteCADFeatureDSLFeatureIDs(feature liteCADFeatureDSLValidationFeature, featureIDs map[string]struct{}) error {
+	featureID := strings.TrimSpace(feature.ID)
+	if featureID == "" || featureID != feature.ID {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	if _, exists := featureIDs[featureID]; exists {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	featureIDs[featureID] = struct{}{}
+	if feature.Type != "boolean" && len(feature.Operands) > 0 {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	for _, operand := range feature.Operands {
+		if err := collectLiteCADFeatureDSLFeatureIDs(operand, featureIDs); err != nil {
+			return err
 		}
 	}
 	return nil

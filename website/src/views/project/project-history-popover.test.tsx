@@ -89,9 +89,28 @@ describe('ProjectHistoryPopover', () => {
               command_type: 'feature-graph-change',
               target_id: 'model_one',
               summary: 'Update feature graph for bracket.lcad.json',
+              feature_graph_version: 1,
               feature_graph_transitions: [
-                { node_id: 'base', change: 'updated', before_type: 'box', after_type: 'box' },
-                { node_id: 'slot', change: 'added', after_type: 'box_cut' },
+                {
+                  node_id: 'bore',
+                  change: 'updated',
+                  before_type: 'cylinder',
+                  after_type: 'cylinder',
+                  before_path: 'features/body/operands/bore',
+                  after_path: 'features/body/operands/bore',
+                  before_index: 1,
+                  after_index: 1,
+                },
+                {
+                  node_id: 'slot',
+                  change: 'moved',
+                  before_type: 'box_cut',
+                  after_type: 'box_cut',
+                  before_path: 'features/slot',
+                  after_path: 'features/body/operands/slot',
+                  before_index: 1,
+                  after_index: 2,
+                },
               ],
               created_at: '2026-07-14T00:00:00Z',
             },
@@ -110,7 +129,8 @@ describe('ProjectHistoryPopover', () => {
       </TooltipProvider>,
     )
 
-    expect(screen.getByText('base · Updated')).not.toBeNull()
-    expect(screen.getByText('slot · Added')).not.toBeNull()
+    expect(screen.getByText('Feature graph v1')).not.toBeNull()
+    expect(screen.getByText('features/body/operands/bore · Updated')).not.toBeNull()
+    expect(screen.getByText('features/body/operands/slot · Moved')).not.toBeNull()
   })
 })

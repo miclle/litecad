@@ -21,12 +21,16 @@ type UpdateLiteCADFeatureGraphInput struct {
 }
 
 type liteCADFeatureGraphDocument struct {
+	Version  int               `json:"version"`
 	Features []json.RawMessage `json:"features"`
 }
 
 type liteCADFeatureGraphNode struct {
 	ID        string
 	Type      string
+	ParentID  string
+	Index     int
+	Path      string
 	Canonical []byte
 }
 
@@ -63,6 +67,7 @@ func (s *Service) UpdateLiteCADFeatureGraph(ctx context.Context, input UpdateLit
 	if len(model.MetadataJSON) > 0 {
 		_ = json.Unmarshal(model.MetadataJSON, &currentMetadata)
 	}
+	var graphVersion int
 	var transitions []CADFeatureGraphNodeTransition
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		document, state, err := s.getOrCreateProjectCADDocumentEntity(ctx, tx, project)
@@ -72,17 +77,18 @@ func (s *Service) UpdateLiteCADFeatureGraph(ctx context.Context, input UpdateLit
 		if document.Revision != input.ExpectedRevision {
 			return ErrCADDocumentConflict
 		}
-		beforeNodes, beforeEnvelope, err := parseLiteCADFeatureGraph(model.SourceData)
+		beforeNodes, beforeEnvelope, beforeGraphVersion, err := parseLiteCADFeatureGraph(model.SourceData)
 		if err != nil {
 			return ErrInvalidProjectParametricArtifactInput
 		}
-		afterNodes, afterEnvelope, err := parseLiteCADFeatureGraph([]byte(sourceCode))
+		afterNodes, afterEnvelope, afterGraphVersion, err := parseLiteCADFeatureGraph([]byte(sourceCode))
 		if err != nil {
 			return ErrInvalidProjectParametricArtifactInput
 		}
-		if string(beforeEnvelope) != string(afterEnvelope) {
+		if beforeGraphVersion != afterGraphVersion || string(beforeEnvelope) != string(afterEnvelope) {
 			return ErrInvalidProjectParametricArtifactInput
 		}
+		graphVersion = afterGraphVersion
 		transitions = diffLiteCADFeatureGraphNodes(beforeNodes, afterNodes)
 		if len(transitions) == 0 {
 			return ErrInvalidProjectParametricArtifactInput
@@ -122,6 +128,7 @@ func (s *Service) UpdateLiteCADFeatureGraph(ctx context.Context, input UpdateLit
 			ModelID:          model.ID,
 			BeforeRevisionID: beforeRevision.ID,
 			AfterRevisionID:  afterRevision.ID,
+			GraphVersion:     graphVersion,
 			NodeTransitions:  transitions,
 		}); err != nil {
 			return err
@@ -134,50 +141,89 @@ func (s *Service) UpdateLiteCADFeatureGraph(ctx context.Context, input UpdateLit
 	return publicProjectModel(model), nil
 }
 
-func parseLiteCADFeatureGraph(data []byte) ([]liteCADFeatureGraphNode, []byte, error) {
+func parseLiteCADFeatureGraph(data []byte) ([]liteCADFeatureGraphNode, []byte, int, error) {
 	var document liteCADFeatureGraphDocument
-	if err := json.Unmarshal(data, &document); err != nil || len(document.Features) == 0 {
-		return nil, nil, ErrInvalidProjectParametricArtifactInput
+	if err := json.Unmarshal(data, &document); err != nil || document.Version != 1 || len(document.Features) == 0 {
+		return nil, nil, 0, ErrInvalidProjectParametricArtifactInput
 	}
 	var envelope map[string]any
 	if err := json.Unmarshal(data, &envelope); err != nil {
-		return nil, nil, ErrInvalidProjectParametricArtifactInput
+		return nil, nil, 0, ErrInvalidProjectParametricArtifactInput
 	}
 	delete(envelope, "features")
 	canonicalEnvelope, err := json.Marshal(envelope)
 	if err != nil {
-		return nil, nil, ErrInvalidProjectParametricArtifactInput
+		return nil, nil, 0, ErrInvalidProjectParametricArtifactInput
 	}
 	nodes := make([]liteCADFeatureGraphNode, 0, len(document.Features))
 	seen := make(map[string]struct{}, len(document.Features))
-	for _, rawFeature := range document.Features {
-		var identity struct {
-			ID   string `json:"id"`
-			Type string `json:"type"`
+	for index, rawFeature := range document.Features {
+		if err := appendLiteCADFeatureGraphNode(rawFeature, "", "", index, &nodes, seen); err != nil {
+			return nil, nil, 0, err
 		}
-		if err := json.Unmarshal(rawFeature, &identity); err != nil {
-			return nil, nil, ErrInvalidProjectParametricArtifactInput
-		}
-		identity.ID = strings.TrimSpace(identity.ID)
-		identity.Type = strings.TrimSpace(identity.Type)
-		if identity.ID == "" || identity.Type == "" {
-			return nil, nil, ErrInvalidProjectParametricArtifactInput
-		}
-		if _, exists := seen[identity.ID]; exists {
-			return nil, nil, ErrInvalidProjectParametricArtifactInput
-		}
-		seen[identity.ID] = struct{}{}
-		var canonicalValue any
-		if err := json.Unmarshal(rawFeature, &canonicalValue); err != nil {
-			return nil, nil, ErrInvalidProjectParametricArtifactInput
-		}
-		canonical, err := json.Marshal(canonicalValue)
-		if err != nil {
-			return nil, nil, ErrInvalidProjectParametricArtifactInput
-		}
-		nodes = append(nodes, liteCADFeatureGraphNode{ID: identity.ID, Type: identity.Type, Canonical: canonical})
 	}
-	return nodes, canonicalEnvelope, nil
+	return nodes, canonicalEnvelope, document.Version, nil
+}
+
+func appendLiteCADFeatureGraphNode(
+	rawFeature json.RawMessage,
+	parentID string,
+	parentPath string,
+	index int,
+	nodes *[]liteCADFeatureGraphNode,
+	seen map[string]struct{},
+) error {
+	var identity struct {
+		ID       string            `json:"id"`
+		Type     string            `json:"type"`
+		Operands []json.RawMessage `json:"operands"`
+	}
+	if err := json.Unmarshal(rawFeature, &identity); err != nil {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	identity.ID = strings.TrimSpace(identity.ID)
+	identity.Type = strings.TrimSpace(identity.Type)
+	if identity.ID == "" || identity.Type == "" {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	if _, exists := seen[identity.ID]; exists {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	seen[identity.ID] = struct{}{}
+
+	var canonicalValue map[string]any
+	if err := json.Unmarshal(rawFeature, &canonicalValue); err != nil {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	delete(canonicalValue, "operands")
+	canonical, err := json.Marshal(canonicalValue)
+	if err != nil {
+		return ErrInvalidProjectParametricArtifactInput
+	}
+	path := "features/" + featureGraphPathSegment(identity.ID)
+	if parentPath != "" {
+		path = parentPath + "/operands/" + featureGraphPathSegment(identity.ID)
+	}
+	*nodes = append(*nodes, liteCADFeatureGraphNode{
+		ID:        identity.ID,
+		Type:      identity.Type,
+		ParentID:  parentID,
+		Index:     index,
+		Path:      path,
+		Canonical: canonical,
+	})
+	if identity.Type == "boolean" {
+		for operandIndex, operand := range identity.Operands {
+			if err := appendLiteCADFeatureGraphNode(operand, identity.ID, path, operandIndex, nodes, seen); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func featureGraphPathSegment(id string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(id, "~", "~0"), "/", "~1")
 }
 
 func diffLiteCADFeatureGraphNodes(before, after []liteCADFeatureGraphNode) []CADFeatureGraphNodeTransition {
@@ -194,22 +240,55 @@ func diffLiteCADFeatureGraphNodes(before, after []liteCADFeatureGraphNode) []CAD
 	for _, afterNode := range after {
 		beforeNode, exists := beforeByID[afterNode.ID]
 		if !exists {
-			transitions = append(transitions, CADFeatureGraphNodeTransition{NodeID: afterNode.ID, Change: "added", AfterType: afterNode.Type})
+			transitions = append(transitions, CADFeatureGraphNodeTransition{
+				NodeID:     afterNode.ID,
+				Change:     "added",
+				AfterType:  afterNode.Type,
+				AfterPath:  afterNode.Path,
+				AfterIndex: featureGraphIndex(afterNode.Index),
+			})
 			continue
 		}
 		if string(beforeNode.Canonical) != string(afterNode.Canonical) {
 			transitions = append(transitions, CADFeatureGraphNodeTransition{
-				NodeID:     afterNode.ID,
-				Change:     "updated",
-				BeforeType: beforeNode.Type,
-				AfterType:  afterNode.Type,
+				NodeID:      afterNode.ID,
+				Change:      "updated",
+				BeforeType:  beforeNode.Type,
+				AfterType:   afterNode.Type,
+				BeforePath:  beforeNode.Path,
+				AfterPath:   afterNode.Path,
+				BeforeIndex: featureGraphIndex(beforeNode.Index),
+				AfterIndex:  featureGraphIndex(afterNode.Index),
+			})
+		}
+		if beforeNode.ParentID != afterNode.ParentID || beforeNode.Index != afterNode.Index {
+			transitions = append(transitions, CADFeatureGraphNodeTransition{
+				NodeID:      afterNode.ID,
+				Change:      "moved",
+				BeforeType:  beforeNode.Type,
+				AfterType:   afterNode.Type,
+				BeforePath:  beforeNode.Path,
+				AfterPath:   afterNode.Path,
+				BeforeIndex: featureGraphIndex(beforeNode.Index),
+				AfterIndex:  featureGraphIndex(afterNode.Index),
 			})
 		}
 	}
 	for _, beforeNode := range before {
 		if _, exists := afterByID[beforeNode.ID]; !exists {
-			transitions = append(transitions, CADFeatureGraphNodeTransition{NodeID: beforeNode.ID, Change: "removed", BeforeType: beforeNode.Type})
+			transitions = append(transitions, CADFeatureGraphNodeTransition{
+				NodeID:      beforeNode.ID,
+				Change:      "removed",
+				BeforeType:  beforeNode.Type,
+				BeforePath:  beforeNode.Path,
+				BeforeIndex: featureGraphIndex(beforeNode.Index),
+			})
 		}
 	}
 	return transitions
+}
+
+func featureGraphIndex(index int) *int {
+	value := index
+	return &value
 }

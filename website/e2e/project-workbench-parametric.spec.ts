@@ -1,15 +1,36 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 import {
   captureBrowserErrors,
   chamferedBoxFeatureDSLSource,
   hollowRevolveFeatureDSLSource,
   installProjectAPIFixture,
+  nestedBooleanFeatureDSLSource,
   projectId,
   smokeFeatureDSLSource,
   smokeUpdatedFeatureDSLSource,
   sphereXYZThroughHoleFeatureDSLSource,
 } from './fixtures/project-api'
+
+async function openCompleteFeatureGraphSource(page: Page) {
+  const nodeSource = page.getByLabel('Selected node source')
+  if (!(await nodeSource.isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: 'Edit feature graph' }).click()
+  }
+  const completeSource = page.getByLabel('Complete feature graph source')
+  if (!(await completeSource.isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: 'Edit complete source' }).click()
+  }
+  return completeSource
+}
+
+async function selectFeatureGraphNode(page: Page, nodeID: string) {
+  const nodeButton = page.getByRole('button', { name: `Select graph node ${nodeID}` })
+  if (!(await nodeButton.isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: 'Edit feature graph' }).click()
+  }
+  await nodeButton.click()
+}
 
 test('runs the Assistant draft, save, parameter edit, and reload workflow', async ({ page }) => {
   test.slow()
@@ -81,7 +102,8 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
   await page.getByRole('button', { name: 'Operation history' }).click()
 
   await page.getByRole('button', { name: 'Edit feature graph' }).click()
-  const featureGraphSource = page.getByLabel('Feature graph source')
+  await page.getByRole('button', { name: 'Edit complete source' }).click()
+  const featureGraphSource = page.getByLabel('Complete feature graph source')
   await expect(featureGraphSource).toHaveValue(smokeFeatureDSLSource)
   await featureGraphSource.fill(smokeUpdatedFeatureDSLSource)
   const applyGraph = page.getByRole('button', { name: 'Apply graph' })
@@ -93,24 +115,19 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
 
   await page.getByRole('button', { name: 'Operation history' }).click()
   await expect(page.getByText('Update feature graph for smoke-bracket-litecad.lcad.json')).toBeVisible()
-  await expect(page.getByText('base · Updated')).toBeVisible()
-  await expect(page.getByText('slot · Added')).toBeVisible()
+  await expect(page.getByText('Feature graph v1')).toBeVisible()
+  await expect(page.getByText('features/base · Updated')).toBeVisible()
+  await expect(page.getByText('features/slot · Added')).toBeVisible()
   await page.getByRole('button', { name: 'Operation history' }).click()
 
   await page.getByRole('button', { name: 'Undo' }).click()
   await expect.poll(() => fixture.state.undoCount).toBe(1)
   await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_1')
-  if (!(await page.getByLabel('Feature graph source').isVisible())) {
-    await page.getByRole('button', { name: 'Edit feature graph' }).click()
-  }
-  await expect(page.getByLabel('Feature graph source')).toHaveValue(smokeFeatureDSLSource)
+  await expect(await openCompleteFeatureGraphSource(page)).toHaveValue(smokeFeatureDSLSource)
   await page.getByRole('button', { name: 'Redo' }).click()
   await expect.poll(() => fixture.state.redoCount).toBe(1)
   await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_2')
-  if (!(await page.getByLabel('Feature graph source').isVisible())) {
-    await page.getByRole('button', { name: 'Edit feature graph' }).click()
-  }
-  await expect(page.getByLabel('Feature graph source')).toHaveValue(smokeUpdatedFeatureDSLSource)
+  await expect(await openCompleteFeatureGraphSource(page)).toHaveValue(smokeUpdatedFeatureDSLSource)
   await expect
     .poll(() => page.locator('[data-model-preview] canvas').first().evaluate((canvas) => canvas.getAttribute('data-litecad-stable-canvas')))
     .toBe('saved-parameter-edit')
@@ -119,8 +136,66 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
   await page.getByRole('option', { name: 'Smoke bracket' }).click()
   await expect(page.getByLabel('width value')).toHaveValue('60')
   await page.getByRole('button', { name: 'Edit feature graph' }).click()
-  await expect(page.getByLabel('Feature graph source')).toHaveValue(smokeUpdatedFeatureDSLSource)
+  await page.getByRole('button', { name: 'Edit complete source' }).click()
+  await expect(page.getByLabel('Complete feature graph source')).toHaveValue(smokeUpdatedFeatureDSLSource)
   await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+
+  expect(browserErrors).toEqual([])
+})
+
+test('edits a stable nested feature node and restores it through history', async ({ page }) => {
+  test.slow()
+  const browserErrors = captureBrowserErrors(page)
+  const fixture = await installProjectAPIFixture(page)
+  fixture.state.parametricArtifactTitle = 'Nested boolean bracket'
+  fixture.state.parametricArtifactSourceCode = nestedBooleanFeatureDSLSource
+  fixture.state.savedModelID = 'mdl_nested_boolean_lcad'
+  fixture.state.savedModelFilename = 'nested-boolean-bracket.lcad.json'
+  fixture.seedSavedModel()
+
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await page.getByRole('option', { name: 'Nested boolean bracket' }).click()
+  await page.getByRole('button', { name: 'Edit feature graph' }).click()
+  await expect(page.getByText('Feature graph · v1 · 3 nodes')).toBeVisible()
+  await page.getByRole('button', { name: 'Select graph node bore' }).click()
+  const nodeSource = page.getByLabel('Selected node source')
+  await expect(nodeSource).toHaveValue(/"diameter": 4/)
+  await nodeSource.fill('{"id":"bore","type":"cylinder","origin":[20,12,-1],"diameter":6,"height":10}')
+  await expect(page.getByText('features/body/operands/bore')).toBeVisible()
+
+  const applyGraph = page.getByRole('button', { name: 'Apply graph' })
+  await expect(applyGraph).toBeEnabled()
+  await applyGraph.click()
+  await expect.poll(() => fixture.state.featureGraphUpdateCount).toBe(1)
+  expect(JSON.parse(fixture.state.parametricArtifactSourceCode).features[0].operands[1].diameter).toBe(6)
+
+  await page.getByRole('button', { name: 'Operation history' }).click()
+  await expect(page.getByText('Feature graph v1')).toBeVisible()
+  await expect(page.getByText('features/body/operands/bore · Updated')).toBeVisible()
+  await page.getByRole('button', { name: 'Operation history' }).click()
+
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect.poll(() => fixture.state.undoCount).toBe(1)
+  await selectFeatureGraphNode(page, 'bore')
+  await expect(page.getByLabel('Selected node source')).toHaveValue(/"diameter": 4/)
+
+  await page.getByRole('button', { name: 'Redo' }).click()
+  await expect.poll(() => fixture.state.redoCount).toBe(1)
+  await selectFeatureGraphNode(page, 'bore')
+  await expect(page.getByLabel('Selected node source')).toHaveValue(/"diameter": 6/)
+
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await page.getByRole('option', { name: 'Nested boolean bracket' }).click()
+  await page.getByRole('button', { name: 'Edit feature graph' }).click()
+  await page.getByRole('button', { name: 'Select graph node bore' }).click()
+  await expect(page.getByLabel('Selected node source')).toHaveValue(/"diameter": 6/)
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
+  await expect(page.getByRole('button', { name: 'Export STEP' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Export STEP' }).click()
+  await expect(page.getByRole('dialog', { name: 'Export STEP' })).toBeVisible()
+  await expect(page.getByText('1/1 selected')).toBeVisible()
 
   expect(browserErrors).toEqual([])
 })

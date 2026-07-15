@@ -51,6 +51,7 @@ type cadFeatureGraphHistoryCommand struct {
 	ModelID          string                          `json:"model_id"`
 	BeforeRevisionID string                          `json:"before_revision_id"`
 	AfterRevisionID  string                          `json:"after_revision_id"`
+	GraphVersion     int                             `json:"graph_version"`
 	NodeTransitions  []CADFeatureGraphNodeTransition `json:"node_transitions"`
 }
 
@@ -117,12 +118,16 @@ type ModifyProjectCADHistoryInput struct {
 	ExpectedRevision int
 }
 
-// CADFeatureGraphNodeTransition identifies one top-level Feature DSL node change.
+// CADFeatureGraphNodeTransition identifies one stable recursive Feature DSL node change.
 type CADFeatureGraphNodeTransition struct {
-	NodeID     string `json:"node_id"`
-	Change     string `json:"change"`
-	BeforeType string `json:"before_type,omitempty"`
-	AfterType  string `json:"after_type,omitempty"`
+	NodeID      string `json:"node_id"`
+	Change      string `json:"change"`
+	BeforeType  string `json:"before_type,omitempty"`
+	AfterType   string `json:"after_type,omitempty"`
+	BeforePath  string `json:"before_path,omitempty"`
+	AfterPath   string `json:"after_path,omitempty"`
+	BeforeIndex *int   `json:"before_index,omitempty"`
+	AfterIndex  *int   `json:"after_index,omitempty"`
 }
 
 // CADHistoryEntrySummary is the public audit shape for one persisted CAD edit.
@@ -134,6 +139,7 @@ type CADHistoryEntrySummary struct {
 	CommandType             string                          `json:"command_type"`
 	TargetID                string                          `json:"target_id"`
 	Summary                 string                          `json:"summary"`
+	FeatureGraphVersion     int                             `json:"feature_graph_version,omitempty"`
 	FeatureGraphTransitions []CADFeatureGraphNodeTransition `json:"feature_graph_transitions,omitempty"`
 	CreatedAt               string                          `json:"created_at"`
 }
@@ -166,12 +172,14 @@ func (s *Service) ListProjectCADHistory(ctx context.Context, ownerUserID, projec
 	}
 	publicEntries := make([]CADHistoryEntrySummary, 0, len(entries))
 	for _, entry := range entries {
+		graphVersion := 0
 		var transitions []CADFeatureGraphNodeTransition
 		if entry.CommandType == "feature-graph-change" {
 			var command cadFeatureGraphHistoryCommand
 			if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
 				return ProjectCADHistoryPage{}, fmt.Errorf("decode feature graph history summary: %w", err)
 			}
+			graphVersion = command.GraphVersion
 			transitions = command.NodeTransitions
 		}
 		publicEntries = append(publicEntries, CADHistoryEntrySummary{
@@ -182,6 +190,7 @@ func (s *Service) ListProjectCADHistory(ctx context.Context, ownerUserID, projec
 			CommandType:             entry.CommandType,
 			TargetID:                entry.TargetID,
 			Summary:                 entry.Summary,
+			FeatureGraphVersion:     graphVersion,
 			FeatureGraphTransitions: transitions,
 			CreatedAt:               entry.CreatedAt.Format(timeFormatRFC3339),
 		})

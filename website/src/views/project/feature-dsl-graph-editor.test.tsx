@@ -8,6 +8,8 @@ const initialSource =
   '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}'
 const updatedSource =
   '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",48,6]},{"id":"slot","type":"box_cut","origin":[20,10,0],"size":[8,20,6]}]}'
+const nestedSource =
+  '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"body","type":"boolean","operation":"subtract","operands":[{"id":"blank","type":"box","origin":[0,0,0],"size":["width",40,6]},{"id":"bore","type":"cylinder","origin":[40,20,-1],"diameter":4,"height":8}]}]}'
 
 afterEach(cleanup)
 
@@ -24,7 +26,8 @@ describe('FeatureDSLGraphEditor', () => {
       />,
     )
 
-    const source = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Feature graph source' })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit complete source' }))
+    const source = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Complete feature graph source' })
     expect(source.value).toBe(initialSource)
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Apply graph' }).disabled).toBe(true)
 
@@ -60,7 +63,8 @@ describe('FeatureDSLGraphEditor', () => {
     )
 
     await waitFor(() => expect(compileFeatureDSL).toHaveBeenCalledTimes(1))
-    fireEvent.change(screen.getByRole('textbox', { name: 'Feature graph source' }), { target: { value: updatedSource } })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit complete source' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Complete feature graph source' }), { target: { value: updatedSource } })
 
     await waitFor(() => expect(screen.getByText('Graph cannot compile')).not.toBeNull())
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Apply graph' }).disabled).toBe(true)
@@ -78,10 +82,92 @@ describe('FeatureDSLGraphEditor', () => {
       />,
     )
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Feature graph source' }), { target: { value: changedParameterSource } })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit complete source' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Complete feature graph source' }), { target: { value: changedParameterSource } })
 
     await waitFor(() => expect(screen.getByText('Only feature nodes can be changed here. Use the parameter controls for parameter values.')).not.toBeNull())
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Apply graph' }).disabled).toBe(true)
+  })
+
+  it('can reset invalid node JSON and an invalid complete source', async () => {
+    render(
+      <FeatureDSLGraphEditor
+        artifact={artifact()}
+        compileFeatureDSL={vi.fn().mockResolvedValue(previewResult())}
+        debounceMs={0}
+        onSave={vi.fn()}
+      />,
+    )
+
+    const nodeSource = screen.getByRole('textbox', { name: 'Selected node source' })
+    fireEvent.change(nodeSource, { target: { value: '{' } })
+    const reset = screen.getByRole<HTMLButtonElement>('button', { name: 'Reset feature graph' })
+    expect(reset.disabled).toBe(false)
+    fireEvent.click(reset)
+    expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Selected node source' }).value).toContain('"id": "base"')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit complete source' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Complete feature graph source' }), { target: { value: '{' } })
+    expect(screen.queryByRole('textbox', { name: 'Selected node source' })).toBeNull()
+    expect(reset.disabled).toBe(false)
+    fireEvent.click(reset)
+    expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Selected node source' }).value).toContain('"id": "base"')
+  })
+
+  it('edits one stable nested node while preserving its boolean parent and siblings', async () => {
+    const compileFeatureDSL = vi.fn().mockResolvedValue(previewResult())
+    const onSave = vi.fn()
+    render(
+      <FeatureDSLGraphEditor
+        artifact={{ ...artifact(), source_code: nestedSource }}
+        compileFeatureDSL={compileFeatureDSL}
+        debounceMs={0}
+        onSave={onSave}
+      />,
+    )
+
+    expect(screen.getByText('Feature graph · v1 · 3 nodes')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Select graph node bore' }))
+    const nodeSource = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Selected node source' })
+    expect(nodeSource.value).toContain('"diameter": 4')
+    expect(nodeSource.value).not.toContain('blank')
+    expect(screen.getByText('features/body/operands/bore')).not.toBeNull()
+
+    fireEvent.change(nodeSource, {
+      target: {
+        value: '{"id":"bore","type":"cylinder","origin":[40,20,-1],"diameter":6,"height":8}',
+      },
+    })
+
+    await waitFor(() =>
+      expect(compileFeatureDSL).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          document: expect.objectContaining({
+            features: [
+              expect.objectContaining({
+                id: 'body',
+                operands: [expect.objectContaining({ id: 'blank' }), expect.objectContaining({ id: 'bore', diameter: 6 })],
+              }),
+            ],
+          }),
+        }),
+      ),
+    )
+    const applyButton = screen.getByRole<HTMLButtonElement>('button', { name: 'Apply graph' })
+    await waitFor(() => expect(applyButton.disabled).toBe(false))
+    fireEvent.click(applyButton)
+    const savedSource = onSave.mock.calls[0]?.[0] as string
+    expect(JSON.parse(savedSource).features[0].operands).toEqual([
+      expect.objectContaining({ id: 'blank' }),
+      expect.objectContaining({ id: 'bore', diameter: 6 }),
+    ])
+
+    fireEvent.change(nodeSource, { target: { value: '{"id":"renamed-bore","type":"cylinder"}' } })
+    expect(screen.getByText('Node ID must remain bore.')).not.toBeNull()
+    expect(applyButton.disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset feature graph' }))
+    expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Selected node source' }).value).toContain('"id": "body"')
   })
 })
 

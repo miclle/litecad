@@ -154,10 +154,10 @@ describe('ParametricArtifactEditor', () => {
 
     expect(screen.queryByLabelText('Feature graph source')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Edit feature graph' }))
-    const sourceEditor = screen.getByLabelText<HTMLTextAreaElement>('Feature graph source')
-    expect(sourceEditor.value).toBe(sourceCode)
+    const sourceEditor = screen.getByLabelText<HTMLTextAreaElement>('Selected node source')
+    expect(sourceEditor.value).toContain('"id": "base"')
 
-    fireEvent.change(sourceEditor, { target: { value: updatedSourceCode } })
+    fireEvent.change(sourceEditor, { target: { value: '{"id":"base","type":"box","origin":[0,0,0],"size":[80,40,8]}' } })
     await waitFor(() =>
       expect(compileFeatureDSL).toHaveBeenLastCalledWith(
         expect.objectContaining({ document: expect.objectContaining({ features: [expect.objectContaining({ id: 'base', size: [80, 40, 8] })] }) }),
@@ -167,7 +167,8 @@ describe('ParametricArtifactEditor', () => {
     await waitFor(() => expect(applyButton.disabled).toBe(false))
     fireEvent.click(applyButton)
 
-    expect(onSaveFeatureGraph).toHaveBeenCalledWith(updatedSourceCode)
+    const savedSourceCode = onSaveFeatureGraph.mock.calls[0]?.[0] as string
+    expect(JSON.parse(savedSourceCode)).toEqual(JSON.parse(updatedSourceCode))
   })
 
   it('does not offer feature graph editing for OpenSCAD models', () => {

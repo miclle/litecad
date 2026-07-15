@@ -69,19 +69,25 @@ func TestProjectFeatureDSLGraphRoutesUpdateHistoryAndRejectInvalidAccess(t *test
 	var historyResponse struct {
 		Entries []struct {
 			CommandType             string `json:"command_type"`
+			FeatureGraphVersion     int    `json:"feature_graph_version"`
 			FeatureGraphTransitions []struct {
-				NodeID string `json:"node_id"`
-				Change string `json:"change"`
+				NodeID      string `json:"node_id"`
+				Change      string `json:"change"`
+				BeforePath  string `json:"before_path"`
+				AfterPath   string `json:"after_path"`
+				BeforeIndex *int   `json:"before_index"`
+				AfterIndex  *int   `json:"after_index"`
 			} `json:"feature_graph_transitions"`
 		} `json:"entries"`
 	}
 	if err := json.Unmarshal(history.Body.Bytes(), &historyResponse); err != nil {
 		t.Fatalf("decode history: %v", err)
 	}
-	if len(historyResponse.Entries) != 1 || historyResponse.Entries[0].CommandType != "feature-graph-change" || len(historyResponse.Entries[0].FeatureGraphTransitions) != 2 {
+	if len(historyResponse.Entries) != 1 || historyResponse.Entries[0].CommandType != "feature-graph-change" || historyResponse.Entries[0].FeatureGraphVersion != 1 || len(historyResponse.Entries[0].FeatureGraphTransitions) != 2 {
 		t.Fatalf("history response = %+v", historyResponse.Entries)
 	}
-	if historyResponse.Entries[0].FeatureGraphTransitions[0].NodeID != "base" || historyResponse.Entries[0].FeatureGraphTransitions[0].Change != "updated" {
+	firstTransition := historyResponse.Entries[0].FeatureGraphTransitions[0]
+	if firstTransition.NodeID != "base" || firstTransition.Change != "updated" || firstTransition.BeforePath != "features/base" || firstTransition.AfterPath != "features/base" || firstTransition.BeforeIndex == nil || firstTransition.AfterIndex == nil || *firstTransition.BeforeIndex != 0 || *firstTransition.AfterIndex != 0 {
 		t.Fatalf("first graph transition = %+v", historyResponse.Entries[0].FeatureGraphTransitions[0])
 	}
 

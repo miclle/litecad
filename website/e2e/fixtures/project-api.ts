@@ -211,6 +211,21 @@ export const smokeUpdatedFeatureDSLSource = JSON.stringify({
     { id: 'slot', type: 'box_cut', origin: [12, 8, -1], size: [24, 12, 10] },
   ],
 })
+export const nestedBooleanFeatureDSLSource = JSON.stringify({
+  version: 1,
+  unit: 'millimetre',
+  features: [
+    {
+      id: 'body',
+      type: 'boolean',
+      operation: 'subtract',
+      operands: [
+        { id: 'blank', type: 'box', origin: [0, 0, 0], size: [40, 24, 8] },
+        { id: 'bore', type: 'cylinder', origin: [20, 12, -1], diameter: 4, height: 10 },
+      ],
+    },
+  ],
+})
 export const sphereXYZThroughHoleFeatureDSLSource = JSON.stringify({
   version: 1,
   unit: 'millimetre',
@@ -1064,10 +1079,11 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
         command_type: 'feature-graph-change',
         target_id: state.savedModelID,
         summary: `Update feature graph for ${state.savedModelFilename}`,
-        feature_graph_transitions: [
-          { node_id: 'base', change: 'updated', before_type: 'box', after_type: 'box' },
-          { node_id: 'slot', change: 'added', after_type: 'box_cut' },
-        ],
+        feature_graph_version: 1,
+        feature_graph_transitions: fixtureFeatureGraphTransitions(
+          state.featureGraphBeforeSourceCode,
+          state.featureGraphAfterSourceCode,
+        ),
         created_at: now,
       },
     ]
@@ -1117,6 +1133,94 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
 		return
 	}
   await route.fulfill({ json: { message: `Unhandled smoke request: ${request.method()} ${pathname}` }, status: 500 })
+}
+
+type FixtureFeatureGraphNode = {
+  id: string
+  type: string
+  path: string
+  index: number
+  parentID: string
+  canonical: string
+}
+
+function fixtureFeatureGraphTransitions(beforeSourceCode: string, afterSourceCode: string) {
+  const beforeNodes = fixtureFeatureGraphNodes(beforeSourceCode)
+  const afterNodes = fixtureFeatureGraphNodes(afterSourceCode)
+  const beforeByID = new Map(beforeNodes.map((node) => [node.id, node]))
+  const afterByID = new Map(afterNodes.map((node) => [node.id, node]))
+  const transitions: Array<Record<string, unknown>> = []
+
+  for (const after of afterNodes) {
+    const before = beforeByID.get(after.id)
+    if (!before) {
+      transitions.push({
+        node_id: after.id,
+        change: 'added',
+        after_type: after.type,
+        after_path: after.path,
+        after_index: after.index,
+      })
+      continue
+    }
+    if (before.type !== after.type || before.canonical !== after.canonical) {
+      transitions.push({
+        node_id: after.id,
+        change: 'updated',
+        before_type: before.type,
+        after_type: after.type,
+        before_path: before.path,
+        after_path: after.path,
+        before_index: before.index,
+        after_index: after.index,
+      })
+    }
+    if (before.parentID !== after.parentID || before.index !== after.index) {
+      transitions.push({
+        node_id: after.id,
+        change: 'moved',
+        before_type: before.type,
+        after_type: after.type,
+        before_path: before.path,
+        after_path: after.path,
+        before_index: before.index,
+        after_index: after.index,
+      })
+    }
+  }
+
+  for (const before of beforeNodes) {
+    if (!afterByID.has(before.id)) {
+      transitions.push({
+        node_id: before.id,
+        change: 'removed',
+        before_type: before.type,
+        before_path: before.path,
+        before_index: before.index,
+      })
+    }
+  }
+  return transitions
+}
+
+function fixtureFeatureGraphNodes(sourceCode: string): FixtureFeatureGraphNode[] {
+  const document = JSON.parse(sourceCode) as { features?: Array<Record<string, unknown>> }
+  const nodes: FixtureFeatureGraphNode[] = []
+  const append = (features: Array<Record<string, unknown>>, parentID: string, parentPath: string) => {
+    features.forEach((feature, index) => {
+      const id = String(feature.id ?? '')
+      const type = String(feature.type ?? '')
+      const path = parentPath ? `${parentPath}/operands/${id}` : `features/${id}`
+      const local = { ...feature }
+      delete local.operands
+      nodes.push({ id, type, path, index, parentID, canonical: JSON.stringify(local) })
+      if (type === 'boolean' && Array.isArray(feature.operands)) {
+        append(feature.operands as Array<Record<string, unknown>>, id, path)
+      }
+    })
+  }
+  append(document.features ?? [], '', '')
+  return nodes
 }
 
 export function captureBrowserErrors(page: Page) {
