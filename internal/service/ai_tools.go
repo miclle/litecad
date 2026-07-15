@@ -579,24 +579,31 @@ func (s *Service) runAIParametricJSONFallback(ctx context.Context, providerMessa
 		return call, strings.TrimSpace(providerReply), nil
 	}
 
-	repairMessages := appendAIParametricJSONFallbackPrompt(providerMessages)
-	repairMessages = append(repairMessages, AIChatMessage{
-		Role: "assistant",
-		Body: strings.TrimSpace(providerReply),
-	})
-	repairMessages = append(repairMessages, AIChatMessage{
-		Role: "system",
-		Body: "Repair the previous response. It was rejected because: " + summarizeAIParametricToolError(err.Error()) + ". Return one corrected strict JSON build_parametric_model tool call only.",
-	})
-	repairedReply, repairErr := s.aiClient.Chat(ctx, repairMessages)
-	if repairErr != nil {
-		return AIParametricToolCall{}, "", fmt.Errorf("initial json fallback invalid: %v; repair chat failed: %w", err, repairErr)
+	initialErr := err
+	previousReply := providerReply
+	previousErr := err
+	for repairAttempt := 0; repairAttempt < 2; repairAttempt++ {
+		repairMessages := appendAIParametricJSONFallbackPrompt(providerMessages)
+		repairMessages = append(repairMessages, AIChatMessage{
+			Role: "assistant",
+			Body: strings.TrimSpace(previousReply),
+		})
+		repairMessages = append(repairMessages, AIChatMessage{
+			Role: "system",
+			Body: "Repair the previous response. It was rejected because: " + summarizeAIParametricToolError(previousErr.Error()) + ". Return one corrected strict JSON build_parametric_model tool call only.",
+		})
+		repairedReply, repairErr := s.aiClient.Chat(ctx, repairMessages)
+		if repairErr != nil {
+			return AIParametricToolCall{}, "", fmt.Errorf("initial json fallback invalid: %v; repair chat failed: %w", initialErr, repairErr)
+		}
+		repairedCall, repairParseErr := ParseAIParametricToolCall(repairedReply)
+		if repairParseErr == nil {
+			return repairedCall, strings.TrimSpace(repairedReply), nil
+		}
+		previousReply = repairedReply
+		previousErr = repairParseErr
 	}
-	repairedCall, repairParseErr := ParseAIParametricToolCall(repairedReply)
-	if repairParseErr != nil {
-		return AIParametricToolCall{}, "", fmt.Errorf("initial json fallback invalid: %v; repair invalid: %w", err, repairParseErr)
-	}
-	return repairedCall, strings.TrimSpace(repairedReply), nil
+	return AIParametricToolCall{}, "", fmt.Errorf("initial json fallback invalid: %v; repair invalid: %w", initialErr, previousErr)
 }
 
 func summarizeAIParametricToolError(message string) string {

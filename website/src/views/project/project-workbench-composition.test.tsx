@@ -56,6 +56,7 @@ vi.mock('./project-workbench-sidebar', () => ({
   ProjectWorkbenchSidebar: ({
     modelCount,
     onModelSelect,
+    onApplyGeneratedArtifactToModel,
     onCaptureSubassembly,
     onInstantiateSubassembly,
     onSaveGeneratedArtifactAsModel,
@@ -88,6 +89,17 @@ vi.mock('./project-workbench-sidebar', () => ({
         }
       >
         save generated
+      </button>
+      <button
+        onClick={() =>
+          (onApplyGeneratedArtifactToModel as (modelID: string, artifact: unknown, parameterValues: Record<string, unknown>) => void)(
+            'model_a',
+            { id: 'artifact_a' },
+            { width: 18 },
+          )
+        }
+      >
+        apply generated
       </button>
       <button onClick={() => (onSaveModelParameters as (modelID: string, parameterValues: Record<string, unknown>) => void)('model_a', { radius: 8 })}>
         save params
@@ -137,6 +149,9 @@ describe('ProjectWorkbenchComposition', () => {
 
     click('save generated')
     expect(callbacks.saveGeneratedArtifactAsModel).toHaveBeenCalledWith({ artifact: { id: 'artifact_a' }, parameterValues: { width: 12 } })
+
+    click('apply generated')
+    expect(callbacks.applyGeneratedArtifactToModel).toHaveBeenCalledWith({ modelID: 'model_a', artifact: { id: 'artifact_a' }, parameterValues: { width: 18 } })
 
     click('save params')
     expect(callbacks.saveModelParameters).toHaveBeenCalledWith({ modelID: 'model_a', parameterValues: { radius: 8 } })
@@ -219,6 +234,7 @@ function callbackSpies() {
     clearSelection: vi.fn(),
     fetchNextHistoryPage: vi.fn(),
     instantiateSubassembly: vi.fn(),
+    applyGeneratedArtifactToModel: vi.fn(),
     saveGeneratedArtifactAsModel: vi.fn(),
     saveFeatureGraph: vi.fn(),
     saveModelParameters: vi.fn(),
@@ -326,6 +342,7 @@ function projectAssistant(callbacks: ReturnType<typeof callbackSpies>) {
     createConversation: vi.fn(),
     draft: '',
     generateParametricArtifact: vi.fn(),
+    generatedArtifactRevisionTargetModelID: '',
     isPending: false,
     messages: [],
     parametricRunError: '',
@@ -402,6 +419,7 @@ function projectThumbnailSnapshot() {
 
 function parametricModelCommands(callbacks: ReturnType<typeof callbackSpies>) {
   return {
+    applyGeneratedArtifactToModel: callbacks.applyGeneratedArtifactToModel,
     saveGeneratedArtifactAsModel: callbacks.saveGeneratedArtifactAsModel,
     saveFeatureGraph: callbacks.saveFeatureGraph,
     saveModelParameters: callbacks.saveModelParameters,

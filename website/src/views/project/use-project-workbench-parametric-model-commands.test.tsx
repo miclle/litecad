@@ -71,6 +71,56 @@ describe('useProjectWorkbenchParametricModelCommands', () => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'parametric-artifacts'] })
   })
 
+  it('applies a generated artifact to an existing LiteCAD model revision', async () => {
+    const model = { ...projectModel('model_revision'), revision_sequence: 2 }
+    mockedUpdateProjectParametricArtifact.mockResolvedValue({ data: { artifact: artifact() } } as Awaited<ReturnType<typeof updateProjectParametricArtifact>>)
+    mockedUpdateProjectFeatureDSLGraph.mockResolvedValue({ data: { model } } as Awaited<ReturnType<typeof updateProjectFeatureDSLGraph>>)
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(['projects', 'prj_commands', 'cad-document'], { revision: 17 })
+    const removeQueries = vi.spyOn(queryClient, 'removeQueries')
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')
+    const onModelSelected = vi.fn()
+    const { result } = renderHook(
+      () =>
+        useProjectWorkbenchParametricModelCommands({
+          onArtifactSaveError: vi.fn(),
+          onModelSelected,
+          projectId: 'prj_commands',
+        }),
+      { wrapper: queryWrapper(queryClient) },
+    )
+
+    act(() => {
+      result.current.applyGeneratedArtifactToModel({
+        artifact: artifact(),
+        modelID: 'model_revision',
+        parameterValues: { width: 24 },
+      })
+    })
+
+    await waitFor(() => expect(onModelSelected).toHaveBeenCalledWith('model_revision'))
+    expect(mockedUpdateProjectParametricArtifact).toHaveBeenCalledWith('prj_commands', 'artifact_saved', {
+      title: 'Generated bracket',
+      source_kind: 'litecad-feature-dsl',
+      source_code: '{"version":"1.0"}',
+      parameter_values: { width: 24 },
+      compile_status: 'success',
+      compile_error: '',
+    })
+    expect(mockedUpdateProjectFeatureDSLGraph).toHaveBeenCalledWith('prj_commands', 'model_revision', {
+      source_code: '{"version":"1.0"}',
+      expected_revision: 17,
+    })
+    expect(removeQueries).toHaveBeenCalledWith({
+      queryKey: ['projects', 'prj_commands', 'models', 'model_revision', 'parametric-source'],
+    })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'models'] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'models', 'model_revision', 'revisions'] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'cad-document'] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'cad-document', 'history'] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'prj_commands', 'parametric-artifacts'] })
+  })
+
   it('reports generated artifact save failures through the Assistant error boundary', async () => {
     mockedUpdateProjectParametricArtifact.mockRejectedValue(new Error('save failed'))
     const onArtifactSaveError = vi.fn()

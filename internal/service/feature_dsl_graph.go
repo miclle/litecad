@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/miclle/litecad/internal/entity"
@@ -81,16 +82,19 @@ func (s *Service) UpdateLiteCADFeatureGraph(ctx context.Context, input UpdateLit
 		if err != nil {
 			return ErrInvalidProjectParametricArtifactInput
 		}
+		beforeParameterDefaults := liteCADFeatureDSLParameterValues(model.SourceData)
 		afterNodes, afterEnvelope, afterGraphVersion, err := parseLiteCADFeatureGraph([]byte(sourceCode))
 		if err != nil {
 			return ErrInvalidProjectParametricArtifactInput
 		}
-		if beforeGraphVersion != afterGraphVersion || string(beforeEnvelope) != string(afterEnvelope) {
+		afterParameterDefaults := liteCADFeatureDSLParameterValues([]byte(sourceCode))
+		envelopeChanged := string(beforeEnvelope) != string(afterEnvelope)
+		if beforeGraphVersion != afterGraphVersion {
 			return ErrInvalidProjectParametricArtifactInput
 		}
 		graphVersion = afterGraphVersion
 		transitions = diffLiteCADFeatureGraphNodes(beforeNodes, afterNodes)
-		if len(transitions) == 0 {
+		if len(transitions) == 0 && !envelopeChanged {
 			return ErrInvalidProjectParametricArtifactInput
 		}
 		beforeRevision, err := ensureProjectModelRevision(ctx, tx, &model)
@@ -104,7 +108,10 @@ func (s *Service) UpdateLiteCADFeatureGraph(ctx context.Context, input UpdateLit
 		if model.ParseStatus != "parsed" {
 			return ErrInvalidProjectParametricArtifactInput
 		}
-		mergeParametricArtifactValuesIntoModelMetadata(&model, currentMetadata.ParameterValues)
+		mergeParametricArtifactValuesIntoModelMetadata(
+			&model,
+			preservedLiteCADFeatureDSLParameterValues(currentMetadata.ParameterValues, beforeParameterDefaults, afterParameterDefaults),
+		)
 		afterRevision, err := createProjectModelRevision(ctx, tx, model, "Updated Feature DSL graph")
 		if err != nil {
 			return err
@@ -163,6 +170,18 @@ func parseLiteCADFeatureGraph(data []byte) ([]liteCADFeatureGraphNode, []byte, i
 		}
 	}
 	return nodes, canonicalEnvelope, document.Version, nil
+}
+
+func preservedLiteCADFeatureDSLParameterValues(currentValues, beforeDefaults, afterDefaults map[string]any) map[string]any {
+	preserved := map[string]any{}
+	for name, value := range currentValues {
+		beforeDefault, hadBefore := beforeDefaults[name]
+		afterDefault, hasAfter := afterDefaults[name]
+		if hadBefore && hasAfter && reflect.DeepEqual(beforeDefault, afterDefault) {
+			preserved[name] = value
+		}
+	}
+	return preserved
 }
 
 func appendLiteCADFeatureGraphNode(

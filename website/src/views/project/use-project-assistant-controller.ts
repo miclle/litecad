@@ -74,6 +74,7 @@ export function useProjectAssistantController({
   const [parametricProgress, setParametricProgress] = useState<ParametricGenerationProgress | undefined>(undefined)
   const [parametricRunAttempt, setParametricRunAttempt] = useState(0)
   const [retryParametricPrompt, setRetryParametricPrompt] = useState('')
+  const [generatedArtifactRevisionTargetModelID, setGeneratedArtifactRevisionTargetModelID] = useState('')
   const activeModelName = activeModel ? projectAssistantModelDisplayName(activeModel) : ''
 
   const conversationsQuery = useQuery({
@@ -114,6 +115,7 @@ export function useProjectAssistantController({
     setParametricProgress(undefined)
     setParametricRunAttempt(0)
     setRetryParametricPrompt('')
+    setGeneratedArtifactRevisionTargetModelID(revisionTargetModelIDForArtifact(activeModel, artifact))
     onArtifactSelected?.(artifact)
   }
 
@@ -205,6 +207,7 @@ export function useProjectAssistantController({
       setParametricProgress(undefined)
       setParametricRunAttempt(0)
       setRetryParametricPrompt('')
+      setGeneratedArtifactRevisionTargetModelID('')
       queryClient.setQueryData(
         ['project-agent-conversations', projectId],
         (current: typeof conversations | undefined) => [conversation, ...(current ?? [])],
@@ -276,6 +279,7 @@ export function useProjectAssistantController({
     setParametricProgress(undefined)
     setParametricRunAttempt(0)
     setRetryParametricPrompt('')
+    setGeneratedArtifactRevisionTargetModelID('')
   }
 
   return {
@@ -289,6 +293,7 @@ export function useProjectAssistantController({
     },
     draft,
     generateParametricArtifact,
+    generatedArtifactRevisionTargetModelID,
     isPending: messageMutation.isPending || parametricMutation.isPending || createConversationMutation.isPending,
     messages,
     parametricProgress,
@@ -307,6 +312,13 @@ export function useProjectAssistantController({
     setParametricRunError,
     submitMessage,
   }
+}
+
+function revisionTargetModelIDForArtifact(model: ProjectModel | undefined, artifact: ProjectParametricArtifact) {
+  if (model?.id && model.format === 'lcad' && artifact.source_kind === 'litecad-feature-dsl') {
+    return model.id
+  }
+  return ''
 }
 
 function projectAssistantModelDisplayName(model: ProjectModel) {

@@ -33,6 +33,30 @@ const featureDSLGraphUpdatedSource = `{
   ]
 }`
 
+const featureDSLGraphReplacementInitialSource = `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 40 },
+    "height": { "type": "number", "default": 6 }
+  },
+  "features": [
+    { "id": "base", "type": "box", "origin": [0, 0, 0], "size": ["width", 20, "height"] }
+  ]
+}`
+
+const featureDSLGraphReplacementSource = `{
+  "version": 1,
+  "unit": "millimetre",
+  "parameters": {
+    "width": { "type": "number", "default": 48 },
+    "height": { "type": "number", "default": 6 }
+  },
+  "features": [
+    { "id": "base", "type": "box", "origin": [0, 0, 0], "size": ["width", 30, "height"] }
+  ]
+}`
+
 const featureDSLGraphDuplicateNestedIDSource = `{
   "version": 1,
   "unit": "millimetre",
@@ -211,6 +235,46 @@ func TestUpdateLiteCADFeatureGraphPersistsReversibleNodeTransitions(t *testing.T
 	assertFeatureDSLGraphSource(t, svc, ctx, owner.ID, project.ID, model.ID, featureDSLGraphUpdatedSource, updated.CurrentRevisionID, 2)
 }
 
+func TestUpdateLiteCADFeatureGraphAllowsReplacementSourceEnvelopeChanges(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	owner, project, model := createFeatureDSLGraphTestModel(t, svc, ctx, "graph-replacement@example.com", featureDSLGraphReplacementInitialSource)
+
+	updated, err := svc.UpdateLiteCADFeatureGraph(ctx, UpdateLiteCADFeatureGraphInput{
+		OwnerUserID:      owner.ID,
+		ProjectID:        project.ID,
+		ModelID:          model.ID,
+		SourceCode:       featureDSLGraphReplacementSource,
+		ExpectedRevision: projectCADRevision(t, svc, ctx, owner.ID, project.ID),
+	})
+	if err != nil {
+		t.Fatalf("UpdateLiteCADFeatureGraph replacement returned error: %v", err)
+	}
+	if updated.CurrentRevisionID == model.CurrentRevisionID || updated.RevisionSequence != 2 {
+		t.Fatalf("updated revision = %q/%d, want replacement revision after %q", updated.CurrentRevisionID, updated.RevisionSequence, model.CurrentRevisionID)
+	}
+	if updated.Metadata.ParameterValues["width"] != float64(48) || updated.Metadata.ParameterValues["height"] != float64(9) {
+		t.Fatalf("updated parameter values = %+v, want changed width default and preserved height override", updated.Metadata.ParameterValues)
+	}
+	source, err := svc.GetProjectModelSource(ctx, owner.ID, project.ID, model.ID)
+	if err != nil {
+		t.Fatalf("GetProjectModelSource after replacement returned error: %v", err)
+	}
+	if string(source.Data) != strings.TrimSpace(featureDSLGraphReplacementSource) {
+		t.Fatalf("updated source = %q", source.Data)
+	}
+	history, err := svc.ListProjectCADHistory(ctx, owner.ID, project.ID, 10, 0)
+	if err != nil {
+		t.Fatalf("ListProjectCADHistory returned error: %v", err)
+	}
+	if len(history.Entries) != 1 || history.Entries[0].CommandType != "feature-graph-change" {
+		t.Fatalf("history entries = %+v, want one feature-graph-change", history.Entries)
+	}
+	if len(history.Entries[0].FeatureGraphTransitions) != 1 || history.Entries[0].FeatureGraphTransitions[0].NodeID != "base" {
+		t.Fatalf("feature graph transitions = %+v, want base update", history.Entries[0].FeatureGraphTransitions)
+	}
+}
+
 func TestUpdateLiteCADFeatureGraphPersistsRecursiveVersionedTransitions(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
@@ -364,14 +428,6 @@ func TestUpdateLiteCADFeatureGraphRejectsInvalidTransitionsAndAccess(t *testing.
 			ownerID:    owner.ID,
 			modelID:    model.ID,
 			sourceCode: featureDSLGraphDuplicateNestedIDSource,
-			revision:   revision,
-			wantErr:    ErrInvalidProjectParametricArtifactInput,
-		},
-		{
-			name:       "parameter schema changed with graph",
-			ownerID:    owner.ID,
-			modelID:    model.ID,
-			sourceCode: strings.Replace(featureDSLGraphUpdatedSource, `"default": 40`, `"default": 42`, 1),
 			revision:   revision,
 			wantErr:    ErrInvalidProjectParametricArtifactInput,
 		},
@@ -544,7 +600,7 @@ func createFeatureDSLGraphTestModel(
 		Title:           "Graph bracket",
 		SourceKind:      "litecad-feature-dsl",
 		SourceCode:      sourceCode,
-		ParameterValues: map[string]any{"width": float64(55)},
+		ParameterValues: map[string]any{"width": float64(55), "height": float64(9)},
 		CompileStatus:   "success",
 	})
 	if err != nil {

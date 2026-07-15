@@ -281,6 +281,7 @@ describe('useProjectAssistantController', () => {
         active_model_id: 'mdl_sphere',
       }),
     )
+    await waitFor(() => expect(result.current.generatedArtifactRevisionTargetModelID).toBe('mdl_sphere'))
   })
 
   it('sends the selected model as revision context for ordinary Assistant messages', async () => {

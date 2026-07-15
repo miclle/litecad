@@ -36,6 +36,7 @@ type ProjectWorkbenchSidebarProps = {
   isModelTreeLoading: boolean
   isUploading: boolean
   isFeatureGraphSaving?: boolean
+  generatedArtifactRevisionTargetModelID?: string
 	isOccurrenceMutationPending?: boolean
   isSubassemblyMutationPending?: boolean
   leftPanelWidth: number
@@ -52,6 +53,7 @@ type ProjectWorkbenchSidebarProps = {
   onInstantiateSubassembly?: (definitionID: string, payload: InstantiateCADSubassemblyPayload) => void
 	onModelSelect: (modelId: string, nodeId: string, occurrenceId?: string) => void
   onParameterValuesChange: (modelId: string, parameterValues: Record<string, OpenSCADParameterValue>) => void
+  onApplyGeneratedArtifactToModel?: (modelId: string, artifact: ProjectParametricArtifact, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
   onSaveGeneratedArtifactAsModel: (artifact: ProjectParametricArtifact, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onSaveFeatureGraph?: (modelId: string, sourceCode: string) => void
@@ -92,6 +94,7 @@ export function ProjectWorkbenchSidebar({
   isModelTreeLoading,
   isUploading,
   isFeatureGraphSaving = false,
+  generatedArtifactRevisionTargetModelID = '',
 	isOccurrenceMutationPending,
   isSubassemblyMutationPending,
   leftPanelWidth,
@@ -108,6 +111,7 @@ export function ProjectWorkbenchSidebar({
   onInstantiateSubassembly,
   onModelSelect,
   onParameterValuesChange,
+  onApplyGeneratedArtifactToModel,
   onResizePointerDown,
   onSaveGeneratedArtifactAsModel,
   onSaveFeatureGraph,
@@ -234,7 +238,13 @@ export function ProjectWorkbenchSidebar({
               <ParametricArtifactEditor
                 artifact={selectedGeneratedArtifact}
                 autoSaveOnPreviewSuccess={selectedGeneratedArtifact.source_kind === 'litecad-feature-dsl'}
-                onSaveAsModel={(parameterValues) => onSaveGeneratedArtifactAsModel(selectedGeneratedArtifact, parameterValues)}
+                onSaveAsModel={(parameterValues) => {
+                  if (generatedArtifactRevisionTargetModelID && onApplyGeneratedArtifactToModel) {
+                    onApplyGeneratedArtifactToModel(generatedArtifactRevisionTargetModelID, selectedGeneratedArtifact, parameterValues)
+                    return
+                  }
+                  onSaveGeneratedArtifactAsModel(selectedGeneratedArtifact, parameterValues)
+                }}
               />
             ) : selectedSavedArtifact ? (
               <ParametricArtifactEditor

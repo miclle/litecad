@@ -22,6 +22,12 @@ type SaveGeneratedArtifactAsModelInput = {
   parameterValues: Record<string, OpenSCADParameterValue>
 }
 
+type ApplyGeneratedArtifactToModelInput = {
+  artifact: ProjectParametricArtifact
+  modelID: string
+  parameterValues: Record<string, OpenSCADParameterValue>
+}
+
 type SaveModelParametersInput = {
   modelID: string
   parameterValues: Record<string, OpenSCADParameterValue>
@@ -87,6 +93,37 @@ export function useProjectWorkbenchParametricModelCommands({
     onError: onArtifactSaveError,
   })
 
+  const applyGeneratedArtifactToModelMutation = useMutation({
+    mutationFn: async ({ artifact, modelID, parameterValues }: ApplyGeneratedArtifactToModelInput) => {
+      await updateProjectParametricArtifact(projectId, artifact.id, {
+        title: artifact.title,
+        source_kind: artifact.source_kind,
+        source_code: artifact.source_code,
+        parameter_values: parameterValues,
+        compile_status: 'success',
+        compile_error: '',
+      })
+      return (
+        await updateProjectFeatureDSLGraph(projectId, modelID, {
+          source_code: artifact.source_code,
+          expected_revision: currentDocumentRevision(),
+        })
+      ).data.model
+    },
+    onSuccess: async (model: ProjectModel) => {
+      queryClient.removeQueries({ queryKey: ['projects', projectId, 'models', model.id, 'parametric-source'] })
+      onModelSelected(model.id)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] }),
+        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models', model.id, 'revisions'] }),
+        queryClient.invalidateQueries({ queryKey: documentQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] }),
+        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] }),
+      ])
+    },
+    onError: handleModelMutationError,
+  })
+
   const updateProjectParametricModelParametersMutation = useMutation({
     mutationFn: async ({ modelID, parameterValues }: SaveModelParametersInput) =>
       (
@@ -143,6 +180,7 @@ export function useProjectWorkbenchParametricModelCommands({
   })
 
   return {
+    applyGeneratedArtifactToModel: applyGeneratedArtifactToModelMutation.mutate,
     saveGeneratedArtifactAsModel: saveProjectParametricArtifactMutation.mutate,
     saveModelParameters: updateProjectParametricModelParametersMutation.mutate,
     restoreModelRevision: restoreProjectModelRevisionMutation.mutate,

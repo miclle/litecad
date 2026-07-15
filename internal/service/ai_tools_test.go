@@ -670,6 +670,73 @@ func TestAIParametricRunFallsBackToJSONWhenNativeToolCallFails(t *testing.T) {
 	}
 }
 
+type sequentialAIClient struct {
+	messages [][]AIChatMessage
+	replies  []string
+}
+
+func (c *sequentialAIClient) Chat(ctx context.Context, messages []AIChatMessage) (string, error) {
+	c.messages = append(c.messages, append([]AIChatMessage(nil), messages...))
+	if len(c.replies) == 0 {
+		return "", errors.New("unexpected chat call")
+	}
+	reply := c.replies[0]
+	c.replies = c.replies[1:]
+	return reply, nil
+}
+
+func TestAIParametricRunRepairsJSONFallbackTwiceBeforeFailing(t *testing.T) {
+	svc := newTestService(t)
+	aiClient := &sequentialAIClient{replies: []string{
+		"I created the model for you.",
+		`{"tool":"build_parametric_model","input":{"title":"Bad source","version":"v1","source_kind":"litecad-feature-dsl","code":"{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"hole\",\"type\":\"cylinder_cut\",\"origin\":[0,0,0],\"diameter\":5,\"depth\":10}]}"}}`,
+		`{"tool":"build_parametric_model","input":{"title":"Repaired sphere","version":"v1","source_kind":"litecad-feature-dsl","code":"{\"version\":1,\"unit\":\"millimetre\",\"features\":[{\"id\":\"body\",\"type\":\"sphere\",\"origin\":[0,0,0],\"diameter\":50},{\"id\":\"hole_x\",\"type\":\"cylinder_cut\",\"origin\":[-30,0,0],\"axis\":[1,0,0],\"diameter\":5,\"depth\":60},{\"id\":\"hole_y\",\"type\":\"cylinder_cut\",\"origin\":[0,-30,0],\"axis\":[0,1,0],\"diameter\":5,\"depth\":60},{\"id\":\"hole_z\",\"type\":\"cylinder_cut\",\"origin\":[0,0,-30],\"axis\":[0,0,1],\"diameter\":5,\"depth\":60}]}"}}`,
+	}}
+	svc.aiClient = aiClient
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "parametric-run-repair-twice@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{OwnerUserID: user.ID, Name: "Repair twice parametric run study"})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Repair twice run",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	run, err := svc.RunProjectAgentParametric(ctx, ProjectAgentParametricRunInput{
+		OwnerUserID:    user.ID,
+		ProjectID:      project.ID,
+		ConversationID: conversation.ID,
+		Message:        "创建一个直径 50mm 的球体，XYZ 轴每根轴线上都有一个 5mm 的通孔",
+	})
+	if err != nil {
+		t.Fatalf("RunProjectAgentParametric returned error: %v", err)
+	}
+	if run.Artifact.Title != "Repaired sphere" || run.Artifact.SourceKind != "litecad-feature-dsl" {
+		t.Fatalf("artifact = %+v", run.Artifact)
+	}
+	if len(aiClient.messages) != 3 {
+		t.Fatalf("chat calls = %d, want 3", len(aiClient.messages))
+	}
+	finalRepairPrompt := joinAIMessageBodies(aiClient.messages[2])
+	if !strings.Contains(finalRepairPrompt, "Repair the previous response") {
+		t.Fatalf("final repair prompt should request another repair, got:\n%s", finalRepairPrompt)
+	}
+}
+
 func TestAIParametricRunRejectsInvalidToolOutput(t *testing.T) {
 	svc := newTestService(t)
 	svc.aiClient = &recordingAIClient{reply: "I created the model for you."}

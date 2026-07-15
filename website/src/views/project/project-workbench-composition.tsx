@@ -200,6 +200,7 @@ export function ProjectWorkbenchComposition({
           documentDetails={inspectorState.documentDetails}
           hiddenModelIds={visibilityState.hiddenModelIDs}
           inspectorSelection={inspectorState.inspectorSelection}
+          generatedArtifactRevisionTargetModelID={projectAssistant.generatedArtifactRevisionTargetModelID}
           isLeftPanelCollapsed={shellState.isLeftPanelCollapsed}
           isModelTreeLoading={modelState.projectModelsQuery.isLoading}
           isUploading={projectModelUpload.isUploading}
@@ -231,6 +232,9 @@ export function ProjectWorkbenchComposition({
             cadDocumentCommands.clearDeleteError()
           }}
           onParameterValuesChange={modelState.parametricModels.updatePreviewParameters}
+          onApplyGeneratedArtifactToModel={(modelID, artifact, parameterValues) =>
+            parametricModelCommands.applyGeneratedArtifactToModel({ modelID, artifact, parameterValues })
+          }
           onResizePointerDown={shellState.startLeftPanelResize}
           onSaveGeneratedArtifactAsModel={(artifact, parameterValues) =>
             parametricModelCommands.saveGeneratedArtifactAsModel({ artifact, parameterValues })
