@@ -89,6 +89,36 @@ describe('CAD kernel worker protocol', () => {
     ).toBe(false)
   })
 
+  test('accepts shape inspection only with immutable occurrence and revision scope', () => {
+    const request = {
+      id: 'job-inspection',
+      type: 'shape-inspection',
+      payload: {
+        sources: [
+          {
+            filename: 'part.step',
+            stepText: 'ISO-10303-21;END-ISO-10303-21;',
+            referenceScope: { occurrenceId: 'occ_01test', modelRevisionId: 'pmr_01test' },
+          },
+        ],
+      },
+    }
+    expect(isCadKernelRequest(request)).toBe(true)
+    expect(
+      isCadKernelRequest({
+        ...request,
+        payload: { sources: [{ ...request.payload.sources[0], referenceScope: { occurrenceId: ' ', modelRevisionId: 'pmr_01test' } }] },
+      }),
+    ).toBe(false)
+    expect(
+      isCadKernelRequest({
+        ...request,
+        payload: { sources: [{ ...request.payload.sources[0], referenceScope: { occurrenceId: 'occ_01test', modelRevisionId: '' } }] },
+      }),
+    ).toBe(false)
+    expect(isCadKernelRequest({ ...request, payload: { sources: [] } })).toBe(false)
+  })
+
   test('accepts STEP preview requests with replayable CAD operations', () => {
     expect(
       isCadKernelRequest({

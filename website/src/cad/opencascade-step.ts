@@ -1,7 +1,13 @@
+import { sha256 } from '@noble/hashes/sha256'
+import { bytesToHex } from '@noble/hashes/utils'
 import type {
   CadKernelFeatureDSLInput,
+  CadKernelGeometricReference,
   CadKernelMesh,
   CadKernelOperation,
+  CadKernelShapeInspectionResult as CadKernelShapeInspectionProtocolResult,
+  CadKernelShapeInspectionSource,
+  CadKernelShapeProperties,
 } from './kernel-protocol'
 import initReplicadOpenCascade from 'replicad-opencascadejs'
 import replicadWasmUrl from 'replicad-opencascadejs/src/replicad_single.wasm?url'
@@ -30,6 +36,10 @@ export type CadKernelSectionGeometryInput = {
     origin: readonly number[]
     normal: readonly number[]
   }
+}
+
+export type CadKernelShapeInspectionInput = {
+  sources: CadKernelShapeInspectionSource[]
 }
 
 export type CadKernelFeatureDSLPreviewInput = CadKernelFeatureDSLInput
@@ -63,6 +73,8 @@ export type CadKernelSectionGeometryResult = {
   edgeCount: number
   exportedStepText: string
 }
+
+export type CadKernelShapeInspectionResult = CadKernelShapeInspectionProtocolResult
 
 type OpenCascadeFactoryModule = {
   initOpenCascade: OpenCascadeFactory
@@ -104,6 +116,11 @@ export async function runOpenCascadeStepAssemblyExport(input: CadKernelStepAssem
 export async function runOpenCascadeSectionGeometry(input: CadKernelSectionGeometryInput) {
   const openCascade = await loadOpenCascade()
   return runSectionGeometryWithKernel(openCascade, input)
+}
+
+export async function runOpenCascadeShapeInspection(input: CadKernelShapeInspectionInput) {
+  const openCascade = await loadOpenCascade()
+  return runShapeInspectionWithKernel(openCascade, input)
 }
 
 export async function runOpenCascadeStepPreview(input: CadKernelStepPreviewInput) {
@@ -258,6 +275,54 @@ export async function runSectionGeometryWithKernel(
   }
 }
 
+export async function runShapeInspectionWithKernel(
+  openCascade: OpenCascadeModule,
+  input: CadKernelShapeInspectionInput,
+): Promise<CadKernelShapeInspectionResult> {
+  if (input.sources.length === 0) {
+    throw new Error('Shape inspection requires at least one source')
+  }
+  const targetShapes: any[] = []
+  try {
+    for (const [index, source] of input.sources.entries()) {
+      const sourcePath = stepInspectionInputPath(index)
+      cleanupVirtualFile(openCascade, sourcePath)
+      writeVirtualFile(openCascade, sourcePath, source.stepText)
+      targetShapes.push(
+        applyCADOperationsToShape(
+          openCascade,
+          importStepShapeFromFile(openCascade, sourcePath, source),
+          source.operations,
+        ),
+      )
+    }
+    const targets = targetShapes.map((shape, index) => {
+      const source = input.sources[index]
+      if (!source) {
+        throw new Error('Shape inspection source scope is unavailable')
+      }
+      const operationsSignature = createCADOperationsSignature(source.operations ?? [])
+      return {
+        referenceScope: { ...source.referenceScope, operationsSignature },
+        ...measureShapeProperties(openCascade, shape),
+        references: enumerateGeometricReferences(openCascade, shape, source, operationsSignature),
+      }
+    })
+    const totalShape = targetShapes.length === 1 ? targetShapes[0] : compoundShapes(openCascade, targetShapes)
+    return {
+      derivation: 'occt-brep-properties',
+      targets,
+      totals: measureShapeProperties(openCascade, totalShape),
+    }
+  } finally {
+    input.sources.forEach((_source, index) => cleanupVirtualFile(openCascade, stepInspectionInputPath(index)))
+  }
+}
+
+function createCADOperationsSignature(operations: readonly CadKernelOperation[]) {
+  return `sha256:${bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(operations))))}`
+}
+
 export function applyCADOperationsToShape(
   openCascade: OpenCascadeModule,
   sourceShape: any,
@@ -349,6 +414,104 @@ function stepAssemblyInputPath(index: number) {
 
 function stepSectionInputPath(index: number) {
   return `/litecad-section-input-${index}.step`
+}
+
+function stepInspectionInputPath(index: number) {
+  return `/litecad-inspection-input-${index}.step`
+}
+
+function measureShapeProperties(openCascade: OpenCascadeModule, shape: any): CadKernelShapeProperties {
+  const volumeProperties = new openCascade.GProp_GProps_1()
+  const surfaceProperties = new openCascade.GProp_GProps_1()
+  const linearProperties = new openCascade.GProp_GProps_1()
+  try {
+    openCascade.BRepGProp.VolumeProperties_1(shape, volumeProperties, true, false, false)
+    openCascade.BRepGProp.SurfaceProperties_1(shape, surfaceProperties, false, false)
+    openCascade.BRepGProp.LinearProperties(shape, linearProperties, true, false)
+    const volume = normalizedMeasure(volumeProperties.Mass())
+    const surfaceArea = normalizedMeasure(surfaceProperties.Mass())
+    const edgeLength = normalizedMeasure(linearProperties.Mass())
+    const centerSource = volume > 0 ? volumeProperties : surfaceArea > 0 ? surfaceProperties : linearProperties
+    const center = centerSource.CentreOfMass()
+    return {
+      volume,
+      surfaceArea,
+      edgeLength,
+      centerOfMass: [center.X(), center.Y(), center.Z()],
+      solidCount: countShapeType(openCascade, shape, openCascade.TopAbs_ShapeEnum.TopAbs_SOLID),
+      faceCount: countShapeType(openCascade, shape, openCascade.TopAbs_ShapeEnum.TopAbs_FACE),
+      edgeCount: countShapeType(openCascade, shape, openCascade.TopAbs_ShapeEnum.TopAbs_EDGE),
+    }
+  } finally {
+    volumeProperties.delete()
+    surfaceProperties.delete()
+    linearProperties.delete()
+  }
+}
+
+function enumerateGeometricReferences(
+  openCascade: OpenCascadeModule,
+  shape: any,
+  source: CadKernelShapeInspectionSource,
+  operationsSignature: string,
+): CadKernelGeometricReference[] {
+  const references: CadKernelGeometricReference[] = []
+  const scope = [
+    encodeURIComponent(source.referenceScope.occurrenceId),
+    encodeURIComponent(source.referenceScope.modelRevisionId),
+    encodeURIComponent(operationsSignature),
+  ].join(':')
+  const append = (kind: 'face' | 'edge', shapeType: number, property: 'surface' | 'linear') => {
+    const shapes = exploreUniqueShapes(openCascade, shape, shapeType)
+    shapes.forEach((currentShape, shapeIndex) => {
+      const properties = new openCascade.GProp_GProps_1()
+      try {
+        if (property === 'surface') {
+          openCascade.BRepGProp.SurfaceProperties_1(currentShape, properties, false, false)
+        } else {
+          openCascade.BRepGProp.LinearProperties(currentShape, properties, false, false)
+        }
+        references.push({
+          id: `topology:${scope}:${kind}:${shapeIndex + 1}`,
+          kind,
+          index: shapeIndex + 1,
+          measure: normalizedMeasure(properties.Mass()),
+        })
+      } finally {
+        properties.delete()
+      }
+    })
+  }
+  append('face', openCascade.TopAbs_ShapeEnum.TopAbs_FACE, 'surface')
+  append('edge', openCascade.TopAbs_ShapeEnum.TopAbs_EDGE, 'linear')
+  return references
+}
+
+function countShapeType(openCascade: OpenCascadeModule, shape: any, shapeType: number) {
+  return exploreUniqueShapes(openCascade, shape, shapeType).length
+}
+
+function exploreUniqueShapes(openCascade: OpenCascadeModule, shape: any, shapeType: number): any[] {
+  const explorer = new openCascade.TopExp_Explorer_1()
+  const shapes: any[] = []
+  for (
+    explorer.Init(shape, shapeType, openCascade.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    explorer.More();
+    explorer.Next()
+  ) {
+    const candidate = explorer.Current()
+    if (!shapes.some((existing) => candidate.IsSame(existing))) {
+      shapes.push(candidate)
+    }
+  }
+  return shapes
+}
+
+function normalizedMeasure(value: number) {
+  if (!Number.isFinite(value)) {
+    throw new Error('OpenCascade shape inspection produced a non-finite property')
+  }
+  return Math.abs(value) < 1e-12 ? 0 : Math.abs(value)
 }
 
 function countShapeEdges(openCascade: OpenCascadeModule, shape: any) {

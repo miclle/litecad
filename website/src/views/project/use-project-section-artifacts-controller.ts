@@ -51,16 +51,17 @@ export function useProjectSectionArtifactsController({ cadDocumentRevision, depe
   const visibleTargets = targets.filter((target) => visibleIDSet.has(target.occurrenceId) || visibleIDSet.has(target.modelId))
   const artifactsQuery = useQuery({ enabled: projectId !== '', queryFn: () => resolvedDependencies.fetchArtifacts(projectId), queryKey })
   const generateMutation = useMutation({
-    mutationFn: async (planeOrigin: ProjectInspectionVector) => {
+    mutationFn: async ({ artifact, planeNormal, planeOrigin }: { artifact?: ProjectSectionArtifact; planeNormal: ProjectInspectionVector; planeOrigin: ProjectInspectionVector }) => {
       const result = await resolvedDependencies.generateGeometry({
         filename,
         fetchSourceText: (modelId, revisionId) => resolvedDependencies.fetchSourceText(projectId, modelId, revisionId),
-        plane: { origin: [planeOrigin.x, planeOrigin.y, planeOrigin.z], normal: [1, 0, 0] },
+        plane: { origin: [planeOrigin.x, planeOrigin.y, planeOrigin.z], normal: [planeNormal.x, planeNormal.y, planeNormal.z] },
         runFeatureDSLExport: resolvedDependencies.runFeatureDSLExport,
         runSectionGeometry: resolvedDependencies.runSectionGeometry,
         targets: visibleTargets,
       })
       await resolvedDependencies.createArtifact(projectId, {
+        ...(artifact ? { association_id: artifact.association_id, expected_generation: artifact.generation } : {}),
         cad_document_revision: cadDocumentRevision,
         unit,
         status: result.status,
@@ -70,7 +71,7 @@ export function useProjectSectionArtifactsController({ cadDocumentRevision, depe
         source_revision_ids: visibleTargets.map((target) => target.modelRevisionId),
         occurrence_ids: visibleTargets.map((target) => target.occurrenceId),
         plane_origin: planeOrigin,
-        plane_normal: { x: 1, y: 0, z: 0 },
+        plane_normal: planeNormal,
         edge_count: result.edgeCount,
         step_text: result.exportedStepText,
       })
@@ -88,13 +89,41 @@ export function useProjectSectionArtifactsController({ cadDocumentRevision, depe
   return {
     deleteSectionArtifact: (artifactId: string) => deleteMutation.mutate(artifactId),
     downloadSectionArtifact,
-    generateSectionArtifact: (planeOrigin: ProjectInspectionVector) => generateMutation.mutate(planeOrigin),
+    generateSectionArtifact: (planeOrigin: ProjectInspectionVector) => generateMutation.mutate({ planeOrigin, planeNormal: { x: 1, y: 0, z: 0 } }),
+    getSectionArtifactState: (artifact: ProjectSectionArtifact) => projectSectionArtifactState(artifact, cadDocumentRevision, visibleTargets),
     isSectionArtifactMutationPending: generateMutation.isPending || deleteMutation.isPending,
     isSectionArtifactsError: artifactsQuery.isError || generateMutation.isError || deleteMutation.isError,
     isSectionArtifactsLoading: artifactsQuery.isLoading,
+    regenerateSectionArtifact: (artifact: ProjectSectionArtifact) => generateMutation.mutate({ artifact, planeOrigin: artifact.plane_origin, planeNormal: artifact.plane_normal }),
     restoreSectionArtifact: (_artifact: ProjectSectionArtifact) => undefined,
     sectionArtifacts: artifactsQuery.data ?? [],
     sectionArtifactError: generateMutation.error instanceof Error ? generateMutation.error.message : '',
     visibleSectionTargetCount: visibleTargets.length,
   }
+}
+
+export type ProjectSectionArtifactState = 'current' | 'stale' | 'superseded' | 'legacy'
+
+export function projectSectionArtifactState(
+  artifact: ProjectSectionArtifact,
+  cadDocumentRevision: number,
+  visibleTargets: readonly StepExportTarget[],
+): ProjectSectionArtifactState {
+  if (!artifact.association_id || artifact.generation <= 0) {
+    return 'legacy'
+  }
+  if (!artifact.is_latest) {
+    return 'superseded'
+  }
+  const occurrenceIDs = visibleTargets.map((target) => target.occurrenceId)
+  const revisionIDs = visibleTargets.map((target) => target.modelRevisionId)
+  return artifact.cad_document_revision === cadDocumentRevision &&
+    equalStringArrays(artifact.occurrence_ids, occurrenceIDs) &&
+    equalStringArrays(artifact.source_revision_ids, revisionIDs)
+    ? 'current'
+    : 'stale'
+}
+
+function equalStringArrays(first: readonly string[], second: readonly string[]) {
+  return first.length === second.length && first.every((value, index) => value === second[index])
 }

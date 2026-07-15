@@ -13,6 +13,7 @@ import (
 	"github.com/miclle/litecad/internal/entity"
 	"github.com/miclle/litecad/pkg/id"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -25,6 +26,7 @@ const (
 var (
 	ErrInvalidProjectSectionArtifactInput        = errors.New("invalid project section artifact input")
 	ErrProjectSectionArtifactGeometryUnavailable = errors.New("project section artifact geometry unavailable")
+	ErrProjectSectionArtifactGenerationConflict  = errors.New("project section artifact generation conflict")
 )
 
 // CreateProjectSectionArtifactInput stores one browser-kernel section result.
@@ -39,6 +41,8 @@ type CreateProjectSectionArtifactInput struct {
 	TargetCount         int
 	SourceRevisionIDs   []string
 	OccurrenceIDs       []string
+	AssociationID       string
+	ExpectedGeneration  int
 	PlaneOrigin         ProjectInspectionVector
 	PlaneNormal         ProjectInspectionVector
 	EdgeCount           int
@@ -47,22 +51,26 @@ type CreateProjectSectionArtifactInput struct {
 
 // ProjectSectionArtifact is the public metadata for one section result.
 type ProjectSectionArtifact struct {
-	ID                  string                  `json:"id"`
-	ProjectID           string                  `json:"project_id"`
-	CADDocumentRevision int                     `json:"cad_document_revision"`
-	Unit                string                  `json:"unit"`
-	Status              string                  `json:"status"`
-	Filename            string                  `json:"filename"`
-	ContentType         string                  `json:"content_type"`
-	TargetCount         int                     `json:"target_count"`
-	SourceRevisionIDs   []string                `json:"source_revision_ids"`
-	OccurrenceIDs       []string                `json:"occurrence_ids"`
-	PlaneOrigin         ProjectInspectionVector `json:"plane_origin"`
-	PlaneNormal         ProjectInspectionVector `json:"plane_normal"`
-	EdgeCount           int                     `json:"edge_count"`
-	ByteSize            int64                   `json:"byte_size"`
-	CreatedAt           string                  `json:"created_at"`
-	UpdatedAt           string                  `json:"updated_at"`
+	ID                   string                  `json:"id"`
+	ProjectID            string                  `json:"project_id"`
+	CADDocumentRevision  int                     `json:"cad_document_revision"`
+	Unit                 string                  `json:"unit"`
+	Status               string                  `json:"status"`
+	Filename             string                  `json:"filename"`
+	ContentType          string                  `json:"content_type"`
+	TargetCount          int                     `json:"target_count"`
+	SourceRevisionIDs    []string                `json:"source_revision_ids"`
+	OccurrenceIDs        []string                `json:"occurrence_ids"`
+	AssociationID        string                  `json:"association_id"`
+	Generation           int                     `json:"generation"`
+	SupersedesArtifactID string                  `json:"supersedes_artifact_id"`
+	IsLatest             bool                    `json:"is_latest"`
+	PlaneOrigin          ProjectInspectionVector `json:"plane_origin"`
+	PlaneNormal          ProjectInspectionVector `json:"plane_normal"`
+	EdgeCount            int                     `json:"edge_count"`
+	ByteSize             int64                   `json:"byte_size"`
+	CreatedAt            string                  `json:"created_at"`
+	UpdatedAt            string                  `json:"updated_at"`
 }
 
 // ProjectSectionArtifactDownload contains one stored section STEP file.
@@ -81,6 +89,7 @@ func (s *Service) CreateProjectSectionArtifact(ctx context.Context, input Create
 	input.Unit = strings.TrimSpace(input.Unit)
 	input.Filename = strings.TrimSpace(filepath.Base(input.Filename))
 	input.ContentType = strings.TrimSpace(input.ContentType)
+	input.AssociationID = strings.TrimSpace(input.AssociationID)
 	if !isValidProjectSectionArtifactInput(input) {
 		return ProjectSectionArtifact{}, ErrInvalidProjectSectionArtifactInput
 	}
@@ -104,17 +113,68 @@ func (s *Service) CreateProjectSectionArtifact(ctx context.Context, input Create
 	if err != nil {
 		return ProjectSectionArtifact{}, err
 	}
-	artifact := entity.ProjectSectionArtifact{
-		ID: artifactID, ProjectID: project.ID, CADDocumentRevision: input.CADDocumentRevision,
-		Unit: input.Unit, Status: input.Status, Filename: input.Filename, ContentType: input.ContentType,
-		TargetCount: input.TargetCount, SourceRevisionIDsJSON: revisionIDs, OccurrenceIDsJSON: occurrenceIDs,
-		PlaneOriginJSON: planeOrigin, PlaneNormalJSON: planeNormal, EdgeCount: input.EdgeCount,
-		ByteSize: int64(len(input.Data)), Data: append([]byte(nil), input.Data...),
+	associationID := input.AssociationID
+	if associationID == "" {
+		associationID, err = id.NewPrefixed("psd")
+		if err != nil {
+			return ProjectSectionArtifact{}, err
+		}
 	}
-	if err := s.db.WithContext(ctx).Create(&artifact).Error; err != nil {
+	artifact := entity.ProjectSectionArtifact{}
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		association := entity.ProjectSectionArtifactAssociation{}
+		if input.AssociationID == "" {
+			association = entity.ProjectSectionArtifactAssociation{
+				ID: associationID, ProjectID: project.ID,
+				PlaneOriginJSON: planeOrigin, PlaneNormalJSON: planeNormal,
+			}
+			if err := tx.Create(&association).Error; err != nil {
+				return fmt.Errorf("create project section artifact association: %w", err)
+			}
+		} else {
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+				First(&association, "id = ? AND project_id = ?", input.AssociationID, project.ID).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrInvalidProjectSectionArtifactInput
+				}
+				return fmt.Errorf("get project section artifact association: %w", err)
+			}
+			if association.CurrentGeneration != input.ExpectedGeneration {
+				return ErrProjectSectionArtifactGenerationConflict
+			}
+			if !bytes.Equal(association.PlaneOriginJSON, planeOrigin) || !bytes.Equal(association.PlaneNormalJSON, planeNormal) {
+				return ErrInvalidProjectSectionArtifactInput
+			}
+		}
+		generation := association.CurrentGeneration + 1
+		artifact = entity.ProjectSectionArtifact{
+			ID: artifactID, ProjectID: project.ID, AssociationID: associationID, Generation: generation,
+			SupersedesArtifactID: association.LatestArtifactID, CADDocumentRevision: input.CADDocumentRevision,
+			Unit: input.Unit, Status: input.Status, Filename: input.Filename, ContentType: input.ContentType,
+			TargetCount: input.TargetCount, SourceRevisionIDsJSON: revisionIDs, OccurrenceIDsJSON: occurrenceIDs,
+			PlaneOriginJSON: planeOrigin, PlaneNormalJSON: planeNormal, EdgeCount: input.EdgeCount,
+			ByteSize: int64(len(input.Data)), Data: append([]byte(nil), input.Data...),
+		}
+		if err := tx.Create(&artifact).Error; err != nil {
+			return err
+		}
+		result := tx.Model(&entity.ProjectSectionArtifactAssociation{}).
+			Where("id = ? AND project_id = ? AND current_generation = ?", associationID, project.ID, association.CurrentGeneration).
+			Updates(map[string]any{"current_generation": generation, "latest_artifact_id": artifact.ID})
+		if result.Error != nil {
+			return fmt.Errorf("update project section artifact association: %w", result.Error)
+		}
+		if result.RowsAffected != 1 {
+			return ErrProjectSectionArtifactGenerationConflict
+		}
+		return nil
+	}); err != nil {
+		if errors.Is(err, ErrInvalidProjectSectionArtifactInput) || errors.Is(err, ErrProjectSectionArtifactGenerationConflict) {
+			return ProjectSectionArtifact{}, err
+		}
 		return ProjectSectionArtifact{}, fmt.Errorf("create project section artifact: %w", err)
 	}
-	return publicProjectSectionArtifact(artifact), nil
+	return publicProjectSectionArtifact(artifact, true), nil
 }
 
 // ListProjectSectionArtifacts returns newest-first section results for an owned project.
@@ -123,13 +183,21 @@ func (s *Service) ListProjectSectionArtifacts(ctx context.Context, ownerUserID, 
 	if err != nil {
 		return nil, err
 	}
-	var artifacts []entity.ProjectSectionArtifact
-	if err := s.db.WithContext(ctx).Where("project_id = ?", project.ID).Order("created_at DESC").Find(&artifacts).Error; err != nil {
+	type artifactListRow struct {
+		entity.ProjectSectionArtifact
+		AssociationLatestArtifactID string `gorm:"column:association_latest_artifact_id"`
+	}
+	var rows []artifactListRow
+	if err := s.db.WithContext(ctx).Model(&entity.ProjectSectionArtifact{}).
+		Select("project_section_artifacts.*, project_section_artifact_associations.latest_artifact_id AS association_latest_artifact_id").
+		Joins("LEFT JOIN project_section_artifact_associations ON project_section_artifact_associations.id = project_section_artifacts.association_id").
+		Where("project_section_artifacts.project_id = ?", project.ID).
+		Order("project_section_artifacts.created_at DESC").Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("list project section artifacts: %w", err)
 	}
-	result := make([]ProjectSectionArtifact, 0, len(artifacts))
-	for _, artifact := range artifacts {
-		result = append(result, publicProjectSectionArtifact(artifact))
+	result := make([]ProjectSectionArtifact, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, publicProjectSectionArtifact(row.ProjectSectionArtifact, row.AssociationLatestArtifactID == row.ID))
 	}
 	return result, nil
 }
@@ -143,7 +211,7 @@ func (s *Service) GetProjectSectionArtifactDownload(ctx context.Context, ownerUs
 	if artifact.Status != ProjectSectionArtifactStatusReady || len(artifact.Data) == 0 {
 		return ProjectSectionArtifactDownload{}, ErrProjectSectionArtifactGeometryUnavailable
 	}
-	return ProjectSectionArtifactDownload{ProjectSectionArtifact: publicProjectSectionArtifact(artifact), Data: append([]byte(nil), artifact.Data...)}, nil
+	return ProjectSectionArtifactDownload{ProjectSectionArtifact: publicProjectSectionArtifact(artifact, false), Data: append([]byte(nil), artifact.Data...)}, nil
 }
 
 // DeleteProjectSectionArtifact soft-deletes one section result for an owned project.
@@ -187,6 +255,9 @@ func isValidProjectSectionArtifactInput(input CreateProjectSectionArtifactInput)
 	if input.TargetCount <= 0 || input.TargetCount != len(input.SourceRevisionIDs) || input.TargetCount != len(input.OccurrenceIDs) || input.TargetCount > maxProjectSectionArtifactInputs {
 		return false
 	}
+	if (input.AssociationID == "" && input.ExpectedGeneration != 0) || (input.AssociationID != "" && (utf8.RuneCountInString(input.AssociationID) > 32 || input.ExpectedGeneration <= 0)) {
+		return false
+	}
 	for _, value := range append(append([]string{}, input.SourceRevisionIDs...), input.OccurrenceIDs...) {
 		if strings.TrimSpace(value) == "" || utf8.RuneCountInString(value) > 64 {
 			return false
@@ -205,9 +276,10 @@ func isValidProjectSectionArtifactInput(input CreateProjectSectionArtifactInput)
 	}
 }
 
-func publicProjectSectionArtifact(artifact entity.ProjectSectionArtifact) ProjectSectionArtifact {
+func publicProjectSectionArtifact(artifact entity.ProjectSectionArtifact, isLatest bool) ProjectSectionArtifact {
 	return ProjectSectionArtifact{
 		ID: artifact.ID, ProjectID: artifact.ProjectID, CADDocumentRevision: artifact.CADDocumentRevision,
+		AssociationID: artifact.AssociationID, Generation: artifact.Generation, SupersedesArtifactID: artifact.SupersedesArtifactID, IsLatest: isLatest,
 		Unit: artifact.Unit, Status: artifact.Status, Filename: artifact.Filename, ContentType: artifact.ContentType,
 		TargetCount: artifact.TargetCount, SourceRevisionIDs: unmarshalProjectExportArtifactIDs(artifact.SourceRevisionIDsJSON),
 		OccurrenceIDs: unmarshalProjectExportArtifactIDs(artifact.OccurrenceIDsJSON), PlaneOrigin: unmarshalProjectSectionArtifactVector(artifact.PlaneOriginJSON),

@@ -367,6 +367,23 @@ export type CadKernelSectionGeometryRequest = {
   }
 }
 
+export type CadKernelShapeReferenceScopeInput = {
+  occurrenceId: string
+  modelRevisionId: string
+}
+
+export type CadKernelShapeInspectionSource = CadKernelStepAssemblyExportSource & {
+  referenceScope: CadKernelShapeReferenceScopeInput
+}
+
+export type CadKernelShapeInspectionRequest = {
+  id: string
+  type: 'shape-inspection'
+  payload: {
+    sources: CadKernelShapeInspectionSource[]
+  }
+}
+
 export type CadKernelFeatureDSLPreviewRequest = {
   id: string
   type: 'feature-dsl-preview'
@@ -384,6 +401,7 @@ export type CadKernelRequest =
   | CadKernelStepPreviewRequest
   | CadKernelStepAssemblyExportRequest
   | CadKernelSectionGeometryRequest
+  | CadKernelShapeInspectionRequest
   | CadKernelFeatureDSLPreviewRequest
   | CadKernelFeatureDSLExportRequest
 
@@ -425,6 +443,44 @@ export type CadKernelSectionGeometryResponse = {
   }
 }
 
+export type CadKernelShapeReferenceScope = CadKernelShapeReferenceScopeInput & {
+  operationsSignature: string
+}
+
+export type CadKernelGeometricReference = {
+  id: string
+  kind: 'face' | 'edge'
+  index: number
+  measure: number
+}
+
+export type CadKernelShapeProperties = {
+  volume: number
+  surfaceArea: number
+  edgeLength: number
+  centerOfMass: readonly [number, number, number]
+  solidCount: number
+  faceCount: number
+  edgeCount: number
+}
+
+export type CadKernelShapeInspectionTarget = CadKernelShapeProperties & {
+  referenceScope: CadKernelShapeReferenceScope
+  references: CadKernelGeometricReference[]
+}
+
+export type CadKernelShapeInspectionResult = {
+  derivation: 'occt-brep-properties'
+  targets: CadKernelShapeInspectionTarget[]
+  totals: CadKernelShapeProperties
+}
+
+export type CadKernelShapeInspectionResponse = {
+  id: string
+  type: 'shape-inspection-result'
+  result: CadKernelShapeInspectionResult
+}
+
 export type CadKernelFeatureDSLPreviewResponse = {
   id: string
   type: 'feature-dsl-preview-result'
@@ -453,6 +509,7 @@ export type CadKernelResponse =
   | CadKernelStepPreviewResponse
   | CadKernelStepAssemblyExportResponse
   | CadKernelSectionGeometryResponse
+  | CadKernelShapeInspectionResponse
   | CadKernelFeatureDSLPreviewResponse
   | CadKernelFeatureDSLExportResponse
   | CadKernelErrorResponse
@@ -466,6 +523,7 @@ export function isCadKernelRequest(value: unknown): value is CadKernelRequest {
       value.type !== 'step-preview' &&
       value.type !== 'step-assembly-export' &&
       value.type !== 'section-geometry' &&
+      value.type !== 'shape-inspection' &&
       value.type !== 'feature-dsl-preview' &&
       value.type !== 'feature-dsl-export') ||
     typeof value.id !== 'string'
@@ -493,6 +551,14 @@ export function isCadKernelRequest(value: unknown): value is CadKernelRequest {
       payload.sources.length > 0 &&
       payload.sources.every(isCadKernelAssemblyExportSource) &&
       isCadKernelSectionPlane(payload.plane)
+    )
+  }
+  if (value.type === 'shape-inspection') {
+    return (
+      isRecord(payload) &&
+      Array.isArray(payload.sources) &&
+      payload.sources.length > 0 &&
+      payload.sources.every(isCadKernelShapeInspectionSource)
     )
   }
 
@@ -899,6 +965,26 @@ function isCadKernelAssemblyExportSource(value: unknown): value is CadKernelStep
     typeof value.filename === 'string' &&
     typeof value.stepText === 'string' &&
     isCadKernelOperations(value.operations)
+  )
+}
+
+function isCadKernelShapeInspectionSource(value: unknown): value is CadKernelShapeInspectionSource {
+  if (!isCadKernelAssemblyExportSource(value)) {
+    return false
+  }
+  const referenceScope = (value as CadKernelShapeInspectionSource).referenceScope
+  if (!isRecord(referenceScope)) {
+    return false
+  }
+  const occurrenceID = referenceScope.occurrenceId
+  const revisionID = referenceScope.modelRevisionId
+  return (
+    typeof occurrenceID === 'string' &&
+    occurrenceID.trim() === occurrenceID &&
+    occurrenceID !== '' &&
+    typeof revisionID === 'string' &&
+    revisionID.trim() === revisionID &&
+    revisionID !== ''
   )
 }
 

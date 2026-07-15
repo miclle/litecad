@@ -8,6 +8,7 @@ import {
   createOpenCascadeLoader,
   runFeatureDSLPreviewWithKernel,
   runFeatureDSLExportWithKernel,
+  runShapeInspectionWithKernel,
   runSectionGeometryWithKernel,
   runStepAssemblyExportWithKernel,
 } from './opencascade-step'
@@ -763,6 +764,53 @@ describe('runSectionGeometryWithKernel', () => {
       plane: { origin: [200, 0, 0], normal: [1, 0, 0] },
     })
     expect(empty).toEqual({ status: 'empty', edgeCount: 0, exportedStepText: '' })
+  }, 30000)
+})
+
+describe('runShapeInspectionWithKernel', () => {
+  it('reports exact B-rep properties and deterministic revision-scoped references', async () => {
+    const loadOpenCascade = createOpenCascadeLoader(
+      initReplicadOpenCascade as unknown as Parameters<typeof createOpenCascadeLoader>[0],
+      `${process.cwd()}/node_modules/replicad-opencascadejs/src/replicad_single.wasm`,
+    )
+    const openCascade = await loadOpenCascade()
+    const source = await runFeatureDSLExportWithKernel(openCascade, {
+      filename: 'inspection-box.lcad.json',
+      document: {
+        version: 1,
+        unit: 'millimetre',
+        features: [{ id: 'base', type: 'box', origin: [0, 0, 0], size: [10, 20, 30] }],
+      },
+    })
+    const input = {
+      sources: [
+        {
+          filename: 'inspection-box.step',
+          stepText: source.exportedStepText,
+          referenceScope: { occurrenceId: 'occ_box', modelRevisionId: 'pmr_box_1' },
+        },
+      ],
+    }
+
+    const first = await runShapeInspectionWithKernel(openCascade, input)
+    const second = await runShapeInspectionWithKernel(openCascade, input)
+
+    expect(first.derivation).toBe('occt-brep-properties')
+    expect(first.totals).toMatchObject({ solidCount: 1, faceCount: 6, edgeCount: 12 })
+    expect(first.totals.volume).toBeCloseTo(6000, 5)
+    expect(first.totals.surfaceArea).toBeCloseTo(2200, 5)
+    expect(first.totals.edgeLength).toBeCloseTo(240, 5)
+    expect(first.totals.centerOfMass).toEqual([expect.closeTo(5, 5), expect.closeTo(10, 5), expect.closeTo(15, 5)])
+    expect(first.targets[0]?.references.filter((reference) => reference.kind === 'face')).toHaveLength(6)
+    expect(first.targets[0]?.references.filter((reference) => reference.kind === 'edge')).toHaveLength(12)
+    expect(first.targets[0]?.referenceScope.operationsSignature).toMatch(/^sha256:[0-9a-f]{64}$/)
+    expect(second).toEqual(first)
+
+    const revised = await runShapeInspectionWithKernel(openCascade, {
+      sources: [{ ...input.sources[0], referenceScope: { occurrenceId: 'occ_box', modelRevisionId: 'pmr_box_2' } }],
+    })
+    expect(revised.targets[0]?.referenceScope.operationsSignature).toBe(first.targets[0]?.referenceScope.operationsSignature)
+    expect(revised.targets[0]?.references[0]?.id).not.toBe(first.targets[0]?.references[0]?.id)
   }, 30000)
 })
 

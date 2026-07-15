@@ -99,6 +99,10 @@ describe('ProjectCanvas', () => {
         {
           id: 'pse_section',
           project_id: 'prj_demo',
+          association_id: 'psd_section',
+          generation: 1,
+          supersedes_artifact_id: '',
+          is_latest: true,
           cad_document_revision: 4,
           unit: 'mm',
           status: 'ready',
@@ -133,6 +137,64 @@ describe('ProjectCanvas', () => {
     expect(onDownloadSectionArtifact).toHaveBeenCalledWith('pse_section')
     expect(onDeleteSectionArtifact).toHaveBeenCalledWith('pse_section')
     expect(document.querySelector('[data-model-preview]')?.getAttribute('data-section')).toBe('true')
+  })
+
+  test('regenerates a stale latest section association', async () => {
+    const user = userEvent.setup()
+    const onRegenerateSectionArtifact = vi.fn()
+    renderCanvas({
+      sectionArtifacts: [
+        {
+          id: 'pse_stale', project_id: 'prj_demo', association_id: 'psd_section', generation: 1,
+          supersedes_artifact_id: '', is_latest: true, cad_document_revision: 3, unit: 'mm', status: 'ready',
+          filename: 'section-r3.step', content_type: 'model/step', target_count: 1,
+          source_revision_ids: ['pmr_1'], occurrence_ids: ['occ_1'],
+          plane_origin: { x: 30, y: 0, z: 0 }, plane_normal: { x: 1, y: 0, z: 0 },
+          edge_count: 4, byte_size: 1024, created_at: '2026-07-15T00:00:00Z', updated_at: '2026-07-15T00:00:00Z',
+        },
+      ],
+      getSectionArtifactState: () => 'stale',
+      onRegenerateSectionArtifact,
+      previewAssets: [{ modelId: 'mdl_step', name: 'gearbox.step', previewFormat: 'obj', previewUrl: '/gearbox.obj' }],
+    })
+
+    expect(document.body.textContent).toContain('Generation 1 · Stale')
+    await user.click(document.querySelector('button[aria-label="Regenerate section-r3.step"]') as HTMLButtonElement)
+    expect(onRegenerateSectionArtifact).toHaveBeenCalledWith(expect.objectContaining({ id: 'pse_stale' }))
+  })
+
+  test('runs exact B-rep analysis and labels persisted topology measurements', async () => {
+    const user = userEvent.setup()
+    const onAnalyzeTopology = vi.fn()
+    renderCanvas({
+      canAnalyzeTopology: true,
+      inspectionRecords: [
+        {
+          id: 'pir_topology', project_id: 'prj_demo', kind: 'measurement', name: 'Exact B-rep properties',
+          cad_document_revision: 4, unit: 'mm', visible_model_ids: ['occ_box'],
+          measurement: {
+            derivation: 'occt-brep-properties',
+            topology: {
+              target_count: 1,
+              totals: { volume: 6000, surface_area: 2200, edge_length: 240, center_of_mass: { x: 5, y: 10, z: 15 }, solid_count: 1, face_count: 6, edge_count: 12 },
+              targets: [],
+            },
+          },
+          created_at: '2026-07-15T00:00:00Z', updated_at: '2026-07-15T00:00:00Z',
+        },
+      ],
+      onAnalyzeTopology,
+      previewAssets: [{ modelId: 'mdl_step', name: 'gearbox.step', previewFormat: 'obj', previewUrl: '/gearbox.obj' }],
+    })
+
+    await user.click(document.querySelector('button[aria-label="Analyze B-rep"]') as HTMLButtonElement)
+
+    expect(onAnalyzeTopology).toHaveBeenCalledOnce()
+    expect(document.body.textContent).toContain('Exact B-rep')
+    expect(document.body.textContent).toContain('V 6,000')
+    expect(document.body.textContent).toContain('A 2,200')
+    expect(document.body.textContent).toContain('L 240')
+    expect(document.body.textContent).toContain('1 stable scope · 18 face/edge references')
   })
 
   test('edits and applies the Fuse box draft for the selected STEP source', async () => {

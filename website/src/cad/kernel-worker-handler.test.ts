@@ -5,12 +5,47 @@ import type {
   CadKernelFeatureDSLExportResult,
   CadKernelFeatureDSLPreviewResult,
   CadKernelSectionGeometryResult,
+  CadKernelShapeInspectionResult,
   CadKernelStepAssemblyExportResult,
   CadKernelStepPreviewResult,
   CadKernelStepRoundTripResult,
 } from './opencascade-step'
 
 describe('CAD kernel worker handler', () => {
+  test('runs an exact shape inspection request', async () => {
+    const result: CadKernelShapeInspectionResult = {
+      derivation: 'occt-brep-properties',
+      targets: [],
+      totals: { volume: 0, surfaceArea: 0, edgeLength: 0, centerOfMass: [0, 0, 0], solidCount: 0, faceCount: 0, edgeCount: 0 },
+    }
+    const runShapeInspection = vi.fn(async () => result)
+    const postMessage = vi.fn()
+    const handler = createCadKernelWorkerHandler({
+      runFeatureDSLExport: vi.fn(),
+      runFeatureDSLPreview: vi.fn(),
+      runSectionGeometry: vi.fn(),
+      runShapeInspection,
+      runStepAssemblyExport: vi.fn(),
+      runStepPreview: vi.fn(),
+      runStepRoundTrip: vi.fn(),
+      postMessage,
+    })
+    const payload = {
+      sources: [
+        {
+          filename: 'part.step',
+          stepText: 'ISO-10303-21;',
+          referenceScope: { occurrenceId: 'occ_1', modelRevisionId: 'pmr_1' },
+        },
+      ],
+    }
+
+    await handler({ id: 'job-inspection', type: 'shape-inspection', payload })
+
+    expect(runShapeInspection).toHaveBeenCalledWith(payload)
+    expect(postMessage).toHaveBeenCalledWith({ id: 'job-inspection', type: 'shape-inspection-result', result })
+  })
+
   test('runs a section geometry request and returns its B-rep status', async () => {
     const result: CadKernelSectionGeometryResult = {
       status: 'ready',

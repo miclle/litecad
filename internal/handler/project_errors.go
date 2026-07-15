@@ -46,6 +46,8 @@ func projectError(err error) error {
 		return httperr.NewBadRequest("invalid section artifact")
 	case errors.Is(err, service.ErrProjectSectionArtifactGeometryUnavailable):
 		return httperr.NewConflict("section artifact has no geometry")
+	case errors.Is(err, service.ErrProjectSectionArtifactGenerationConflict):
+		return httperr.NewConflict("section artifact generation is stale")
 	case errors.Is(err, service.ErrAIUnavailable):
 		return httperr.NewServiceUnavailable("AI provider is not configured")
 	case errors.Is(err, service.ErrAIProviderRequestFailed):

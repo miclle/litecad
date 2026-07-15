@@ -321,8 +321,11 @@ function projectModelUpload() {
 
 function projectInspectionRecords(_callbacks: ReturnType<typeof callbackSpies>) {
   return {
+    analyzeTopology: vi.fn(),
+    canAnalyzeTopology: false,
     deleteInspectionRecord: vi.fn(),
     inspectionRecords: [],
+    inspectionRecordError: '',
     isInspectionRecordMutationPending: false,
     isInspectionRecordsLoading: false,
     saveMeasurementRecord: vi.fn(),
@@ -336,9 +339,11 @@ function projectSectionArtifacts() {
     deleteSectionArtifact: vi.fn(),
     downloadSectionArtifact: vi.fn(),
     generateSectionArtifact: vi.fn(),
+    getSectionArtifactState: vi.fn(() => 'legacy'),
     isSectionArtifactMutationPending: false,
     isSectionArtifactsError: false,
     isSectionArtifactsLoading: false,
+    regenerateSectionArtifact: vi.fn(),
     restoreSectionArtifact: vi.fn(),
     sectionArtifacts: [],
     sectionArtifactError: '',

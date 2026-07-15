@@ -128,6 +128,7 @@ export function useProjectWorkbenchRouteControllers({
   const projectInspectionRecords = useProjectInspectionRecordsController({
     cadDocumentRevision: projectCADDocument?.revision ?? 0,
     projectId,
+    targets: stepExportTargets,
     unit: projectCADDocument?.unit ?? 'unit',
     visibleModelIds,
   })

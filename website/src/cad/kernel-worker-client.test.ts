@@ -4,6 +4,7 @@ import {
   runFeatureDSLExportInWorker,
   runFeatureDSLPreviewInWorker,
   runSectionGeometryInWorker,
+  runShapeInspectionInWorker,
   runStepAssemblyExportInWorker,
   runStepPreviewInWorker,
   runStepRoundTripInWorker,
@@ -303,6 +304,34 @@ describe('runSectionGeometryInWorker', () => {
       edgeCount: 4,
       exportedStepText: 'ISO-10303-21;',
     })
+    expect(worker.terminated).toBe(true)
+  })
+})
+
+describe('runShapeInspectionInWorker', () => {
+  it('posts a shape-inspection request and resolves exact properties', async () => {
+    const worker = new FakeWorker()
+    const resultPromise = runShapeInspectionInWorker(
+      {
+        sources: [
+          {
+            filename: 'part.step',
+            stepText: 'ISO-10303-21;',
+            referenceScope: { occurrenceId: 'occ_1', modelRevisionId: 'pmr_1' },
+          },
+        ],
+      },
+      () => worker,
+    )
+    const request = worker.postedMessages[0]
+    expect(request).toMatchObject({ type: 'shape-inspection' })
+    const result = {
+      derivation: 'occt-brep-properties' as const,
+      targets: [],
+      totals: { volume: 0, surfaceArea: 0, edgeLength: 0, centerOfMass: [0, 0, 0] as const, solidCount: 0, faceCount: 0, edgeCount: 0 },
+    }
+    worker.reply({ id: (request as { id: string }).id, type: 'shape-inspection-result', result })
+    await expect(resultPromise).resolves.toEqual(result)
     expect(worker.terminated).toBe(true)
   })
 })

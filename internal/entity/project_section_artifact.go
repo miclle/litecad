@@ -13,6 +13,9 @@ type ProjectSectionArtifact struct {
 	UpdatedAt             time.Time      `json:"updated_at"`
 	DeletedAt             gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 	ProjectID             string         `gorm:"size:32;index;not null" json:"project_id"`
+	AssociationID         string         `gorm:"size:32;index;not null" json:"association_id"`
+	Generation            int            `gorm:"not null" json:"generation"`
+	SupersedesArtifactID  string         `gorm:"size:32;index" json:"supersedes_artifact_id"`
 	CADDocumentRevision   int            `gorm:"not null" json:"cad_document_revision"`
 	Unit                  string         `gorm:"size:32;not null" json:"unit"`
 	Status                string         `gorm:"size:16;index;not null" json:"status"`

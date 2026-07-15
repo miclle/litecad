@@ -1,5 +1,7 @@
 import type { Page, Route } from '@playwright/test'
 
+import type { ProjectInspectionMeasurement } from '../../src/types/project'
+
 export const projectId = 'project_smoke'
 const now = '2026-07-10T00:00:00Z'
 
@@ -49,13 +51,7 @@ type FixtureInspectionRecord = {
   cad_document_revision: number
   unit: string
   visible_model_ids: string[]
-  measurement?: {
-    derivation: 'preview-visible-aabb'
-    model_count: number
-    center: { x: number; y: number; z: number }
-    size: { x: number; y: number; z: number }
-    diagonal: number
-  }
+  measurement?: ProjectInspectionMeasurement
   section?: {
     mode: 'center-plane'
     plane_normal: { x: number; y: number; z: number }
@@ -68,6 +64,10 @@ type FixtureInspectionRecord = {
 type FixtureSectionArtifact = {
   id: string
   project_id: string
+  association_id: string
+  generation: number
+  supersedes_artifact_id: string
+  is_latest: boolean
   cad_document_revision: number
   unit: string
   status: 'ready' | 'empty'
@@ -721,12 +721,26 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     return
   }
   if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/section-artifacts`) {
-    const requestBody = request.postDataJSON() as Partial<FixtureSectionArtifact>
+    const requestBody = request.postDataJSON() as Partial<FixtureSectionArtifact> & { expected_generation?: number }
     state.sectionArtifactCreateCount += 1
     const stepText = requestBody.step_text ?? ''
+    const previous = requestBody.association_id
+      ? state.sectionArtifacts.find((candidate) => candidate.association_id === requestBody.association_id && candidate.is_latest)
+      : undefined
+    if (requestBody.association_id && (!previous || requestBody.expected_generation !== previous.generation)) {
+      await route.fulfill({ json: { message: 'section artifact generation is stale' }, status: 409 })
+      return
+    }
+    if (previous) {
+      previous.is_latest = false
+    }
     const artifact: FixtureSectionArtifact = {
       id: `pse_smoke_${state.sectionArtifactCreateCount}`,
       project_id: projectId,
+      association_id: requestBody.association_id ?? `psd_smoke_${state.sectionArtifactCreateCount}`,
+      generation: previous ? previous.generation + 1 : 1,
+      supersedes_artifact_id: previous?.id ?? '',
+      is_latest: true,
       cad_document_revision: requestBody.cad_document_revision ?? state.cadRevision,
       unit: requestBody.unit ?? 'millimetre',
       status: requestBody.status ?? 'empty',

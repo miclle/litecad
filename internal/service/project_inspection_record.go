@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 
@@ -18,6 +19,10 @@ const (
 	ProjectInspectionRecordKindMeasurement = "measurement"
 	ProjectInspectionRecordKindSection     = "section"
 	maxProjectInspectionVisibleModelIDs    = 200
+	maxProjectTopologyReferences           = 10000
+	projectTopologySignaturePrefix         = "sha256:"
+	projectTopologySignatureHexLength      = 64
+	maxProjectTopologyReferenceIDRunes     = 512
 )
 
 var ErrInvalidProjectInspectionRecordInput = errors.New("invalid project inspection record input")
@@ -29,13 +34,54 @@ type ProjectInspectionVector struct {
 	Z float64 `json:"z"`
 }
 
-// ProjectInspectionMeasurement stores a visible-bounds measurement snapshot.
+// ProjectInspectionMeasurement stores either a preview-bounds snapshot or exact OCCT B-rep properties.
 type ProjectInspectionMeasurement struct {
-	Derivation string                  `json:"derivation"`
-	ModelCount int                     `json:"model_count"`
-	Center     ProjectInspectionVector `json:"center"`
-	Size       ProjectInspectionVector `json:"size"`
-	Diagonal   float64                 `json:"diagonal"`
+	Derivation string                      `json:"derivation"`
+	ModelCount int                         `json:"model_count"`
+	Center     ProjectInspectionVector     `json:"center"`
+	Size       ProjectInspectionVector     `json:"size"`
+	Diagonal   float64                     `json:"diagonal"`
+	Topology   *ProjectTopologyMeasurement `json:"topology,omitempty"`
+}
+
+// ProjectTopologyReferenceScope pins topology identity to immutable occurrence inputs.
+type ProjectTopologyReferenceScope struct {
+	OccurrenceID        string `json:"occurrence_id"`
+	ModelRevisionID     string `json:"model_revision_id"`
+	OperationsSignature string `json:"operations_signature"`
+}
+
+// ProjectTopologyReference identifies one deterministic face or edge inside a scope.
+type ProjectTopologyReference struct {
+	ID      string  `json:"id"`
+	Kind    string  `json:"kind"`
+	Index   int     `json:"index"`
+	Measure float64 `json:"measure"`
+}
+
+// ProjectTopologyProperties stores exact aggregate B-rep properties in project units.
+type ProjectTopologyProperties struct {
+	Volume       float64                 `json:"volume"`
+	SurfaceArea  float64                 `json:"surface_area"`
+	EdgeLength   float64                 `json:"edge_length"`
+	CenterOfMass ProjectInspectionVector `json:"center_of_mass"`
+	SolidCount   int                     `json:"solid_count"`
+	FaceCount    int                     `json:"face_count"`
+	EdgeCount    int                     `json:"edge_count"`
+}
+
+// ProjectTopologyMeasurementTarget stores one occurrence/revision-scoped exact result.
+type ProjectTopologyMeasurementTarget struct {
+	ReferenceScope ProjectTopologyReferenceScope `json:"reference_scope"`
+	ProjectTopologyProperties
+	References []ProjectTopologyReference `json:"references"`
+}
+
+// ProjectTopologyMeasurement stores exact B-rep results and their immutable provenance.
+type ProjectTopologyMeasurement struct {
+	TargetCount int                                `json:"target_count"`
+	Totals      ProjectTopologyProperties          `json:"totals"`
+	Targets     []ProjectTopologyMeasurementTarget `json:"targets"`
 }
 
 // ProjectInspectionSection stores a clipping-plane definition, not section geometry.
@@ -188,7 +234,20 @@ func isValidProjectInspectionRecordInput(input CreateProjectInspectionRecordInpu
 	}
 	switch input.Kind {
 	case ProjectInspectionRecordKindMeasurement:
-		return input.Measurement != nil && input.Section == nil && isValidProjectInspectionMeasurement(*input.Measurement)
+		if input.Measurement == nil || input.Section != nil || !isValidProjectInspectionMeasurement(*input.Measurement) {
+			return false
+		}
+		if input.Measurement.Derivation == "occt-brep-properties" {
+			if input.CADDocumentRevision <= 0 || len(input.VisibleModelIDs) != input.Measurement.Topology.TargetCount {
+				return false
+			}
+			for index, target := range input.Measurement.Topology.Targets {
+				if input.VisibleModelIDs[index] != target.ReferenceScope.OccurrenceID {
+					return false
+				}
+			}
+		}
+		return true
 	case ProjectInspectionRecordKindSection:
 		return input.Section != nil && input.Measurement == nil && isValidProjectInspectionSection(*input.Section)
 	default:
@@ -197,15 +256,183 @@ func isValidProjectInspectionRecordInput(input CreateProjectInspectionRecordInpu
 }
 
 func isValidProjectInspectionMeasurement(measurement ProjectInspectionMeasurement) bool {
-	return measurement.Derivation == "preview-visible-aabb" &&
-		measurement.ModelCount > 0 &&
-		isFiniteProjectInspectionVector(measurement.Center) &&
-		isFiniteProjectInspectionVector(measurement.Size) &&
-		isFiniteNumber(measurement.Diagonal) &&
-		measurement.Size.X >= 0 &&
-		measurement.Size.Y >= 0 &&
-		measurement.Size.Z >= 0 &&
-		measurement.Diagonal >= 0
+	switch measurement.Derivation {
+	case "preview-visible-aabb":
+		return measurement.Topology == nil &&
+			measurement.ModelCount > 0 &&
+			isFiniteProjectInspectionVector(measurement.Center) &&
+			isFiniteProjectInspectionVector(measurement.Size) &&
+			isFiniteNumber(measurement.Diagonal) &&
+			measurement.Size.X >= 0 &&
+			measurement.Size.Y >= 0 &&
+			measurement.Size.Z >= 0 &&
+			measurement.Diagonal >= 0
+	case "occt-brep-properties":
+		return measurement.ModelCount == 0 && measurement.Center == (ProjectInspectionVector{}) &&
+			measurement.Size == (ProjectInspectionVector{}) && measurement.Diagonal == 0 &&
+			measurement.Topology != nil && isValidProjectTopologyMeasurement(*measurement.Topology)
+	default:
+		return false
+	}
+}
+
+func isValidProjectTopologyMeasurement(measurement ProjectTopologyMeasurement) bool {
+	if measurement.TargetCount <= 0 || measurement.TargetCount != len(measurement.Targets) || measurement.TargetCount > maxProjectInspectionVisibleModelIDs || !isValidProjectTopologyProperties(measurement.Totals) {
+		return false
+	}
+	seenScopes := make(map[string]struct{}, len(measurement.Targets))
+	seenOccurrences := make(map[string]struct{}, len(measurement.Targets))
+	totalReferences := 0
+	var aggregateVolume float64
+	var aggregateSurfaceArea float64
+	var aggregateEdgeLength float64
+	var aggregateSolidCount int
+	var aggregateFaceCount int
+	var aggregateEdgeCount int
+	for _, target := range measurement.Targets {
+		if !isValidProjectTopologyProperties(target.ProjectTopologyProperties) || !isValidProjectTopologyReferenceScope(target.ReferenceScope) {
+			return false
+		}
+		scopeKey := target.ReferenceScope.OccurrenceID + "\x00" + target.ReferenceScope.ModelRevisionID + "\x00" + target.ReferenceScope.OperationsSignature
+		if _, exists := seenScopes[scopeKey]; exists {
+			return false
+		}
+		seenScopes[scopeKey] = struct{}{}
+		if _, exists := seenOccurrences[target.ReferenceScope.OccurrenceID]; exists {
+			return false
+		}
+		seenOccurrences[target.ReferenceScope.OccurrenceID] = struct{}{}
+		faceIndexes := make(map[int]struct{}, target.FaceCount)
+		edgeIndexes := make(map[int]struct{}, target.EdgeCount)
+		seenReferenceIDs := make(map[string]struct{}, len(target.References))
+		var referencedSurfaceArea float64
+		var referencedEdgeLength float64
+		for _, reference := range target.References {
+			if !isValidProjectTopologyReference(reference, target.ReferenceScope) {
+				return false
+			}
+			if _, exists := seenReferenceIDs[reference.ID]; exists {
+				return false
+			}
+			seenReferenceIDs[reference.ID] = struct{}{}
+			indexes := edgeIndexes
+			if reference.Kind == "face" {
+				indexes = faceIndexes
+				referencedSurfaceArea += reference.Measure
+			} else {
+				referencedEdgeLength += reference.Measure
+			}
+			if _, exists := indexes[reference.Index]; exists {
+				return false
+			}
+			indexes[reference.Index] = struct{}{}
+		}
+		if len(faceIndexes) != target.FaceCount || len(edgeIndexes) != target.EdgeCount ||
+			!nearlyEqualProjectTopologyMeasure(target.SurfaceArea, referencedSurfaceArea) ||
+			!nearlyEqualProjectTopologyMeasure(target.EdgeLength, referencedEdgeLength) {
+			return false
+		}
+		totalReferences += len(target.References)
+		if totalReferences > maxProjectTopologyReferences {
+			return false
+		}
+		aggregateVolume += target.Volume
+		aggregateSurfaceArea += target.SurfaceArea
+		aggregateEdgeLength += target.EdgeLength
+		aggregateSolidCount += target.SolidCount
+		aggregateFaceCount += target.FaceCount
+		aggregateEdgeCount += target.EdgeCount
+	}
+	centerMeasure := func(properties ProjectTopologyProperties) float64 {
+		if aggregateVolume > 0 {
+			return properties.Volume
+		}
+		if aggregateSurfaceArea > 0 {
+			return properties.SurfaceArea
+		}
+		return properties.EdgeLength
+	}
+	var aggregateCenterWeight float64
+	var aggregateWeightedCenter ProjectInspectionVector
+	for _, target := range measurement.Targets {
+		centerWeight := centerMeasure(target.ProjectTopologyProperties)
+		aggregateCenterWeight += centerWeight
+		aggregateWeightedCenter.X += target.CenterOfMass.X * centerWeight
+		aggregateWeightedCenter.Y += target.CenterOfMass.Y * centerWeight
+		aggregateWeightedCenter.Z += target.CenterOfMass.Z * centerWeight
+	}
+	expectedCenter := ProjectInspectionVector{}
+	if aggregateCenterWeight > 0 {
+		expectedCenter = ProjectInspectionVector{
+			X: aggregateWeightedCenter.X / aggregateCenterWeight,
+			Y: aggregateWeightedCenter.Y / aggregateCenterWeight,
+			Z: aggregateWeightedCenter.Z / aggregateCenterWeight,
+		}
+	}
+	return nearlyEqualProjectTopologyMeasure(measurement.Totals.Volume, aggregateVolume) &&
+		nearlyEqualProjectTopologyMeasure(measurement.Totals.SurfaceArea, aggregateSurfaceArea) &&
+		nearlyEqualProjectTopologyMeasure(measurement.Totals.EdgeLength, aggregateEdgeLength) &&
+		nearlyEqualProjectTopologyVector(measurement.Totals.CenterOfMass, expectedCenter) &&
+		measurement.Totals.SolidCount == aggregateSolidCount &&
+		measurement.Totals.FaceCount == aggregateFaceCount &&
+		measurement.Totals.EdgeCount == aggregateEdgeCount
+}
+
+func nearlyEqualProjectTopologyVector(first, second ProjectInspectionVector) bool {
+	return nearlyEqualProjectTopologyMeasure(first.X, second.X) &&
+		nearlyEqualProjectTopologyMeasure(first.Y, second.Y) &&
+		nearlyEqualProjectTopologyMeasure(first.Z, second.Z)
+}
+
+func nearlyEqualProjectTopologyMeasure(first, second float64) bool {
+	scale := math.Max(1, math.Max(math.Abs(first), math.Abs(second)))
+	return math.Abs(first-second) <= scale*1e-8
+}
+
+func isValidProjectTopologyProperties(properties ProjectTopologyProperties) bool {
+	return isFiniteNumber(properties.Volume) && properties.Volume >= 0 &&
+		isFiniteNumber(properties.SurfaceArea) && properties.SurfaceArea >= 0 &&
+		isFiniteNumber(properties.EdgeLength) && properties.EdgeLength >= 0 &&
+		isFiniteProjectInspectionVector(properties.CenterOfMass) &&
+		properties.SolidCount >= 0 && properties.FaceCount >= 0 && properties.EdgeCount >= 0
+}
+
+func isValidProjectTopologyReferenceScope(scope ProjectTopologyReferenceScope) bool {
+	return scope.OccurrenceID != "" && scope.OccurrenceID == strings.TrimSpace(scope.OccurrenceID) && utf8.RuneCountInString(scope.OccurrenceID) <= 64 &&
+		scope.ModelRevisionID != "" && scope.ModelRevisionID == strings.TrimSpace(scope.ModelRevisionID) && utf8.RuneCountInString(scope.ModelRevisionID) <= 64 &&
+		isValidProjectTopologyOperationsSignature(scope.OperationsSignature)
+}
+
+func isValidProjectTopologyOperationsSignature(signature string) bool {
+	if len(signature) != len(projectTopologySignaturePrefix)+projectTopologySignatureHexLength || !strings.HasPrefix(signature, projectTopologySignaturePrefix) {
+		return false
+	}
+	for _, value := range signature[len(projectTopologySignaturePrefix):] {
+		if (value < '0' || value > '9') && (value < 'a' || value > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func isValidProjectTopologyReference(reference ProjectTopologyReference, scope ProjectTopologyReferenceScope) bool {
+	if (reference.Kind != "face" && reference.Kind != "edge") || reference.Index <= 0 || !isFiniteNumber(reference.Measure) || reference.Measure < 0 {
+		return false
+	}
+	expectedID := fmt.Sprintf("topology:%s:%s:%s:%s:%d",
+		encodeProjectTopologyReferenceComponent(scope.OccurrenceID),
+		encodeProjectTopologyReferenceComponent(scope.ModelRevisionID),
+		encodeProjectTopologyReferenceComponent(scope.OperationsSignature),
+		reference.Kind,
+		reference.Index,
+	)
+	return reference.ID == expectedID && utf8.RuneCountInString(reference.ID) <= maxProjectTopologyReferenceIDRunes
+}
+
+func encodeProjectTopologyReferenceComponent(value string) string {
+	encoded := url.QueryEscape(value)
+	encoded = strings.ReplaceAll(encoded, "+", "%20")
+	return strings.NewReplacer("%21", "!", "%27", "'", "%28", "(", "%29", ")", "%2A", "*").Replace(encoded)
 }
 
 func isValidProjectInspectionSection(section ProjectInspectionSection) bool {

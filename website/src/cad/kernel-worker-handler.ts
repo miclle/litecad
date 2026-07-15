@@ -11,6 +11,8 @@ import type {
   CadKernelFeatureDSLPreviewResult,
   CadKernelSectionGeometryInput,
   CadKernelSectionGeometryResult,
+  CadKernelShapeInspectionInput,
+  CadKernelShapeInspectionResult,
   CadKernelStepAssemblyExportInput,
   CadKernelStepAssemblyExportResult,
   CadKernelStepPreviewInput,
@@ -23,6 +25,7 @@ type CadKernelWorkerHandlerOptions = {
   runFeatureDSLExport: (input: CadKernelFeatureDSLExportInput) => Promise<CadKernelFeatureDSLExportResult>
   runFeatureDSLPreview: (input: CadKernelFeatureDSLPreviewInput) => Promise<CadKernelFeatureDSLPreviewResult>
   runSectionGeometry?: (input: CadKernelSectionGeometryInput) => Promise<CadKernelSectionGeometryResult>
+  runShapeInspection?: (input: CadKernelShapeInspectionInput) => Promise<CadKernelShapeInspectionResult>
   runStepAssemblyExport: (input: CadKernelStepAssemblyExportInput) => Promise<CadKernelStepAssemblyExportResult>
   runStepPreview: (input: CadKernelStepPreviewInput) => Promise<CadKernelStepPreviewResult>
   runStepRoundTrip: (input: CadKernelStepRoundTripInput) => Promise<CadKernelStepRoundTripResult>
@@ -33,6 +36,7 @@ export function createCadKernelWorkerHandler({
   runFeatureDSLExport,
   runFeatureDSLPreview,
   runSectionGeometry,
+  runShapeInspection,
   runStepAssemblyExport,
   runStepPreview,
   runStepRoundTrip,
@@ -101,6 +105,15 @@ export function createCadKernelWorkerHandler({
           type: 'section-geometry-result',
           result,
         })
+        return
+      }
+
+      if (message.type === 'shape-inspection') {
+        if (!runShapeInspection) {
+          throw new Error('Shape inspection is unavailable')
+        }
+        const result = await runShapeInspection(message.payload)
+        postMessage({ id: message.id, type: 'shape-inspection-result', result })
         return
       }
 

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -133,6 +134,63 @@ func TestProjectInspectionRecordRoutesRejectInvalidAndForeignAccess(t *testing.T
 	foreignDelete := deleteJSONWithCookie(t, router, "/api/v1/projects/"+projectID+"/inspection-records/"+createResponse.Record.ID, nil, otherCookie)
 	if foreignDelete.Code != http.StatusNotFound {
 		t.Fatalf("foreign delete status = %d, want %d", foreignDelete.Code, http.StatusNotFound)
+	}
+}
+
+func TestProjectInspectionRecordRoutesPersistExactTopologyMeasurement(t *testing.T) {
+	router := newTestRouter(t)
+	cookie, projectID := createProjectForInspectionRecordRoutes(t, router, "inspection-route-topology@example.com")
+	properties := map[string]any{
+		"volume": 6000, "surface_area": 2200, "edge_length": 240,
+		"center_of_mass": map[string]float64{"x": 5, "y": 10, "z": 15},
+		"solid_count":    1, "face_count": 6, "edge_count": 12,
+	}
+	references := make([]any, 0, 18)
+	operationsSignature := "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+	referencePrefix := "topology:occ_box:pmr_box_1:sha256%3A4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+	for index, area := range []float64{200, 200, 600, 600, 300, 300} {
+		references = append(references, map[string]any{"id": fmt.Sprintf("%s:face:%d", referencePrefix, index+1), "kind": "face", "index": index + 1, "measure": area})
+	}
+	for index, length := range []float64{10, 10, 10, 10, 20, 20, 20, 20, 30, 30, 30, 30} {
+		references = append(references, map[string]any{"id": fmt.Sprintf("%s:edge:%d", referencePrefix, index+1), "kind": "edge", "index": index + 1, "measure": length})
+	}
+	create := postJSONWithCookie(t, router, "/api/v1/projects/"+projectID+"/inspection-records", map[string]any{
+		"kind": "measurement", "name": "Exact B-rep properties", "cad_document_revision": 4,
+		"unit": "millimetre", "visible_model_ids": []string{"occ_box"},
+		"measurement": map[string]any{
+			"derivation": "occt-brep-properties",
+			"topology": map[string]any{
+				"target_count": 1, "totals": properties,
+				"targets": []any{map[string]any{
+					"reference_scope": map[string]string{"occurrence_id": "occ_box", "model_revision_id": "pmr_box_1", "operations_signature": operationsSignature},
+					"volume":          6000, "surface_area": 2200, "edge_length": 240,
+					"center_of_mass": map[string]float64{"x": 5, "y": 10, "z": 15},
+					"solid_count":    1, "face_count": 6, "edge_count": 12,
+					"references": references,
+				}},
+			},
+		},
+	}, cookie)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create topology status = %d, body = %s", create.Code, create.Body.String())
+	}
+	var response struct {
+		Record struct {
+			Measurement struct {
+				Derivation string `json:"derivation"`
+				Topology   struct {
+					Totals struct {
+						Volume float64 `json:"volume"`
+					} `json:"totals"`
+				} `json:"topology"`
+			} `json:"measurement"`
+		} `json:"record"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode topology response: %v", err)
+	}
+	if response.Record.Measurement.Derivation != "occt-brep-properties" || response.Record.Measurement.Topology.Totals.Volume != 6000 {
+		t.Fatalf("topology response = %+v", response.Record.Measurement)
 	}
 }
 

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/miclle/litecad/internal/entity"
 )
 
 func TestProjectSectionArtifactLifecycle(t *testing.T) {
@@ -136,6 +138,71 @@ func TestProjectSectionArtifactValidationAndOwnership(t *testing.T) {
 	}
 	if err := svc.DeleteProjectSectionArtifact(ctx, other.ID, project.ID, artifact.ID); !errors.Is(err, ErrProjectNotFound) {
 		t.Fatalf("foreign delete error = %v, want ErrProjectNotFound", err)
+	}
+}
+
+func TestProjectSectionArtifactAssociativeRegeneration(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	user, project := createTestProjectForSectionArtifact(t, svc, "section-association@example.com")
+	base := CreateProjectSectionArtifactInput{
+		OwnerUserID: user.ID, ProjectID: project.ID, CADDocumentRevision: 3, Unit: "millimetre",
+		Status: ProjectSectionArtifactStatusReady, Filename: "section.step", ContentType: "model/step",
+		TargetCount: 1, SourceRevisionIDs: []string{"pmr_1"}, OccurrenceIDs: []string{"occ_1"},
+		PlaneOrigin: ProjectInspectionVector{X: 5}, PlaneNormal: ProjectInspectionVector{X: 1},
+		EdgeCount: 4, Data: []byte("ISO-10303-21; generation 1"),
+	}
+	first, err := svc.CreateProjectSectionArtifact(ctx, base)
+	if err != nil {
+		t.Fatalf("create generation 1: %v", err)
+	}
+	if first.AssociationID == "" || first.Generation != 1 || first.SupersedesArtifactID != "" || !first.IsLatest {
+		t.Fatalf("generation 1 = %+v", first)
+	}
+	var association entity.ProjectSectionArtifactAssociation
+	if err := svc.DB().First(&association, "id = ?", first.AssociationID).Error; err != nil {
+		t.Fatalf("load generation 1 association: %v", err)
+	}
+	if association.CurrentGeneration != 1 || association.LatestArtifactID != first.ID {
+		t.Fatalf("generation 1 association = %+v", association)
+	}
+
+	regenerated := base
+	regenerated.CADDocumentRevision = 4
+	regenerated.SourceRevisionIDs = []string{"pmr_2"}
+	regenerated.AssociationID = first.AssociationID
+	regenerated.ExpectedGeneration = 1
+	regenerated.Data = []byte("ISO-10303-21; generation 2")
+	second, err := svc.CreateProjectSectionArtifact(ctx, regenerated)
+	if err != nil {
+		t.Fatalf("create generation 2: %v", err)
+	}
+	if second.AssociationID != first.AssociationID || second.Generation != 2 || second.SupersedesArtifactID != first.ID || !second.IsLatest {
+		t.Fatalf("generation 2 = %+v", second)
+	}
+	if err := svc.DB().First(&association, "id = ?", first.AssociationID).Error; err != nil {
+		t.Fatalf("load generation 2 association: %v", err)
+	}
+	if association.CurrentGeneration != 2 || association.LatestArtifactID != second.ID {
+		t.Fatalf("generation 2 association = %+v", association)
+	}
+
+	if _, err := svc.CreateProjectSectionArtifact(ctx, regenerated); !errors.Is(err, ErrProjectSectionArtifactGenerationConflict) {
+		t.Fatalf("stale expected generation error = %v, want conflict", err)
+	}
+	changedPlane := regenerated
+	changedPlane.ExpectedGeneration = 2
+	changedPlane.PlaneOrigin = ProjectInspectionVector{X: 6}
+	if _, err := svc.CreateProjectSectionArtifact(ctx, changedPlane); !errors.Is(err, ErrInvalidProjectSectionArtifactInput) {
+		t.Fatalf("changed association plane error = %v, want invalid input", err)
+	}
+
+	artifacts, err := svc.ListProjectSectionArtifacts(ctx, user.ID, project.ID)
+	if err != nil {
+		t.Fatalf("list generations: %v", err)
+	}
+	if len(artifacts) != 2 || artifacts[0].ID != second.ID || !artifacts[0].IsLatest || artifacts[1].IsLatest {
+		t.Fatalf("listed generations = %+v", artifacts)
 	}
 }
 

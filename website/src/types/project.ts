@@ -142,13 +142,54 @@ export interface ProjectInspectionVector {
   z: number
 }
 
-export interface ProjectInspectionMeasurement {
+export interface ProjectPreviewBoundsMeasurement {
   derivation: 'preview-visible-aabb'
   model_count: number
   center: ProjectInspectionVector
   size: ProjectInspectionVector
   diagonal: number
 }
+
+export interface ProjectTopologyReferenceScope {
+  occurrence_id: string
+  model_revision_id: string
+  operations_signature: string
+}
+
+export interface ProjectTopologyReference {
+  id: string
+  kind: 'face' | 'edge'
+  index: number
+  measure: number
+}
+
+export interface ProjectTopologyProperties {
+  volume: number
+  surface_area: number
+  edge_length: number
+  center_of_mass: ProjectInspectionVector
+  solid_count: number
+  face_count: number
+  edge_count: number
+}
+
+export interface ProjectTopologyMeasurementTarget extends ProjectTopologyProperties {
+  reference_scope: ProjectTopologyReferenceScope
+  references: ProjectTopologyReference[]
+}
+
+export interface ProjectTopologyMeasurement {
+  target_count: number
+  totals: ProjectTopologyProperties
+  targets: ProjectTopologyMeasurementTarget[]
+}
+
+export interface ProjectBRepMeasurement {
+  derivation: 'occt-brep-properties'
+  topology: ProjectTopologyMeasurement
+}
+
+export type ProjectInspectionMeasurement = ProjectPreviewBoundsMeasurement | ProjectBRepMeasurement
 
 export interface ProjectInspectionSection {
   mode: 'center-plane'
@@ -191,6 +232,10 @@ export interface ProjectInspectionRecordsResponse {
 export interface ProjectSectionArtifact {
   id: string
   project_id: string
+  association_id: string
+  generation: number
+  supersedes_artifact_id: string
+  is_latest: boolean
   cad_document_revision: number
   unit: string
   status: 'ready' | 'empty'
@@ -208,6 +253,8 @@ export interface ProjectSectionArtifact {
 }
 
 export interface ProjectSectionArtifactPayload {
+  association_id?: string
+  expected_generation?: number
   cad_document_revision: number
   unit: string
   status: 'ready' | 'empty'

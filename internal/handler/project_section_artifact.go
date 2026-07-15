@@ -18,6 +18,8 @@ type projectSectionArtifactRequest struct {
 	TargetCount         int                             `json:"target_count" binding:"required,min=1"`
 	SourceRevisionIDs   []string                        `json:"source_revision_ids" binding:"required"`
 	OccurrenceIDs       []string                        `json:"occurrence_ids" binding:"required"`
+	AssociationID       string                          `json:"association_id"`
+	ExpectedGeneration  int                             `json:"expected_generation"`
 	PlaneOrigin         service.ProjectInspectionVector `json:"plane_origin" binding:"required"`
 	PlaneNormal         service.ProjectInspectionVector `json:"plane_normal" binding:"required"`
 	EdgeCount           int                             `json:"edge_count"`
@@ -59,6 +61,7 @@ func (ctrl *Ctrl) CreateProjectSectionArtifact(c *fox.Context, req *projectSecti
 		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), CADDocumentRevision: req.CADDocumentRevision,
 		Unit: req.Unit, Status: req.Status, Filename: req.Filename, ContentType: req.ContentType,
 		TargetCount: req.TargetCount, SourceRevisionIDs: req.SourceRevisionIDs, OccurrenceIDs: req.OccurrenceIDs,
+		AssociationID: req.AssociationID, ExpectedGeneration: req.ExpectedGeneration,
 		PlaneOrigin: req.PlaneOrigin, PlaneNormal: req.PlaneNormal, EdgeCount: req.EdgeCount, Data: []byte(req.StepText),
 	})
 	if err != nil {

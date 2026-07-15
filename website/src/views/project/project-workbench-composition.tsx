@@ -118,6 +118,7 @@ export function ProjectWorkbenchComposition({
         <ProjectCanvas
           activeCADTool={activeCADTool}
           animateViewCubeOrientation={viewControls.animateViewCubeOrientation}
+          canAnalyzeTopology={projectInspectionRecords.canAnalyzeTopology}
           canGenerateSectionGeometry={projectSectionArtifacts.visibleSectionTargetCount > 0}
           canvasRightOffset={shellState.canvasRightOffset}
           canvasStatusBody={modelState.canvasStatusBody}
@@ -125,9 +126,11 @@ export function ProjectWorkbenchComposition({
           canvasStatusLeftOffset={shellState.canvasStatusLeftOffset}
           deferResize={shellState.isAiChatTransitioning}
           draftModelTranslations={draftCommands.draftModelTranslationsByID}
+          getSectionArtifactState={projectSectionArtifacts.getSectionArtifactState}
           isSelectedModelBoxFeatureUpdating={inspectorState.isSelectedModelBoxFeatureUpdating}
           modelTranslations={modelState.modelTranslationsByID}
           onApplyBoxFeatureDraft={draftCommands.addBoxFeatureDraft}
+          onAnalyzeTopology={projectInspectionRecords.analyzeTopology}
           onClearSelection={() => {
             clearSelection()
             cadDocumentCommands.clearDeleteError()
@@ -140,6 +143,7 @@ export function ProjectWorkbenchComposition({
           onDeleteSectionArtifact={projectSectionArtifacts.deleteSectionArtifact}
           onDownloadSectionArtifact={projectSectionArtifacts.downloadSectionArtifact}
           onGenerateSectionArtifact={projectSectionArtifacts.generateSectionArtifact}
+          onRegenerateSectionArtifact={projectSectionArtifacts.regenerateSectionArtifact}
           onRestoreInspectionRecord={(record) => {
             if (record.kind === 'section') {
               viewControls.applyCanvasOrientation(viewControls.viewOrientation)
@@ -162,7 +166,9 @@ export function ProjectWorkbenchComposition({
           onUpdateBoxFeatureDraft={draftCommands.updateBoxFeatureDraft}
           previewAssets={modelState.previewAssets}
           inspectionRecords={projectInspectionRecords.inspectionRecords}
+          inspectionRecordError={projectInspectionRecords.inspectionRecordError}
           isInspectionRecordsLoading={projectInspectionRecords.isInspectionRecordsLoading}
+          isInspectionRecordMutationPending={projectInspectionRecords.isInspectionRecordMutationPending}
           isSectionArtifactMutationPending={projectSectionArtifacts.isSectionArtifactMutationPending}
           isSectionArtifactsLoading={projectSectionArtifacts.isSectionArtifactsLoading}
           projectCADDocument={modelState.projectCADDocument}

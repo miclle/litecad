@@ -6,6 +6,8 @@ import type {
   CadKernelResponse,
   CadKernelSectionGeometryRequest,
   CadKernelSectionGeometryResponse,
+  CadKernelShapeInspectionRequest,
+  CadKernelShapeInspectionResponse,
   CadKernelStepAssemblyExportRequest,
   CadKernelStepAssemblyExportResponse,
   CadKernelStepPreviewRequest,
@@ -20,6 +22,7 @@ import type {
   CadKernelStepPreviewInput,
   CadKernelStepRoundTripInput,
   CadKernelSectionGeometryInput,
+  CadKernelShapeInspectionInput,
 } from './opencascade-step'
 
 export type CadKernelWorkerLike = {
@@ -35,6 +38,7 @@ export type CadKernelWorkerAssemblyExportResult = CadKernelStepAssemblyExportRes
 export type CadKernelWorkerFeatureDSLPreviewResult = CadKernelFeatureDSLPreviewResponse['result']
 export type CadKernelWorkerFeatureDSLExportResult = CadKernelFeatureDSLExportResponse['result']
 export type CadKernelWorkerSectionGeometryResult = CadKernelSectionGeometryResponse['result']
+export type CadKernelWorkerShapeInspectionResult = CadKernelShapeInspectionResponse['result']
 export type CadKernelWorkerOptions = {
   timeoutMs?: number
 }
@@ -88,6 +92,19 @@ export function runSectionGeometryInWorker(
   const request: CadKernelSectionGeometryRequest = {
     id: createRequestID(),
     type: 'section-geometry',
+    payload: input,
+  }
+  return runCadKernelRequestInWorker(request, workerFactory, options)
+}
+
+export function runShapeInspectionInWorker(
+  input: CadKernelShapeInspectionInput,
+  workerFactory: () => CadKernelWorkerLike = createWorker,
+  options: CadKernelWorkerOptions = {},
+): Promise<CadKernelWorkerShapeInspectionResult> {
+  const request: CadKernelShapeInspectionRequest = {
+    id: createRequestID(),
+    type: 'shape-inspection',
     payload: input,
   }
   return runCadKernelRequestInWorker(request, workerFactory, options)
@@ -150,13 +167,19 @@ function runCadKernelRequestInWorker(
   options?: CadKernelWorkerOptions,
 ): Promise<CadKernelWorkerSectionGeometryResult>
 function runCadKernelRequestInWorker(
+  request: CadKernelShapeInspectionRequest,
+  workerFactory: () => CadKernelWorkerLike,
+  options?: CadKernelWorkerOptions,
+): Promise<CadKernelWorkerShapeInspectionResult>
+function runCadKernelRequestInWorker(
   request:
     | CadKernelStepRoundTripRequest
     | CadKernelStepPreviewRequest
     | CadKernelStepAssemblyExportRequest
     | CadKernelFeatureDSLPreviewRequest
     | CadKernelFeatureDSLExportRequest
-    | CadKernelSectionGeometryRequest,
+    | CadKernelSectionGeometryRequest
+    | CadKernelShapeInspectionRequest,
   workerFactory: () => CadKernelWorkerLike,
   options: CadKernelWorkerOptions = {},
 ): Promise<
@@ -166,6 +189,7 @@ function runCadKernelRequestInWorker(
   | CadKernelWorkerFeatureDSLPreviewResult
   | CadKernelWorkerFeatureDSLExportResult
   | CadKernelWorkerSectionGeometryResult
+  | CadKernelWorkerShapeInspectionResult
 > {
   const worker = workerFactory()
   return new Promise((resolve, reject) => {

@@ -3,33 +3,97 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createProjectInspectionRecord,
   deleteProjectInspectionRecord,
+  fetchProjectModelRevisionSource,
   fetchProjectInspectionRecords,
 } from 'src/api/projects'
-import type { ProjectInspectionRecord } from 'src/types/project'
+import { runFeatureDSLExportInWorker, runShapeInspectionInWorker } from 'src/cad/kernel-worker-client'
+import type { ProjectInspectionRecord, ProjectInspectionRecordPayload } from 'src/types/project'
 import type { ModelPreviewMeasurement } from './model-preview-tools'
+import { generateProjectTopologyInspection } from './project-topology-inspection-action'
+import type { StepExportTarget } from './project-step-export'
+
+type ProjectInspectionDependencies = {
+  createRecord: (projectId: string, payload: ProjectInspectionRecordPayload) => Promise<unknown>
+  fetchSourceText: (projectId: string, modelId: string, revisionId: string) => Promise<string>
+  generateTopology: typeof generateProjectTopologyInspection
+  runFeatureDSLExport: typeof runFeatureDSLExportInWorker
+  runShapeInspection: typeof runShapeInspectionInWorker
+}
 
 type UseProjectInspectionRecordsControllerOptions = {
   cadDocumentRevision: number
+  dependencies?: Partial<ProjectInspectionDependencies>
   projectId: string
+  targets?: StepExportTarget[]
   unit: string
   visibleModelIds: readonly string[]
 }
 
+const defaultDependencies: ProjectInspectionDependencies = {
+  createRecord: (projectId, payload) => createProjectInspectionRecord(projectId, payload),
+  fetchSourceText: async (projectId, modelId, revisionId) => {
+    const source = (await fetchProjectModelRevisionSource(projectId, modelId, revisionId)).data
+    return source.text()
+  },
+  generateTopology: generateProjectTopologyInspection,
+  runFeatureDSLExport: runFeatureDSLExportInWorker,
+  runShapeInspection: runShapeInspectionInWorker,
+}
+
 export function useProjectInspectionRecordsController({
   cadDocumentRevision,
+  dependencies,
   projectId,
+  targets = [],
   unit,
   visibleModelIds,
 }: UseProjectInspectionRecordsControllerOptions) {
   const queryClient = useQueryClient()
   const queryKey = ['projects', projectId, 'inspection-records'] as const
+  const resolvedDependencies = { ...defaultDependencies, ...dependencies }
+  const visibleIDSet = new Set(visibleModelIds)
+  const visibleTargets = targets.filter((target) => visibleIDSet.has(target.occurrenceId) || visibleIDSet.has(target.modelId))
   const recordsQuery = useQuery({
     queryKey,
     queryFn: async () => (await fetchProjectInspectionRecords(projectId)).data.records,
     enabled: projectId !== '',
   })
   const createMutation = useMutation({
-    mutationFn: (record: Parameters<typeof createProjectInspectionRecord>[1]) => createProjectInspectionRecord(projectId, record),
+    mutationFn: (record: ProjectInspectionRecordPayload) => resolvedDependencies.createRecord(projectId, record),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+  })
+  const topologyMutation = useMutation({
+    mutationFn: async () => {
+      const result = await resolvedDependencies.generateTopology({
+        fetchSourceText: (modelId, revisionId) => resolvedDependencies.fetchSourceText(projectId, modelId, revisionId),
+        runFeatureDSLExport: resolvedDependencies.runFeatureDSLExport,
+        runShapeInspection: resolvedDependencies.runShapeInspection,
+        targets: visibleTargets,
+      })
+      return resolvedDependencies.createRecord(projectId, {
+        kind: 'measurement',
+        name: 'Exact B-rep properties',
+        cad_document_revision: cadDocumentRevision,
+        unit,
+        visible_model_ids: visibleTargets.map((target) => target.occurrenceId),
+        measurement: {
+          derivation: result.derivation,
+          topology: {
+            target_count: result.targets.length,
+            totals: topologyPropertiesPayload(result.totals),
+            targets: result.targets.map((target) => ({
+              reference_scope: {
+                occurrence_id: target.referenceScope.occurrenceId,
+                model_revision_id: target.referenceScope.modelRevisionId,
+                operations_signature: target.referenceScope.operationsSignature,
+              },
+              ...topologyPropertiesPayload(target),
+              references: target.references,
+            })),
+          },
+        },
+      })
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   })
   const deleteMutation = useMutation({
@@ -69,12 +133,35 @@ export function useProjectInspectionRecordsController({
   }
 
   return {
+    analyzeTopology: () => topologyMutation.mutate(),
+    canAnalyzeTopology: visibleTargets.length > 0,
     deleteInspectionRecord: (recordId: string) => deleteMutation.mutate(recordId),
     inspectionRecords: recordsQuery.data ?? [],
     isInspectionRecordsLoading: recordsQuery.isLoading,
-    isInspectionRecordMutationPending: createMutation.isPending || deleteMutation.isPending,
+    inspectionRecordError: topologyMutation.error instanceof Error ? topologyMutation.error.message : '',
+    isInspectionRecordMutationPending: createMutation.isPending || deleteMutation.isPending || topologyMutation.isPending,
     saveMeasurementRecord,
     saveSectionRecord,
     selectedRestoredRecord: undefined as ProjectInspectionRecord | undefined,
+  }
+}
+
+function topologyPropertiesPayload(properties: {
+  volume: number
+  surfaceArea: number
+  edgeLength: number
+  centerOfMass: readonly [number, number, number]
+  solidCount: number
+  faceCount: number
+  edgeCount: number
+}) {
+  return {
+    volume: properties.volume,
+    surface_area: properties.surfaceArea,
+    edge_length: properties.edgeLength,
+    center_of_mass: { x: properties.centerOfMass[0], y: properties.centerOfMass[1], z: properties.centerOfMass[2] },
+    solid_count: properties.solidCount,
+    face_count: properties.faceCount,
+    edge_count: properties.edgeCount,
   }
 }

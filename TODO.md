@@ -8,7 +8,7 @@ For the current synchronized branch, completed-phase snapshot, and cross-machine
 
 - Extend the persisted CAD document model beyond the current uploaded-source nodes, independently selectable lightweight STEP component child nodes, transform/delete-node/box-union operations, database-backed reversible operation History, schema version, revision, and unit.
   - Extend the implemented durable versioned recursive Feature DSL source graph into kernel shape/feature state without treating preview meshes as source of truth.
-  - Define stable B-rep topology naming, sketch-constraint state, and feature dependency semantics beyond the current globally stable source-node IDs and path-aware transitions.
+  - Define cross-revision B-rep topology naming/remapping, sketch-constraint state, and feature dependency semantics beyond the current globally stable source-node IDs, path-aware transitions, and deterministic same-input inspection references.
   - Do not claim true geometric STEP decomposition, preserved source-application history, or a general B-rep feature graph until those flows exist end to end.
 - Continue the CAD import and geometry pipeline beyond completed STEP/STP/self-contained GLTF/GLB/STL source upload, lightweight metadata extraction, browser-kernel STEP preview tessellation, GLB/self-contained GLTF preview publishing, STL-to-OBJ preview conversion, preview artifact metadata, and read-only geometry document API.
   - Treat OBJ/GLB/STL preview meshes as derived display artifacts, not editable CAD source of truth.
@@ -20,9 +20,9 @@ For the current synchronized branch, completed-phase snapshot, and cross-machine
   - Decide whether reusable subassemblies become separately versioned documents or remain organizational groups inside one project document.
   - Decide whether cross-model merge/boolean operations create one editable CAD part or remain export-only compounds.
   - Decide how richer assemblies preserve or normalize colors, names, units, and source STEP product structure.
-- Continue inspection semantics beyond saved preview-visible-AABB measurements and project-owned OCCT section-edge STEP artifacts.
-  - Add topology-aware point/edge/face distance, radius, diameter, angle, area, and volume measurements only with stable geometric references and explicit derivation/accuracy semantics.
-  - Decide whether kernel section artifacts become associative document features that regenerate when source revisions, occurrence placement, or the section plane changes; current artifacts are immutable generation-time results.
+- Continue inspection semantics beyond saved preview-visible-AABB measurements, exact aggregate OCCT volume/surface-area/edge-length/center-of-mass/count records with deterministic immutable-input face/edge references, and manually regenerated section association lineages.
+  - Add user-selectable point/edge/face distance, radius, diameter, angle, and per-reference area/length measurement workflows only after defining cross-revision geometric-reference mapping and explicit derivation/accuracy semantics.
+  - Decide whether current explicit append-only section generations become automatic or CAD-document-integrated associative features with Undo/Redo. Today the workbench marks stale provenance and lets the user regenerate the immutable stored plane against current visible targets.
   - Decide how saved inspection records should interact with Undo/Redo, export annotations, and shared project state.
 - Expand export beyond the current direct browser download plus stored artifact history path.
   - Define export artifact retention, cleanup, quota, and storage migration policy before launch.
@@ -32,8 +32,8 @@ For the current synchronized branch, completed-phase snapshot, and cross-machine
   - The [OpenSCAD browser runtime decision](docs/openscad-browser-runtime-decision.md) rejects the current GPL-2.0 candidates for LiteCAD's MIT single-binary distribution. Keep OpenSCAD as a parameter-editable source-draft format and do not enable browser preview, normal Save as model, or project export unless every documented license, provenance, sandbox, output-contract, size, and browser gate is satisfied.
   - Expand the LiteCAD Feature DSL only when schema validation, backend prompting, browser preview, STEP export, tests, and Assistant UX can ship together.
   - Choose the next DSL slice only after defining a narrow end-to-end boundary across backend validation, provider prompting, worker preview/export, tests, and docs.
-  - Remaining DSL geometry gaps include full sketch constraints, freeform profiles, arbitrary sweep paths, arbitrary/freeform revolve profiles beyond the completed full-turn XZ rectangular solid/hollow path, stable user-selectable edge references and per-edge chamfer distances, mirrored/negative transforms, arbitrary draft-face tapering beyond restricted `tapered_extrude`, infix formulas, functions, unit math, comparisons, and conditionals.
-  - Remaining DSL data-model gaps include durable serialized kernel shape state, stable B-rep topology naming, sketch-constraint state, and full B-rep feature history beyond the current versioned recursive source graph.
+  - Remaining DSL geometry gaps include full sketch constraints, freeform profiles, arbitrary sweep paths, arbitrary/freeform revolve profiles beyond the completed full-turn XZ rectangular solid/hollow path, mapping current generic inspection references into user-selectable feature edges with per-edge chamfer distances, mirrored/negative transforms, arbitrary draft-face tapering beyond restricted `tapered_extrude`, infix formulas, functions, unit math, comparisons, and conditionals.
+  - Remaining DSL data-model gaps include durable serialized kernel shape state, cross-revision B-rep topology naming/remapping, sketch-constraint state, and full B-rep feature history beyond the current versioned recursive source graph.
   - Decide whether Assistant revision requests should eventually overwrite a selected saved source model in place with History semantics, or keep the current safer corrected-draft/new-source-model workflow.
   - Unsupported primitive requests should fail explicitly rather than create substitute geometry.
   - Add provider-stage telemetry, full provider analytics, richer long-run progress details, and provider-specific tuning before exposing longer generation workflows.
