@@ -10,6 +10,10 @@ import type { Project } from 'src/types/project'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
+vi.mock('src/components/AccountMenu', () => ({
+  AccountMenu: () => <button aria-label="Account menu" type="button" />,
+}))
+
 describe('ProjectTopbar', () => {
   afterEach(() => {
     vi.clearAllMocks()
@@ -26,6 +30,7 @@ describe('ProjectTopbar', () => {
     expect(document.querySelector('a[aria-label="All projects"]')?.getAttribute('href')).toBe('/projects')
     expect(document.querySelector('button[aria-label="Project info"]')).toBeTruthy()
     expect(document.querySelector('button[aria-label="Import model"]')).toBeTruthy()
+    expect(document.querySelector('button[aria-label="Account menu"]')).toBeTruthy()
 
     await user.click(document.querySelector('button[aria-label="Toggle Assistant"]') as HTMLButtonElement)
 

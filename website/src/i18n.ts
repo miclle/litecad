@@ -23,6 +23,16 @@ const resources = {
       nav: {
         newProject: 'New project',
       },
+      account: {
+        menuLabel: 'Open account menu for {{name}}',
+        menuTitle: 'Account',
+        projectNavigation: 'Project navigation',
+        createProject: 'Create project',
+        myProjects: 'My projects',
+        signOut: 'Sign out',
+        signingOut: 'Signing out',
+        signOutError: 'Unable to sign out. Try again.',
+      },
       auth: {
         checkingTitle: 'Checking session',
         checkingBody: 'Opening your LiteCAD workspace.',
@@ -540,6 +550,16 @@ const resources = {
       },
       nav: {
         newProject: '新建项目',
+      },
+      account: {
+        menuLabel: '打开 {{name}} 的账户菜单',
+        menuTitle: '账户',
+        projectNavigation: '项目导航',
+        createProject: '创建项目',
+        myProjects: '我的项目',
+        signOut: '退出登录',
+        signingOut: '正在退出',
+        signOutError: '无法退出登录，请重试。',
       },
       auth: {
         checkingTitle: '正在检查会话',

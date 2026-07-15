@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { Plus, UserRound } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { fetchCurrentUser } from 'src/api/auth'
+import { AccountMenu } from 'src/components/AccountMenu'
 import LanguageSwitcher from 'src/components/LanguageSwitcher'
 
 function MainLayout() {
@@ -42,12 +43,9 @@ function MainLayout() {
               </button>
             )}
             <LanguageSwitcher />
-            {currentUser && !isProjectsPage ? (
-              <div className="inline-flex h-9 max-w-[180px] items-center gap-2 rounded-sm border border-[#cfc6b2] bg-[#fcfaf3] px-3 text-sm font-medium text-[#303329]">
-                <UserRound className="size-4 shrink-0 text-[#52625a]" />
-                <span className="truncate">{currentUser.name}</span>
-              </div>
-            ) : currentUserQuery.isPending || (currentUser && isProjectsPage) ? null : (
+            {currentUser ? (
+              <AccountMenu />
+            ) : currentUserQuery.isPending ? null : (
               <>
                 <NavLink
                   to="/login"

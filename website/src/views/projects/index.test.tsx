@@ -84,11 +84,69 @@ describe('ProjectsView', () => {
 
     expect(await screenText('Start a project library')).toBeTruthy()
     await user.click(document.querySelector('button[type="button"]') as HTMLButtonElement)
-    await user.type(document.querySelector('input[required]') as HTMLInputElement, 'Bracket study')
+    await user.type(await elementBySelector<HTMLInputElement>('input[required]'), 'Bracket study')
     await user.click(document.querySelector('button[type="submit"]') as HTMLButtonElement)
 
     await waitForPath(router.router, '/projects/prj_created')
     expect(createProject).toHaveBeenCalledWith({ name: 'Bracket study', description: '' })
+  })
+
+  test('opens the create form from the account-menu URL and clears the request when closed', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchProjects).mockResolvedValue({ data: { projects: [] } } as unknown as Awaited<ReturnType<typeof fetchProjects>>)
+
+    const router = createProjectsRouter('/projects?create=1')
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+
+    await act(async () => {
+      createRoot(host).render(router.element)
+    })
+
+    expect(await screenText('New project')).toBeTruthy()
+    expect(document.querySelector('input[required]')).toBeTruthy()
+
+    await user.click(document.querySelector('button[aria-label="Close"]') as HTMLButtonElement)
+
+    await waitForSearch(router.router, '')
+    expect(document.querySelector('input[required]')).toBeNull()
+  })
+
+  test('does not reopen the create form after returning from a newly created project', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchProjects).mockResolvedValue({ data: { projects: [] } } as unknown as Awaited<ReturnType<typeof fetchProjects>>)
+    vi.mocked(createProject).mockResolvedValue({
+      data: {
+        project: {
+          id: 'prj_created',
+          name: 'Bracket study',
+          description: '',
+          thumbnail: { model_count: 0, models: [] },
+          created_at: '2026-07-13T00:00:00Z',
+          updated_at: '2026-07-13T00:00:00Z',
+        },
+      },
+    } as unknown as Awaited<ReturnType<typeof createProject>>)
+
+    const router = createProjectsRouter('/projects?create=1')
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+
+    await act(async () => {
+      createRoot(host).render(router.element)
+    })
+
+    await user.type(await elementBySelector<HTMLInputElement>('input[required]'), 'Bracket study')
+    await user.click(document.querySelector('button[type="submit"]') as HTMLButtonElement)
+    await waitForPath(router.router, '/projects/prj_created')
+
+    await act(async () => {
+      await router.router.navigate(-1)
+    })
+
+    await waitForPath(router.router, '/projects')
+    await waitForSearch(router.router, '')
+    expect(document.querySelector('input[required]')).toBeNull()
   })
 
   test('renames a project from its project card', async () => {
@@ -191,7 +249,7 @@ describe('ProjectsView', () => {
   })
 })
 
-function createProjectsRouter() {
+function createProjectsRouter(initialEntry = '/projects') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   const router = createMemoryRouter(
     [
@@ -204,7 +262,7 @@ function createProjectsRouter() {
         ],
       },
     ],
-    { initialEntries: ['/projects'] },
+    { initialEntries: [initialEntry] },
   )
 
   return {
@@ -229,6 +287,18 @@ async function waitForPath(router: ReturnType<typeof createMemoryRouter>, pathna
   throw new Error(`router path = ${router.state.location.pathname}, want ${pathname}`)
 }
 
+async function waitForSearch(router: ReturnType<typeof createMemoryRouter>, search: string) {
+  for (let index = 0; index < 20; index += 1) {
+    if (router.state.location.search === search) {
+      return
+    }
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10))
+    })
+  }
+  throw new Error(`router search = ${router.state.location.search}, want ${search}`)
+}
+
 async function screenText(text: string) {
   for (let index = 0; index < 20; index += 1) {
     if (document.body.textContent?.includes(text)) {
@@ -239,6 +309,19 @@ async function screenText(text: string) {
     })
   }
   return false
+}
+
+async function elementBySelector<ElementType extends Element>(selector: string) {
+  for (let index = 0; index < 20; index += 1) {
+    const element = document.querySelector<ElementType>(selector)
+    if (element) {
+      return element
+    }
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 10))
+    })
+  }
+  throw new Error(`element not found: ${selector}`)
 }
 
 function buttonByText(text: string) {

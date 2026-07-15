@@ -3,6 +3,7 @@ import { ArrowLeft, BotMessageSquare, CheckCircle2, Info, Upload } from 'lucide-
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
+import { AccountMenu } from 'src/components/AccountMenu'
 import { Button } from '@/components/ui/button'
 import {
   Popover,
@@ -209,72 +210,75 @@ export function ProjectTopbar({
         </div>
       </div>
 
-      <div className="hidden items-center justify-end gap-1.5 lg:flex">
-        <ProjectHistoryPopover
-          canRedo={canRedo}
-          canUndo={canUndo}
-          entries={historyEntries}
-          error={historyError}
-          hasNextPage={hasNextHistoryPage}
-          isFetchingNextPage={isHistoryFetchingNextPage}
-          isLoading={isHistoryLoading}
-          isMutationPending={isHistoryMutationPending}
-          loadError={isHistoryLoadError}
-          onFetchNextPage={onFetchNextHistoryPage}
-          onHistoryAction={onHistoryAction}
-          onOpenChange={onHistoryOpenChange}
-          open={isHistoryOpen}
-        />
-        <ProjectStepExportPopover
-          disabled={stepExportDisabled}
-          exportArtifacts={exportArtifacts}
-          isExportHistoryError={isExportHistoryError}
-          isExportHistoryLoading={isExportHistoryLoading}
-          onDownloadExportArtifact={onDownloadExportArtifact}
-          onExport={onStepExport}
-          onOpenChange={onStepExportOpenChange}
-          onSelectAll={onStepExportSelectAll}
-          onToggleTarget={onStepExportToggleTarget}
-          open={isStepExportOpen}
-          selectedTargetIds={selectedStepExportTargetIds}
-          targets={stepExportTargets}
-        />
-        <TopbarTooltip
-          label={t('project.topbar.importModel')}
-          render={
-            <button
-              aria-label={t('project.topbar.importModel')}
-              className="grid size-9 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={isUploading}
-              onClick={() => fileInputRef.current?.click()}
-              type="button"
-            />
-          }
-        >
-          <Upload className="size-4" />
-        </TopbarTooltip>
-        <button
-          aria-label={t('project.topbar.toggleAssistant')}
-          aria-pressed={isAiChatOpen}
-          className={`flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
-            isAiChatOpen
-              ? 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]'
-              : 'border-transparent text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]'
-          }`}
-          onClick={onToggleAiChat}
-          title={isAiChatOpen ? t('project.topbar.closeAssistant') : t('project.topbar.openAssistant')}
-          type="button"
-        >
-          <BotMessageSquare className="size-4" />
-          {t('project.topbar.assistant')}
-        </button>
-        <input
-          accept=".step,.stp,.gltf,.glb,.stl"
-          className="hidden"
-          onChange={onModelFileChange}
-          ref={fileInputRef}
-          type="file"
-        />
+      <div className="flex items-center justify-end gap-1.5">
+        <div className="hidden items-center justify-end gap-1.5 lg:flex">
+          <ProjectHistoryPopover
+            canRedo={canRedo}
+            canUndo={canUndo}
+            entries={historyEntries}
+            error={historyError}
+            hasNextPage={hasNextHistoryPage}
+            isFetchingNextPage={isHistoryFetchingNextPage}
+            isLoading={isHistoryLoading}
+            isMutationPending={isHistoryMutationPending}
+            loadError={isHistoryLoadError}
+            onFetchNextPage={onFetchNextHistoryPage}
+            onHistoryAction={onHistoryAction}
+            onOpenChange={onHistoryOpenChange}
+            open={isHistoryOpen}
+          />
+          <ProjectStepExportPopover
+            disabled={stepExportDisabled}
+            exportArtifacts={exportArtifacts}
+            isExportHistoryError={isExportHistoryError}
+            isExportHistoryLoading={isExportHistoryLoading}
+            onDownloadExportArtifact={onDownloadExportArtifact}
+            onExport={onStepExport}
+            onOpenChange={onStepExportOpenChange}
+            onSelectAll={onStepExportSelectAll}
+            onToggleTarget={onStepExportToggleTarget}
+            open={isStepExportOpen}
+            selectedTargetIds={selectedStepExportTargetIds}
+            targets={stepExportTargets}
+          />
+          <TopbarTooltip
+            label={t('project.topbar.importModel')}
+            render={
+              <button
+                aria-label={t('project.topbar.importModel')}
+                className="grid size-9 place-items-center rounded-md text-[#64748b] transition hover:bg-[#f1f5f9] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isUploading}
+                onClick={() => fileInputRef.current?.click()}
+                type="button"
+              />
+            }
+          >
+            <Upload className="size-4" />
+          </TopbarTooltip>
+          <button
+            aria-label={t('project.topbar.toggleAssistant')}
+            aria-pressed={isAiChatOpen}
+            className={`flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
+              isAiChatOpen
+                ? 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]'
+                : 'border-transparent text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]'
+            }`}
+            onClick={onToggleAiChat}
+            title={isAiChatOpen ? t('project.topbar.closeAssistant') : t('project.topbar.openAssistant')}
+            type="button"
+          >
+            <BotMessageSquare className="size-4" />
+            {t('project.topbar.assistant')}
+          </button>
+          <input
+            accept=".step,.stp,.gltf,.glb,.stl"
+            className="hidden"
+            onChange={onModelFileChange}
+            ref={fileInputRef}
+            type="file"
+          />
+        </div>
+        <AccountMenu />
       </div>
     </>
   )

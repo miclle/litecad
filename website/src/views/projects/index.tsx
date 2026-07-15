@@ -1,8 +1,8 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock3, FileBox, Grid2X2, Loader2, Pencil, Plus, Sparkles, Trash2, UserRound, X } from 'lucide-react'
-import { Link, useNavigate, useOutletContext } from 'react-router-dom'
+import { Clock3, FileBox, Grid2X2, Loader2, Pencil, Plus, Sparkles, Trash2, X } from 'lucide-react'
+import { Link, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { useTranslation } from 'react-i18next'
 
@@ -26,7 +26,7 @@ function ProjectsView() {
   const { currentUser } = useOutletContext<MainLayoutContext>()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
@@ -43,9 +43,14 @@ function ProjectsView() {
       setName('')
       setDescription('')
       setErrorMessage('')
-      setIsCreateOpen(false)
       await queryClient.invalidateQueries({ queryKey: ['projects'] })
-      navigate(`/projects/${project.id}`)
+      const nextSearchParams = new URLSearchParams(searchParams)
+      nextSearchParams.delete('create')
+      await navigate({
+        pathname: '/projects',
+        search: nextSearchParams.toString(),
+      }, { replace: true })
+      await navigate(`/projects/${project.id}`)
     },
     onError: (error) => {
       if (axios.isAxiosError(error) && error.response?.status === 400) {
@@ -57,6 +62,19 @@ function ProjectsView() {
   })
 
   const projects = projectsQuery.data ?? []
+  const isCreateOpen = searchParams.get('create') === '1'
+
+  const setCreateOpen = useCallback((nextOpen: boolean) => {
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams)
+      if (nextOpen) {
+        nextParams.set('create', '1')
+      } else {
+        nextParams.delete('create')
+      }
+      return nextParams
+    }, { replace: true })
+  }, [setSearchParams])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -65,10 +83,10 @@ function ProjectsView() {
   }
 
   useEffect(() => {
-    const openDialog = () => setIsCreateOpen(true)
+    const openDialog = () => setCreateOpen(true)
     window.addEventListener('litecad:new-project', openDialog)
     return () => window.removeEventListener('litecad:new-project', openDialog)
-  }, [])
+  }, [setCreateOpen])
 
   return (
     <div className="grid min-h-[calc(100vh-56px)] bg-[#f7f5ef] lg:grid-cols-[236px_minmax(0,1fr)]">
@@ -84,12 +102,6 @@ function ProjectsView() {
           </span>
         </nav>
 
-        {currentUser && (
-          <div className="mt-auto hidden items-center gap-2 border-t border-[#d9d3c2] pt-3 text-sm font-medium text-[#303329] lg:flex">
-            <UserRound className="size-4 shrink-0 text-[#52625a]" />
-            <span className="truncate">{currentUser.name}</span>
-          </div>
-        )}
       </aside>
 
       <section className="min-w-0 px-5 py-4 lg:px-8">
@@ -107,7 +119,7 @@ function ProjectsView() {
             action={
               <button
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#171814] px-4 text-sm font-semibold text-[#f7f5ef]"
-                onClick={() => setIsCreateOpen(true)}
+                onClick={() => setCreateOpen(true)}
                 type="button"
               >
                 <Plus className="size-4" />
@@ -138,7 +150,7 @@ function ProjectsView() {
               <button
                 aria-label={t('common.close')}
                 className="grid size-9 place-items-center rounded-md border border-[#cfc6b2] text-[#303329] transition hover:border-[#52625a]"
-                onClick={() => setIsCreateOpen(false)}
+                onClick={() => setCreateOpen(false)}
                 type="button"
               >
                 <X className="size-4" />
