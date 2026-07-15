@@ -75,6 +75,7 @@ export type ModelPreviewProps = {
   selectedNodeId?: string
   selectedModelId?: string
 	selectedOccurrenceId?: string
+  transformControlsLocked?: boolean
   sectionPlaneOrigin?: { x: number; y: number; z: number }
   unitLabel?: string
   variant?: 'workspace' | 'thumbnail'
@@ -140,6 +141,7 @@ export function useModelPreviewScene({
   selectedNodeId,
   selectedModelId,
 	selectedOccurrenceId,
+  transformControlsLocked = false,
   sectionPlaneOrigin,
   variant = 'workspace',
   visibleModelIds,
@@ -168,6 +170,7 @@ export function useModelPreviewScene({
     selectedModelIdRef,
     selectedNodeIdRef,
 		selectedOccurrenceIdRef,
+    transformControlsLockedRef,
     syncSelectionRef: syncSelectedPreviewObjectRef,
     syncTransformsRef: syncPreviewObjectTransformsRef,
     syncVisibilityRef: syncPreviewObjectVisibilityRef,
@@ -181,6 +184,7 @@ export function useModelPreviewScene({
     selectedModelId,
     selectedNodeId,
 		selectedOccurrenceId,
+    transformControlsLocked,
     visibleModelIds,
   })
   const zoomHUDHideTimeoutRef = useRef<number | undefined>(undefined)
@@ -505,7 +509,11 @@ export function useModelPreviewScene({
         renderScene()
         return
       }
-      transformControls.attach(selectedObject)
+      if (transformControlsLockedRef.current) {
+        transformControls.detach()
+      } else {
+        transformControls.attach(selectedObject)
+      }
       updateSelectionBox(selectedObject)
       renderer.domElement.style.cursor = isTransformDragging ? 'grabbing' : 'pointer'
       renderScene()
@@ -520,6 +528,9 @@ export function useModelPreviewScene({
       renderScene()
     }
     const handleTransformObjectChange = () => {
+      if (transformControlsLockedRef.current) {
+        return
+      }
       const selectedModelID = selectedModelIdRef.current
       const selectedNodeID = selectedNodeIdRef.current
 			const selectedOccurrenceID = selectedOccurrenceIdRef.current

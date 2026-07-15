@@ -366,7 +366,22 @@ export interface CADAssemblyConstraintRecord {
   name: string
   first_occurrence_id: string
   second_occurrence_id: string
-  status: 'unresolved'
+  status: 'unresolved' | 'solved'
+  solver?: 'point-coincident-v1'
+  first_anchor?: [number, number, number]
+  second_anchor?: [number, number, number]
+  offset?: [number, number, number]
+  residual?: number
+}
+
+export interface CreateCADAssemblyConstraintPayload {
+  name: string
+  kind: 'mate'
+  first_occurrence_id: string
+  second_occurrence_id: string
+  first_anchor: [number, number, number]
+  second_anchor: [number, number, number]
+  offset: [number, number, number]
 }
 
 export interface CADAssembly {

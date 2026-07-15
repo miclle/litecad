@@ -11,6 +11,7 @@ type UseModelPreviewSelectionOptions = {
   selectedModelId?: string
   selectedNodeId?: string
 	selectedOccurrenceId?: string
+  transformControlsLocked?: boolean
   syncSelection?: () => void
   syncTransforms?: () => void
   syncVisibility?: () => void
@@ -34,6 +35,7 @@ export function useModelPreviewSelection({
   selectedModelId,
   selectedNodeId,
 	selectedOccurrenceId,
+  transformControlsLocked = false,
   syncSelection = noop,
   syncTransforms = noop,
   syncVisibility = noop,
@@ -47,6 +49,7 @@ export function useModelPreviewSelection({
   const selectedModelIdRef = useRef(selectedModelId)
   const selectedNodeIdRef = useRef(selectedNodeId)
 	const selectedOccurrenceIdRef = useRef(selectedOccurrenceId)
+  const transformControlsLockedRef = useRef(transformControlsLocked)
   const visibleModelIdsRef = useRef(visibleModelIds)
   const syncSelectionRef = useRef(syncSelection)
   const syncTransformsRef = useRef(syncTransforms)
@@ -62,8 +65,9 @@ export function useModelPreviewSelection({
     selectedModelIdRef.current = selectedModelId
     selectedNodeIdRef.current = selectedNodeId
 		selectedOccurrenceIdRef.current = selectedOccurrenceId
+    transformControlsLockedRef.current = transformControlsLocked
     syncSelectionRef.current()
-	}, [onClearSelection, onModelTranslationChange, onSelectModel, selectedModelId, selectedNodeId, selectedOccurrenceId])
+	}, [onClearSelection, onModelTranslationChange, onSelectModel, selectedModelId, selectedNodeId, selectedOccurrenceId, transformControlsLocked])
 
   useEffect(() => {
     visibleModelIdsRef.current = visibleModelIds
@@ -89,6 +93,7 @@ export function useModelPreviewSelection({
     selectedModelIdRef,
     selectedNodeIdRef,
 		selectedOccurrenceIdRef,
+    transformControlsLockedRef,
     syncSelectionRef,
     syncTransformsRef,
     syncVisibilityRef,

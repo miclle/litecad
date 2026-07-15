@@ -71,6 +71,11 @@ export function useProjectWorkbenchInspectorState({
 		? transformDraftsByNodeId[selectedTransformTargetID] ?? transformDraftFromTranslation(translationFromCADTransform(selectedTransform))
     : undefined
 	const selectedModelTransformError = selectedTransformTargetID ? transformErrorsByNodeId[selectedTransformTargetID] : ''
+	const selectedModelTransformLocked = Boolean(
+		selectedOccurrence && projectCADDocument?.assembly?.constraints?.some(
+			(constraint) => constraint.status === 'solved' && constraint.solver === 'point-coincident-v1' && constraint.second_occurrence_id === selectedOccurrence.id,
+		),
+	)
   const selectedModelSupportsFuseBox = selectedSourceModel?.format === 'step'
   const selectedModelBoxFeatureDraft = selectedSourceModel
     ? boxFeatureDraftsByModelId[selectedSourceModel.id] ?? getBoxFeatureDraft(selectedSourceModel.id)
@@ -114,6 +119,7 @@ export function useProjectWorkbenchInspectorState({
           stepExportStatus: selectedModelStepExportStatus,
           transformDraft: selectedModelTransformDraft,
           transformError: selectedModelTransformError,
+			transformLocked: selectedModelTransformLocked,
         }
       : undefined
 

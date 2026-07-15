@@ -17,6 +17,7 @@ export type ProjectInspectorSelection = {
   stepExportStatus: string
   transformDraft: TransformDraft
   transformError: string
+  transformLocked?: boolean
 }
 
 type ProjectInspectorProps = {
@@ -32,9 +33,11 @@ function PositionField({
   axis,
   onChange,
   value,
+  disabled = false,
 }: {
   ariaLabel: string
   axis: keyof CADTranslation
+  disabled?: boolean
   onChange: (value: string) => void
   value: string
 }) {
@@ -44,6 +47,7 @@ function PositionField({
       <Input
         aria-label={ariaLabel}
         className="h-7 rounded-md border-[#d6dbe3] bg-white px-1.5 font-mono text-[11px] tabular-nums text-[#0f172a] shadow-none focus-visible:border-[#94a3b8] focus-visible:ring-1 focus-visible:ring-[#cbd5e1]"
+        disabled={disabled}
         inputMode="decimal"
         onChange={(event) => onChange(event.target.value)}
         type="text"
@@ -100,12 +104,14 @@ export function ProjectInspector({
                 <PositionField
                   ariaLabel={t('project.inspector.positionFor', { axis: axis.toUpperCase(), name: selected.name })}
                   axis={axis}
+                  disabled={selected.transformLocked}
                   key={axis}
                   onChange={(value) => onTransformChange(selected.nodeId, axis, value)}
                   value={selected.transformDraft[axis]}
                 />
               ))}
             </div>
+            {selected.transformLocked ? <p className="mt-2 text-[11px] leading-4 text-[#64748b]">{t('project.inspector.solverOwned')}</p> : null}
             {selected.transformError ? <p className="mt-2 text-[11px] leading-4 text-[#8a2f24]">{selected.transformError}</p> : null}
           </div>
 

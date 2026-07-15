@@ -23,9 +23,24 @@ type FixtureAssemblyGroup = {
 	suppressed: boolean
 }
 
+type FixtureAssemblyConstraint = {
+	id: string
+	kind: 'mate'
+	name: string
+	first_occurrence_id: string
+	second_occurrence_id: string
+	status: 'solved'
+	solver: 'point-coincident-v1'
+	first_anchor: [number, number, number]
+	second_anchor: [number, number, number]
+	offset: [number, number, number]
+	residual: number
+}
+
 type FixtureAssemblySnapshot = {
 	occurrences: FixtureOccurrence[]
 	groups: FixtureAssemblyGroup[]
+	constraints: FixtureAssemblyConstraint[]
 }
 
 type FixtureExportArtifact = {
@@ -125,11 +140,14 @@ export type ProjectAPIFixtureState = {
   sectionArtifactCreateCount: number
 	occurrences: FixtureOccurrence[]
 	assemblyGroups: FixtureAssemblyGroup[]
+	assemblyConstraints: FixtureAssemblyConstraint[]
 	assemblyUndoStack: FixtureAssemblySnapshot[]
 	assemblyRedoStack: FixtureAssemblySnapshot[]
 	assemblyGroupCreateCount: number
 	assemblyGroupUpdateCount: number
 	assemblyGroupDeleteCount: number
+	assemblyConstraintCreateCount: number
+	assemblyConstraintDeleteCount: number
 	occurrenceDuplicateCount: number
 	occurrenceUpdateCount: number
 	occurrenceMoveCount: number
@@ -179,11 +197,14 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
     sectionArtifactCreateCount: 0,
 		occurrences: [],
 		assemblyGroups: [],
+		assemblyConstraints: [],
 		assemblyUndoStack: [],
 		assemblyRedoStack: [],
 		assemblyGroupCreateCount: 0,
 		assemblyGroupUpdateCount: 0,
 		assemblyGroupDeleteCount: 0,
+		assemblyConstraintCreateCount: 0,
+		assemblyConstraintDeleteCount: 0,
 		occurrenceDuplicateCount: 0,
 		occurrenceUpdateCount: 0,
 		occurrenceMoveCount: 0,
@@ -376,7 +397,7 @@ function smokeCADDocument(state: ProjectAPIFixtureState) {
   return {
     id: 'cad_document_smoke',
     project_id: projectId,
-    schema_version: 3,
+    schema_version: 4,
     revision: state.models.length > 0 ? state.cadRevision : 1,
     unit: 'mm',
 	assembly: {
@@ -384,7 +405,7 @@ function smokeCADDocument(state: ProjectAPIFixtureState) {
 		name: 'Workbench Smoke',
 		groups: state.assemblyGroups,
 		occurrences: occurrences.map((occurrence) => ({ ...occurrence, model_revision_id: state.currentModelRevisionID })),
-		constraints: [],
+		constraints: state.assemblyConstraints,
 	},
     nodes:
       state.models.length > 0
@@ -436,16 +457,54 @@ function cloneAssemblyGroups(groups: FixtureAssemblyGroup[]) {
 	return groups.map((group) => ({ ...group }))
 }
 
+function cloneAssemblyConstraints(constraints: FixtureAssemblyConstraint[]) {
+	return constraints.map((constraint) => ({
+		...constraint,
+		first_anchor: [...constraint.first_anchor] as [number, number, number],
+		second_anchor: [...constraint.second_anchor] as [number, number, number],
+		offset: [...constraint.offset] as [number, number, number],
+	}))
+}
+
 function assemblySnapshot(state: ProjectAPIFixtureState): FixtureAssemblySnapshot {
 	return {
 		occurrences: cloneOccurrences(state.occurrences),
 		groups: cloneAssemblyGroups(state.assemblyGroups),
+		constraints: cloneAssemblyConstraints(state.assemblyConstraints),
 	}
 }
 
 function restoreAssemblySnapshot(state: ProjectAPIFixtureState, snapshot: FixtureAssemblySnapshot) {
 	state.occurrences = cloneOccurrences(snapshot.occurrences)
 	state.assemblyGroups = cloneAssemblyGroups(snapshot.groups)
+	state.assemblyConstraints = cloneAssemblyConstraints(snapshot.constraints)
+}
+
+function fixtureTransformPoint(transform: { matrix: number[] }, point: readonly number[]) {
+	const matrix = transform.matrix
+	return [
+		(matrix[0] ?? 1) * (point[0] ?? 0) + (matrix[1] ?? 0) * (point[1] ?? 0) + (matrix[2] ?? 0) * (point[2] ?? 0) + (matrix[3] ?? 0),
+		(matrix[4] ?? 0) * (point[0] ?? 0) + (matrix[5] ?? 1) * (point[1] ?? 0) + (matrix[6] ?? 0) * (point[2] ?? 0) + (matrix[7] ?? 0),
+		(matrix[8] ?? 0) * (point[0] ?? 0) + (matrix[9] ?? 0) * (point[1] ?? 0) + (matrix[10] ?? 1) * (point[2] ?? 0) + (matrix[11] ?? 0),
+	]
+}
+
+function solveFixtureAssemblyConstraints(state: ProjectAPIFixtureState) {
+	for (const constraint of state.assemblyConstraints) {
+		const driver = state.occurrences.find((occurrence) => occurrence.id === constraint.first_occurrence_id)
+		const driven = state.occurrences.find((occurrence) => occurrence.id === constraint.second_occurrence_id)
+		if (!driver || !driven) continue
+		const driverWorld = fixtureTransformPoint(driver.transform, constraint.first_anchor)
+		const drivenAnchorWithoutTranslation = fixtureTransformPoint({
+			matrix: driven.transform.matrix.map((value, index) => ([3, 7, 11].includes(index) ? 0 : value)),
+		}, constraint.second_anchor)
+		const nextMatrix = [...driven.transform.matrix]
+		for (let axis = 0; axis < 3; axis += 1) {
+			nextMatrix[axis * 4 + 3] = (driverWorld[axis] ?? 0) + constraint.offset[axis] - (drivenAnchorWithoutTranslation[axis] ?? 0)
+		}
+		driven.transform = { matrix: nextMatrix }
+		constraint.residual = 0
+	}
 }
 
 function recordAssemblyMutation(state: ProjectAPIFixtureState) {
@@ -808,7 +867,7 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     })
     return
   }
-  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/models`) {
+	if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/models`) {
     state.uploadCount += 1
     const uploadedModel = {
       ...smokeSavedModel(state),
@@ -838,6 +897,64 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     await route.fulfill({ json: { model: uploadedModel } })
     return
   }
+	const assemblyConstraintRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/cad-document/constraints(?:/([^/]+))?$`))
+	if (assemblyConstraintRoute) {
+		const constraintID = decodeURIComponent(assemblyConstraintRoute[1] ?? '')
+		if (request.method() === 'POST' && !constraintID) {
+			const requestBody = request.postDataJSON() as {
+				name?: string
+				first_occurrence_id?: string
+				second_occurrence_id?: string
+				first_anchor?: [number, number, number]
+				second_anchor?: [number, number, number]
+				offset?: [number, number, number]
+			}
+			const hasInbound = state.assemblyConstraints.some((constraint) => constraint.second_occurrence_id === requestBody.second_occurrence_id)
+			const closesCycle = state.assemblyConstraints.some(
+				(constraint) => constraint.first_occurrence_id === requestBody.second_occurrence_id && constraint.second_occurrence_id === requestBody.first_occurrence_id,
+			)
+			if (!requestBody.first_occurrence_id || !requestBody.second_occurrence_id || requestBody.first_occurrence_id === requestBody.second_occurrence_id || hasInbound || closesCycle) {
+				await route.fulfill({ json: { message: 'invalid assembly constraint' }, status: 400 })
+				return
+			}
+			recordAssemblyMutation(state)
+			state.assemblyConstraintCreateCount += 1
+			const constraint: FixtureAssemblyConstraint = {
+				id: `cst_smoke_${state.assemblyConstraintCreateCount}`,
+				kind: 'mate',
+				name: requestBody.name ?? `Point mate ${state.assemblyConstraintCreateCount}`,
+				first_occurrence_id: requestBody.first_occurrence_id,
+				second_occurrence_id: requestBody.second_occurrence_id,
+				status: 'solved',
+				solver: 'point-coincident-v1',
+				first_anchor: requestBody.first_anchor ?? [0, 0, 0],
+				second_anchor: requestBody.second_anchor ?? [0, 0, 0],
+				offset: requestBody.offset ?? [0, 0, 0],
+				residual: 0,
+			}
+			state.assemblyConstraints.push(constraint)
+			solveFixtureAssemblyConstraints(state)
+			state.historyEntries = [{
+				id: `hist_assembly_constraint_create_${state.assemblyConstraintCreateCount}`, sequence: state.cadRevision,
+				status: 'applied', command_type: 'assembly-constraint-create', target_id: constraint.id,
+				summary: `Record mate ${constraint.name}`, created_at: now,
+			}]
+			await route.fulfill({ json: { document: smokeCADDocument(state) } })
+			return
+		}
+		const constraintIndex = state.assemblyConstraints.findIndex((constraint) => constraint.id === constraintID)
+		if (constraintIndex < 0) {
+			await route.fulfill({ json: { message: 'assembly constraint not found' }, status: 404 })
+			return
+		}
+		if (request.method() === 'DELETE') {
+			recordAssemblyMutation(state)
+			state.assemblyConstraints.splice(constraintIndex, 1)
+			state.assemblyConstraintDeleteCount += 1
+			await route.fulfill({ json: { document: smokeCADDocument(state) } })
+			return
+		}
+	}
 	const assemblyGroupRoute = pathname.match(new RegExp(`^/api/v1/projects/${projectId}/cad-document/groups(?:/([^/]+))?$`))
 	if (assemblyGroupRoute) {
 		const groupID = decodeURIComponent(assemblyGroupRoute[1] ?? '')
@@ -934,15 +1051,25 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
 			}
 			const requestBody = request.postDataJSON() as { name?: string; suppressed?: boolean; parent_group_id?: string; transform?: { matrix?: number[] } }
 			if (requestBody.transform?.matrix) {
+				if (state.assemblyConstraints.some((constraint) => constraint.second_occurrence_id === occurrenceID)) {
+					await route.fulfill({ json: { message: 'driven occurrence placement is solver-owned' }, status: 400 })
+					return
+				}
+				if (state.assemblyConstraints.length > 0) {
+					recordAssemblyMutation(state)
+				}
 				state.translationX = requestBody.transform.matrix[3] ?? 0
 				state.occurrences[occurrenceIndex] = {
 					...state.occurrences[occurrenceIndex]!,
 					transform: { matrix: [...requestBody.transform.matrix] },
 				}
 				state.transformUpdateCount += 1
-				state.cadRevision += 1
-				state.canUndo = true
-				state.canRedo = false
+				if (state.assemblyConstraints.length === 0) {
+					state.cadRevision += 1
+					state.canUndo = true
+					state.canRedo = false
+				}
+				solveFixtureAssemblyConstraints(state)
 			} else {
 				recordAssemblyMutation(state)
 			}

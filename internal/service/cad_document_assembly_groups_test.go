@@ -17,8 +17,8 @@ func TestProjectCADAssemblyGroupsAreNestedSuppressedAndReversible(t *testing.T) 
 	if err != nil {
 		t.Fatalf("GetProjectCADDocument returned error: %v", err)
 	}
-	if document.SchemaVersion != 3 || len(document.Assembly.Groups) != 0 || len(document.Assembly.Constraints) != 0 {
-		t.Fatalf("initial schema/groups/constraints = %d/%d/%d, want 3/0/0", document.SchemaVersion, len(document.Assembly.Groups), len(document.Assembly.Constraints))
+	if document.SchemaVersion != 4 || len(document.Assembly.Groups) != 0 || len(document.Assembly.Constraints) != 0 {
+		t.Fatalf("initial schema/groups/constraints = %d/%d/%d, want 4/0/0", document.SchemaVersion, len(document.Assembly.Groups), len(document.Assembly.Constraints))
 	}
 
 	root, err := svc.CreateProjectCADAssemblyGroup(ctx, CreateProjectCADAssemblyGroupInput{
@@ -136,7 +136,7 @@ func TestProjectCADAssemblyConstraintRecordsAreValidatedAndReversible(t *testing
 		t.Fatalf("constraints = %+v", created.Assembly.Constraints)
 	}
 	constraint := created.Assembly.Constraints[0]
-	if constraint.Kind != "mate" || constraint.Status != "unresolved" || constraint.FirstOccurrenceID != leftID || constraint.SecondOccurrenceID != rightID {
+	if constraint.Kind != "mate" || constraint.Solver != "point-coincident-v1" || constraint.Status != "solved" || constraint.FirstOccurrenceID != leftID || constraint.SecondOccurrenceID != rightID {
 		t.Fatalf("constraint = %+v", constraint)
 	}
 

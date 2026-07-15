@@ -18,11 +18,13 @@ const (
 )
 
 type cadTransformHistoryCommand struct {
-	NodeID         string       `json:"node_id"`
-	Before         CADTransform `json:"before"`
-	After          CADTransform `json:"after"`
-	Operation      CADOperation `json:"operation"`
-	OperationIndex int          `json:"operation_index"`
+	NodeID            string                  `json:"node_id"`
+	Before            CADTransform            `json:"before"`
+	After             CADTransform            `json:"after"`
+	BeforeOccurrences []CADAssemblyOccurrence `json:"before_occurrences,omitempty"`
+	AfterOccurrences  []CADAssemblyOccurrence `json:"after_occurrences,omitempty"`
+	Operation         CADOperation            `json:"operation"`
+	OperationIndex    int                     `json:"operation_index"`
 }
 
 type cadBoxUnionHistoryCommand struct {
@@ -71,8 +73,10 @@ type cadOccurrenceCreateHistoryCommand struct {
 }
 
 type cadOccurrenceUpdateHistoryCommand struct {
-	Before CADAssemblyOccurrence `json:"before"`
-	After  CADAssemblyOccurrence `json:"after"`
+	Before            CADAssemblyOccurrence   `json:"before"`
+	After             CADAssemblyOccurrence   `json:"after"`
+	BeforeOccurrences []CADAssemblyOccurrence `json:"before_occurrences,omitempty"`
+	AfterOccurrences  []CADAssemblyOccurrence `json:"after_occurrences,omitempty"`
 }
 
 type cadOccurrenceMoveHistoryCommand struct {
@@ -102,8 +106,10 @@ type cadAssemblyGroupDeleteHistoryCommand struct {
 }
 
 type cadAssemblyConstraintCreateHistoryCommand struct {
-	Constraint CADAssemblyConstraintRecord `json:"constraint"`
-	Index      int                         `json:"index"`
+	Constraint        CADAssemblyConstraintRecord `json:"constraint"`
+	Index             int                         `json:"index"`
+	BeforeOccurrences []CADAssemblyOccurrence     `json:"before_occurrences,omitempty"`
+	AfterOccurrences  []CADAssemblyOccurrence     `json:"after_occurrences,omitempty"`
 }
 
 type cadAssemblyConstraintDeleteHistoryCommand struct {
@@ -380,16 +386,25 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
 			return fmt.Errorf("decode transform history command: %w", err)
 		}
+		occurrences := command.BeforeOccurrences
 		if forward {
-			if _, err := setCADDocumentNodeTransform(state, command.NodeID, command.After); err != nil {
-				return err
-			}
+			occurrences = command.AfterOccurrences
 			state.Operations = insertCADOperation(state.Operations, command.OperationIndex, command.Operation)
 		} else {
-			if _, err := setCADDocumentNodeTransform(state, command.NodeID, command.Before); err != nil {
+			state.Operations = removeCADOperation(state.Operations, command.Operation.ID)
+		}
+		if len(occurrences) > 0 {
+			if err := replaceCADAssemblyOccurrences(&state.Assembly, occurrences); err != nil {
 				return err
 			}
-			state.Operations = removeCADOperation(state.Operations, command.Operation.ID)
+		} else {
+			transform := command.Before
+			if forward {
+				transform = command.After
+			}
+			if _, err := setCADDocumentNodeTransform(state, command.NodeID, transform); err != nil {
+				return err
+			}
 		}
 	case "box-union":
 		var command cadBoxUnionHistoryCommand
@@ -467,15 +482,19 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
 			return fmt.Errorf("decode occurrence update history command: %w", err)
 		}
-		value := command.Before
+		values := command.BeforeOccurrences
 		if forward {
-			value = command.After
+			values = command.AfterOccurrences
 		}
-		index := cadAssemblyOccurrenceIndex(state.Assembly.Occurrences, value.ID)
-		if index < 0 {
-			return ErrInvalidCADDocumentInput
+		if len(values) == 0 {
+			values = []CADAssemblyOccurrence{command.Before}
+			if forward {
+				values = []CADAssemblyOccurrence{command.After}
+			}
 		}
-		state.Assembly.Occurrences[index] = value
+		if err := replaceCADAssemblyOccurrences(&state.Assembly, values); err != nil {
+			return err
+		}
 	case "occurrence-move":
 		var command cadOccurrenceMoveHistoryCommand
 		if err := json.Unmarshal(entry.CommandJSON, &command); err != nil {
@@ -551,12 +570,18 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 		}
 		if forward {
 			state.Assembly.Constraints = insertCADAssemblyConstraint(state.Assembly.Constraints, command.Index, command.Constraint)
+			if err := replaceCADAssemblyOccurrences(&state.Assembly, command.AfterOccurrences); err != nil {
+				return err
+			}
 		} else {
 			index := cadAssemblyConstraintIndex(state.Assembly.Constraints, command.Constraint.ID)
 			if index < 0 {
 				return ErrInvalidCADDocumentInput
 			}
 			state.Assembly.Constraints = append(state.Assembly.Constraints[:index], state.Assembly.Constraints[index+1:]...)
+			if err := replaceCADAssemblyOccurrences(&state.Assembly, command.BeforeOccurrences); err != nil {
+				return err
+			}
 		}
 	case "assembly-constraint-delete":
 		var command cadAssemblyConstraintDeleteHistoryCommand
@@ -615,6 +640,17 @@ func applyCADHistoryCommand(ctx context.Context, tx *gorm.DB, state *cadDocument
 	}
 	if err := validateCADAssembly(state.Assembly); err != nil {
 		return err
+	}
+	return nil
+}
+
+func replaceCADAssemblyOccurrences(assembly *CADAssembly, values []CADAssemblyOccurrence) error {
+	for _, value := range values {
+		index := cadAssemblyOccurrenceIndex(assembly.Occurrences, value.ID)
+		if index < 0 {
+			return ErrInvalidCADDocumentInput
+		}
+		assembly.Occurrences[index] = value
 	}
 	return nil
 }

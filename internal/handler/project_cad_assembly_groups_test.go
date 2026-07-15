@@ -46,13 +46,18 @@ func TestProjectCADAssemblyGroupAndConstraintRoutes(t *testing.T) {
 				Occurrences []struct {
 					ID            string `json:"id"`
 					ParentGroupID string `json:"parent_group_id"`
+					Transform     struct {
+						Matrix [16]float64 `json:"matrix"`
+					} `json:"transform"`
 				} `json:"occurrences"`
 				Constraints []struct {
-					ID                 string `json:"id"`
-					Kind               string `json:"kind"`
-					FirstOccurrenceID  string `json:"first_occurrence_id"`
-					SecondOccurrenceID string `json:"second_occurrence_id"`
-					Status             string `json:"status"`
+					ID                 string  `json:"id"`
+					Kind               string  `json:"kind"`
+					FirstOccurrenceID  string  `json:"first_occurrence_id"`
+					SecondOccurrenceID string  `json:"second_occurrence_id"`
+					Status             string  `json:"status"`
+					Solver             string  `json:"solver"`
+					Residual           float64 `json:"residual"`
 				} `json:"constraints"`
 			} `json:"assembly"`
 		} `json:"document"`
@@ -71,7 +76,7 @@ func TestProjectCADAssemblyGroupAndConstraintRoutes(t *testing.T) {
 		t.Fatalf("get CAD document status = %d, body = %s", initialRecorder.Code, initialRecorder.Body.String())
 	}
 	initial := decode(initialRecorder.Body.Bytes())
-	if initial.Document.SchemaVersion != 3 || len(initial.Document.Assembly.Occurrences) != 2 {
+	if initial.Document.SchemaVersion != 4 || len(initial.Document.Assembly.Occurrences) != 2 {
 		t.Fatalf("initial document = %+v", initial.Document)
 	}
 	groupsURL := "/api/v1/projects/" + projectID + "/cad-document/groups"
@@ -126,13 +131,18 @@ func TestProjectCADAssemblyGroupAndConstraintRoutes(t *testing.T) {
 		"name": "Motor to gearbox", "kind": "mate",
 		"first_occurrence_id":  suppressed.Document.Assembly.Occurrences[0].ID,
 		"second_occurrence_id": suppressed.Document.Assembly.Occurrences[1].ID,
+		"first_anchor":         []float64{0, 0, 0},
+		"second_anchor":        []float64{0, 0, 0},
+		"offset":               []float64{10, 0, 0},
 		"expected_revision":    suppressed.Document.Revision,
 	}, sessionCookie)
 	if constraintRecorder.Code != http.StatusOK {
 		t.Fatalf("create constraint status = %d, body = %s", constraintRecorder.Code, constraintRecorder.Body.String())
 	}
 	constrained := decode(constraintRecorder.Body.Bytes())
-	if len(constrained.Document.Assembly.Constraints) != 1 || constrained.Document.Assembly.Constraints[0].Kind != "mate" || constrained.Document.Assembly.Constraints[0].Status != "unresolved" {
+	if len(constrained.Document.Assembly.Constraints) != 1 || constrained.Document.Assembly.Constraints[0].Kind != "mate" ||
+		constrained.Document.Assembly.Constraints[0].Status != "solved" || constrained.Document.Assembly.Constraints[0].Solver != "point-coincident-v1" ||
+		constrained.Document.Assembly.Constraints[0].Residual != 0 || constrained.Document.Assembly.Occurrences[1].Transform.Matrix[3] != 10 {
 		t.Fatalf("constraints = %+v", constrained.Document.Assembly.Constraints)
 	}
 

@@ -48,11 +48,14 @@ type updateProjectCADAssemblyGroupRequest struct {
 }
 
 type createProjectCADAssemblyConstraintRequest struct {
-	Name               string `json:"name" binding:"required"`
-	Kind               string `json:"kind" binding:"required"`
-	FirstOccurrenceID  string `json:"first_occurrence_id" binding:"required"`
-	SecondOccurrenceID string `json:"second_occurrence_id" binding:"required"`
-	ExpectedRevision   int    `json:"expected_revision" binding:"required,min=1"`
+	Name               string     `json:"name" binding:"required"`
+	Kind               string     `json:"kind" binding:"required"`
+	FirstOccurrenceID  string     `json:"first_occurrence_id" binding:"required"`
+	SecondOccurrenceID string     `json:"second_occurrence_id" binding:"required"`
+	FirstAnchor        [3]float64 `json:"first_anchor"`
+	SecondAnchor       [3]float64 `json:"second_anchor"`
+	Offset             [3]float64 `json:"offset"`
+	ExpectedRevision   int        `json:"expected_revision" binding:"required,min=1"`
 }
 
 type moveProjectCADOccurrenceRequest struct {
@@ -165,7 +168,8 @@ func (ctrl *Ctrl) CreateProjectCADAssemblyConstraint(c *fox.Context, req *create
 	}
 	document, err := ctrl.service.CreateProjectCADAssemblyConstraint(c.Request.Context(), service.CreateProjectCADAssemblyConstraintInput{
 		OwnerUserID: user.ID, ProjectID: c.Param("projectID"), Name: req.Name, Kind: req.Kind,
-		FirstOccurrenceID: req.FirstOccurrenceID, SecondOccurrenceID: req.SecondOccurrenceID, ExpectedRevision: req.ExpectedRevision,
+		FirstOccurrenceID: req.FirstOccurrenceID, SecondOccurrenceID: req.SecondOccurrenceID,
+		FirstAnchor: req.FirstAnchor, SecondAnchor: req.SecondAnchor, Offset: req.Offset, ExpectedRevision: req.ExpectedRevision,
 	})
 	if err != nil {
 		return projectCADDocumentResponse{}, projectError(err)

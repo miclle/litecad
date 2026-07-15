@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	cadDocumentSchemaVersion             = 3
+	cadDocumentSchemaVersion             = 4
 	cadDocumentFlatAssemblySchemaVersion = 2
 )
 
@@ -71,14 +71,19 @@ type CADAssemblyGroup struct {
 	Suppressed    bool   `json:"suppressed"`
 }
 
-// CADAssemblyConstraintRecord stores an unresolved relationship without implying solver behavior.
+// CADAssemblyConstraintRecord stores either a legacy unresolved relationship or one solved point mate.
 type CADAssemblyConstraintRecord struct {
-	ID                 string `json:"id"`
-	Kind               string `json:"kind"`
-	Name               string `json:"name"`
-	FirstOccurrenceID  string `json:"first_occurrence_id"`
-	SecondOccurrenceID string `json:"second_occurrence_id"`
-	Status             string `json:"status"`
+	ID                 string     `json:"id"`
+	Kind               string     `json:"kind"`
+	Name               string     `json:"name"`
+	FirstOccurrenceID  string     `json:"first_occurrence_id"`
+	SecondOccurrenceID string     `json:"second_occurrence_id"`
+	Status             string     `json:"status"`
+	Solver             string     `json:"solver,omitempty"`
+	FirstAnchor        [3]float64 `json:"first_anchor,omitempty"`
+	SecondAnchor       [3]float64 `json:"second_anchor,omitempty"`
+	Offset             [3]float64 `json:"offset,omitempty"`
+	Residual           float64    `json:"residual,omitempty"`
 }
 
 // CADAssemblyOccurrence binds one source model revision to an assembly placement.
@@ -485,10 +490,32 @@ func (s *Service) updateProjectCADNodeTransform(ctx context.Context, project ent
 		if nodeIndex < 0 {
 			return ErrProjectNotFound
 		}
+		occurrenceIndex := -1
+		for index := range state.Assembly.Occurrences {
+			if state.Assembly.Occurrences[index].NodeID == nodeID {
+				occurrenceIndex = index
+				break
+			}
+		}
+		if occurrenceIndex >= 0 {
+			occurrenceID := state.Assembly.Occurrences[occurrenceIndex].ID
+			for _, constraint := range state.Assembly.Constraints {
+				if constraint.Status == cadAssemblyConstraintStatusSolved && constraint.Solver == cadAssemblyConstraintSolverPointV1 && constraint.SecondOccurrenceID == occurrenceID {
+					return ErrInvalidCADDocumentInput
+				}
+			}
+		}
+		beforeOccurrences := append([]CADAssemblyOccurrence(nil), state.Assembly.Occurrences...)
 		beforeTransform, err := setCADDocumentNodeTransform(&state, nodeID, transform)
 		if err != nil {
 			return err
 		}
+		if occurrenceIndex >= 0 {
+			if err := solveCADAssemblyPointConstraints(&state.Assembly); err != nil {
+				return err
+			}
+		}
+		beforeChanged, afterChanged := changedCADAssemblyOccurrences(beforeOccurrences, state.Assembly.Occurrences)
 
 		operationID, err := id.NewPrefixed("op")
 		if err != nil {
@@ -522,11 +549,13 @@ func (s *Service) updateProjectCADNodeTransform(ctx context.Context, project ent
 		}
 		state.Operations = append(state.Operations, operation)
 		if _, err := appendProjectCADHistoryEntry(ctx, tx, &document, "transform", state.Nodes[nodeIndex].ID, "Move "+state.Nodes[nodeIndex].Name, cadTransformHistoryCommand{
-			NodeID:         state.Nodes[nodeIndex].ID,
-			Before:         beforeTransform,
-			After:          transform,
-			Operation:      operation,
-			OperationIndex: operationIndex,
+			NodeID:            state.Nodes[nodeIndex].ID,
+			Before:            beforeTransform,
+			After:             transform,
+			BeforeOccurrences: beforeChanged,
+			AfterOccurrences:  afterChanged,
+			Operation:         operation,
+			OperationIndex:    operationIndex,
 		}); err != nil {
 			return err
 		}

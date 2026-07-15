@@ -4,7 +4,9 @@ import { useTranslation } from 'react-i18next'
 
 import {
   addProjectCADModelBoxUnion,
+  createProjectCADAssemblyConstraint,
   createProjectCADAssemblyGroup,
+  deleteProjectCADAssemblyConstraint,
   deleteProjectCADOccurrence,
   deleteProjectCADAssemblyGroup,
   deleteProjectCADNode,
@@ -16,7 +18,7 @@ import {
   updateProjectCADOccurrence,
   updateProjectCADAssemblyGroup,
 } from 'src/api/projects'
-import type { CADBoxFeature, ProjectCADDocument, UpdateCADAssemblyGroupPayload, UpdateCADAssemblyOccurrencePayload } from 'src/types/project'
+import type { CADBoxFeature, CreateCADAssemblyConstraintPayload, ProjectCADDocument, UpdateCADAssemblyGroupPayload, UpdateCADAssemblyOccurrencePayload } from 'src/types/project'
 import { cadTransformWithTranslation, type CADTranslation } from './cad-document-transforms'
 
 const defaultTransformAutosaveDelayMS = 500
@@ -54,6 +56,10 @@ type AssemblyGroupMutationVariables =
     }
   | { action: 'delete'; groupId: string }
 
+type AssemblyConstraintMutationVariables =
+  | { action: 'create'; payload: CreateCADAssemblyConstraintPayload }
+  | { action: 'delete'; constraintId: string }
+
 function isCADDocumentConflict(error: unknown) {
   return (error as { response?: { status?: number } }).response?.status === 409
 }
@@ -74,6 +80,7 @@ export function useCADDocumentCommands({
   const [historyError, setHistoryError] = useState('')
   const [deleteError, setDeleteError] = useState('')
   const [occurrenceError, setOccurrenceError] = useState('')
+  const [constraintError, setConstraintError] = useState('')
   const [transformErrorsByNodeId, setTransformErrorsByNodeId] = useState<Record<string, string>>({})
   const [boxErrorsByModelId, setBoxErrorsByModelId] = useState<Record<string, string>>({})
 
@@ -326,6 +333,34 @@ export function useCADDocumentCommands({
     },
   })
 
+  const assemblyConstraintMutation = useMutation({
+    mutationFn: (variables: AssemblyConstraintMutationVariables) =>
+      enqueueCommand(async () => {
+        const document = currentDocument()
+        if (!document) {
+          throw new Error(t('project.errors.documentNotLoaded'))
+        }
+        const request =
+          variables.action === 'create'
+            ? createProjectCADAssemblyConstraint(projectId, variables.payload, document.revision)
+            : deleteProjectCADAssemblyConstraint(projectId, variables.constraintId, document.revision)
+        const updatedDocument = (await request).data.document
+        queryClient.setQueryData(documentQueryKey, updatedDocument)
+        return updatedDocument
+      }),
+    onSuccess: async (document) => {
+      setConstraintError('')
+      setHistoryError('')
+      queryClient.setQueryData(documentQueryKey, document)
+      await queryClient.invalidateQueries({ queryKey: historyQueryKey })
+    },
+    onError: async (error) => {
+      if (!(await refreshAfterConflict(error))) {
+        setConstraintError(t('project.errors.assemblyConstraintFailed'))
+      }
+    },
+  })
+
   const historyMutation = useMutation({
     mutationFn: (action: 'undo' | 'redo') =>
       enqueueCommand(async () => {
@@ -353,6 +388,7 @@ export function useCADDocumentCommands({
   const mutateHistory = historyMutation.mutate
   const mutateOccurrence = occurrenceMutation.mutate
   const mutateAssemblyGroup = assemblyGroupMutation.mutate
+  const mutateAssemblyConstraint = assemblyConstraintMutation.mutate
 
   useEffect(
     () => () => {
@@ -381,6 +417,14 @@ export function useCADDocumentCommands({
     (name: string, parentGroupId: string) => mutateAssemblyGroup({ action: 'create', name, parentGroupId }),
     [mutateAssemblyGroup],
   )
+  const createAssemblyConstraint = useCallback(
+    (payload: CreateCADAssemblyConstraintPayload) => mutateAssemblyConstraint({ action: 'create', payload }),
+    [mutateAssemblyConstraint],
+  )
+  const deleteAssemblyConstraint = useCallback(
+    (constraintId: string) => mutateAssemblyConstraint({ action: 'delete', constraintId }),
+    [mutateAssemblyConstraint],
+  )
   const deleteAssemblyGroup = useCallback((groupId: string) => mutateAssemblyGroup({ action: 'delete', groupId }), [mutateAssemblyGroup])
   const updateAssemblyGroup = useCallback(
     (groupId: string, payload: UpdateCADAssemblyGroupPayload) => mutateAssemblyGroup({ action: 'update', groupId, payload }),
@@ -405,21 +449,26 @@ export function useCADDocumentCommands({
     clearDeleteError,
     clearHistoryError,
     createAssemblyGroup,
+    createAssemblyConstraint,
+    constraintError,
     deleteError,
     deleteNode,
     deleteOccurrence,
     deleteAssemblyGroup,
+    deleteAssemblyConstraint,
     duplicateOccurrence,
     historyError,
     isBoxUnionPendingFor: (modelId: string) => addBoxUnionMutation.isPending && addBoxUnionMutation.variables?.modelId === modelId,
     isDeletingNode: (nodeId: string) => deleteNodeMutation.isPending && deleteNodeMutation.variables?.nodeId === nodeId,
-    isOccurrenceMutationPending: occurrenceMutation.isPending || assemblyGroupMutation.isPending,
+    isOccurrenceMutationPending: occurrenceMutation.isPending || assemblyGroupMutation.isPending || assemblyConstraintMutation.isPending,
+    isAssemblyConstraintMutationPending: assemblyConstraintMutation.isPending,
     isPending:
       updateTransformMutation.isPending ||
       deleteNodeMutation.isPending ||
       addBoxUnionMutation.isPending ||
       occurrenceMutation.isPending ||
       assemblyGroupMutation.isPending ||
+      assemblyConstraintMutation.isPending ||
       historyMutation.isPending,
     moveOccurrence,
     occurrenceError,

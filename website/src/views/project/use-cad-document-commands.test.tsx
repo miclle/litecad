@@ -9,7 +9,9 @@ import {
   deleteProjectCADOccurrence,
   duplicateProjectCADOccurrence,
   createProjectCADAssemblyGroup,
+  createProjectCADAssemblyConstraint,
   deleteProjectCADAssemblyGroup,
+  deleteProjectCADAssemblyConstraint,
   moveProjectCADOccurrence,
   redoProjectCADDocument,
   undoProjectCADDocument,
@@ -26,7 +28,9 @@ vi.mock('src/api/projects', () => ({
   deleteProjectCADOccurrence: vi.fn(),
   duplicateProjectCADOccurrence: vi.fn(),
   createProjectCADAssemblyGroup: vi.fn(),
+  createProjectCADAssemblyConstraint: vi.fn(),
   deleteProjectCADAssemblyGroup: vi.fn(),
+  deleteProjectCADAssemblyConstraint: vi.fn(),
   moveProjectCADOccurrence: vi.fn(),
   redoProjectCADDocument: vi.fn(),
   undoProjectCADDocument: vi.fn(),
@@ -263,5 +267,25 @@ describe('useCADDocumentCommands', () => {
     await waitFor(() => expect(updateProjectCADAssemblyGroup).toHaveBeenCalledWith(projectId, 'grp_power', { suppressed: true }, 8))
     act(() => result.current.deleteAssemblyGroup('grp_power'))
     await waitFor(() => expect(deleteProjectCADAssemblyGroup).toHaveBeenCalledWith(projectId, 'grp_power', 9))
+  })
+
+  it('serializes solver-backed constraint commands through document revisions', async () => {
+    vi.mocked(createProjectCADAssemblyConstraint).mockResolvedValue({
+      data: { document: projectDocument(8) },
+    } as Awaited<ReturnType<typeof createProjectCADAssemblyConstraint>>)
+    vi.mocked(deleteProjectCADAssemblyConstraint).mockResolvedValue({
+      data: { document: projectDocument(9) },
+    } as Awaited<ReturnType<typeof deleteProjectCADAssemblyConstraint>>)
+    const { wrapper } = createHarness()
+    const { result } = renderHook(() => useCADDocumentCommands({ projectId }), { wrapper })
+    const payload = {
+      name: 'Point mate', kind: 'mate' as const, first_occurrence_id: 'occ_driver', second_occurrence_id: 'occ_driven',
+      first_anchor: [0, 0, 0] as [number, number, number], second_anchor: [0, 0, 0] as [number, number, number], offset: [10, 0, 0] as [number, number, number],
+    }
+
+    act(() => result.current.createAssemblyConstraint(payload))
+    await waitFor(() => expect(createProjectCADAssemblyConstraint).toHaveBeenCalledWith(projectId, payload, 7))
+    act(() => result.current.deleteAssemblyConstraint('cst_point'))
+    await waitFor(() => expect(deleteProjectCADAssemblyConstraint).toHaveBeenCalledWith(projectId, 'cst_point', 8))
   })
 })

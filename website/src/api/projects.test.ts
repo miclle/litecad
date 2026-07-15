@@ -12,7 +12,9 @@ import {
   deleteProjectSectionArtifact,
   duplicateProjectCADOccurrence,
   createProjectCADAssemblyGroup,
+  createProjectCADAssemblyConstraint,
   deleteProjectCADAssemblyGroup,
+  deleteProjectCADAssemblyConstraint,
   fetchProjectCADDocument,
   fetchProjectCADHistory,
   createProjectAgentConversation,
@@ -289,6 +291,37 @@ describe('project API', () => {
     })
     expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/cad-document/groups/grp_01test', {
       data: { expected_revision: 10 },
+    })
+  })
+
+  test('creates and deletes a solver-backed assembly mate', () => {
+    createProjectCADAssemblyConstraint(
+      'prj_01test',
+      {
+        name: 'Motor to gearbox',
+        kind: 'mate',
+        first_occurrence_id: 'occ_driver',
+        second_occurrence_id: 'occ_driven',
+        first_anchor: [1, 2, 3],
+        second_anchor: [4, 5, 6],
+        offset: [7, 8, 9],
+      },
+      11,
+    )
+    deleteProjectCADAssemblyConstraint('prj_01test', 'cst_01test', 12)
+
+    expect(client.post).toHaveBeenCalledWith('/projects/prj_01test/cad-document/constraints', {
+      name: 'Motor to gearbox',
+      kind: 'mate',
+      first_occurrence_id: 'occ_driver',
+      second_occurrence_id: 'occ_driven',
+      first_anchor: [1, 2, 3],
+      second_anchor: [4, 5, 6],
+      offset: [7, 8, 9],
+      expected_revision: 11,
+    })
+    expect(client.delete).toHaveBeenCalledWith('/projects/prj_01test/cad-document/constraints/cst_01test', {
+      data: { expected_revision: 12 },
     })
   })
 

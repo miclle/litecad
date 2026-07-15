@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"math"
 	"strings"
 
 	"github.com/miclle/litecad/internal/entity"
@@ -12,6 +13,8 @@ import (
 const (
 	cadAssemblyConstraintKindMate         = "mate"
 	cadAssemblyConstraintStatusUnresolved = "unresolved"
+	cadAssemblyConstraintStatusSolved     = "solved"
+	cadAssemblyConstraintSolverPointV1    = "point-coincident-v1"
 )
 
 type CreateProjectCADAssemblyGroupInput struct {
@@ -46,6 +49,9 @@ type CreateProjectCADAssemblyConstraintInput struct {
 	Kind               string
 	FirstOccurrenceID  string
 	SecondOccurrenceID string
+	FirstAnchor        [3]float64
+	SecondAnchor       [3]float64
+	Offset             [3]float64
 	ExpectedRevision   int
 }
 
@@ -161,7 +167,8 @@ func (s *Service) CreateProjectCADAssemblyConstraint(ctx context.Context, input 
 	name := strings.TrimSpace(input.Name)
 	firstOccurrenceID := strings.TrimSpace(input.FirstOccurrenceID)
 	secondOccurrenceID := strings.TrimSpace(input.SecondOccurrenceID)
-	if name == "" || len(name) > 200 || strings.TrimSpace(input.Kind) != cadAssemblyConstraintKindMate || firstOccurrenceID == "" || firstOccurrenceID == secondOccurrenceID {
+	if name == "" || len(name) > 200 || strings.TrimSpace(input.Kind) != cadAssemblyConstraintKindMate || firstOccurrenceID == "" || firstOccurrenceID == secondOccurrenceID ||
+		!isFiniteCADVector3(input.FirstAnchor) || !isFiniteCADVector3(input.SecondAnchor) || !isFiniteCADVector3(input.Offset) {
 		return ProjectCADDocument{}, ErrInvalidCADDocumentInput
 	}
 	return s.mutateCADOccurrence(ctx, project, input.ExpectedRevision, func(tx *gorm.DB, document *entity.ProjectCADDocument, state *cadDocumentState) error {
@@ -172,15 +179,22 @@ func (s *Service) CreateProjectCADAssemblyConstraint(ctx context.Context, input 
 		constraint := CADAssemblyConstraintRecord{
 			ID: constraintID, Kind: cadAssemblyConstraintKindMate, Name: name,
 			FirstOccurrenceID: firstOccurrenceID, SecondOccurrenceID: secondOccurrenceID,
-			Status: cadAssemblyConstraintStatusUnresolved,
+			Status: cadAssemblyConstraintStatusSolved, Solver: cadAssemblyConstraintSolverPointV1,
+			FirstAnchor: input.FirstAnchor, SecondAnchor: input.SecondAnchor, Offset: input.Offset,
 		}
 		index := len(state.Assembly.Constraints)
+		beforeOccurrences := append([]CADAssemblyOccurrence(nil), state.Assembly.Occurrences...)
 		state.Assembly.Constraints = append(state.Assembly.Constraints, constraint)
 		if err := validateCADAssembly(state.Assembly); err != nil {
 			return err
 		}
+		if err := solveCADAssemblyPointConstraints(&state.Assembly); err != nil {
+			return err
+		}
+		constraint = state.Assembly.Constraints[index]
+		beforeChanged, afterChanged := changedCADAssemblyOccurrences(beforeOccurrences, state.Assembly.Occurrences)
 		_, err = appendProjectCADHistoryEntry(ctx, tx, document, "assembly-constraint-create", constraint.ID, "Record mate "+constraint.Name, cadAssemblyConstraintCreateHistoryCommand{
-			Constraint: constraint, Index: index,
+			Constraint: constraint, Index: index, BeforeOccurrences: beforeChanged, AfterOccurrences: afterChanged,
 		})
 		return err
 	})
@@ -257,8 +271,9 @@ func validateCADAssembly(assembly CADAssembly) error {
 		}
 	}
 	constraintByID := make(map[string]struct{}, len(assembly.Constraints))
+	driverByOccurrenceID := make(map[string]string, len(assembly.Constraints))
 	for _, constraint := range assembly.Constraints {
-		if strings.TrimSpace(constraint.ID) == "" || strings.TrimSpace(constraint.Name) == "" || constraint.Kind != cadAssemblyConstraintKindMate || constraint.Status != cadAssemblyConstraintStatusUnresolved || constraint.FirstOccurrenceID == constraint.SecondOccurrenceID {
+		if strings.TrimSpace(constraint.ID) == "" || strings.TrimSpace(constraint.Name) == "" || constraint.Kind != cadAssemblyConstraintKindMate || constraint.FirstOccurrenceID == constraint.SecondOccurrenceID {
 			return ErrInvalidCADDocumentInput
 		}
 		if _, exists := constraintByID[constraint.ID]; exists {
@@ -271,8 +286,136 @@ func validateCADAssembly(assembly CADAssembly) error {
 		if _, exists := occurrenceByID[constraint.SecondOccurrenceID]; !exists {
 			return ErrInvalidCADDocumentInput
 		}
+		if constraint.Status == cadAssemblyConstraintStatusUnresolved && constraint.Solver == "" {
+			continue
+		}
+		if constraint.Status != cadAssemblyConstraintStatusSolved || constraint.Solver != cadAssemblyConstraintSolverPointV1 ||
+			!isFiniteCADVector3(constraint.FirstAnchor) || !isFiniteCADVector3(constraint.SecondAnchor) || !isFiniteCADVector3(constraint.Offset) ||
+			math.IsNaN(constraint.Residual) || math.IsInf(constraint.Residual, 0) || constraint.Residual < 0 {
+			return ErrInvalidCADDocumentInput
+		}
+		if _, exists := driverByOccurrenceID[constraint.SecondOccurrenceID]; exists {
+			return ErrInvalidCADDocumentInput
+		}
+		driverByOccurrenceID[constraint.SecondOccurrenceID] = constraint.FirstOccurrenceID
+	}
+	for occurrenceID := range occurrenceByID {
+		seen := map[string]struct{}{occurrenceID: {}}
+		currentID := occurrenceID
+		for {
+			driverID, exists := driverByOccurrenceID[currentID]
+			if !exists {
+				break
+			}
+			if _, exists := seen[driverID]; exists {
+				return ErrInvalidCADDocumentInput
+			}
+			seen[driverID] = struct{}{}
+			currentID = driverID
+		}
 	}
 	return nil
+}
+
+func solveCADAssemblyPointConstraints(assembly *CADAssembly) error {
+	if err := validateCADAssembly(*assembly); err != nil {
+		return err
+	}
+	occurrenceIndexByID := make(map[string]int, len(assembly.Occurrences))
+	indegreeByOccurrenceID := make(map[string]int, len(assembly.Occurrences))
+	outgoingConstraintIndexes := make(map[string][]int, len(assembly.Constraints))
+	for index, occurrence := range assembly.Occurrences {
+		occurrenceIndexByID[occurrence.ID] = index
+		indegreeByOccurrenceID[occurrence.ID] = 0
+	}
+	for index, constraint := range assembly.Constraints {
+		if constraint.Status != cadAssemblyConstraintStatusSolved || constraint.Solver != cadAssemblyConstraintSolverPointV1 {
+			continue
+		}
+		indegreeByOccurrenceID[constraint.SecondOccurrenceID]++
+		outgoingConstraintIndexes[constraint.FirstOccurrenceID] = append(outgoingConstraintIndexes[constraint.FirstOccurrenceID], index)
+	}
+	queue := make([]string, 0, len(assembly.Occurrences))
+	for _, occurrence := range assembly.Occurrences {
+		if indegreeByOccurrenceID[occurrence.ID] == 0 {
+			queue = append(queue, occurrence.ID)
+		}
+	}
+	visited := 0
+	for len(queue) > 0 {
+		occurrenceID := queue[0]
+		queue = queue[1:]
+		visited++
+		for _, constraintIndex := range outgoingConstraintIndexes[occurrenceID] {
+			constraint := &assembly.Constraints[constraintIndex]
+			first := assembly.Occurrences[occurrenceIndexByID[constraint.FirstOccurrenceID]]
+			secondIndex := occurrenceIndexByID[constraint.SecondOccurrenceID]
+			second := assembly.Occurrences[secondIndex]
+			firstWorld := cadTransformPoint(first.Transform, constraint.FirstAnchor)
+			secondLinear := cadTransformVector(second.Transform, constraint.SecondAnchor)
+			for axis := 0; axis < 3; axis++ {
+				second.Transform.Matrix[axis*4+3] = firstWorld[axis] + constraint.Offset[axis] - secondLinear[axis]
+			}
+			assembly.Occurrences[secondIndex] = second
+			secondWorld := cadTransformPoint(second.Transform, constraint.SecondAnchor)
+			residualSquared := 0.0
+			for axis := 0; axis < 3; axis++ {
+				delta := firstWorld[axis] + constraint.Offset[axis] - secondWorld[axis]
+				residualSquared += delta * delta
+			}
+			constraint.Residual = math.Sqrt(residualSquared)
+			indegreeByOccurrenceID[constraint.SecondOccurrenceID]--
+			if indegreeByOccurrenceID[constraint.SecondOccurrenceID] == 0 {
+				queue = append(queue, constraint.SecondOccurrenceID)
+			}
+		}
+	}
+	if visited != len(assembly.Occurrences) {
+		return ErrInvalidCADDocumentInput
+	}
+	return nil
+}
+
+func cadTransformPoint(transform CADTransform, point [3]float64) [3]float64 {
+	result := cadTransformVector(transform, point)
+	for axis := 0; axis < 3; axis++ {
+		result[axis] += transform.Matrix[axis*4+3]
+	}
+	return result
+}
+
+func cadTransformVector(transform CADTransform, vector [3]float64) [3]float64 {
+	return [3]float64{
+		transform.Matrix[0]*vector[0] + transform.Matrix[1]*vector[1] + transform.Matrix[2]*vector[2],
+		transform.Matrix[4]*vector[0] + transform.Matrix[5]*vector[1] + transform.Matrix[6]*vector[2],
+		transform.Matrix[8]*vector[0] + transform.Matrix[9]*vector[1] + transform.Matrix[10]*vector[2],
+	}
+}
+
+func isFiniteCADVector3(vector [3]float64) bool {
+	for _, value := range vector {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return false
+		}
+	}
+	return true
+}
+
+func changedCADAssemblyOccurrences(before, after []CADAssemblyOccurrence) ([]CADAssemblyOccurrence, []CADAssemblyOccurrence) {
+	beforeByID := make(map[string]CADAssemblyOccurrence, len(before))
+	for _, occurrence := range before {
+		beforeByID[occurrence.ID] = occurrence
+	}
+	beforeChanged := make([]CADAssemblyOccurrence, 0)
+	afterChanged := make([]CADAssemblyOccurrence, 0)
+	for _, occurrence := range after {
+		beforeOccurrence, exists := beforeByID[occurrence.ID]
+		if exists && beforeOccurrence != occurrence {
+			beforeChanged = append(beforeChanged, beforeOccurrence)
+			afterChanged = append(afterChanged, occurrence)
+		}
+	}
+	return beforeChanged, afterChanged
 }
 
 func cadAssemblyOccurrenceEffectivelySuppressed(assembly CADAssembly, occurrence CADAssemblyOccurrence) bool {

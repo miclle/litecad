@@ -88,6 +88,14 @@ func (s *Service) UpdateProjectCADOccurrence(ctx context.Context, input UpdatePr
 			return ErrProjectNotFound
 		}
 		before := state.Assembly.Occurrences[index]
+		if input.Transform != nil {
+			for _, constraint := range state.Assembly.Constraints {
+				if constraint.Status == cadAssemblyConstraintStatusSolved && constraint.Solver == cadAssemblyConstraintSolverPointV1 && constraint.SecondOccurrenceID == before.ID {
+					return ErrInvalidCADDocumentInput
+				}
+			}
+		}
+		beforeOccurrences := append([]CADAssemblyOccurrence(nil), state.Assembly.Occurrences...)
 		after := before
 		if input.Name != nil {
 			after.Name = strings.TrimSpace(*input.Name)
@@ -108,8 +116,14 @@ func (s *Service) UpdateProjectCADOccurrence(ctx context.Context, input UpdatePr
 		if err := validateCADAssembly(state.Assembly); err != nil {
 			return err
 		}
+		if input.Transform != nil {
+			if err := solveCADAssemblyPointConstraints(&state.Assembly); err != nil {
+				return err
+			}
+		}
+		beforeChanged, afterChanged := changedCADAssemblyOccurrences(beforeOccurrences, state.Assembly.Occurrences)
 		_, err = appendProjectCADHistoryEntry(ctx, tx, document, "occurrence-update", after.ID, "Update "+after.Name, cadOccurrenceUpdateHistoryCommand{
-			Before: before, After: after,
+			Before: before, After: after, BeforeOccurrences: beforeChanged, AfterOccurrences: afterChanged,
 		})
 		return err
 	})

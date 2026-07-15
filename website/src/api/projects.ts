@@ -4,6 +4,7 @@ import type {
   UpdateProjectPayload,
   CADBoxFeature,
   CADTransform,
+  CreateCADAssemblyConstraintPayload,
   UpdateCADAssemblyOccurrencePayload,
   UpdateCADAssemblyGroupPayload,
   CreateProjectAgentConversationPayload,
@@ -98,6 +99,19 @@ export function updateProjectCADAssemblyGroup(projectId: string, groupId: string
 
 export function deleteProjectCADAssemblyGroup(projectId: string, groupId: string, expectedRevision: number) {
   return client.delete<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/groups/${groupId}`, {
+    data: { expected_revision: expectedRevision },
+  })
+}
+
+export function createProjectCADAssemblyConstraint(projectId: string, payload: CreateCADAssemblyConstraintPayload, expectedRevision: number) {
+  return client.post<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/constraints`, {
+    ...payload,
+    expected_revision: expectedRevision,
+  })
+}
+
+export function deleteProjectCADAssemblyConstraint(projectId: string, constraintId: string, expectedRevision: number) {
+  return client.delete<ProjectCADDocumentResponse>(`/projects/${projectId}/cad-document/constraints/${constraintId}`, {
     data: { expected_revision: expectedRevision },
   })
 }

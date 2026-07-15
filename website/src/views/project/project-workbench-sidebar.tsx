@@ -5,6 +5,9 @@ import { useTranslation } from 'react-i18next'
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
 import type {
   CADAssemblyGroup,
+  CADAssemblyConstraintRecord,
+  CADAssemblyOccurrence,
+  CreateCADAssemblyConstraintPayload,
   ProjectModelRevision,
   ProjectParametricArtifact,
   UpdateCADAssemblyGroupPayload,
@@ -14,10 +17,13 @@ import type { CADTranslation } from './cad-document-transforms'
 import { ParametricArtifactEditor } from './parametric-artifact-editor'
 import { ProjectInspector, type InspectorDetail, type ProjectInspectorSelection } from './project-inspector'
 import { ProjectModelTree } from './project-model-tree'
+import { ProjectAssemblyConstraints } from './project-assembly-constraints'
 import type { ProjectModelTreeGroup } from './project-preview-assets'
 
 type ProjectWorkbenchSidebarProps = {
   assemblyGroups?: CADAssemblyGroup[]
+  assemblyConstraints?: CADAssemblyConstraintRecord[]
+  assemblyOccurrences?: CADAssemblyOccurrence[]
   documentDetails: InspectorDetail[]
   hiddenModelIds: ReadonlySet<string>
   inspectorSelection?: ProjectInspectorSelection
@@ -30,6 +36,8 @@ type ProjectWorkbenchSidebarProps = {
   modelCount: number
   onCollapseChange: (isCollapsed: boolean) => void
 	onDeleteOccurrence?: (occurrenceId: string) => void
+	onCreateAssemblyConstraint?: (payload: CreateCADAssemblyConstraintPayload) => void
+	onDeleteAssemblyConstraint?: (constraintId: string) => void
 	onCreateAssemblyGroup?: (name: string, parentGroupId: string) => void
 	onDeleteAssemblyGroup?: (groupId: string) => void
 	onDuplicateOccurrence?: (occurrenceId: string) => void
@@ -45,6 +53,8 @@ type ProjectWorkbenchSidebarProps = {
   onUpdateAssemblyGroup?: (groupId: string, payload: UpdateCADAssemblyGroupPayload) => void
   onUpdateOccurrence?: (occurrenceId: string, payload: UpdateCADAssemblyOccurrencePayload) => void
 	occurrenceError?: string
+	constraintError?: string
+	isAssemblyConstraintMutationPending?: boolean
   onTransformChange: (nodeId: string, axis: keyof CADTranslation, value: string) => void
   previewAssetModelIds: ReadonlySet<string>
   projectModelTree: ProjectModelTreeGroup[]
@@ -63,6 +73,8 @@ type ProjectWorkbenchSidebarProps = {
 // ProjectWorkbenchSidebar renders the controlled left workbench slot while route state stays in ProjectView.
 export function ProjectWorkbenchSidebar({
   assemblyGroups = [],
+  assemblyConstraints = [],
+  assemblyOccurrences = [],
   documentDetails,
   hiddenModelIds,
   inspectorSelection,
@@ -75,6 +87,8 @@ export function ProjectWorkbenchSidebar({
   modelCount,
   onCollapseChange,
 	onDeleteOccurrence,
+	onCreateAssemblyConstraint,
+	onDeleteAssemblyConstraint,
 	onCreateAssemblyGroup,
 	onDeleteAssemblyGroup,
 	onDuplicateOccurrence,
@@ -90,6 +104,8 @@ export function ProjectWorkbenchSidebar({
   onUpdateAssemblyGroup,
   onUpdateOccurrence,
 	occurrenceError,
+	constraintError,
+	isAssemblyConstraintMutationPending,
   onTransformChange,
   previewAssetModelIds,
   projectModelTree,
@@ -179,6 +195,15 @@ export function ProjectWorkbenchSidebar({
               selectedNodeId={selectedNodeId}
 						selectedOccurrenceId={selectedOccurrenceId}
               uploadError={uploadError}
+            />
+
+            <ProjectAssemblyConstraints
+              constraints={assemblyConstraints}
+              error={constraintError}
+              isPending={isAssemblyConstraintMutationPending}
+              occurrences={assemblyOccurrences}
+              onCreate={onCreateAssemblyConstraint}
+              onDelete={onDeleteAssemblyConstraint}
             />
 
             {selectedGeneratedArtifact ? (

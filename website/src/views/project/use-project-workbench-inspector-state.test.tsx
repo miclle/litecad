@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { defaultBoxFeatureDraft } from './cad-document-box-features'
 import { useProjectWorkbenchInspectorState } from './use-project-workbench-inspector-state'
-import type { CADDocumentNode, Project, ProjectCADDocument, ProjectModel } from 'src/types/project'
+import type { CADAssemblyOccurrence, CADDocumentNode, Project, ProjectCADDocument, ProjectModel } from 'src/types/project'
 
 describe('useProjectWorkbenchInspectorState', () => {
   it('derives document details from the project, preview summary, and latest model', () => {
@@ -89,6 +89,34 @@ describe('useProjectWorkbenchInspectorState', () => {
     expect(result.current.selectedModelBoxFeatureDraft).toEqual({ originX: '0', originY: '0', originZ: '0', sizeX: '10', sizeY: '20', sizeZ: '30' })
     expect(getBoxFeatureDraft).toHaveBeenCalledWith(model.id)
   })
+
+  it('marks a solved point-mate driven occurrence as transform locked', () => {
+    const model = projectModel()
+    const node = cadNode({ model_id: model.id, source_format: 'step' })
+    const driver = cadOccurrence('occ_driver', 'node_driver', 'Driver')
+    const driven = cadOccurrence('occ_driven', node.id, 'Driven')
+    const document = cadDocument([node])
+    document.schema_version = 4
+    document.assembly = {
+      id: 'assembly_inspector',
+      name: 'Inspector assembly',
+      occurrences: [driver, driven],
+      groups: [],
+      constraints: [{
+        id: 'cst_point', kind: 'mate', name: 'Driver to driven', first_occurrence_id: driver.id, second_occurrence_id: driven.id,
+        status: 'solved', solver: 'point-coincident-v1', first_anchor: [0, 0, 0], second_anchor: [0, 0, 0], offset: [4, 0, 0], residual: 0,
+      }],
+    }
+
+    const { result } = renderHook(() => useInspectorStateScenario({
+      projectCADDocument: document,
+      selectedDocumentNode: node,
+      selectedOccurrence: driven,
+      selectedSourceModel: model,
+    }))
+
+    expect(result.current.inspectorSelection?.transformLocked).toBe(true)
+  })
 })
 
 function useInspectorStateScenario(overrides: Partial<Parameters<typeof useProjectWorkbenchInspectorState>[0]> = {}) {
@@ -106,6 +134,18 @@ function useInspectorStateScenario(overrides: Partial<Parameters<typeof useProje
     transformErrorsByNodeId: {},
     ...overrides,
   })
+}
+
+function cadOccurrence(id: string, nodeId: string, name: string): CADAssemblyOccurrence {
+  return {
+    id,
+    node_id: nodeId,
+    model_id: `model_${id}`,
+    model_revision_id: `revision_${id}`,
+    name,
+    suppressed: false,
+    transform: { matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
+  }
 }
 
 function project(): Project {
