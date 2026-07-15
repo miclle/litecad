@@ -1,15 +1,15 @@
 # Current Work Handoff
 
-Updated: 2026-07-14
+Updated: 2026-07-15
 
 This note is the short cross-machine handoff for the current LiteCAD development state. It is intentionally operational, not a product spec.
 
 ## Current Mainline
 
-- `origin/main` was at `526ce24 docs: refresh current work handoff` when this phase began; refresh the remote reference before relying on that value.
-- Local `main` is intentionally ahead of `origin/main` with the phased handoff follow-ups. Use `git log --oneline origin/main..main` for the exact local phase commits.
+- `main`, `origin/main`, and `origin/HEAD` were all at `2ae0a13 docs(cad): close handoff follow-ups` after `git fetch origin` on 2026-07-15.
+- The worktree was clean, and `git status --short --branch` reported no ahead/behind commits. There is no local-only code or documentation state to transfer manually.
 - The old assembly and tapered-extrude feature branches have already been merged and cleaned up.
-- Continue in the current checkout unless the user explicitly asks to publish; do not push these local phase commits implicitly.
+- There is no active implementation branch to resume. Start the next scoped phase from the synchronized `main` branch and choose unfinished work from `TODO.md`.
 
 ## Completed Phases
 
@@ -83,14 +83,17 @@ Broader durable kernel shape state, topology-aware measurement types, associativ
 
 ## Resume Checklist
 
-On a new machine:
+On another machine with an existing checkout:
 
 ```bash
 git fetch origin
 git switch main
+git pull --ff-only
 git status --short
 task install
 task check
 ```
 
-Do not run `git pull --ff-only` while local `main` intentionally contains unpublished phase commits. Rebase only when the user asks to integrate a newer upstream mainline.
+For a fresh machine, clone the repository, switch to `main`, and then run the same `task install` and `task check` steps. Confirm `git rev-parse HEAD` is at least `2ae0a13` before relying on the completed-phase descriptions above.
+
+No database contents, browser-local panel preferences, AI provider secrets, or `cmd/litecad/config.local.yaml` settings are transferred through Git. Recreate machine-local configuration from `cmd/litecad/config.example.yaml`; do not copy credentials into this handoff or commit them.

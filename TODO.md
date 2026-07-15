@@ -2,7 +2,7 @@
 
 Active roadmap and cleanup for LiteCAD. Keep this file limited to unfinished work, deferred decisions, and known risks; move completed facts into README or focused docs.
 
-For a short cross-machine status snapshot and the recommended next branch, see [docs/current-work-handoff.md](docs/current-work-handoff.md).
+For the current synchronized branch, completed-phase snapshot, and cross-machine resume checklist, see [docs/current-work-handoff.md](docs/current-work-handoff.md).
 
 ## Product Capability
 
