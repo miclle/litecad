@@ -25,11 +25,11 @@ function MainLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f5ef] text-[#171814]">
+    <div className="flex min-h-screen flex-col bg-[#f7f5ef] text-[#171814]">
       {!isProjectDetailPage && (
         <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b border-[#d9d3c2] bg-[#f7f5ef]/92 px-5 backdrop-blur">
-          <NavLink to="/" className="font-mono text-lg font-semibold lowercase text-[#171814] no-underline">
-            litecad
+          <NavLink to="/" className="font-mono text-lg font-semibold text-[#171814] no-underline">
+            LiteCAD
           </NavLink>
           <nav className="flex items-center gap-2">
             {isProjectsPage && (
@@ -42,7 +42,6 @@ function MainLayout() {
                 {t('nav.newProject')}
               </button>
             )}
-            <LanguageSwitcher />
             {currentUser ? (
               <AccountMenu />
             ) : currentUserQuery.isPending ? null : (
@@ -69,9 +68,17 @@ function MainLayout() {
         </header>
       )}
 
-      <main>
+      <main className="flex-1">
         <Outlet context={{ currentUser }} />
       </main>
+
+      {!isProjectDetailPage && (
+        <footer className="border-t border-[#d9d3c2] bg-[#fcfaf3] px-5 py-5">
+          <div className="mx-auto flex max-w-[1480px] justify-end">
+            <LanguageSwitcher />
+          </div>
+        </footer>
+      )}
     </div>
   )
 }

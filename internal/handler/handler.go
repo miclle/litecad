@@ -103,7 +103,7 @@ func (ctrl *Ctrl) Health(c *fox.Context) string {
 // StudioStatus returns the product initialization state for the LiteCAD studio.
 func (ctrl *Ctrl) StudioStatus(c *fox.Context) any {
 	return map[string]any{
-		"name":    "litecad",
+		"name":    "LiteCAD",
 		"status":  "initializing",
 		"summary": "AI-driven 3D design and preview workspace",
 		"capabilities": []string{

@@ -92,7 +92,7 @@ After signing in, open `/projects`, create a project, and enter its workbench at
 
 ### Language
 
-Use the header language switcher to choose English or Chinese. LiteCAD stores the choice in browser-local storage and keeps the document language attribute in sync. Fixed UI copy is localized; project names, uploaded file names, model/component names, Assistant replies, code blocks, JSON snippets, and model parameter keys such as `DIAMETER` stay as project or generated content instead of being translated.
+Use the footer language switcher to choose English or Chinese. LiteCAD stores the choice in browser-local storage and keeps the document language attribute in sync. Fixed UI copy is localized; project names, uploaded file names, model/component names, Assistant replies, code blocks, JSON snippets, and model parameter keys such as `DIAMETER` stay as project or generated content instead of being translated.
 
 ### CAD Imports
 

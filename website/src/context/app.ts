@@ -5,9 +5,11 @@ export interface AppContextValue {
   appName: string
 }
 
+export const APP_NAME = 'LiteCAD'
+
 // AppContext provides access to the global application state.
 export const AppContext = createContext<AppContextValue>({
-  appName: 'litecad',
+  appName: APP_NAME,
 })
 
 // useAppContext returns the current AppContext value.

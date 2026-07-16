@@ -28,6 +28,24 @@ describe('MainLayout', () => {
     cleanup()
   })
 
+  test('places the language switcher in the page footer instead of the header', async () => {
+    vi.mocked(fetchCurrentUser).mockResolvedValue(currentUserResponse)
+
+    renderLayout()
+
+    const languageSwitcher = screen.getByRole('combobox', { name: 'Language' })
+    expect(within(screen.getByRole('contentinfo')).getByRole('combobox', { name: 'Language' })).toBe(languageSwitcher)
+    expect(within(screen.getByRole('navigation')).queryByRole('combobox', { name: 'Language' })).toBeNull()
+  })
+
+  test('uses the official LiteCAD brand casing in the header', () => {
+    vi.mocked(fetchCurrentUser).mockResolvedValue(currentUserResponse)
+
+    renderLayout()
+
+    expect(screen.getByRole('link', { name: 'LiteCAD' }).getAttribute('href')).toBe('/')
+  })
+
   test('shows the signed-in account menu instead of login and register links', async () => {
     vi.mocked(fetchCurrentUser).mockResolvedValue(currentUserResponse)
 

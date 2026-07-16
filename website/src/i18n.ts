@@ -64,7 +64,7 @@ const resources = {
       home: {
         badge: 'AI 3D design preview',
         title: 'AI-native CAD ideas, previewed in the browser.',
-        body: 'litecad is a web product for turning early mechanical ideas into visible 3D direction: describe the part, inspect a preview, and prepare the workflow for real CAD exchange formats.',
+        body: 'LiteCAD is a web product for turning early mechanical ideas into visible 3D direction: describe the part, inspect a preview, and prepare the workflow for real CAD exchange formats.',
         openProjects: 'Open projects',
         exploreFeatures: 'Explore features',
         stats: {
@@ -606,7 +606,7 @@ const resources = {
       home: {
         badge: 'AI 3D 设计预览',
         title: '用 AI 探索 CAD 创意，并在浏览器中预览。',
-        body: 'litecad 是一个把早期机械想法转成可见 3D 方向的 Web 产品：描述零件、检查预览，并为真实 CAD 交换格式准备工作流。',
+        body: 'LiteCAD 是一个把早期机械想法转成可见 3D 方向的 Web 产品：描述零件、检查预览，并为真实 CAD 交换格式准备工作流。',
         openProjects: '打开项目',
         exploreFeatures: '查看功能',
         stats: {
