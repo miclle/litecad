@@ -1,8 +1,11 @@
+import { lazy, Suspense } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Box, Cuboid, Database, FileDown, FileUp, Gauge, Layers3, Ruler, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { fetchStudioStatus } from 'src/api/studio'
+
+const HomeModelPreview = lazy(() => import('./home-model-preview'))
 
 const pipeline = [
   { label: 'home.pipeline.create.label', value: 'home.pipeline.create.value', icon: FileUp },
@@ -98,14 +101,16 @@ function Home() {
           </div>
 
           <div className="grid lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="relative min-h-[340px] overflow-hidden bg-[#f1eadb] sm:min-h-[400px] lg:min-h-[440px]">
-              <div className="absolute inset-0 bg-[linear-gradient(#ddd4c0_1px,transparent_1px),linear-gradient(90deg,#ddd4c0_1px,transparent_1px)] bg-[size:32px_32px]" />
-              <div className="absolute inset-6 border border-dashed border-[#bcb39e]" />
-              <div className="absolute left-4 top-4 max-w-sm rounded-md border border-[#d8cfbc] bg-[#fcfaf3]/90 p-4 backdrop-blur">
-                <p className="font-mono text-xs uppercase text-[#7a6c52]">{t('home.emptyTitle')}</p>
-                <p className="mt-2 text-sm leading-6 text-[#303329]">{t('home.emptyBody')}</p>
-              </div>
-              <div className="absolute bottom-4 right-4 rounded-md border border-[#d8cfbc] bg-[#fcfaf3]/90 p-4 text-right backdrop-blur">
+            <div className="relative min-h-[340px] overflow-hidden bg-[#f8fafc] sm:min-h-[400px] lg:min-h-[440px]">
+              <Suspense fallback={<div className="absolute inset-0" data-home-model-preview-loading />}>
+                <HomeModelPreview
+                  ariaLabel={t('home.modelPreviewLabel')}
+                  descriptionBody={t('home.emptyBody')}
+                  descriptionId="home-model-preview-description"
+                  descriptionTitle={t('home.emptyTitle')}
+                />
+              </Suspense>
+              <div className="pointer-events-none absolute bottom-4 right-4 z-20 hidden rounded-md border border-[#d8cfbc] bg-[#fcfaf3]/90 p-4 text-right backdrop-blur sm:block">
                 <Database className="ml-auto size-5 text-[#52625a]" />
                 <p className="mt-3 font-mono text-xs uppercase text-[#7a6c52]">{t('home.currentPhase')}</p>
                 <p className="mt-1 text-sm font-semibold text-[#303329]">{t('home.currentPhaseBody')}</p>

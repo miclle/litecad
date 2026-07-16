@@ -68,3 +68,27 @@ describe('home project status copy', () => {
     expect(next).toContain('完整的 B-rep 特征历史')
   })
 })
+
+describe('home interactive preview copy', () => {
+  test('explains the interactive sample in English and Chinese', () => {
+    const english = i18n.getFixedT('en')
+    const chinese = i18n.getFixedT('zh')
+
+    expect(english('home.emptyTitle')).toBe('Interactive 3D sample')
+    expect(english('home.emptyBody')).toContain('Drag to rotate')
+    expect(english('home.emptyBody')).toContain('Pinch or scroll')
+    expect(chinese('home.emptyTitle')).toBe('交互式 3D 样例')
+    expect(chinese('home.emptyBody')).toContain('拖动旋转')
+    expect(chinese('home.emptyBody')).toContain('双指或滚轮')
+  })
+
+  test('explains the WebGL fallback in English and Chinese', () => {
+    const english = i18n.getFixedT('en')
+    const chinese = i18n.getFixedT('zh')
+
+    expect(english('home.modelPreviewUnavailableTitle')).toBe('3D preview unavailable')
+    expect(english('home.modelPreviewUnavailableBody')).toContain('WebGL')
+    expect(chinese('home.modelPreviewUnavailableTitle')).toBe('3D 预览不可用')
+    expect(chinese('home.modelPreviewUnavailableBody')).toContain('WebGL')
+  })
+})

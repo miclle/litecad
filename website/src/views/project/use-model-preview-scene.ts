@@ -6,6 +6,7 @@ import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
 
 import { disposeObject3DResources } from './three-object-resources'
+import { configureModelPreviewTrackballControls } from './model-preview-controls'
 import { createKernelMeshPreviewObject } from './model-preview-kernel-mesh'
 import { orientCADPreviewObject } from './model-preview-orientation'
 import {
@@ -16,6 +17,7 @@ import { findLiteCADSelectionFromObject } from './model-preview-selection'
 import {
   createWorldGrid,
   modelPreviewGridPlaneOffset,
+  modelPreviewViewportBackground,
 } from './model-preview-grid'
 import {
   createViewOrientationChangeEvent,
@@ -92,8 +94,6 @@ type ModelPreviewSceneRuntime = {
   updateKernelMeshAssets: (assets: readonly ProjectPreviewAsset[]) => void
 }
 
-const viewportBackground = 0xf8fafc
-const modelPreviewZoomSpeed = 4.2
 const modelPreviewZoomHUDHideDelayMS = 1000
 const modelPreviewZoomDistanceEpsilonRatio = 0.002
 const modelPreviewSnapshotWidth = 640
@@ -243,7 +243,7 @@ export function useModelPreviewScene({
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setClearColor(viewportBackground, 1)
+    renderer.setClearColor(modelPreviewViewportBackground, 1)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -257,19 +257,14 @@ export function useModelPreviewScene({
     container.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(viewportBackground)
-    scene.fog = new THREE.Fog(viewportBackground, 40, 520)
+    scene.background = new THREE.Color(modelPreviewViewportBackground)
+    scene.fog = new THREE.Fog(modelPreviewViewportBackground, 40, 520)
 
     const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000)
     camera.position.set(8, 6.5, 10)
 
     const controls = new TrackballControls(camera, renderer.domElement)
-    controls.staticMoving = true
-    controls.noPan = false
-    controls.noZoom = false
-    controls.rotateSpeed = 2.4
-    controls.panSpeed = 0.35
-    controls.zoomSpeed = modelPreviewZoomSpeed
+    configureModelPreviewTrackballControls(controls)
     controls.minDistance = 1
     controls.maxDistance = 1000
     controls.target.set(0, 0.15, 0)
@@ -344,7 +339,7 @@ export function useModelPreviewScene({
         scene.fog.far = nextFar
         return
       }
-      scene.fog = new THREE.Fog(viewportBackground, nextNear, nextFar)
+      scene.fog = new THREE.Fog(modelPreviewViewportBackground, nextNear, nextFar)
     }
 
     const captureSnapshot = () => {

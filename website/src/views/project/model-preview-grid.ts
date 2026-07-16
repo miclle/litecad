@@ -3,6 +3,7 @@ import * as THREE from 'three'
 const gridPlaneOffset = 0.015
 
 export const modelPreviewGridPlaneOffset = gridPlaneOffset
+export const modelPreviewViewportBackground = 0xf8fafc
 
 export const niceGridStep = (radius: number) => {
   const targetStep = Math.max(radius / 10, 0.01)
