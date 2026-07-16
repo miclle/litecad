@@ -36,3 +36,35 @@ describe('home workflow copy', () => {
     expect(copy).not.toContain('第一轮产品循环')
   })
 })
+
+describe('home project status copy', () => {
+  test('summarizes shipped capabilities and future boundaries in English', () => {
+    const shipped = i18n.getFixedT('en')('home.shippedNowBody')
+    const next = i18n.getFixedT('en')('home.nextBody')
+
+    expect(shipped).toContain('revision-pinned assemblies')
+    expect(shipped).toContain('point mates')
+    expect(shipped).toContain('reusable snapshots')
+    expect(shipped).toContain('measurement and section results')
+    expect(shipped).toContain('STEP export artifacts')
+    expect(next).toContain('cross-revision topology remapping')
+    expect(next).toContain('general mechanical and rotational mates')
+    expect(next).toContain('live-linked reusable assembly documents')
+    expect(next).toContain('full B-rep feature history')
+  })
+
+  test('summarizes shipped capabilities and future boundaries in Chinese', () => {
+    const shipped = i18n.getFixedT('zh')('home.shippedNowBody')
+    const next = i18n.getFixedT('zh')('home.nextBody')
+
+    expect(shipped).toContain('版本固定的装配')
+    expect(shipped).toContain('点重合约束')
+    expect(shipped).toContain('可复用快照')
+    expect(shipped).toContain('测量与剖切结果')
+    expect(shipped).toContain('STEP 导出文件')
+    expect(next).toContain('跨版本拓扑映射')
+    expect(next).toContain('通用机械与旋转装配约束')
+    expect(next).toContain('实时关联的可复用装配文档')
+    expect(next).toContain('完整的 B-rep 特征历史')
+  })
+})
