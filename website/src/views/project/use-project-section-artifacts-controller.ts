@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 
 import { createProjectSectionArtifact, deleteProjectSectionArtifact, downloadProjectSectionArtifact, fetchProjectModelRevisionSource, fetchProjectSectionArtifacts } from 'src/api/projects'
 import { runFeatureDSLExportInWorker, runSectionGeometryInWorker } from 'src/cad/kernel-worker-client'
@@ -24,9 +25,10 @@ type UseProjectSectionArtifactsControllerOptions = {
   filename: string
   projectId: string
   targets: StepExportTarget[]
-  unit: string
   visiblePreviewIds: readonly string[]
 }
+
+const browserKernelUnit = 'millimetre'
 
 const defaultDependencies: ProjectSectionArtifactDependencies = {
   createArtifact: async (projectId, payload) => createProjectSectionArtifact(projectId, payload),
@@ -43,8 +45,9 @@ const defaultDependencies: ProjectSectionArtifactDependencies = {
   runSectionGeometry: runSectionGeometryInWorker,
 }
 
-export function useProjectSectionArtifactsController({ cadDocumentRevision, dependencies, filename, projectId, targets, unit, visiblePreviewIds }: UseProjectSectionArtifactsControllerOptions) {
+export function useProjectSectionArtifactsController({ cadDocumentRevision, dependencies, filename, projectId, targets, visiblePreviewIds }: UseProjectSectionArtifactsControllerOptions) {
   const queryClient = useQueryClient()
+  const [downloadError, setDownloadError] = useState<unknown>()
   const queryKey = ['projects', projectId, 'section-artifacts'] as const
   const resolvedDependencies = { ...defaultDependencies, ...dependencies }
   const visibleIDSet = new Set(visiblePreviewIds)
@@ -63,7 +66,7 @@ export function useProjectSectionArtifactsController({ cadDocumentRevision, depe
       await resolvedDependencies.createArtifact(projectId, {
         ...(artifact ? { association_id: artifact.association_id, expected_generation: artifact.generation } : {}),
         cad_document_revision: cadDocumentRevision,
-        unit,
+        unit: browserKernelUnit,
         status: result.status,
         filename,
         content_type: 'model/step',
@@ -81,10 +84,17 @@ export function useProjectSectionArtifactsController({ cadDocumentRevision, depe
   const deleteMutation = useMutation({ mutationFn: (artifactId: string) => resolvedDependencies.deleteArtifact(projectId, artifactId), onSuccess: () => queryClient.invalidateQueries({ queryKey }) })
 
   const downloadSectionArtifact = async (artifactId: string) => {
-    const artifact = (artifactsQuery.data ?? []).find((candidate) => candidate.id === artifactId)
-    const blob = await resolvedDependencies.downloadArtifact(projectId, artifactId)
-    resolvedDependencies.publishDownload({ filename: artifact?.filename ?? filename, stepText: await blob.text() })
+    setDownloadError(undefined)
+    try {
+      const artifact = (artifactsQuery.data ?? []).find((candidate) => candidate.id === artifactId)
+      const blob = await resolvedDependencies.downloadArtifact(projectId, artifactId)
+      resolvedDependencies.publishDownload({ filename: artifact?.filename ?? filename, stepText: await blob.text() })
+    } catch (error) {
+      setDownloadError(error)
+    }
   }
+
+  const sectionArtifactError = firstErrorMessage(artifactsQuery.error, generateMutation.error, deleteMutation.error, downloadError)
 
   return {
     deleteSectionArtifact: (artifactId: string) => deleteMutation.mutate(artifactId),
@@ -92,14 +102,19 @@ export function useProjectSectionArtifactsController({ cadDocumentRevision, depe
     generateSectionArtifact: (planeOrigin: ProjectInspectionVector) => generateMutation.mutate({ planeOrigin, planeNormal: { x: 1, y: 0, z: 0 } }),
     getSectionArtifactState: (artifact: ProjectSectionArtifact) => projectSectionArtifactState(artifact, cadDocumentRevision, visibleTargets),
     isSectionArtifactMutationPending: generateMutation.isPending || deleteMutation.isPending,
-    isSectionArtifactsError: artifactsQuery.isError || generateMutation.isError || deleteMutation.isError,
+    isSectionArtifactsError: sectionArtifactError !== '',
     isSectionArtifactsLoading: artifactsQuery.isLoading,
     regenerateSectionArtifact: (artifact: ProjectSectionArtifact) => generateMutation.mutate({ artifact, planeOrigin: artifact.plane_origin, planeNormal: artifact.plane_normal }),
-    restoreSectionArtifact: (_artifact: ProjectSectionArtifact) => undefined,
+    restoreSectionArtifact: () => undefined,
     sectionArtifacts: artifactsQuery.data ?? [],
-    sectionArtifactError: generateMutation.error instanceof Error ? generateMutation.error.message : '',
+    sectionArtifactError,
     visibleSectionTargetCount: visibleTargets.length,
   }
+}
+
+function firstErrorMessage(...errors: unknown[]) {
+  const error = errors.find(Boolean)
+  return error instanceof Error ? error.message : error ? String(error) : ''
 }
 
 export type ProjectSectionArtifactState = 'current' | 'stale' | 'superseded' | 'legacy'

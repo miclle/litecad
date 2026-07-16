@@ -5,6 +5,7 @@ import { ProjectCanvas } from './project-canvas'
 import { ProjectTopbar } from './project-topbar'
 import { ProjectWorkbenchLayout } from './project-workbench-layout'
 import { ProjectWorkbenchSidebar } from './project-workbench-sidebar'
+import { cadUnitLabel } from './cad-unit-label'
 import { initialViewOrientation } from './view-orientation'
 import type { CADHistoryEntry, Project } from 'src/types/project'
 import type { StepExportTarget } from './project-step-export'
@@ -144,11 +145,6 @@ export function ProjectWorkbenchComposition({
           onDownloadSectionArtifact={projectSectionArtifacts.downloadSectionArtifact}
           onGenerateSectionArtifact={projectSectionArtifacts.generateSectionArtifact}
           onRegenerateSectionArtifact={projectSectionArtifacts.regenerateSectionArtifact}
-          onRestoreInspectionRecord={(record) => {
-            if (record.kind === 'section') {
-              viewControls.applyCanvasOrientation(viewControls.viewOrientation)
-            }
-          }}
           onRestoreSectionArtifact={projectSectionArtifacts.restoreSectionArtifact}
           onSaveMeasurementRecord={projectInspectionRecords.saveMeasurementRecord}
 			onSelectModel={(modelID, nodeID, occurrenceID) => {
@@ -171,6 +167,7 @@ export function ProjectWorkbenchComposition({
           isInspectionRecordMutationPending={projectInspectionRecords.isInspectionRecordMutationPending}
           isSectionArtifactMutationPending={projectSectionArtifacts.isSectionArtifactMutationPending}
           isSectionArtifactsLoading={projectSectionArtifacts.isSectionArtifactsLoading}
+          measurementUnitLabel={cadUnitLabel(projectInspectionRecords.previewMeasurementUnit)}
           projectCADDocument={modelState.projectCADDocument}
           projectId={project.id}
           selectedDocumentNode={selectedDocumentNode}

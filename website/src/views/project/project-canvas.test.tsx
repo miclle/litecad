@@ -1,14 +1,17 @@
 import { act, useEffect } from 'react'
-import { createRoot } from 'react-dom/client'
-import { fireEvent } from '@testing-library/react'
+import { createRoot, type Root } from 'react-dom/client'
+import { fireEvent, screen } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { ProjectCanvas } from './project-canvas'
 import type { BoxFeatureDraft } from './cad-document-box-features'
 import type { CADDocumentNode, ProjectCADDocument, ProjectModel } from 'src/types/project'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+const roots: Root[] = []
 
 vi.mock('./model-preview', () => ({
   ModelPreview: vi.fn(
@@ -25,16 +28,18 @@ vi.mock('./model-preview', () => ({
       selectedModelId: string
       selectedNodeId: string
       transformControlsLocked?: boolean
+      unitLabel?: string
     }) => {
+      const { onMeasurementChange } = props
       useEffect(() => {
-        props.onMeasurementChange?.({
+        onMeasurementChange?.({
           center: { x: 30, y: 12, z: 4 },
           derivation: 'preview-visible-aabb',
           diagonal: 65,
           modelCount: 1,
           size: { x: 60, y: 24, z: 8 },
         })
-      }, [props.onMeasurementChange])
+      }, [onMeasurementChange])
       return <div
         data-edges={String(props.displayOptions.showEdges)}
         data-measurement={String(props.displayOptions.measurement)}
@@ -44,6 +49,7 @@ vi.mock('./model-preview', () => ({
         data-selected-model={props.selectedModelId}
         data-selected-node={props.selectedNodeId}
         data-transform-locked={String(Boolean(props.transformControlsLocked))}
+        data-unit-label={props.unitLabel}
       />
     },
   ),
@@ -55,6 +61,9 @@ vi.mock('./view-controller', () => ({
 
 describe('ProjectCanvas', () => {
   afterEach(() => {
+    act(() => {
+      roots.splice(0).forEach((root) => root.unmount())
+    })
     vi.clearAllMocks()
     document.body.innerHTML = ''
   })
@@ -67,6 +76,7 @@ describe('ProjectCanvas', () => {
     expect(document.querySelector('[data-model-preview]')?.getAttribute('data-selected-model')).toBe('')
     expect(document.querySelector('[aria-label="View orientation controls"]')).toBeTruthy()
     expect((document.querySelector('button[aria-pressed="false"]') as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Analysis 0' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   test('keeps the measurement HUD below desktop view orientation controls', () => {
@@ -112,6 +122,12 @@ describe('ProjectCanvas', () => {
     expect(preview?.getAttribute('data-measurement')).toBe('true')
   })
 
+  test('uses the browser measurement unit without changing document-edit units', () => {
+    renderCanvas({ measurementUnitLabel: 'mm', unitLabel: 'in' })
+
+    expect(document.querySelector('[data-model-preview]')?.getAttribute('data-unit-label')).toBe('mm')
+  })
+
   test('generates, restores, downloads, and deletes section geometry artifacts', async () => {
     const user = userEvent.setup()
     const onGenerateSectionArtifact = vi.fn()
@@ -152,10 +168,13 @@ describe('ProjectCanvas', () => {
     })
 
     await user.click(document.querySelector('button[aria-label="Section"]') as HTMLButtonElement)
-    await user.click(document.querySelector('button[aria-label="Generate section geometry"]') as HTMLButtonElement)
-    await user.click(document.querySelector('button[aria-label="Restore center-x-section.step"]') as HTMLButtonElement)
-    await user.click(document.querySelector('button[aria-label="Download center-x-section.step"]') as HTMLButtonElement)
-    await user.click(document.querySelector('button[aria-label="Delete center-x-section.step"]') as HTMLButtonElement)
+    await user.click(screen.getByRole('button', { name: 'Analysis 1' }))
+    const generateSectionButton = screen.getByRole('button', { name: 'Generate section geometry' }) as HTMLButtonElement
+    expect(generateSectionButton.disabled).toBe(false)
+    await user.click(generateSectionButton)
+    await user.click(screen.getByRole('button', { name: /^Restore center-x-section\.step, generation 1, saved / }))
+    await user.click(screen.getByRole('button', { name: /^Download center-x-section\.step, generation 1, saved / }))
+    await user.click(screen.getByRole('button', { name: /^Delete center-x-section\.step, generation 1, saved / }))
 
     expect(onGenerateSectionArtifact).toHaveBeenCalledWith({ x: 30, y: 12, z: 4 })
     expect(onRestoreSectionArtifact).toHaveBeenCalledWith(expect.objectContaining({ id: 'pse_section' }))
@@ -183,12 +202,13 @@ describe('ProjectCanvas', () => {
       previewAssets: [{ modelId: 'mdl_step', name: 'gearbox.step', previewFormat: 'obj', previewUrl: '/gearbox.obj' }],
     })
 
+    await user.click(screen.getByRole('button', { name: 'Analysis 1' }))
     expect(document.body.textContent).toContain('Generation 1 · Stale')
-    await user.click(document.querySelector('button[aria-label="Regenerate section-r3.step"]') as HTMLButtonElement)
+    await user.click(screen.getByRole('button', { name: /^Regenerate section-r3\.step, generation 1, saved / }))
     expect(onRegenerateSectionArtifact).toHaveBeenCalledWith(expect.objectContaining({ id: 'pse_stale' }))
   })
 
-  test('runs exact B-rep analysis and labels persisted topology measurements', async () => {
+  test('keeps saved analysis results off the canvas until requested and uses outcome-oriented labels', async () => {
     const user = userEvent.setup()
     const onAnalyzeTopology = vi.fn()
     renderCanvas({
@@ -210,16 +230,140 @@ describe('ProjectCanvas', () => {
       ],
       onAnalyzeTopology,
       previewAssets: [{ modelId: 'mdl_step', name: 'gearbox.step', previewFormat: 'obj', previewUrl: '/gearbox.obj' }],
+      measurementUnitLabel: 'mm',
+      unitLabel: 'cm',
     })
 
-    await user.click(document.querySelector('button[aria-label="Analyze B-rep"]') as HTMLButtonElement)
+    expect(document.body.textContent).toContain('Analysis 1')
+    expect(document.body.textContent).not.toContain('Geometry properties')
+
+    await user.click(screen.getByRole('button', { name: 'Analysis 1' }))
+    const calculatePropertiesButton = screen.getByRole('button', { name: 'Calculate geometry properties' }) as HTMLButtonElement
+    expect(calculatePropertiesButton.disabled).toBe(false)
+    await user.click(calculatePropertiesButton)
 
     expect(onAnalyzeTopology).toHaveBeenCalledOnce()
-    expect(document.body.textContent).toContain('Exact B-rep')
-    expect(document.body.textContent).toContain('V 6,000')
-    expect(document.body.textContent).toContain('A 2,200')
-    expect(document.body.textContent).toContain('L 240')
-    expect(document.body.textContent).toContain('1 stable scope · 18 face/edge references')
+    expect(document.body.textContent).toContain('Measurements and analysis')
+    expect(document.body.textContent).toContain('Geometry properties')
+    expect(document.body.textContent).toContain('Volume 6,000')
+    expect(document.body.textContent).toContain('Surface area 2,200')
+    expect(document.body.textContent).toContain('Edge length 240')
+    expect(document.body.textContent).toContain('6,000 mm³')
+    expect(document.body.textContent).toContain('2,200 mm²')
+    expect(document.querySelector('[data-model-preview]')?.getAttribute('data-unit-label')).toBe('mm')
+    expect(document.body.textContent).not.toContain('B-rep')
+    expect(document.body.textContent).not.toContain('stable scope')
+  })
+
+  test('distinguishes repeated saved measurements by model version and save time', async () => {
+    const user = userEvent.setup()
+    const currentDocument = cadDocument()
+    currentDocument.revision = 5
+    const firstRecord = {
+      id: 'pir_bounds_4', project_id: 'prj_demo', kind: 'measurement' as const, name: 'Visible bounds',
+      cad_document_revision: 4, unit: 'millimetre', visible_model_ids: ['occ_box'],
+      measurement: {
+        derivation: 'preview-visible-aabb' as const, model_count: 1,
+        center: { x: 30, y: 12, z: 4 }, size: { x: 60, y: 24, z: 8 }, diagonal: 65,
+      },
+      created_at: '2026-07-15T00:00:00Z', updated_at: '2026-07-15T00:00:00Z',
+    }
+    renderCanvas({
+      inspectionRecords: [
+        firstRecord,
+        {
+          ...firstRecord,
+          id: 'pir_bounds_5',
+          cad_document_revision: 5,
+          created_at: '2026-07-16T00:00:00Z',
+          updated_at: '2026-07-16T00:00:00Z',
+        },
+      ],
+      onDeleteInspectionRecord: vi.fn(),
+      projectCADDocument: currentDocument,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Analysis 2' }))
+
+    expect(document.body.textContent).toContain('Design revision 4')
+    expect(document.body.textContent).toContain('Design revision 5')
+    expect(document.body.textContent).toContain('Earlier result')
+    const deleteButtons = screen.getAllByRole('button', { name: /^Delete Overall dimensions,/ })
+    expect(deleteButtons).toHaveLength(2)
+    expect(new Set(deleteButtons.map((button) => button.getAttribute('aria-label'))).size).toBe(2)
+  })
+
+  test('announces localized action failures without exposing kernel diagnostics', async () => {
+    const user = userEvent.setup()
+    renderCanvas({
+      inspectionRecordError: 'Topology inspection target scope is unavailable',
+      sectionArtifactError: 'OpenCascade shape inspection produced a non-finite property',
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Analysis 0' }))
+
+    const alerts = screen.getAllByRole('alert')
+    expect(alerts).toHaveLength(2)
+    expect(document.body.textContent).toContain('Could not update the analysis results. Try again.')
+    expect(document.body.textContent).toContain('Could not update the section geometry. Try again.')
+    expect(document.body.textContent).not.toContain('Topology inspection')
+    expect(document.body.textContent).not.toContain('OpenCascade')
+  })
+
+  test('bounds the initial saved-result render and reveals older results on request', async () => {
+    const user = userEvent.setup()
+    renderCanvas({
+      inspectionRecords: Array.from({ length: 21 }, (_, index) => ({
+        id: `pir_${index}`, project_id: 'prj_demo', kind: 'measurement' as const, name: `Snapshot ${index}`,
+        cad_document_revision: index + 1, unit: 'millimetre', visible_model_ids: [],
+        created_at: `2026-07-${String((index % 20) + 1).padStart(2, '0')}T00:00:00Z`,
+        updated_at: `2026-07-${String((index % 20) + 1).padStart(2, '0')}T00:00:00Z`,
+      })),
+      onDeleteInspectionRecord: vi.fn(),
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Analysis 21' }))
+    expect(screen.getAllByText(/^Snapshot \d+$/)).toHaveLength(20)
+
+    await user.click(screen.getByRole('button', { name: 'Show all 21 results' }))
+    expect(screen.getAllByText(/^Snapshot \d+$/)).toHaveLength(21)
+  })
+
+  test('disables saved-result deletion while related mutations are pending', async () => {
+    const user = userEvent.setup()
+    renderCanvas({
+      inspectionRecords: [
+        {
+          id: 'pir_bounds', project_id: 'prj_demo', kind: 'measurement', name: 'Visible bounds',
+          cad_document_revision: 4, unit: 'mm', visible_model_ids: ['occ_box'],
+          measurement: {
+            derivation: 'preview-visible-aabb', model_count: 1,
+            center: { x: 30, y: 12, z: 4 }, size: { x: 60, y: 24, z: 8 }, diagonal: 65,
+          },
+          created_at: '2026-07-15T00:00:00Z', updated_at: '2026-07-15T00:00:00Z',
+        },
+      ],
+      isInspectionRecordMutationPending: true,
+      isSectionArtifactMutationPending: true,
+      onDeleteInspectionRecord: vi.fn(),
+      onDeleteSectionArtifact: vi.fn(),
+      sectionArtifacts: [
+        {
+          id: 'pse_section', project_id: 'prj_demo', association_id: 'psd_section', generation: 1,
+          supersedes_artifact_id: '', is_latest: true, cad_document_revision: 4, unit: 'mm', status: 'ready',
+          filename: 'center-x-section.step', content_type: 'model/step', target_count: 1,
+          source_revision_ids: ['mvr_step'], occurrence_ids: ['occ_step'],
+          plane_origin: { x: 30, y: 12, z: 4 }, plane_normal: { x: 1, y: 0, z: 0 },
+          edge_count: 4, byte_size: 1024, created_at: '2026-07-15T00:00:00Z', updated_at: '2026-07-15T00:00:00Z',
+        },
+      ],
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Analysis 2' }))
+
+    expect((screen.getByRole('button', { name: /^Delete Overall dimensions,/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /^Delete center-x-section\.step, generation 1, saved / }) as HTMLButtonElement).disabled).toBe(true)
+    expect(document.querySelector('.animate-spin')).toBeNull()
   })
 
   test('edits and applies the Fuse box draft for the selected STEP source', async () => {
@@ -258,45 +402,49 @@ describe('ProjectCanvas', () => {
 function renderCanvas(overrides: Partial<Parameters<typeof ProjectCanvas>[0]> = {}) {
   const host = document.createElement('div')
   document.body.appendChild(host)
+  const root = createRoot(host)
+  roots.push(root)
 
   act(() => {
-    createRoot(host).render(
-      <ProjectCanvas
-        activeCADTool="inspect"
-        animateViewCubeOrientation={false}
-        canvasRightOffset={20}
-        canvasStatusBody="Import a CAD source to preview it here."
-        canvasStatusLabel="Awaiting import"
-        canvasStatusLeftOffset={16}
-        deferResize={false}
-        draftModelTranslations={{}}
-        isSelectedModelBoxFeatureUpdating={false}
-        modelTranslations={{}}
-        onApplyBoxFeatureDraft={vi.fn()}
-        onClearSelection={vi.fn()}
-        onCloseCADTool={vi.fn()}
-        onFlipOrientation={vi.fn()}
-        onModelTranslationChange={vi.fn()}
-        onResetIsometric={vi.fn()}
-        onSelectModel={vi.fn()}
-        onSetOrientation={vi.fn()}
-        onSnapshotCapture={vi.fn()}
-        onStepOrientation={vi.fn()}
-        onToggleFuseBoxTool={vi.fn()}
-        onUpdateBoxFeatureDraft={vi.fn()}
-        previewAssets={[]}
-        projectId="prj_demo"
-        selectedModelBoxFeatureError=""
-        selectedModelDisplayName=""
-        selectedModelId=""
-        selectedModelSupportsFuseBox={false}
-        selectedNodeId=""
-        shouldShowCanvasStatus
-        unitLabel="mm"
-        viewOrientation={{ yaw: 22, pitch: 18 }}
-        visibleModelIds={[]}
-        {...overrides}
-      />,
+    root.render(
+      <TooltipProvider>
+        <ProjectCanvas
+          activeCADTool="inspect"
+          animateViewCubeOrientation={false}
+          canvasRightOffset={20}
+          canvasStatusBody="Import a CAD source to preview it here."
+          canvasStatusLabel="Awaiting import"
+          canvasStatusLeftOffset={16}
+          deferResize={false}
+          draftModelTranslations={{}}
+          isSelectedModelBoxFeatureUpdating={false}
+          modelTranslations={{}}
+          onApplyBoxFeatureDraft={vi.fn()}
+          onClearSelection={vi.fn()}
+          onCloseCADTool={vi.fn()}
+          onFlipOrientation={vi.fn()}
+          onModelTranslationChange={vi.fn()}
+          onResetIsometric={vi.fn()}
+          onSelectModel={vi.fn()}
+          onSetOrientation={vi.fn()}
+          onSnapshotCapture={vi.fn()}
+          onStepOrientation={vi.fn()}
+          onToggleFuseBoxTool={vi.fn()}
+          onUpdateBoxFeatureDraft={vi.fn()}
+          previewAssets={[]}
+          projectId="prj_demo"
+          selectedModelBoxFeatureError=""
+          selectedModelDisplayName=""
+          selectedModelId=""
+          selectedModelSupportsFuseBox={false}
+          selectedNodeId=""
+          shouldShowCanvasStatus
+          unitLabel="mm"
+          viewOrientation={{ yaw: 22, pitch: 18 }}
+          visibleModelIds={[]}
+          {...overrides}
+        />
+      </TooltipProvider>,
     )
   })
   return host

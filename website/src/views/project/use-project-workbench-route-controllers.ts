@@ -137,7 +137,6 @@ export function useProjectWorkbenchRouteControllers({
     filename: projectSectionArtifactFilename(project?.name ?? 'assembly', projectCADDocument?.revision ?? 0),
     projectId,
     targets: stepExportTargets,
-    unit: projectCADDocument?.unit ?? 'unit',
     visiblePreviewIds: visibleModelIds,
   })
 

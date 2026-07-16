@@ -7,6 +7,7 @@ import { fetchProjectCADHistory } from 'src/api/projects'
 import { useProjectWorkbenchRouteControllers } from './use-project-workbench-route-controllers'
 import { useCADDocumentCommands } from './use-cad-document-commands'
 import { useProjectAssistantController } from './use-project-assistant-controller'
+import { useProjectInspectionRecordsController } from './use-project-inspection-records-controller'
 import { useProjectModelUploadController } from './use-project-model-upload-controller'
 import { useProjectSectionArtifactsController } from './use-project-section-artifacts-controller'
 import { useProjectStepExportController } from './use-project-step-export-controller'
@@ -27,6 +28,7 @@ vi.mock('src/api/projects', () => ({
 
 vi.mock('./use-cad-document-commands', () => ({ useCADDocumentCommands: vi.fn() }))
 vi.mock('./use-project-assistant-controller', () => ({ useProjectAssistantController: vi.fn() }))
+vi.mock('./use-project-inspection-records-controller', () => ({ useProjectInspectionRecordsController: vi.fn() }))
 vi.mock('./use-project-model-upload-controller', () => ({ useProjectModelUploadController: vi.fn() }))
 vi.mock('./use-project-section-artifacts-controller', () => ({ useProjectSectionArtifactsController: vi.fn() }))
 vi.mock('./use-project-step-export-controller', () => ({ useProjectStepExportController: vi.fn() }))
@@ -43,6 +45,7 @@ vi.mock('./use-project-workbench-visibility-state', () => ({ useProjectWorkbench
 const mockedFetchProjectCADHistory = vi.mocked(fetchProjectCADHistory)
 const mockedUseCADDocumentCommands = vi.mocked(useCADDocumentCommands)
 const mockedUseProjectAssistantController = vi.mocked(useProjectAssistantController)
+const mockedUseProjectInspectionRecordsController = vi.mocked(useProjectInspectionRecordsController)
 const mockedUseProjectModelUploadController = vi.mocked(useProjectModelUploadController)
 const mockedUseProjectSectionArtifactsController = vi.mocked(useProjectSectionArtifactsController)
 const mockedUseProjectStepExportController = vi.mocked(useProjectStepExportController)
@@ -92,7 +95,6 @@ describe('useProjectWorkbenchRouteControllers', () => {
       filename: 'Route Project-litecad-section-r7.step',
       projectId: 'prj_route',
       targets: [],
-      unit: 'millimetre',
       visiblePreviewIds: [],
     })
     expect(mockedUseProjectWorkbenchKeyboardCommands).toHaveBeenCalledWith({
@@ -105,6 +107,27 @@ describe('useProjectWorkbenchRouteControllers', () => {
       projectCADDocument: cadDocument(),
 			selectedModelOccurrenceCount: 0,
 			selectedOccurrence: undefined,
+    })
+  })
+
+  it('keeps source units at the preview-measurement boundary while section geometry stays kernel-owned', () => {
+    installControllerMocks({ documentUnit: 'inch' })
+
+    renderRouteControllers()
+
+    expect(mockedUseProjectInspectionRecordsController).toHaveBeenCalledWith({
+      cadDocumentRevision: 7,
+      projectId: 'prj_route',
+      targets: [],
+      unit: 'inch',
+      visibleModelIds: [],
+    })
+    expect(mockedUseProjectSectionArtifactsController).toHaveBeenCalledWith({
+      cadDocumentRevision: 7,
+      filename: 'Route Project-litecad-section-r7.step',
+      projectId: 'prj_route',
+      targets: [],
+      visiblePreviewIds: [],
     })
   })
 
@@ -133,7 +156,7 @@ function renderRouteControllers() {
   )
 }
 
-function installControllerMocks(overrides: { setParametricRunError?: ReturnType<typeof vi.fn> } = {}) {
+function installControllerMocks(overrides: { documentUnit?: string; setParametricRunError?: ReturnType<typeof vi.fn> } = {}) {
   const hiddenModelIDs = new Set(['model_hidden'])
   const shellState = {
     handleCADDocumentConflict: vi.fn(),
@@ -146,7 +169,7 @@ function installControllerMocks(overrides: { setParametricRunError?: ReturnType<
     latestTriangleCount: 0,
     previewAssets: [],
     previewSummary: { previewLabel: 'Empty' },
-    projectCADDocument: cadDocument(),
+    projectCADDocument: cadDocument(overrides.documentUnit),
     projectModels: [],
     projectSelection: {
       clearSelection: vi.fn(),
@@ -187,6 +210,7 @@ function installControllerMocks(overrides: { setParametricRunError?: ReturnType<
     hiddenModelIDs,
   } as ReturnType<typeof useProjectWorkbenchVisibilityState>)
   mockedUseProjectModelUploadController.mockReturnValue({} as ReturnType<typeof useProjectModelUploadController>)
+  mockedUseProjectInspectionRecordsController.mockReturnValue({} as ReturnType<typeof useProjectInspectionRecordsController>)
   mockedUseProjectSectionArtifactsController.mockReturnValue({} as ReturnType<typeof useProjectSectionArtifactsController>)
   mockedUseProjectWorkbenchModelState.mockReturnValue(modelState as unknown as ReturnType<typeof useProjectWorkbenchModelState>)
   mockedUseProjectStepExportController.mockReturnValue({ errorByModelID: {}, statusByModelID: {} } as ReturnType<typeof useProjectStepExportController>)
@@ -216,13 +240,13 @@ function project(): Project {
   }
 }
 
-function cadDocument(): ProjectCADDocument {
+function cadDocument(unit = 'millimetre'): ProjectCADDocument {
   return {
     id: 'doc_route',
     project_id: 'prj_route',
     schema_version: 1,
     revision: 7,
-    unit: 'millimetre',
+    unit,
     nodes: [cadDocumentNode()],
     operations: [],
     history: { head_id: 'history_route', can_undo: false, can_redo: false },

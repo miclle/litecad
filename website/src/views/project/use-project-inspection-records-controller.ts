@@ -14,6 +14,7 @@ import type { StepExportTarget } from './project-step-export'
 
 type ProjectInspectionDependencies = {
   createRecord: (projectId: string, payload: ProjectInspectionRecordPayload) => Promise<unknown>
+  fetchRecords: (projectId: string) => Promise<ProjectInspectionRecord[]>
   fetchSourceText: (projectId: string, modelId: string, revisionId: string) => Promise<string>
   generateTopology: typeof generateProjectTopologyInspection
   runFeatureDSLExport: typeof runFeatureDSLExportInWorker
@@ -29,8 +30,11 @@ type UseProjectInspectionRecordsControllerOptions = {
   visibleModelIds: readonly string[]
 }
 
+const browserKernelUnit = 'millimetre'
+
 const defaultDependencies: ProjectInspectionDependencies = {
   createRecord: (projectId, payload) => createProjectInspectionRecord(projectId, payload),
+  fetchRecords: async (projectId) => (await fetchProjectInspectionRecords(projectId)).data.records,
   fetchSourceText: async (projectId, modelId, revisionId) => {
     const source = (await fetchProjectModelRevisionSource(projectId, modelId, revisionId)).data
     return source.text()
@@ -53,9 +57,12 @@ export function useProjectInspectionRecordsController({
   const resolvedDependencies = { ...defaultDependencies, ...dependencies }
   const visibleIDSet = new Set(visibleModelIds)
   const visibleTargets = targets.filter((target) => visibleIDSet.has(target.occurrenceId) || visibleIDSet.has(target.modelId))
+  const previewMeasurementUnit = visibleModelIds.length > 0 && visibleModelIds.every((visibleModelId) =>
+    visibleTargets.some((target) => target.occurrenceId === visibleModelId || target.modelId === visibleModelId),
+  ) ? browserKernelUnit : unit
   const recordsQuery = useQuery({
     queryKey,
-    queryFn: async () => (await fetchProjectInspectionRecords(projectId)).data.records,
+    queryFn: () => resolvedDependencies.fetchRecords(projectId),
     enabled: projectId !== '',
   })
   const createMutation = useMutation({
@@ -74,7 +81,7 @@ export function useProjectInspectionRecordsController({
         kind: 'measurement',
         name: 'Exact B-rep properties',
         cad_document_revision: cadDocumentRevision,
-        unit,
+        unit: browserKernelUnit,
         visible_model_ids: visibleTargets.map((target) => target.occurrenceId),
         measurement: {
           derivation: result.derivation,
@@ -106,7 +113,7 @@ export function useProjectInspectionRecordsController({
       kind: 'measurement',
       name: 'Visible bounds',
       cad_document_revision: cadDocumentRevision,
-      unit,
+      unit: previewMeasurementUnit,
       visible_model_ids: [...visibleModelIds],
       measurement: {
         derivation: measurement.derivation,
@@ -122,7 +129,7 @@ export function useProjectInspectionRecordsController({
       kind: 'section',
       name: 'Center X section',
       cad_document_revision: cadDocumentRevision,
-      unit,
+      unit: previewMeasurementUnit,
       visible_model_ids: [...visibleModelIds],
       section: {
         mode: 'center-plane',
@@ -138,12 +145,18 @@ export function useProjectInspectionRecordsController({
     deleteInspectionRecord: (recordId: string) => deleteMutation.mutate(recordId),
     inspectionRecords: recordsQuery.data ?? [],
     isInspectionRecordsLoading: recordsQuery.isLoading,
-    inspectionRecordError: topologyMutation.error instanceof Error ? topologyMutation.error.message : '',
+    inspectionRecordError: firstErrorMessage(recordsQuery.error, createMutation.error, topologyMutation.error, deleteMutation.error),
     isInspectionRecordMutationPending: createMutation.isPending || deleteMutation.isPending || topologyMutation.isPending,
+    previewMeasurementUnit,
     saveMeasurementRecord,
     saveSectionRecord,
     selectedRestoredRecord: undefined as ProjectInspectionRecord | undefined,
   }
+}
+
+function firstErrorMessage(...errors: unknown[]) {
+  const error = errors.find(Boolean)
+  return error instanceof Error ? error.message : error ? String(error) : ''
 }
 
 function topologyPropertiesPayload(properties: {

@@ -204,7 +204,7 @@ function renderComposition(callbacks: ReturnType<typeof callbackSpies>) {
           isPending: false,
         }}
         projectModelUpload={projectModelUpload()}
-        projectInspectionRecords={projectInspectionRecords(callbacks)}
+        projectInspectionRecords={projectInspectionRecords()}
         projectSectionArtifacts={projectSectionArtifacts()}
         projectStepExport={projectStepExport()}
         projectThumbnailSnapshot={projectThumbnailSnapshot()}
@@ -364,7 +364,7 @@ function projectModelUpload() {
   } as unknown as ReturnType<typeof useProjectModelUploadController>
 }
 
-function projectInspectionRecords(_callbacks: ReturnType<typeof callbackSpies>) {
+function projectInspectionRecords() {
   return {
     analyzeTopology: vi.fn(),
     canAnalyzeTopology: false,
@@ -373,6 +373,7 @@ function projectInspectionRecords(_callbacks: ReturnType<typeof callbackSpies>) 
     inspectionRecordError: '',
     isInspectionRecordMutationPending: false,
     isInspectionRecordsLoading: false,
+    previewMeasurementUnit: 'millimetre',
     saveMeasurementRecord: vi.fn(),
     saveSectionRecord: vi.fn(),
     selectedRestoredRecord: undefined,

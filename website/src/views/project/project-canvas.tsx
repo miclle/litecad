@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
-import { Box, Download, HardDrive, Layers, LoaderCircle, RefreshCw, Ruler, Save, ScanLine, ScanSearch, Trash2, Undo2, X } from 'lucide-react'
+import { Box, HardDrive, Layers, Ruler, ScanLine, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,7 @@ import type { CADTranslation } from './cad-document-transforms'
 import type { BoxFeatureDraft } from './cad-document-box-features'
 import { ModelPreview, type ModelPreviewSnapshotCapture } from './model-preview'
 import { defaultModelPreviewDisplayOptions, type ModelPreviewDisplayOptions, type ModelPreviewMeasurement } from './model-preview-tools'
+import { ProjectAnalysisPopover } from './project-analysis-popover'
 import type { ProjectPreviewAsset } from './project-preview-assets'
 import { ViewController } from './view-controller'
 import type { CADTool } from './use-project-selection-controller'
@@ -44,7 +45,6 @@ type ProjectCanvasProps = {
   onDownloadSectionArtifact?: (artifactId: string) => void
   onGenerateSectionArtifact?: (planeOrigin: { x: number; y: number; z: number }) => void
   onRegenerateSectionArtifact?: (artifact: ProjectSectionArtifact) => void
-  onRestoreInspectionRecord?: (record: ProjectInspectionRecord) => void
   onRestoreSectionArtifact?: (artifact: ProjectSectionArtifact) => void
   onSaveMeasurementRecord?: (measurement: ModelPreviewMeasurement) => void
 	onSelectModel: (modelId: string, nodeId?: string, occurrenceId?: string) => void
@@ -59,6 +59,7 @@ type ProjectCanvasProps = {
   isInspectionRecordMutationPending?: boolean
   isSectionArtifactMutationPending?: boolean
   isSectionArtifactsLoading?: boolean
+  measurementUnitLabel?: string
   projectCADDocument?: ProjectCADDocument
   projectId: string
   isSelectedModelBoxFeatureUpdating: boolean
@@ -144,7 +145,6 @@ export function ProjectCanvas({
   onDownloadSectionArtifact,
   onGenerateSectionArtifact,
   onRegenerateSectionArtifact,
-  onRestoreInspectionRecord,
   onRestoreSectionArtifact,
   onSaveMeasurementRecord,
   onSelectModel,
@@ -159,6 +159,7 @@ export function ProjectCanvas({
   isInspectionRecordMutationPending = false,
   isSectionArtifactMutationPending = false,
   isSectionArtifactsLoading = false,
+  measurementUnitLabel,
   projectCADDocument,
   projectId,
   isSelectedModelBoxFeatureUpdating,
@@ -180,6 +181,7 @@ export function ProjectCanvas({
   visibleModelIds,
 }: ProjectCanvasProps) {
   const { t } = useTranslation()
+  const resolvedMeasurementUnitLabel = measurementUnitLabel ?? unitLabel
   const [displayOptions, setDisplayOptions] = useState<ModelPreviewDisplayOptions>(defaultModelPreviewDisplayOptions)
   const [currentMeasurement, setCurrentMeasurement] = useState<ModelPreviewMeasurement | undefined>(undefined)
   const [sectionPlaneOrigin, setSectionPlaneOrigin] = useState<{ x: number; y: number; z: number } | undefined>(undefined)
@@ -223,208 +225,9 @@ export function ProjectCanvas({
 				selectedOccurrenceId={selectedOccurrenceId}
         transformControlsLocked={selectedTransformLocked}
         sectionPlaneOrigin={sectionPlaneOrigin}
-        unitLabel={unitLabel}
+        unitLabel={resolvedMeasurementUnitLabel}
         visibleModelIds={visibleModelIds}
       />
-      {previewAssets.length > 0 ? (
-        <div className="absolute right-4 top-4 z-20 w-[min(320px,calc(100vw-32px))] rounded-md border border-[#dbe3ec] bg-white/94 p-3 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur sm:top-[312px]">
-          <div className="flex items-center justify-between gap-3">
-            <p className="font-mono text-[10px] font-semibold uppercase text-[#64748b]">{t('project.canvas.inspectionRecords')}</p>
-            <div className="flex items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label={t('project.canvas.analyzeTopology')}
-                      disabled={!canAnalyzeTopology || !onAnalyzeTopology || isInspectionRecordMutationPending}
-                      onClick={onAnalyzeTopology}
-                      size="icon-sm"
-                      type="button"
-                      variant="ghost"
-                    />
-                  }
-                >
-                  {isInspectionRecordMutationPending ? <LoaderCircle className="animate-spin" /> : <ScanSearch />}
-                </TooltipTrigger>
-                <TooltipContent sideOffset={8}>{t('project.canvas.analyzeTopology')}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label={t('project.canvas.saveMeasurement')}
-                      disabled={!currentMeasurement || !displayOptions.measurement || !onSaveMeasurementRecord}
-                      onClick={() => currentMeasurement && onSaveMeasurementRecord?.(currentMeasurement)}
-                      size="icon-sm"
-                      type="button"
-                      variant="ghost"
-                    />
-                  }
-                >
-                  <Save />
-                </TooltipTrigger>
-                <TooltipContent sideOffset={8}>{t('project.canvas.saveMeasurement')}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label={t('project.canvas.generateSection')}
-                      disabled={
-                        !displayOptions.section ||
-                        !currentMeasurement ||
-                        !canGenerateSectionGeometry ||
-                        !onGenerateSectionArtifact ||
-                        isSectionArtifactMutationPending
-                      }
-                      onClick={() => currentMeasurement && onGenerateSectionArtifact?.(sectionPlaneOrigin ?? currentMeasurement.center)}
-                      size="icon-sm"
-                      type="button"
-                      variant="ghost"
-                    />
-                  }
-                >
-                  {isSectionArtifactMutationPending ? <LoaderCircle className="animate-spin" /> : <ScanLine />}
-                </TooltipTrigger>
-                <TooltipContent sideOffset={8}>{t('project.canvas.generateSection')}</TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
-          <div className="mt-2 space-y-1.5">
-            {isInspectionRecordsLoading || isSectionArtifactsLoading ? (
-              <p className="text-xs text-[#64748b]">{t('project.canvas.inspectionRecordsLoading')}</p>
-            ) : inspectionRecords.length === 0 && sectionArtifacts.length === 0 ? (
-              <p className="text-xs text-[#64748b]">{t('project.canvas.inspectionRecordsEmpty')}</p>
-            ) : (
-              <>
-                {sectionArtifacts.slice(0, 3).map((artifact) => {
-                  const artifactState = getSectionArtifactState(artifact)
-                  return <div className="flex items-center justify-between gap-2 rounded border border-[#dbeafe] bg-[#eff6ff] px-2 py-1.5" key={artifact.id}>
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-medium text-[#0f172a]">{artifact.filename}</p>
-                      <p className="font-mono text-[10px] uppercase text-[#64748b]">
-                        {artifact.status === 'ready'
-                          ? t('project.canvas.sectionGeometryEdges', { count: artifact.edge_count })
-                          : t('project.canvas.sectionGeometryEmpty')}
-                      </p>
-                      {artifact.generation > 0 ? (
-                        <p className="font-mono text-[10px] text-[#475569]">
-                          {t('project.canvas.sectionGeneration', { generation: artifact.generation, state: t(`project.canvas.sectionState.${artifactState}`) })}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      {artifactState === 'stale' ? (
-                        <Button
-                          aria-label={t('project.canvas.regenerateSectionArtifact', { name: artifact.filename })}
-                          disabled={!onRegenerateSectionArtifact || isSectionArtifactMutationPending}
-                          onClick={() => onRegenerateSectionArtifact?.(artifact)}
-                          size="icon-sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <RefreshCw />
-                        </Button>
-                      ) : null}
-                      <Button
-                        aria-label={t('project.canvas.restoreInspectionRecord', { name: artifact.filename })}
-                        onClick={() => {
-                          setDisplayOptions((currentOptions) => ({ ...currentOptions, section: true }))
-                          setSectionPlaneOrigin(artifact.plane_origin)
-                          onRestoreSectionArtifact?.(artifact)
-                        }}
-                        size="icon-sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Undo2 />
-                      </Button>
-                      <Button
-                        aria-label={t('project.canvas.downloadSectionArtifact', { name: artifact.filename })}
-                        disabled={artifact.status !== 'ready' || !onDownloadSectionArtifact}
-                        onClick={() => onDownloadSectionArtifact?.(artifact.id)}
-                        size="icon-sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Download />
-                      </Button>
-                      <Button
-                        aria-label={t('project.canvas.deleteInspectionRecord', { name: artifact.filename })}
-                        disabled={!onDeleteSectionArtifact}
-                        onClick={() => onDeleteSectionArtifact?.(artifact.id)}
-                        size="icon-sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                  </div>
-                })}
-                {inspectionRecords.slice(0, Math.max(0, 5 - sectionArtifacts.length)).map((record) => (
-                <div className="flex items-center justify-between gap-2 rounded border border-[#e2e8f0] bg-[#f8fafc] px-2 py-1.5" key={record.id}>
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-medium text-[#0f172a]">{record.name}</p>
-                    <p className="font-mono text-[10px] uppercase text-[#64748b]">
-                      {record.measurement?.derivation === 'occt-brep-properties'
-                        ? t('project.canvas.exactBRepMeasurement')
-                        : record.kind === 'measurement'
-                          ? t('project.canvas.measurementRecord')
-                          : t('project.canvas.sectionRecord')}
-                    </p>
-                    {record.measurement?.derivation === 'occt-brep-properties' ? (
-                      <div className="font-mono text-[10px] text-[#475569]">
-                        <p>
-                          V {formatTopologyValue(record.measurement.topology.totals.volume)} · A {formatTopologyValue(record.measurement.topology.totals.surface_area)} · L {formatTopologyValue(record.measurement.topology.totals.edge_length)}
-                        </p>
-                        <p>
-                          {t('project.canvas.topologyReferenceScope', {
-                            count: record.measurement.topology.target_count,
-                            references: record.measurement.topology.totals.face_count + record.measurement.topology.totals.edge_count,
-                          })}
-                        </p>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      aria-label={t('project.canvas.restoreInspectionRecord', { name: record.name })}
-                      disabled={!onRestoreInspectionRecord}
-                      onClick={() => {
-                        setDisplayOptions((currentOptions) => ({
-                          ...currentOptions,
-                          measurement: record.kind === 'measurement' ? true : currentOptions.measurement,
-                          section: record.kind === 'section' ? true : currentOptions.section,
-                        }))
-                        onRestoreInspectionRecord?.(record)
-                      }}
-                      size="icon-sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Undo2 />
-                    </Button>
-                    <Button
-                      aria-label={t('project.canvas.deleteInspectionRecord', { name: record.name })}
-                      disabled={!onDeleteInspectionRecord}
-                      onClick={() => onDeleteInspectionRecord?.(record.id)}
-                      size="icon-sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                </div>
-                ))}
-              </>
-            )}
-            {sectionArtifactError ? <p className="text-xs text-[#b91c1c]">{sectionArtifactError}</p> : null}
-            {inspectionRecordError ? <p className="text-xs text-[#b91c1c]">{inspectionRecordError}</p> : null}
-          </div>
-        </div>
-      ) : null}
       {shouldShowCanvasStatus ? (
         <div
           className="pointer-events-none absolute bottom-4 left-4 max-w-sm rounded-md border border-[#e2e8f0] bg-[#ffffff]/92 p-4 shadow-xl backdrop-blur lg:left-[var(--canvas-status-left)]"
@@ -440,8 +243,9 @@ export function ProjectCanvas({
 
       <div
         aria-label={t('project.canvas.toolbar')}
-        className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-md border border-[#dbe3ec] bg-white/94 p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur"
+        className="absolute bottom-4 left-2 right-2 z-20 mx-auto flex w-max max-w-[calc(100%-16px)] items-center gap-1.5 overflow-x-auto rounded-md border border-[#dbe3ec] bg-white/94 p-1.5 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur lg:left-[var(--canvas-toolbar-left)] lg:max-w-[calc(100%-var(--canvas-toolbar-left)-8px)]"
         role="toolbar"
+        style={{ '--canvas-toolbar-left': `${canvasStatusLeftOffset}px` } as CSSProperties}
       >
         <span className="px-1.5 font-mono text-[10px] font-semibold uppercase text-[#64748b]">{t('project.canvas.toolbar')}</span>
         {previewTools.map((tool) => {
@@ -472,6 +276,35 @@ export function ProjectCanvas({
             </Tooltip>
           )
         })}
+        <ProjectAnalysisPopover
+          canAnalyzeTopology={canAnalyzeTopology}
+          canGenerateSectionGeometry={canGenerateSectionGeometry}
+          currentCADDocumentRevision={projectCADDocument?.revision}
+          currentMeasurement={currentMeasurement}
+          displayOptions={displayOptions}
+          getSectionArtifactState={getSectionArtifactState}
+          inspectionRecordError={inspectionRecordError}
+          inspectionRecords={inspectionRecords}
+          isInspectionRecordMutationPending={isInspectionRecordMutationPending}
+          isInspectionRecordsLoading={isInspectionRecordsLoading}
+          isSectionArtifactMutationPending={isSectionArtifactMutationPending}
+          isSectionArtifactsLoading={isSectionArtifactsLoading}
+          onAnalyzeTopology={onAnalyzeTopology}
+          onDeleteInspectionRecord={onDeleteInspectionRecord}
+          onDeleteSectionArtifact={onDeleteSectionArtifact}
+          onDownloadSectionArtifact={onDownloadSectionArtifact}
+          onGenerateSectionArtifact={onGenerateSectionArtifact}
+          onRegenerateSectionArtifact={onRegenerateSectionArtifact}
+          onRestoreSectionArtifact={(artifact) => {
+            setDisplayOptions((currentOptions) => ({ ...currentOptions, section: true }))
+            setSectionPlaneOrigin(artifact.plane_origin)
+            onRestoreSectionArtifact?.(artifact)
+          }}
+          onSaveMeasurementRecord={onSaveMeasurementRecord}
+          sectionArtifactError={sectionArtifactError}
+          sectionArtifacts={sectionArtifacts}
+          sectionPlaneOrigin={sectionPlaneOrigin}
+        />
         <Tooltip>
           <TooltipTrigger
             render={
@@ -609,8 +442,4 @@ export function ProjectCanvas({
       />
     </section>
   )
-}
-
-function formatTopologyValue(value: number) {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 }).format(value)
 }
