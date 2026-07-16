@@ -86,8 +86,8 @@ const resources = {
         productFocus: 'Product focus',
         featureTitle: 'A lightweight path from idea to inspectable 3D.',
         workflow: 'Workflow',
-        workflowTitle: 'Built for the first product loop.',
-        workflowBody: 'The first loop is intentionally narrow: create a project, upload a real CAD source, then build preview and geometry services from that stored asset.',
+        workflowTitle: 'From source models to inspectable, reusable assemblies.',
+        workflowBody: 'Create a project, import CAD sources or save a browser-validated LiteCAD DSL model, then assemble, edit, inspect, and export STEP in the browser.',
         features: {
           prompt: {
             title: 'Prompt-first CAD exploration',
@@ -107,21 +107,21 @@ const resources = {
           },
         },
         pipeline: {
-          describe: {
-            label: 'Describe',
-            value: 'Turn design intent into structured geometry briefs.',
+          create: {
+            label: 'Create & import',
+            value: 'Upload STEP, GLTF, GLB, or STL sources, or save a browser-validated LiteCAD DSL model.',
           },
-          import: {
-            label: 'Import',
-            value: 'Attach real STEP, GLTF, GLB, or STL source files to project records.',
+          assemble: {
+            label: 'Assemble & edit',
+            value: 'Organize nested groups and reusable snapshots, edit placement, point mates, and model parameters, and use History for Undo/Redo.',
           },
-          preview: {
-            label: 'Preview',
-            value: 'Convert imported geometry into browser-native review data.',
+          inspect: {
+            label: 'Preview & inspect',
+            value: 'Review multiple models in the browser kernel, use edge, section, and bounds tools, and save exact OCCT inspection results.',
           },
-          measure: {
-            label: 'Measure',
-            value: 'Keep dimensions and manufacturing checks close to the model.',
+          export: {
+            label: 'Export & retain',
+            value: 'Export selected models as separate STEP files or one merged STEP, with successful exports retained in project history.',
           },
         },
       },
@@ -628,8 +628,8 @@ const resources = {
         productFocus: '产品重点',
         featureTitle: '从想法到可检查 3D 的轻量路径。',
         workflow: '工作流',
-        workflowTitle: '为第一轮产品循环而构建。',
-        workflowBody: '第一轮循环保持克制：创建项目、上传真实 CAD 源文件，再基于这个已存储资源构建预览和几何服务。',
+        workflowTitle: '从源模型到可检查、可复用的装配。',
+        workflowBody: '创建项目，导入 CAD 源文件或保存经浏览器内核验证的 LiteCAD DSL 模型，然后在浏览器中完成装配、编辑、检查和 STEP 导出。',
         features: {
           prompt: {
             title: '提示词优先的 CAD 探索',
@@ -649,21 +649,21 @@ const resources = {
           },
         },
         pipeline: {
-          describe: {
-            label: '描述',
-            value: '把设计意图转成结构化几何简报。',
+          create: {
+            label: '创建与导入',
+            value: '上传 STEP、GLTF、GLB 或 STL 源文件，或保存经浏览器内核验证的 LiteCAD DSL 模型。',
           },
-          import: {
-            label: '导入',
-            value: '把真实 STEP、GLTF、GLB 或 STL 源文件附加到项目记录。',
+          assemble: {
+            label: '装配与编辑',
+            value: '组织嵌套分组和可复用快照，编辑位置、点重合约束和模型参数，并通过历史记录执行撤销或重做。',
           },
-          preview: {
-            label: '预览',
-            value: '把导入几何转成浏览器原生评审数据。',
+          inspect: {
+            label: '预览与检查',
+            value: '在浏览器内核中查看多个模型，使用边线、剖切和边界工具，并保存精确的 OCCT 检查结果。',
           },
-          measure: {
-            label: '测量',
-            value: '让尺寸和制造检查贴近模型。',
+          export: {
+            label: '导出与留档',
+            value: '将选中的模型分别导出或合并为一个 STEP，并在项目中保留成功的导出记录。',
           },
         },
       },

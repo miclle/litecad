@@ -1,14 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
-import { Box, BrainCircuit, Cuboid, Database, FileUp, Gauge, Layers3, Orbit, Ruler, Sparkles } from 'lucide-react'
+import { Box, Cuboid, Database, FileDown, FileUp, Gauge, Layers3, Ruler, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { fetchStudioStatus } from 'src/api/studio'
 
 const pipeline = [
-  { label: 'home.pipeline.describe.label', value: 'home.pipeline.describe.value', icon: BrainCircuit },
-  { label: 'home.pipeline.import.label', value: 'home.pipeline.import.value', icon: FileUp },
-  { label: 'home.pipeline.preview.label', value: 'home.pipeline.preview.value', icon: Orbit },
-  { label: 'home.pipeline.measure.label', value: 'home.pipeline.measure.value', icon: Gauge },
+  { label: 'home.pipeline.create.label', value: 'home.pipeline.create.value', icon: FileUp },
+  { label: 'home.pipeline.assemble.label', value: 'home.pipeline.assemble.value', icon: Layers3 },
+  { label: 'home.pipeline.inspect.label', value: 'home.pipeline.inspect.value', icon: Gauge },
+  { label: 'home.pipeline.export.label', value: 'home.pipeline.export.value', icon: FileDown },
 ]
 
 const features = [
