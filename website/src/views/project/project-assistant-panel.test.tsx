@@ -234,4 +234,89 @@ describe('ProjectAssistantPanel', () => {
     expect(screen.getByText('Revising:')).not.toBeNull()
     expect(screen.getByText('球体三轴通孔')).not.toBeNull()
   })
+
+  it('shows live Assistant stage, provider reasoning, and partial answer content', () => {
+    render(
+      <ProjectAssistantPanel
+        activeConversationId="agc_one"
+        conversations={[{ id: 'agc_one', title: 'Streaming review', updated_at: '2026-07-26T00:00:00Z' }]}
+        draft=""
+        isPending
+        maxWidth={680}
+        messages={[
+          {
+            id: 'assistant_stream',
+            role: 'assistant',
+            body: 'The bracket is',
+            stream: {
+              reasoning: 'Checking source metadata and current model context.',
+              stage: 'provider',
+              state: 'active',
+            },
+          },
+        ]}
+        onClose={vi.fn()}
+        onCreateConversation={vi.fn()}
+        onDraftChange={vi.fn()}
+        onGenerateParametric={vi.fn()}
+        onResizePointerDown={vi.fn()}
+        onSelectConversation={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        pendingKind="message"
+        sourceCount={1}
+        width={420}
+      />,
+    )
+
+    expect(screen.getByRole('status', { name: 'Assistant activity' })).not.toBeNull()
+    expect(screen.getByText('Waiting for AI provider')).not.toBeNull()
+    expect(screen.getByText('Provider reasoning')).not.toBeNull()
+    expect(screen.getByText('Checking source metadata and current model context.')).not.toBeNull()
+    expect(screen.getByText('The bracket is')).not.toBeNull()
+  })
+
+  it('keeps partial content and shows explicit recovery guidance after a stream error', () => {
+    render(
+      <ProjectAssistantPanel
+        activeConversationId="agc_one"
+        conversations={[{ id: 'agc_one', title: 'Interrupted review', updated_at: '2026-07-26T00:00:00Z' }]}
+        draft=""
+        isPending={false}
+        maxWidth={680}
+        messages={[
+          {
+            id: 'assistant_stream_error',
+            role: 'assistant',
+            body: 'Partial inspection result',
+            stream: {
+              error: 'The provider connection ended unexpectedly.',
+              reasoning: '',
+              stage: 'provider',
+              state: 'error',
+            },
+          },
+        ]}
+        onClose={vi.fn()}
+        onCreateConversation={vi.fn()}
+        onDraftChange={vi.fn()}
+        onGenerateParametric={vi.fn()}
+        onResizePointerDown={vi.fn()}
+        onSelectConversation={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        sourceCount={1}
+        width={420}
+      />,
+    )
+
+    expect(screen.getByText('Response interrupted')).not.toBeNull()
+    expect(screen.getByText('The provider connection ended unexpectedly.')).not.toBeNull()
+    expect(screen.getByText('Partial inspection result')).not.toBeNull()
+    expect(
+      screen.getByText(
+        'LiteCAD checked the saved conversation and preserved this partial response. Retry only if no completed reply appears.',
+      ),
+    ).not.toBeNull()
+  })
 })

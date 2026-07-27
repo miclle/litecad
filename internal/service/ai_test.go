@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -53,6 +54,116 @@ type failingAIClient struct{}
 
 func (c failingAIClient) Chat(ctx context.Context, messages []AIChatMessage) (string, error) {
 	return "", errors.New("provider timeout")
+}
+
+type recordingStreamingAIClient struct {
+	messages []AIChatMessage
+	deltas   []AIChatStreamDelta
+}
+
+func (c *recordingStreamingAIClient) Chat(context.Context, []AIChatMessage) (string, error) {
+	return "", errors.New("non-streaming chat should not be used")
+}
+
+func (c *recordingStreamingAIClient) StreamChat(_ context.Context, messages []AIChatMessage, onDelta func(AIChatStreamDelta) error) (string, error) {
+	c.messages = append([]AIChatMessage(nil), messages...)
+	var reply strings.Builder
+	for _, delta := range c.deltas {
+		if err := onDelta(delta); err != nil {
+			return "", err
+		}
+		reply.WriteString(delta.Content)
+	}
+	return reply.String(), nil
+}
+
+func TestStreamProjectAgentMessageEmitsProgressAndPersistsFinalReply(t *testing.T) {
+	svc := newTestService(t)
+	aiClient := &recordingStreamingAIClient{
+		deltas: []AIChatStreamDelta{
+			{Reasoning: "Checking project sources."},
+			{Content: "The bracket "},
+			{Content: "is ready."},
+		},
+	}
+	svc.aiClient = aiClient
+	ctx := context.Background()
+
+	user, err := svc.RegisterUser(ctx, RegisterUserInput{
+		Name:     "Ada Lovelace",
+		Email:    "agent-stream@example.com",
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("RegisterUser returned error: %v", err)
+	}
+	project, err := svc.CreateProject(ctx, CreateProjectInput{
+		OwnerUserID: user.ID,
+		Name:        "Streaming bracket study",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	conversation, err := svc.CreateProjectAgentConversation(ctx, CreateProjectAgentConversationInput{
+		OwnerUserID: user.ID,
+		ProjectID:   project.ID,
+		Title:       "Streaming review",
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectAgentConversation returned error: %v", err)
+	}
+
+	var events []ProjectAgentStreamEvent
+	result, err := svc.StreamProjectAgentMessage(ctx, ProjectAgentMessageInput{
+		OwnerUserID:     user.ID,
+		ProjectID:       project.ID,
+		ConversationID:  conversation.ID,
+		ClientRequestID: "assistant_stream_request_01",
+		Messages: []AIChatMessage{
+			{Role: "user", Body: "Inspect this bracket"},
+		},
+	}, func(event ProjectAgentStreamEvent) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamProjectAgentMessage returned error: %v", err)
+	}
+
+	var gotEvents []string
+	for _, event := range events {
+		gotEvents = append(gotEvents, event.Type+":"+event.Stage+event.Delta)
+	}
+	wantEvents := []string{
+		"status:accepted",
+		"status:context",
+		"status:provider",
+		"reasoning:Checking project sources.",
+		"content:The bracket ",
+		"content:is ready.",
+		"status:persisting",
+		"status:complete",
+	}
+	if !reflect.DeepEqual(gotEvents, wantEvents) {
+		t.Fatalf("events = %#v, want %#v", gotEvents, wantEvents)
+	}
+	if result.Message.Body != "The bracket is ready." || result.Message.Role != "assistant" {
+		t.Fatalf("result = %+v", result)
+	}
+	if !strings.Contains(joinAIMessageBodies(aiClient.messages), "Streaming bracket study") {
+		t.Fatalf("provider messages missing project context: %+v", aiClient.messages)
+	}
+	storedMessages, err := svc.ListProjectAgentMessages(ctx, user.ID, project.ID, conversation.ID)
+	if err != nil {
+		t.Fatalf("ListProjectAgentMessages returned error: %v", err)
+	}
+	if len(storedMessages) != 2 || storedMessages[1].Body != "The bracket is ready." {
+		t.Fatalf("stored messages = %+v", storedMessages)
+	}
+	if storedMessages[0].ClientRequestID != "assistant_stream_request_01" ||
+		storedMessages[1].ClientRequestID != "assistant_stream_request_01" {
+		t.Fatalf("stored request IDs = %q, %q", storedMessages[0].ClientRequestID, storedMessages[1].ClientRequestID)
+	}
 }
 
 func TestSendProjectAgentMessageUsesProjectContext(t *testing.T) {
@@ -579,6 +690,17 @@ func TestSendProjectAgentMessageValidatesMessages(t *testing.T) {
 	})
 	if err != ErrInvalidAIChatInput {
 		t.Fatalf("error = %v, want ErrInvalidAIChatInput", err)
+	}
+	_, err = svc.SendProjectAgentMessage(context.Background(), ProjectAgentMessageInput{
+		OwnerUserID:     "usr_01test",
+		ProjectID:       "prj_01test",
+		ClientRequestID: "invalid request id",
+		Messages: []AIChatMessage{
+			{Role: "user", Body: "Hello"},
+		},
+	})
+	if err != ErrInvalidAIChatInput {
+		t.Fatalf("invalid client request ID error = %v, want ErrInvalidAIChatInput", err)
 	}
 }
 

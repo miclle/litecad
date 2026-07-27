@@ -29,6 +29,117 @@ func (c failingToolAIClient) ChatWithTools(ctx context.Context, messages []servi
 	return service.AIChatToolCall{}, errors.New("native tools unavailable")
 }
 
+type failingChatAIClient struct{}
+
+func (failingChatAIClient) Chat(context.Context, []service.AIChatMessage) (string, error) {
+	return "", errors.New("provider connection closed")
+}
+
+func TestProjectAgentStreamReturnsOrderedSSEEvents(t *testing.T) {
+	router := newTestRouterWithAI(t, testAIClient{reply: "The bracket is ready."})
+	projectID, conversationID, sessionCookie := createAgentStreamFixture(t, router, "agent-stream-route@example.com")
+
+	stream := postJSONWithCookie(t, router, "/api/v1/projects/"+projectID+"/agent/conversations/"+conversationID+"/messages/stream", map[string]any{
+		"client_request_id": "assistant_stream_route_01",
+		"messages": []map[string]string{
+			{"role": "user", "body": "Inspect the bracket"},
+		},
+	}, sessionCookie)
+
+	if stream.Code != http.StatusOK {
+		t.Fatalf("stream status = %d, body = %s", stream.Code, stream.Body.String())
+	}
+	if got := stream.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/event-stream") {
+		t.Fatalf("Content-Type = %q, want text/event-stream", got)
+	}
+	if got := stream.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("Cache-Control = %q, want no-cache", got)
+	}
+	body := stream.Body.String()
+	orderedFragments := []string{
+		`event: status` + "\n" + `data: {"type":"status","stage":"accepted"}`,
+		`data: {"type":"status","stage":"context"}`,
+		`data: {"type":"status","stage":"provider"}`,
+		`event: content` + "\n" + `data: {"type":"content","delta":"The bracket is ready."}`,
+		`data: {"type":"status","stage":"persisting"}`,
+		`data: {"type":"status","stage":"complete"}`,
+		`event: result`,
+		`"body":"The bracket is ready."`,
+	}
+	lastIndex := -1
+	for _, fragment := range orderedFragments {
+		index := strings.Index(body, fragment)
+		if index == -1 {
+			t.Fatalf("stream body missing %q:\n%s", fragment, body)
+		}
+		if index <= lastIndex {
+			t.Fatalf("stream fragment %q is out of order:\n%s", fragment, body)
+		}
+		lastIndex = index
+	}
+	if !stream.Flushed {
+		t.Fatal("stream response should flush SSE events")
+	}
+	if !strings.Contains(body, `"client_request_id":"assistant_stream_route_01"`) {
+		t.Fatalf("stream result missing client request correlation:\n%s", body)
+	}
+}
+
+func TestProjectAgentStreamMapsPostHeaderFailureToSSEError(t *testing.T) {
+	router := newTestRouter(t)
+	projectID, conversationID, sessionCookie := createAgentStreamFixture(t, router, "agent-stream-error@example.com")
+
+	stream := postJSONWithCookie(t, router, "/api/v1/projects/"+projectID+"/agent/conversations/"+conversationID+"/messages/stream", map[string]any{
+		"messages": []map[string]string{
+			{"role": "user", "body": "Inspect the bracket"},
+		},
+	}, sessionCookie)
+
+	if stream.Code != http.StatusOK {
+		t.Fatalf("stream status = %d, body = %s", stream.Code, stream.Body.String())
+	}
+	body := stream.Body.String()
+	if !strings.Contains(body, `event: status`+"\n"+`data: {"type":"status","stage":"accepted"}`) {
+		t.Fatalf("stream body missing accepted event:\n%s", body)
+	}
+	if !strings.Contains(body, `event: error`+"\n"+`data: {"status":503,"message":"AI provider is not configured"}`) {
+		t.Fatalf("stream body missing safe error event:\n%s", body)
+	}
+}
+
+func TestProjectAgentStreamReportsProviderFailuresAsBadGateway(t *testing.T) {
+	router := newTestRouterWithAI(t, failingChatAIClient{})
+	projectID, conversationID, sessionCookie := createAgentStreamFixture(t, router, "agent-stream-provider-error@example.com")
+
+	stream := postJSONWithCookie(t, router, "/api/v1/projects/"+projectID+"/agent/conversations/"+conversationID+"/messages/stream", map[string]any{
+		"messages": []map[string]string{
+			{"role": "user", "body": "Inspect the bracket"},
+		},
+	}, sessionCookie)
+
+	if !strings.Contains(stream.Body.String(), `event: error`+"\n"+`data: {"status":502,"message":"AI provider request failed. Retry generation; if it keeps failing, check provider model compatibility and timeout settings."}`) {
+		t.Fatalf("stream body missing provider failure event:\n%s", stream.Body.String())
+	}
+}
+
+func TestProjectAgentStreamAuthenticatesBeforeOpeningSSE(t *testing.T) {
+	router := newTestRouterWithAI(t, testAIClient{reply: "The bracket is ready."})
+	projectID, conversationID, _ := createAgentStreamFixture(t, router, "agent-stream-auth@example.com")
+
+	response := postJSON(t, router, "/api/v1/projects/"+projectID+"/agent/conversations/"+conversationID+"/messages/stream", map[string]any{
+		"messages": []map[string]string{
+			{"role": "user", "body": "Inspect the bracket"},
+		},
+	})
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("stream status = %d, want %d, body = %s", response.Code, http.StatusUnauthorized, response.Body.String())
+	}
+	if got := response.Header().Get("Content-Type"); strings.HasPrefix(got, "text/event-stream") {
+		t.Fatalf("unauthorized response should not open SSE, Content-Type = %q", got)
+	}
+}
+
 func TestProjectAgentRouteReturnsAIReply(t *testing.T) {
 	router := newTestRouterWithAI(t, testAIClient{reply: "This project has usable CAD context."})
 
@@ -145,6 +256,42 @@ func TestProjectAgentRouteReturnsAIReply(t *testing.T) {
 	if listResponse.Messages[1].Role != "assistant" || listResponse.Messages[1].Body != "This project has usable CAD context." {
 		t.Fatalf("stored assistant message = %+v", listResponse.Messages[1])
 	}
+}
+
+func createAgentStreamFixture(t *testing.T, router http.Handler, email string) (string, string, *http.Cookie) {
+	t.Helper()
+	register := postJSON(t, router, "/api/v1/auth/register", map[string]string{
+		"name":     "Ada Lovelace",
+		"email":    email,
+		"password": "correct-horse-battery",
+	})
+	sessionCookie := findCookie(register.Result(), SessionCookieName)
+	if sessionCookie == nil {
+		t.Fatal("register should set a session cookie")
+	}
+	create := postJSONWithCookie(t, router, "/api/v1/projects", map[string]string{
+		"name": "Streaming Agent project",
+	}, sessionCookie)
+	var createResponse struct {
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &createResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	conversation := postJSONWithCookie(t, router, "/api/v1/projects/"+createResponse.Project.ID+"/agent/conversations", map[string]string{
+		"title": "Streaming review",
+	}, sessionCookie)
+	var conversationResponse struct {
+		Conversation struct {
+			ID string `json:"id"`
+		} `json:"conversation"`
+	}
+	if err := json.Unmarshal(conversation.Body.Bytes(), &conversationResponse); err != nil {
+		t.Fatalf("decode conversation response: %v", err)
+	}
+	return createResponse.Project.ID, conversationResponse.Conversation.ID, sessionCookie
 }
 
 func TestProjectAgentRouteRequiresAIConfiguration(t *testing.T) {

@@ -56,6 +56,7 @@ func (ctrl *Ctrl) RegisterRoutes(r *fox.Engine) {
 	api.POST("/projects/:projectID/agent/conversations", ctrl.CreateProjectAgentConversation)
 	api.GET("/projects/:projectID/agent/conversations/:conversationID/messages", ctrl.ListProjectAgentMessages)
 	api.POST("/projects/:projectID/agent/conversations/:conversationID/messages", ctrl.SendProjectAgentMessage)
+	api.POST("/projects/:projectID/agent/conversations/:conversationID/messages/stream", ctrl.StreamProjectAgentMessage)
 	api.POST("/projects/:projectID/agent/conversations/:conversationID/parametric-runs", ctrl.RunProjectAgentParametric)
 	api.GET("/projects/:projectID/parametric-artifacts", ctrl.ListProjectParametricArtifacts)
 	api.POST("/projects/:projectID/parametric-artifacts", ctrl.CreateProjectParametricArtifact)

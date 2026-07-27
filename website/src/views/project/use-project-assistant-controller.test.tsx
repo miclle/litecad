@@ -8,8 +8,8 @@ import {
   fetchProjectAgentConversationMessages,
   fetchProjectAgentConversations,
   runProjectAgentParametric,
-  sendProjectAgentConversationMessage,
 } from 'src/api/projects'
+import { streamProjectAgentConversationMessage } from 'src/api/project-agent-stream'
 import type { ProjectModel } from 'src/types/project'
 import { projectAssistantErrorMessage, useProjectAssistantController } from './use-project-assistant-controller'
 
@@ -19,7 +19,10 @@ vi.mock('src/api/projects', () => ({
   fetchProjectAgentConversations: vi.fn(),
   fetchProjectParametricArtifacts: vi.fn(),
   runProjectAgentParametric: vi.fn(),
-  sendProjectAgentConversationMessage: vi.fn(),
+}))
+
+vi.mock('src/api/project-agent-stream', () => ({
+  streamProjectAgentConversationMessage: vi.fn(),
 }))
 
 const projectId = 'project_assistant'
@@ -57,6 +60,17 @@ describe('useProjectAssistantController', () => {
         ],
       },
     } as Awaited<ReturnType<typeof fetchProjectAgentConversationMessages>>)
+    vi.mocked(streamProjectAgentConversationMessage).mockResolvedValue({
+      message: {
+        id: 'agm_answer',
+        project_id: projectId,
+        conversation_id: 'agc_first',
+        role: 'assistant',
+        body: 'Inspection complete',
+        created_at: '2026-07-13T00:00:00Z',
+        updated_at: '2026-07-13T00:00:00Z',
+      },
+    })
   })
 
   it('selects the first conversation and composes persisted messages', async () => {
@@ -71,19 +85,6 @@ describe('useProjectAssistantController', () => {
   })
 
   it('submits the current draft through the active conversation', async () => {
-    vi.mocked(sendProjectAgentConversationMessage).mockResolvedValue({
-      data: {
-        message: {
-          id: 'agm_answer',
-          project_id: projectId,
-          conversation_id: 'agc_first',
-          role: 'assistant',
-          body: 'Inspection complete',
-          created_at: '2026-07-13T00:00:00Z',
-          updated_at: '2026-07-13T00:00:00Z',
-        },
-      },
-    } as Awaited<ReturnType<typeof sendProjectAgentConversationMessage>>)
     const { wrapper } = createHarness()
     const { result } = renderHook(
       () => useProjectAssistantController({ projectId, enabled: true }),
@@ -94,12 +95,232 @@ describe('useProjectAssistantController', () => {
     act(() => result.current.setDraft('Inspect this model'))
     act(() => result.current.submitMessage())
 
-    await waitFor(() =>
-      expect(sendProjectAgentConversationMessage).toHaveBeenCalledWith(projectId, 'agc_first', {
+    await waitFor(() => expect(streamProjectAgentConversationMessage).toHaveBeenCalled())
+    expect(vi.mocked(streamProjectAgentConversationMessage).mock.calls[0]?.slice(0, 3)).toEqual([
+      projectId,
+      'agc_first',
+      expect.objectContaining({
+        client_request_id: expect.stringMatching(/^local-assistant-stream-/),
         messages: [{ role: 'user', body: 'Inspect this model' }],
       }),
-    )
+    ])
     expect(result.current.draft).toBe('')
+  })
+
+  it('shows Assistant progress, reasoning, and partial content before the stream completes', async () => {
+    let emitEvent: Parameters<typeof streamProjectAgentConversationMessage>[3] = () => undefined
+    let finishStream: (value: Awaited<ReturnType<typeof streamProjectAgentConversationMessage>>) => void = () => undefined
+    let clientRequestID = ''
+    vi.mocked(streamProjectAgentConversationMessage).mockImplementation(
+      (_projectID, _conversationID, payload, onEvent) =>
+        new Promise((resolve) => {
+          clientRequestID = payload.client_request_id ?? ''
+          emitEvent = onEvent
+          finishStream = resolve
+        }),
+    )
+    const { queryClient, wrapper } = createHarness()
+    const { result } = renderHook(
+      () => useProjectAssistantController({ projectId, enabled: true }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.activeConversationID).toBe('agc_first'))
+    act(() => result.current.setDraft('Inspect streaming state'))
+    act(() => result.current.submitMessage())
+
+    await waitFor(() => expect(result.current.pendingKind).toBe('message'))
+    expect(result.current.messages.at(-1)?.stream).toMatchObject({ stage: 'connecting', state: 'active' })
+
+    act(() => {
+      emitEvent({ type: 'status', stage: 'context' })
+      emitEvent({ type: 'reasoning', delta: 'Checking source metadata.' })
+      emitEvent({ type: 'content', delta: 'The bracket ' })
+      emitEvent({ type: 'content', delta: 'is ready.' })
+    })
+
+    expect(result.current.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      body: 'The bracket is ready.',
+      stream: {
+        stage: 'context',
+        reasoning: 'Checking source metadata.',
+        state: 'active',
+      },
+    })
+
+    act(() => {
+      queryClient.setQueryData(['project-agent-messages', projectId, 'agc_first'], [
+        {
+          id: 'agm_streamed_user',
+          project_id: projectId,
+          conversation_id: 'agc_first',
+          client_request_id: clientRequestID,
+          role: 'user',
+          body: 'Inspect streaming state',
+          created_at: '2026-07-13T00:00:00Z',
+          updated_at: '2026-07-13T00:00:00Z',
+        },
+        {
+          id: 'agm_streamed',
+          project_id: projectId,
+          conversation_id: 'agc_first',
+          client_request_id: clientRequestID,
+          role: 'assistant',
+          body: 'The bracket is ready.',
+          created_at: '2026-07-13T00:00:00Z',
+          updated_at: '2026-07-13T00:00:00Z',
+        },
+      ])
+    })
+    expect(result.current.messages.filter((message) => message.body === 'The bracket is ready.')).toHaveLength(1)
+
+    act(() =>
+      finishStream({
+        message: {
+          id: 'agm_streamed',
+          project_id: projectId,
+          conversation_id: 'agc_first',
+          client_request_id: clientRequestID,
+          role: 'assistant',
+          body: 'The bracket is ready.',
+          created_at: '2026-07-13T00:00:00Z',
+          updated_at: '2026-07-13T00:00:00Z',
+        },
+      }),
+    )
+    await waitFor(() => expect(result.current.pendingKind).toBe('idle'))
+  })
+
+  it('reconciles a persisted reply when the stream disconnects before the result event', async () => {
+    let rejectStream: (error: Error) => void = () => undefined
+    let clientRequestID = ''
+    vi.mocked(streamProjectAgentConversationMessage).mockImplementation(
+      (_projectID, _conversationID, payload) =>
+        new Promise((_, reject) => {
+          clientRequestID = payload.client_request_id ?? ''
+          rejectStream = reject
+        }),
+    )
+    let messageFetchCount = 0
+    vi.mocked(fetchProjectAgentConversationMessages).mockImplementation(async () => {
+      messageFetchCount += 1
+      if (messageFetchCount === 1) {
+        return {
+        data: {
+          messages: [
+            {
+              id: 'agm_reply',
+              project_id: projectId,
+              conversation_id: 'agc_first',
+              role: 'assistant',
+              body: 'Persisted reply',
+              created_at: '2026-07-13T00:00:00Z',
+              updated_at: '2026-07-13T00:00:00Z',
+            },
+          ],
+        },
+        } as Awaited<ReturnType<typeof fetchProjectAgentConversationMessages>>
+      }
+      return {
+        data: {
+          messages: [
+            {
+              id: 'agm_reply',
+              project_id: projectId,
+              conversation_id: 'agc_first',
+              role: 'assistant',
+              body: 'Persisted reply',
+              created_at: '2026-07-13T00:00:00Z',
+              updated_at: '2026-07-13T00:00:00Z',
+            },
+            {
+              id: 'agm_stale_user',
+              project_id: projectId,
+              conversation_id: 'agc_first',
+              client_request_id: 'other_request',
+              role: 'user',
+              body: 'Inspect persisted state',
+              created_at: '2026-07-25T00:00:00Z',
+              updated_at: '2026-07-25T00:00:00Z',
+            },
+            {
+              id: 'agm_stale_assistant',
+              project_id: projectId,
+              conversation_id: 'agc_first',
+              client_request_id: 'other_request',
+              role: 'assistant',
+              body: 'Older identical prompt reply',
+              created_at: '2026-07-25T00:00:01Z',
+              updated_at: '2026-07-25T00:00:01Z',
+            },
+            {
+              id: 'agm_user_recovered',
+              project_id: projectId,
+              conversation_id: 'agc_first',
+              client_request_id: clientRequestID,
+              role: 'user',
+              body: 'Inspect persisted state',
+              created_at: '2026-07-26T00:00:00Z',
+              updated_at: '2026-07-26T00:00:00Z',
+            },
+            {
+              id: 'agm_assistant_recovered',
+              project_id: projectId,
+              conversation_id: 'agc_first',
+              client_request_id: clientRequestID,
+              role: 'assistant',
+              body: 'Recovered after disconnect',
+              created_at: '2026-07-26T00:00:01Z',
+              updated_at: '2026-07-26T00:00:01Z',
+            },
+          ],
+        },
+      } as Awaited<ReturnType<typeof fetchProjectAgentConversationMessages>>
+    })
+    const { wrapper } = createHarness()
+    const { result } = renderHook(
+      () => useProjectAssistantController({ projectId, enabled: true }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.activeConversationID).toBe('agc_first'))
+    act(() => result.current.setDraft('Inspect persisted state'))
+    act(() => result.current.submitMessage())
+    await waitFor(() => expect(result.current.pendingKind).toBe('message'))
+    expect(clientRequestID).toMatch(/^local-assistant-stream-/)
+
+    act(() => rejectStream(new Error('connection closed after persistence')))
+
+    await waitFor(() => expect(result.current.pendingKind).toBe('idle'))
+    await waitFor(() => expect(result.current.messages.map((message) => message.body)).toContain('Recovered after disconnect'))
+    expect(messageFetchCount).toBeGreaterThanOrEqual(2)
+    expect(result.current.messages.some((message) => message.stream?.state === 'error')).toBe(false)
+  })
+
+  it('aborts the provider stream when the controller unmounts', async () => {
+    let capturedSignal: AbortSignal | undefined
+    vi.mocked(streamProjectAgentConversationMessage).mockImplementation(
+      (_projectID, _conversationID, _payload, _onEvent, signal) =>
+        new Promise((_, reject) => {
+          capturedSignal = signal
+          signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+        }),
+    )
+    const { wrapper } = createHarness()
+    const { result, unmount } = renderHook(
+      () => useProjectAssistantController({ projectId, enabled: true }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.activeConversationID).toBe('agc_first'))
+    act(() => result.current.setDraft('Inspect cancellation'))
+    act(() => result.current.submitMessage())
+    await waitFor(() => expect(capturedSignal).toBeDefined())
+
+    unmount()
+
+    expect(capturedSignal?.aborted).toBe(true)
   })
 
   it('creates and selects a fresh conversation', async () => {
@@ -285,19 +506,17 @@ describe('useProjectAssistantController', () => {
   })
 
   it('sends the selected model as revision context for ordinary Assistant messages', async () => {
-    vi.mocked(sendProjectAgentConversationMessage).mockResolvedValue({
-      data: {
-        message: {
-          id: 'agm_answer',
-          project_id: projectId,
-          conversation_id: 'agc_first',
-          role: 'assistant',
-          body: 'Created a revised draft',
-          created_at: '2026-07-13T00:00:00Z',
-          updated_at: '2026-07-13T00:00:00Z',
-        },
+    vi.mocked(streamProjectAgentConversationMessage).mockResolvedValue({
+      message: {
+        id: 'agm_answer',
+        project_id: projectId,
+        conversation_id: 'agc_first',
+        role: 'assistant',
+        body: 'Created a revised draft',
+        created_at: '2026-07-13T00:00:00Z',
+        updated_at: '2026-07-13T00:00:00Z',
       },
-    } as Awaited<ReturnType<typeof sendProjectAgentConversationMessage>>)
+    })
     const { wrapper } = createHarness()
     const { result } = renderHook(
       () =>
@@ -313,12 +532,16 @@ describe('useProjectAssistantController', () => {
     act(() => result.current.setDraft('直接修改模型'))
     act(() => result.current.submitMessage())
 
-    await waitFor(() =>
-      expect(sendProjectAgentConversationMessage).toHaveBeenCalledWith(projectId, 'agc_first', {
+    await waitFor(() => expect(streamProjectAgentConversationMessage).toHaveBeenCalled())
+    expect(vi.mocked(streamProjectAgentConversationMessage).mock.calls[0]?.slice(0, 3)).toEqual([
+      projectId,
+      'agc_first',
+      expect.objectContaining({
         messages: [{ role: 'user', body: '直接修改模型' }],
         active_model_id: 'mdl_sphere',
+        client_request_id: expect.stringMatching(/^local-assistant-stream-/),
       }),
-    )
+    ])
   })
 })
 

@@ -6,17 +6,27 @@ const client = axios.create({
   withCredentials: true,
 })
 
+type RedirectLocation = Pick<Location, 'assign' | 'pathname'>
+
+export function redirectToLoginOnUnauthorized(
+  status: unknown,
+  requestURL?: string,
+  location: RedirectLocation = window.location,
+) {
+  if (status !== 401) {
+    return
+  }
+  const isCurrentUserProbe = requestURL === '/auth/me'
+  if (!isCurrentUserProbe && location.pathname !== '/login' && location.pathname !== '/register') {
+    location.assign('/login')
+  }
+}
+
 // Intercept 401 responses to redirect to login page.
 client.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      const path = window.location.pathname
-      const isCurrentUserProbe = error.config?.url === '/auth/me'
-      if (!isCurrentUserProbe && path !== '/login' && path !== '/register') {
-        window.location.href = '/login'
-      }
-    }
+    redirectToLoginOnUnauthorized(error.response?.status, error.config?.url)
     return Promise.reject(error)
   },
 )

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -8,9 +8,9 @@ import {
   fetchProjectAgentConversations,
   fetchProjectParametricArtifacts,
   runProjectAgentParametric,
-  sendProjectAgentConversationMessage,
 } from 'src/api/projects'
-import type { ProjectModel, ProjectParametricArtifact } from 'src/types/project'
+import { streamProjectAgentConversationMessage } from 'src/api/project-agent-stream'
+import type { ProjectAgentStreamEvent, ProjectModel, ProjectParametricArtifact } from 'src/types/project'
 import { displayAiChatBody, generatedArtifactTitleFromAIChatBody } from './project-agent-tool-message'
 import type { AiChatMessage, ParametricGenerationProgress } from './project-assistant-panel'
 import { formatParametricRunSummary } from './project-parametric-run-telemetry'
@@ -75,6 +75,7 @@ export function useProjectAssistantController({
   const [parametricRunAttempt, setParametricRunAttempt] = useState(0)
   const [retryParametricPrompt, setRetryParametricPrompt] = useState('')
   const [generatedArtifactRevisionTargetModelID, setGeneratedArtifactRevisionTargetModelID] = useState('')
+  const activeMessageStreamRef = useRef<{ controller: AbortController; requestID: string } | null>(null)
   const activeModelName = activeModel ? projectAssistantModelDisplayName(activeModel) : ''
 
   const conversationsQuery = useQuery({
@@ -104,11 +105,36 @@ export function useProjectAssistantController({
   const persistedMessages = useMemo<AiChatMessage[]>(
     () =>
       messagesQuery.data && messagesQuery.data.length > 0
-        ? messagesQuery.data.map((message) => ({ id: message.id, role: message.role, body: displayAiChatBody(message.body, t) }))
+        ? messagesQuery.data.map((message) => ({
+            id: message.id,
+            role: message.role,
+            body: displayAiChatBody(message.body, t),
+            clientRequestID: message.client_request_id,
+          }))
         : initialMessages,
     [initialMessages, messagesQuery.data, t],
   )
-  const messages = useMemo(() => [...persistedMessages, ...localMessages], [localMessages, persistedMessages])
+  const messages = useMemo(() => {
+    const persistedClientRequestIDs = new Set(
+      persistedMessages
+        .map((message) => message.clientRequestID)
+        .filter((requestID): requestID is string => requestID !== undefined),
+    )
+    return [
+      ...persistedMessages,
+      ...localMessages.filter(
+        (message) => !message.clientRequestID || !persistedClientRequestIDs.has(message.clientRequestID),
+      ),
+    ]
+  }, [localMessages, persistedMessages])
+
+  useEffect(
+    () => () => {
+      activeMessageStreamRef.current?.controller.abort()
+      activeMessageStreamRef.current = null
+    },
+    [activeConversationID, projectId],
+  )
 
   const selectArtifact = (artifact: ProjectParametricArtifact) => {
     setParametricRunError('')
@@ -120,18 +146,44 @@ export function useProjectAssistantController({
   }
 
   const messageMutation = useMutation({
-    mutationFn: async (messageBody: string) => {
-      const response = await sendProjectAgentConversationMessage(projectId, activeConversationID, {
+    mutationFn: async ({
+      conversationID,
+      messageBody,
+      requestID,
+      signal,
+      streamMessageID,
+    }: {
+      conversationID: string
+      messageBody: string
+      requestID: string
+      signal: AbortSignal
+      streamMessageID: string
+    }) =>
+      streamProjectAgentConversationMessage(projectId, conversationID, {
+        client_request_id: requestID,
         messages: [{ role: 'user', body: messageBody }],
         ...(activeModel?.id ? { active_model_id: activeModel.id } : {}),
-      })
-      return response.data
-    },
-    onSuccess: async ({ artifact, message }) => {
-      setLocalMessages((currentMessages) => [
-        ...currentMessages,
-        { id: `local-assistant-${message.id || Date.now()}`, role: 'assistant', body: message.body },
-      ])
+      }, (event) => {
+        if (activeMessageStreamRef.current?.requestID === requestID) {
+          updateProjectAgentStreamMessage(streamMessageID, event, setLocalMessages)
+        }
+      }, signal),
+    onSuccess: async ({ artifact, message }, { requestID, streamMessageID }) => {
+      if (activeMessageStreamRef.current?.requestID !== requestID) {
+        return
+      }
+      activeMessageStreamRef.current = null
+      setLocalMessages((currentMessages) =>
+        currentMessages.map((candidate) =>
+          candidate.id === streamMessageID
+            ? {
+                ...candidate,
+                body: displayAiChatBody(message.body, t),
+                stream: candidate.stream ? { ...candidate.stream, stage: 'complete', state: 'active' } : undefined,
+              }
+            : candidate,
+        ),
+      )
       await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })
       await queryClient.invalidateQueries({ queryKey: ['project-agent-messages', projectId, message.conversation_id] })
       await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
@@ -153,11 +205,56 @@ export function useProjectAssistantController({
       }
       setLocalMessages([])
     },
-    onError: (error) => {
-      setLocalMessages((currentMessages) => [
-        ...currentMessages,
-        { id: `assistant-error-${Date.now()}`, role: 'assistant', body: projectAssistantErrorMessage(error, t) },
-      ])
+    onError: async (error, { conversationID, requestID, streamMessageID }) => {
+      if (activeMessageStreamRef.current?.requestID !== requestID) {
+        return
+      }
+      activeMessageStreamRef.current = null
+      if (isAbortError(error)) {
+        return
+      }
+
+      try {
+        const refreshedMessages = (await fetchProjectAgentConversationMessages(projectId, conversationID)).data.messages
+        queryClient.setQueryData(['project-agent-messages', projectId, conversationID], refreshedMessages)
+        const recoveredReply = refreshedMessages.find(
+          (message) => message.role === 'assistant' && message.client_request_id === requestID,
+        )
+        if (recoveredReply) {
+          setLocalMessages([])
+          await queryClient.invalidateQueries({ queryKey: ['project-agent-conversations', projectId] })
+          await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
+          try {
+            const artifacts = (await fetchProjectParametricArtifacts(projectId)).data.artifacts
+            const recoveredArtifact = artifacts.find((artifact) => artifact.message_id === recoveredReply.id)
+            if (recoveredArtifact) {
+              selectArtifact(recoveredArtifact)
+            }
+          } catch {
+            // The recovered message is authoritative even when artifact refresh fails.
+          }
+          return
+        }
+      } catch {
+        // Preserve the partial response below when reconciliation is unavailable.
+      }
+
+      const errorMessage = projectAssistantErrorMessage(error, t)
+      setLocalMessages((currentMessages) =>
+        currentMessages.map((candidate) =>
+          candidate.id === streamMessageID
+            ? {
+                ...candidate,
+                stream: {
+                  error: errorMessage,
+                  reasoning: candidate.stream?.reasoning ?? '',
+                  stage: candidate.stream?.stage ?? 'connecting',
+                  state: 'error',
+                },
+              }
+            : candidate,
+        ),
+      )
     },
   })
 
@@ -221,11 +318,34 @@ export function useProjectAssistantController({
     if (!messageBody || messageMutation.isPending || parametricMutation.isPending || !activeConversationID) {
       return
     }
+    const requestID = createProjectAgentClientRequestID()
+    const streamMessageID = requestID
+    const requestIdentity = streamMessageID
+    const streamController = new AbortController()
+    activeMessageStreamRef.current?.controller.abort()
+    activeMessageStreamRef.current = { controller: streamController, requestID: requestIdentity }
     setLocalMessages((currentMessages) => [
       ...currentMessages,
-      { id: `local-user-${Date.now()}`, role: 'user', body: messageBody },
+      { id: `local-user-${requestID}`, role: 'user', body: messageBody, clientRequestID: requestIdentity },
+      {
+        id: streamMessageID,
+        role: 'assistant',
+        body: '',
+        clientRequestID: requestIdentity,
+        stream: {
+          reasoning: '',
+          stage: 'connecting',
+          state: 'active',
+        },
+      },
     ])
-    messageMutation.mutate(messageBody)
+    messageMutation.mutate({
+      conversationID: activeConversationID,
+      messageBody,
+      requestID: requestIdentity,
+      signal: streamController.signal,
+      streamMessageID,
+    })
     setDraft('')
   }
 
@@ -272,6 +392,8 @@ export function useProjectAssistantController({
   }
 
   const selectConversation = (conversationID: string) => {
+    activeMessageStreamRef.current?.controller.abort()
+    activeMessageStreamRef.current = null
     setSelectedConversationID(conversationID)
     setDraft('')
     setLocalMessages([])
@@ -312,6 +434,47 @@ export function useProjectAssistantController({
     setParametricRunError,
     submitMessage,
   }
+}
+
+function isAbortError(error: unknown) {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    (error as { name?: unknown }).name === 'AbortError'
+  )
+}
+
+function createProjectAgentClientRequestID() {
+  const randomID = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)
+  return `local-assistant-stream-${Date.now()}-${randomID}`
+}
+
+function updateProjectAgentStreamMessage(
+  streamMessageID: string,
+  event: ProjectAgentStreamEvent,
+  setLocalMessages: Dispatch<SetStateAction<AiChatMessage[]>>,
+) {
+  if (event.type === 'result' || event.type === 'error') {
+    return
+  }
+  setLocalMessages((currentMessages) =>
+    currentMessages.map((candidate) => {
+      if (candidate.id !== streamMessageID || !candidate.stream) {
+        return candidate
+      }
+      if (event.type === 'status') {
+        return { ...candidate, stream: { ...candidate.stream, stage: event.stage } }
+      }
+      if (event.type === 'reasoning') {
+        return {
+          ...candidate,
+          stream: { ...candidate.stream, reasoning: candidate.stream.reasoning + event.delta },
+        }
+      }
+      return { ...candidate, body: candidate.body + event.delta }
+    }),
+  )
 }
 
 function revisionTargetModelIDForArtifact(model: ProjectModel | undefined, artifact: ProjectParametricArtifact) {

@@ -1,8 +1,9 @@
 import { AlertTriangle, BotMessageSquare, Box, CheckCircle2, Clock3, Plus, RefreshCw, Send, X } from 'lucide-react'
-import type { FormEvent, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import type { ProjectAgentStreamStage } from '@/types/project'
 import { AgentMarkdown } from './agent-markdown'
 import { shouldSubmitAgentInputFromKey } from './agent-input'
 
@@ -10,6 +11,13 @@ export type AiChatMessage = {
   id: string
   role: 'assistant' | 'user'
   body: string
+  clientRequestID?: string
+  stream?: {
+    error?: string
+    reasoning: string
+    stage: ProjectAgentStreamStage
+    state: 'active' | 'error'
+  }
 }
 
 export type AssistantConversationSummary = {
@@ -112,6 +120,22 @@ export function ProjectAssistantPanel({
   const statusLabel = assistantStatusLabel({ hasActiveConversation, isPending, pendingKind, t })
   const progressPrompt = parametricProgress?.prompt.trim() || retryParametricPrompt.trim()
   const revisionModelName = parametricProgress?.activeModelName?.trim() || activeModelName.trim()
+  const messageListRef = useRef<HTMLDivElement>(null)
+  const followLatestMessageRef = useRef(true)
+  const lastMessage = messages.at(-1)
+  useEffect(() => {
+    followLatestMessageRef.current = true
+    const messageList = messageListRef.current
+    if (messageList) {
+      messageList.scrollTop = messageList.scrollHeight
+    }
+  }, [activeConversationId])
+  useEffect(() => {
+    const messageList = messageListRef.current
+    if (messageList && followLatestMessageRef.current) {
+      messageList.scrollTop = messageList.scrollHeight
+    }
+  }, [lastMessage?.body, lastMessage?.stream?.reasoning, lastMessage?.stream?.stage, messages.length])
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (canSubmit) {
@@ -203,7 +227,14 @@ export function ProjectAssistantPanel({
         </Button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-3 py-4">
+      <div
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-3 py-4"
+        onScroll={(event) => {
+          const target = event.currentTarget
+          followLatestMessageRef.current = target.scrollHeight - target.scrollTop - target.clientHeight < 48
+        }}
+        ref={messageListRef}
+      >
         {messages.map((message) => (
           <div
             className={`min-w-0 max-w-[96%] overflow-hidden break-words rounded-md px-3 py-2 text-sm leading-6 ${
@@ -213,7 +244,11 @@ export function ProjectAssistantPanel({
             }`}
             key={message.id}
           >
-            <AgentMarkdown tone={message.role}>{message.body}</AgentMarkdown>
+            {message.role === 'assistant' ? (
+              <AssistantMessageContent message={message} />
+            ) : (
+              <AgentMarkdown tone={message.role}>{message.body}</AgentMarkdown>
+            )}
           </div>
         ))}
       </div>
@@ -322,5 +357,79 @@ export function ProjectAssistantPanel({
         </div>
       </form>
     </aside>
+  )
+}
+
+function AssistantMessageContent({ message }: { message: AiChatMessage }) {
+  const { t } = useTranslation()
+  const stream = message.stream
+  if (!stream) {
+    return <AgentMarkdown tone="assistant">{message.body}</AgentMarkdown>
+  }
+
+  const isStreaming = stream.state === 'active' && stream.stage !== 'complete'
+  const stageLabel =
+    stream.state === 'error'
+      ? t('project.assistant.stream.interruptedTitle')
+      : t(`project.assistant.stream.stages.${stream.stage}`)
+
+  return (
+    <>
+      <div
+        aria-label={t('project.assistant.stream.activity')}
+        aria-live="polite"
+        className={`border-l-2 pl-2.5 ${stream.state === 'error' ? 'border-[#f97316]' : 'border-[#3b82f6]'}`}
+        role="status"
+      >
+        <div
+          className={`flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] ${
+            stream.state === 'error' ? 'text-[#9a3412]' : 'text-[#1d4ed8]'
+          }`}
+        >
+          {stream.state === 'error' ? (
+            <AlertTriangle className="size-3.5 shrink-0" />
+          ) : stream.stage === 'complete' ? (
+            <CheckCircle2 className="size-3.5 shrink-0" />
+          ) : (
+            <span
+              aria-hidden="true"
+              className="size-2 shrink-0 rounded-full bg-[#3b82f6] animate-pulse motion-reduce:animate-none"
+            />
+          )}
+          <span>{stageLabel}</span>
+          {isStreaming && message.body ? (
+            <span className="text-[#64748b]">{t('project.assistant.stream.answering')}</span>
+          ) : null}
+        </div>
+
+        {stream.reasoning ? (
+          <div className="mt-2 rounded-md border border-[#dbeafe] bg-[#f8fbff] px-2.5 py-2">
+            <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[#64748b]">
+              {t('project.assistant.stream.thoughtProcess')}
+            </div>
+            <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-[#475569]">{stream.reasoning}</p>
+          </div>
+        ) : null}
+
+        {stream.state === 'error' ? (
+          <div className="mt-2 text-xs leading-5 text-[#9a3412]">
+            <p>{stream.error}</p>
+            <p className="mt-1 text-[#c2410c]">{t('project.assistant.stream.interruptedGuidance')}</p>
+          </div>
+        ) : null}
+      </div>
+
+      {message.body ? (
+        <div className="mt-2">
+          <AgentMarkdown tone="assistant">{message.body}</AgentMarkdown>
+          {isStreaming ? (
+            <span
+              aria-hidden="true"
+              className="ml-0.5 inline-block h-4 w-px translate-y-0.5 bg-[#2563eb] animate-pulse motion-reduce:animate-none"
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </>
   )
 }

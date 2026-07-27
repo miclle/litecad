@@ -66,6 +66,8 @@ ai:
 
 Leaving `ai.api_key` or `ai.model` empty disables provider-backed Assistant sends while the rest of the application continues to run.
 
+Ordinary Assistant replies use authenticated POST SSE at `/api/v1/projects/:projectID/agent/conversations/:conversationID/messages/stream`. A reverse proxy must pass `text/event-stream` responses without buffering or compression delays, keep the connection open longer than `ai.timeout_seconds`, and avoid caching this route. LiteCAD sends `Cache-Control: no-cache` and `X-Accel-Buffering: no`; proxy-specific buffering and idle-timeout settings still belong in the deployment configuration.
+
 ## Run
 
 Run the built binary with an explicit config path:

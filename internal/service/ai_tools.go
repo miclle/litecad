@@ -53,14 +53,15 @@ type ProjectAgentMessagePart struct {
 
 // ProjectAgentStructuredMessage is a structured Assistant message returned by tool routes.
 type ProjectAgentStructuredMessage struct {
-	ID             string                    `json:"id"`
-	ProjectID      string                    `json:"project_id"`
-	ConversationID string                    `json:"conversation_id"`
-	Role           string                    `json:"role"`
-	Body           string                    `json:"body"`
-	Parts          []ProjectAgentMessagePart `json:"parts"`
-	CreatedAt      string                    `json:"created_at"`
-	UpdatedAt      string                    `json:"updated_at"`
+	ID              string                    `json:"id"`
+	ProjectID       string                    `json:"project_id"`
+	ConversationID  string                    `json:"conversation_id"`
+	ClientRequestID string                    `json:"client_request_id,omitempty"`
+	Role            string                    `json:"role"`
+	Body            string                    `json:"body"`
+	Parts           []ProjectAgentMessagePart `json:"parts"`
+	CreatedAt       string                    `json:"created_at"`
+	UpdatedAt       string                    `json:"updated_at"`
 }
 
 // ProjectAgentParametricRunInput is the request to generate a parametric artifact from a conversation prompt.
@@ -631,7 +632,11 @@ func (s *Service) persistProjectAgentParametricRun(ctx context.Context, projectI
 		if _, err := createProjectAgentMessageInDB(ctx, tx, projectID, conversationID, userMessage); err != nil {
 			return err
 		}
-		assistantMessage, err := createProjectAgentMessageInDB(ctx, tx, projectID, conversationID, AIChatMessage{Role: "assistant", Body: strings.TrimSpace(reply)})
+		assistantMessage, err := createProjectAgentMessageInDB(ctx, tx, projectID, conversationID, AIChatMessage{
+			Role:            "assistant",
+			Body:            strings.TrimSpace(reply),
+			ClientRequestID: userMessage.ClientRequestID,
+		})
 		if err != nil {
 			return err
 		}
@@ -650,11 +655,12 @@ func (s *Service) persistProjectAgentParametricRun(ctx context.Context, projectI
 		}
 		run = ProjectAgentParametricRun{
 			Message: ProjectAgentStructuredMessage{
-				ID:             assistantMessage.ID,
-				ProjectID:      assistantMessage.ProjectID,
-				ConversationID: assistantMessage.ConversationID,
-				Role:           assistantMessage.Role,
-				Body:           assistantMessage.Body,
+				ID:              assistantMessage.ID,
+				ProjectID:       assistantMessage.ProjectID,
+				ConversationID:  assistantMessage.ConversationID,
+				ClientRequestID: assistantMessage.ClientRequestID,
+				Role:            assistantMessage.Role,
+				Body:            assistantMessage.Body,
 				Parts: []ProjectAgentMessagePart{
 					{Type: "tool_call", ToolCall: &call},
 					{Type: "artifact", ArtifactID: artifact.ID},
@@ -685,8 +691,9 @@ func (s *Service) persistProjectAgentParametricFailureMessage(ctx context.Contex
 			return err
 		}
 		message, err := createProjectAgentMessageInDB(ctx, tx, projectID, conversationID, AIChatMessage{
-			Role: "assistant",
-			Body: aiParametricInvalidToolFailureMessage,
+			Role:            "assistant",
+			Body:            aiParametricInvalidToolFailureMessage,
+			ClientRequestID: userMessage.ClientRequestID,
 		})
 		if err != nil {
 			return err

@@ -5,8 +5,149 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strings"
 	"testing"
 )
+
+func TestOpenAICompatibleAIClientStreamsReasoningAndContent(t *testing.T) {
+	var request openAICompatibleChatRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Checking the \"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"reasoning\":\"project context.\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"The bracket \"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"is ready.\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	client, err := NewOpenAICompatibleAIClient(OpenAICompatibleConfig{
+		BaseURL: server.URL,
+		APIKey:  "sk-test",
+		Model:   "thinking-model",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleAIClient returned error: %v", err)
+	}
+	streamingClient, ok := client.(AIStreamingClient)
+	if !ok {
+		t.Fatal("OpenAI-compatible client should implement AIStreamingClient")
+	}
+
+	var deltas []AIChatStreamDelta
+	reply, err := streamingClient.StreamChat(context.Background(), []AIChatMessage{
+		{Role: "user", Body: "Inspect the bracket"},
+	}, func(delta AIChatStreamDelta) error {
+		deltas = append(deltas, delta)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamChat returned error: %v", err)
+	}
+
+	wantDeltas := []AIChatStreamDelta{
+		{Reasoning: "Checking the "},
+		{Reasoning: "project context."},
+		{Content: "The bracket "},
+		{Content: "is ready."},
+	}
+	if !reflect.DeepEqual(deltas, wantDeltas) {
+		t.Fatalf("deltas = %#v, want %#v", deltas, wantDeltas)
+	}
+	if reply != "The bracket is ready." {
+		t.Fatalf("reply = %q, want %q", reply, "The bracket is ready.")
+	}
+	if !request.Stream {
+		t.Fatal("stream request should set stream=true")
+	}
+}
+
+func TestOpenAICompatibleAIClientRejectsPrematureStreamEOF(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Partial answer\"}}]}\n\n"))
+	}))
+	defer server.Close()
+
+	client, err := NewOpenAICompatibleAIClient(OpenAICompatibleConfig{
+		BaseURL: server.URL,
+		APIKey:  "sk-test",
+		Model:   "thinking-model",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleAIClient returned error: %v", err)
+	}
+
+	_, err = client.(AIStreamingClient).StreamChat(context.Background(), []AIChatMessage{
+		{Role: "user", Body: "Inspect the bracket"},
+	}, func(AIChatStreamDelta) error {
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "ended before a terminal event") {
+		t.Fatalf("StreamChat error = %v, want premature EOF error", err)
+	}
+}
+
+func TestOpenAICompatibleAIClientAcceptsTerminalFinishReasonWithoutDoneMarker(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Complete answer\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"))
+	}))
+	defer server.Close()
+
+	client, err := NewOpenAICompatibleAIClient(OpenAICompatibleConfig{
+		BaseURL: server.URL,
+		APIKey:  "sk-test",
+		Model:   "thinking-model",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleAIClient returned error: %v", err)
+	}
+
+	reply, err := client.(AIStreamingClient).StreamChat(context.Background(), []AIChatMessage{
+		{Role: "user", Body: "Inspect the bracket"},
+	}, func(AIChatStreamDelta) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamChat returned error: %v", err)
+	}
+	if reply != "Complete answer" {
+		t.Fatalf("reply = %q, want %q", reply, "Complete answer")
+	}
+}
+
+func TestOpenAICompatibleAIClientRejectsOversizedStream(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		padding := strings.Repeat(": keepalive\n\n", maxAIStreamResponseBytes/len(": keepalive\n\n")+2)
+		_, _ = w.Write([]byte(padding))
+	}))
+	defer server.Close()
+
+	client, err := NewOpenAICompatibleAIClient(OpenAICompatibleConfig{
+		BaseURL: server.URL,
+		APIKey:  "sk-test",
+		Model:   "thinking-model",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAICompatibleAIClient returned error: %v", err)
+	}
+
+	_, err = client.(AIStreamingClient).StreamChat(context.Background(), []AIChatMessage{
+		{Role: "user", Body: "Inspect the bracket"},
+	}, func(AIChatStreamDelta) error {
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "exceeded") {
+		t.Fatalf("StreamChat error = %v, want response size error", err)
+	}
+}
 
 func TestOpenAICompatibleChatWithToolsSendsToolSchemaAndParsesToolCall(t *testing.T) {
 	var request openAICompatibleChatRequest

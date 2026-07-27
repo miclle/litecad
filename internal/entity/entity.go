@@ -160,16 +160,17 @@ type ProjectAgentConversation struct {
 
 // ProjectAgentMessage stores one CAD Agent conversation message for a project.
 type ProjectAgentMessage struct {
-	ID             string                   `gorm:"size:32;primaryKey" json:"id"`
-	CreatedAt      time.Time                `gorm:"index" json:"created_at"`
-	UpdatedAt      time.Time                `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt           `gorm:"index" json:"deleted_at,omitempty"`
-	ProjectID      string                   `gorm:"size:32;index;not null" json:"project_id"`
-	ConversationID string                   `gorm:"size:32;index;not null" json:"conversation_id"`
-	Role           string                   `gorm:"size:16;index;not null" json:"role"`
-	Body           string                   `gorm:"type:text;not null" json:"body"`
-	Project        Project                  `gorm:"foreignKey:ProjectID" json:"project"`
-	Conversation   ProjectAgentConversation `gorm:"foreignKey:ConversationID" json:"conversation"`
+	ID              string                   `gorm:"size:32;primaryKey" json:"id"`
+	CreatedAt       time.Time                `gorm:"index" json:"created_at"`
+	UpdatedAt       time.Time                `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt           `gorm:"index" json:"deleted_at,omitempty"`
+	ProjectID       string                   `gorm:"size:32;index;not null" json:"project_id"`
+	ConversationID  string                   `gorm:"size:32;index;not null" json:"conversation_id"`
+	ClientRequestID string                   `gorm:"size:96;index" json:"client_request_id,omitempty"`
+	Role            string                   `gorm:"size:16;index;not null" json:"role"`
+	Body            string                   `gorm:"type:text;not null" json:"body"`
+	Project         Project                  `gorm:"foreignKey:ProjectID" json:"project"`
+	Conversation    ProjectAgentConversation `gorm:"foreignKey:ConversationID" json:"conversation"`
 }
 
 // ProjectParametricArtifact stores editable generated CAD source owned by a project.

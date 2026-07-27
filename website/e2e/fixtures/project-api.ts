@@ -596,13 +596,17 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     return
   }
   if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/agent/conversations/agc_smoke/messages`) {
-    const requestBody = request.postDataJSON() as { messages?: Array<{ role: 'assistant' | 'user'; body: string }> }
+    const requestBody = request.postDataJSON() as {
+      client_request_id?: string
+      messages?: Array<{ role: 'assistant' | 'user'; body: string }>
+    }
     const userMessageBody = requestBody.messages?.at(-1)?.body ?? 'Inspect smoke project'
     state.messages = [
       {
         id: 'agm_smoke_user',
         project_id: projectId,
         conversation_id: 'agc_smoke',
+        client_request_id: requestBody.client_request_id,
         role: 'user',
         body: userMessageBody,
         created_at: now,
@@ -612,6 +616,7 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
         id: 'agm_smoke',
         project_id: projectId,
         conversation_id: 'agc_smoke',
+        client_request_id: requestBody.client_request_id,
         role: 'assistant',
         body: 'Smoke reply ready.',
         created_at: now,
@@ -622,6 +627,55 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
       json: {
         message: state.messages[1],
       },
+    })
+    return
+  }
+  if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/agent/conversations/agc_smoke/messages/stream`) {
+    const requestBody = request.postDataJSON() as {
+      client_request_id?: string
+      messages?: Array<{ role: 'assistant' | 'user'; body: string }>
+    }
+    const userMessageBody = requestBody.messages?.at(-1)?.body ?? 'Inspect smoke project'
+    state.messages = [
+      {
+        id: 'agm_smoke_user',
+        project_id: projectId,
+        conversation_id: 'agc_smoke',
+        client_request_id: requestBody.client_request_id,
+        role: 'user',
+        body: userMessageBody,
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        id: 'agm_smoke',
+        project_id: projectId,
+        conversation_id: 'agc_smoke',
+        client_request_id: requestBody.client_request_id,
+        role: 'assistant',
+        body: 'Smoke reply ready.',
+        created_at: now,
+        updated_at: now,
+      },
+    ]
+    const streamFrames = [
+      'event: status\ndata: {"type":"status","stage":"accepted"}\n\n',
+      'event: status\ndata: {"type":"status","stage":"context"}\n\n',
+      'event: status\ndata: {"type":"status","stage":"provider"}\n\n',
+      'event: reasoning\ndata: {"type":"reasoning","delta":"Checking the smoke project context."}\n\n',
+      'event: content\ndata: {"type":"content","delta":"Smoke reply "}\n\n',
+      'event: content\ndata: {"type":"content","delta":"ready."}\n\n',
+      'event: status\ndata: {"type":"status","stage":"persisting"}\n\n',
+      'event: status\ndata: {"type":"status","stage":"complete"}\n\n',
+      `event: result\ndata: ${JSON.stringify({ message: state.messages[1] })}\n\n`,
+    ]
+    await route.fulfill({
+      body: streamFrames.join(''),
+      contentType: 'text/event-stream',
+      headers: {
+        'Cache-Control': 'no-cache',
+      },
+      status: 200,
     })
     return
   }

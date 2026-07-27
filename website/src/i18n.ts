@@ -398,6 +398,22 @@ const resources = {
             newChatRequired: 'New chat required',
             revisingModel: 'Revision context',
           },
+          stream: {
+            activity: 'Assistant activity',
+            answering: 'Answering',
+            thoughtProcess: 'Provider reasoning',
+            interruptedTitle: 'Response interrupted',
+            interruptedGuidance:
+              'LiteCAD checked the saved conversation and preserved this partial response. Retry only if no completed reply appears.',
+            stages: {
+              connecting: 'Connecting',
+              accepted: 'Request received',
+              context: 'Reading project context',
+              provider: 'Waiting for AI provider',
+              persisting: 'Saving response',
+              complete: 'Response saved',
+            },
+          },
           progress: {
             title: 'Generating parametric model',
             body: 'Attempt {{attempt}} is running. The canvas will stay unchanged until LiteCAD accepts a valid source draft.',
@@ -936,6 +952,21 @@ const resources = {
             projectContext: '项目上下文',
             newChatRequired: '需要新建对话',
             revisingModel: '修正上下文',
+          },
+          stream: {
+            activity: 'Assistant 活动',
+            answering: '正在回答',
+            thoughtProcess: 'Provider 推理摘要',
+            interruptedTitle: '回答已中断',
+            interruptedGuidance: 'LiteCAD 已核对保存的对话并保留这段部分回答；仅在没有出现完整回答时重试。',
+            stages: {
+              connecting: '正在连接',
+              accepted: '已收到请求',
+              context: '正在读取项目上下文',
+              provider: '正在等待 AI provider',
+              persisting: '正在保存回答',
+              complete: '回答已保存',
+            },
           },
           progress: {
             title: '正在生成参数化模型',

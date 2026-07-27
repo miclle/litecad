@@ -506,6 +506,7 @@ export interface ProjectAgentMessage {
   id: string
   project_id: string
   conversation_id: string
+  client_request_id?: string
   role: 'assistant' | 'user'
   body: string
   created_at: string
@@ -530,6 +531,7 @@ export interface CreateProjectAgentConversationPayload {
 export interface SendProjectAgentMessagePayload {
   messages: Pick<ProjectAgentMessage, 'body' | 'role'>[]
   active_model_id?: string
+  client_request_id?: string
 }
 
 export interface AIParametricToolCall {
@@ -576,6 +578,15 @@ export interface ProjectAgentMessageResponse {
   message: ProjectAgentMessage
   artifact?: ProjectParametricArtifact
 }
+
+export type ProjectAgentStreamStage = 'connecting' | 'accepted' | 'context' | 'provider' | 'persisting' | 'complete'
+
+export type ProjectAgentStreamEvent =
+  | { type: 'status'; stage: ProjectAgentStreamStage }
+  | { type: 'reasoning'; delta: string }
+  | { type: 'content'; delta: string }
+  | ({ type: 'result' } & ProjectAgentMessageResponse)
+  | { type: 'error'; status: number; message: string }
 
 export interface ProjectAgentParametricRunResponse {
   message: ProjectAgentStructuredMessage

@@ -44,6 +44,18 @@ type AIClient interface {
 	Chat(ctx context.Context, messages []AIChatMessage) (string, error)
 }
 
+// AIStreamingClient is implemented by providers that can return incremental
+// reasoning summaries and answer content.
+type AIStreamingClient interface {
+	StreamChat(ctx context.Context, messages []AIChatMessage, onDelta func(AIChatStreamDelta) error) (string, error)
+}
+
+// AIChatStreamDelta is one provider-supplied incremental chat update.
+type AIChatStreamDelta struct {
+	Reasoning string
+	Content   string
+}
+
 // AIChatToolClient is implemented by providers that support native function tools.
 type AIChatToolClient interface {
 	ChatWithTools(ctx context.Context, messages []AIChatMessage, tools []AIChatTool) (AIChatToolCall, error)
@@ -51,8 +63,9 @@ type AIChatToolClient interface {
 
 // AIChatMessage is a provider-neutral chat message.
 type AIChatMessage struct {
-	Role string `json:"role"`
-	Body string `json:"body"`
+	Role            string `json:"role"`
+	Body            string `json:"body"`
+	ClientRequestID string `json:"client_request_id,omitempty"`
 }
 
 // AIChatTool is a provider-neutral function tool definition.
@@ -78,11 +91,12 @@ type CreateProjectAgentConversationInput struct {
 
 // ProjectAgentMessageInput is the data required to ask the CAD Agent about a project.
 type ProjectAgentMessageInput struct {
-	OwnerUserID    string
-	ProjectID      string
-	ConversationID string
-	Messages       []AIChatMessage
-	ActiveModelID  string
+	OwnerUserID     string
+	ProjectID       string
+	ConversationID  string
+	Messages        []AIChatMessage
+	ActiveModelID   string
+	ClientRequestID string
 }
 
 // ProjectAgentMessageResult is the CAD Agent reply plus any generated artifact
@@ -90,6 +104,14 @@ type ProjectAgentMessageInput struct {
 type ProjectAgentMessageResult struct {
 	Message  ProjectAgentMessage
 	Artifact *ProjectParametricArtifact
+}
+
+// ProjectAgentStreamEvent reports observable Assistant work before the final
+// persisted message result is available.
+type ProjectAgentStreamEvent struct {
+	Type  string `json:"type"`
+	Stage string `json:"stage,omitempty"`
+	Delta string `json:"delta,omitempty"`
 }
 
 // ProjectAgentConversation is a persisted CAD Agent thread returned to the browser.
@@ -105,13 +127,14 @@ type ProjectAgentConversation struct {
 
 // ProjectAgentMessage is the CAD Agent reply returned to the browser.
 type ProjectAgentMessage struct {
-	ID             string `json:"id"`
-	ProjectID      string `json:"project_id"`
-	ConversationID string `json:"conversation_id"`
-	Role           string `json:"role"`
-	Body           string `json:"body"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID              string `json:"id"`
+	ProjectID       string `json:"project_id"`
+	ConversationID  string `json:"conversation_id"`
+	ClientRequestID string `json:"client_request_id,omitempty"`
+	Role            string `json:"role"`
+	Body            string `json:"body"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
 }
 
 // ListProjectAgentConversations returns CAD Agent threads for a project.
@@ -201,35 +224,62 @@ func (s *Service) ListProjectAgentMessages(ctx context.Context, ownerUserID, pro
 
 // SendProjectAgentMessage sends the current conversation plus project context to the configured AI provider.
 func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgentMessageInput) (ProjectAgentMessageResult, error) {
+	prepared, err := s.prepareProjectAgentMessage(ctx, input)
+	if err != nil {
+		return ProjectAgentMessageResult{}, err
+	}
+
+	reply, err := s.aiClient.Chat(ctx, prepared.providerMessages)
+	if err != nil {
+		return ProjectAgentMessageResult{}, fmt.Errorf("%w: %v", ErrAIProviderRequestFailed, err)
+	}
+	return s.persistProjectAgentReply(ctx, prepared, reply)
+}
+
+type preparedProjectAgentMessage struct {
+	projectID        string
+	conversationID   string
+	userMessage      AIChatMessage
+	providerMessages []AIChatMessage
+	models           []ProjectModel
+	activeModelID    string
+}
+
+func (s *Service) prepareProjectAgentMessage(ctx context.Context, input ProjectAgentMessageInput) (preparedProjectAgentMessage, error) {
 	ownerUserID := strings.TrimSpace(input.OwnerUserID)
 	projectID := strings.TrimSpace(input.ProjectID)
 	if ownerUserID == "" || projectID == "" {
-		return ProjectAgentMessageResult{}, ErrProjectNotFound
+		return preparedProjectAgentMessage{}, ErrProjectNotFound
 	}
 
 	messages, err := normalizeAIChatMessages(input.Messages)
 	if err != nil {
-		return ProjectAgentMessageResult{}, err
+		return preparedProjectAgentMessage{}, err
+	}
+	clientRequestID, err := normalizeAIClientRequestID(input.ClientRequestID)
+	if err != nil {
+		return preparedProjectAgentMessage{}, err
 	}
 	userMessage := messages[len(messages)-1]
+	userMessage.ClientRequestID = clientRequestID
 
 	if s.aiClient == nil {
-		return ProjectAgentMessageResult{}, ErrAIUnavailable
+		return preparedProjectAgentMessage{}, ErrAIUnavailable
 	}
 
 	projectEntity, conversation, err := s.loadOwnedProjectAgentConversation(ctx, ownerUserID, projectID, input.ConversationID)
 	if err != nil {
-		return ProjectAgentMessageResult{}, err
+		return preparedProjectAgentMessage{}, err
 	}
 	project := publicProject(projectEntity)
 	models, err := s.ListProjectModels(ctx, ownerUserID, projectID)
 	if err != nil {
-		return ProjectAgentMessageResult{}, err
+		return preparedProjectAgentMessage{}, err
 	}
 	activeModelContext := buildAIParametricActiveModelContext(input.ActiveModelID, models)
 	persistedMessages, err := s.listRecentProjectAgentMessages(ctx, project.ID, conversation.ID, maxAIChatMessages)
 	if err != nil {
-		return ProjectAgentMessageResult{}, err
+		return preparedProjectAgentMessage{}, err
 	}
 
 	providerMessages := make([]AIChatMessage, 0, len(persistedMessages)+4)
@@ -247,17 +297,25 @@ func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgen
 	}
 	providerMessages = append(providerMessages, userMessage)
 
-	reply, err := s.aiClient.Chat(ctx, providerMessages)
-	if err != nil {
-		return ProjectAgentMessageResult{}, fmt.Errorf("send ai chat: %w", err)
-	}
+	return preparedProjectAgentMessage{
+		projectID:        project.ID,
+		conversationID:   conversation.ID,
+		userMessage:      userMessage,
+		providerMessages: providerMessages,
+		models:           models,
+		activeModelID:    input.ActiveModelID,
+	}, nil
+}
+
+func (s *Service) persistProjectAgentReply(ctx context.Context, prepared preparedProjectAgentMessage, reply string) (ProjectAgentMessageResult, error) {
 	reply = strings.TrimSpace(reply)
 	if reply == "" {
-		return ProjectAgentMessageResult{}, fmt.Errorf("send ai chat: empty provider response")
+		return ProjectAgentMessageResult{}, fmt.Errorf("%w: empty provider response", ErrAIProviderRequestFailed)
 	}
+
 	call, err := ParseAIParametricToolCall(reply)
 	if err != nil && isAIParametricToolOutputAttempt(reply) {
-		message, persistErr := s.persistProjectAgentParametricFailureMessage(ctx, project.ID, conversation.ID, userMessage)
+		message, persistErr := s.persistProjectAgentParametricFailureMessage(ctx, prepared.projectID, prepared.conversationID, prepared.userMessage)
 		if persistErr != nil {
 			return ProjectAgentMessageResult{}, persistErr
 		}
@@ -265,11 +323,11 @@ func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgen
 	}
 	if err == nil {
 		originalTitle := call.Input.Title
-		call.Input.Title = distinguishAIParametricRevisionTitle(call.Input.Title, input.ActiveModelID, models)
+		call.Input.Title = distinguishAIParametricRevisionTitle(call.Input.Title, prepared.activeModelID, prepared.models)
 		if call.Input.Title != originalTitle {
 			reply = marshalAIParametricToolCall(call)
 		}
-		run, err := s.persistProjectAgentParametricRun(ctx, project.ID, conversation.ID, userMessage, call, reply, ProjectAgentParametricTelemetry{
+		run, err := s.persistProjectAgentParametricRun(ctx, prepared.projectID, prepared.conversationID, prepared.userMessage, call, reply, ProjectAgentParametricTelemetry{
 			ToolMode:   aiParametricToolModeJSONFallback,
 			SourceKind: call.Input.SourceKind,
 			DurationMS: 0,
@@ -278,23 +336,28 @@ func (s *Service) SendProjectAgentMessage(ctx context.Context, input ProjectAgen
 			return ProjectAgentMessageResult{}, err
 		}
 		message := ProjectAgentMessage{
-			ID:             run.Message.ID,
-			ProjectID:      run.Message.ProjectID,
-			ConversationID: run.Message.ConversationID,
-			Role:           run.Message.Role,
-			Body:           run.Message.Body,
-			CreatedAt:      run.Message.CreatedAt,
-			UpdatedAt:      run.Message.UpdatedAt,
+			ID:              run.Message.ID,
+			ProjectID:       run.Message.ProjectID,
+			ConversationID:  run.Message.ConversationID,
+			ClientRequestID: run.Message.ClientRequestID,
+			Role:            run.Message.Role,
+			Body:            run.Message.Body,
+			CreatedAt:       run.Message.CreatedAt,
+			UpdatedAt:       run.Message.UpdatedAt,
 		}
 		return ProjectAgentMessageResult{Message: message, Artifact: &run.Artifact}, nil
 	}
 
 	var assistantMessage ProjectAgentMessage
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if _, err := createProjectAgentMessageInDB(ctx, tx, project.ID, conversation.ID, userMessage); err != nil {
+		if _, err := createProjectAgentMessageInDB(ctx, tx, prepared.projectID, prepared.conversationID, prepared.userMessage); err != nil {
 			return err
 		}
-		message, err := createProjectAgentMessageInDB(ctx, tx, project.ID, conversation.ID, AIChatMessage{Role: "assistant", Body: reply})
+		message, err := createProjectAgentMessageInDB(ctx, tx, prepared.projectID, prepared.conversationID, AIChatMessage{
+			Role:            "assistant",
+			Body:            reply,
+			ClientRequestID: prepared.userMessage.ClientRequestID,
+		})
 		if err != nil {
 			return err
 		}
@@ -355,11 +418,12 @@ func createProjectAgentMessageInDB(ctx context.Context, db *gorm.DB, projectID, 
 		return ProjectAgentMessage{}, err
 	}
 	message := entity.ProjectAgentMessage{
-		ID:             messageID,
-		ProjectID:      projectID,
-		ConversationID: conversationID,
-		Role:           input.Role,
-		Body:           input.Body,
+		ID:              messageID,
+		ProjectID:       projectID,
+		ConversationID:  conversationID,
+		ClientRequestID: input.ClientRequestID,
+		Role:            input.Role,
+		Body:            input.Body,
 	}
 	if err := db.WithContext(ctx).Create(&message).Error; err != nil {
 		return ProjectAgentMessage{}, fmt.Errorf("store project agent message: %w", err)
@@ -401,13 +465,14 @@ func publicProjectAgentConversation(conversation entity.ProjectAgentConversation
 
 func publicProjectAgentMessage(message entity.ProjectAgentMessage) ProjectAgentMessage {
 	return ProjectAgentMessage{
-		ID:             message.ID,
-		ProjectID:      message.ProjectID,
-		ConversationID: message.ConversationID,
-		Role:           message.Role,
-		Body:           message.Body,
-		CreatedAt:      message.CreatedAt.Format(timeFormatRFC3339),
-		UpdatedAt:      message.UpdatedAt.Format(timeFormatRFC3339),
+		ID:              message.ID,
+		ProjectID:       message.ProjectID,
+		ConversationID:  message.ConversationID,
+		ClientRequestID: message.ClientRequestID,
+		Role:            message.Role,
+		Body:            message.Body,
+		CreatedAt:       message.CreatedAt.Format(timeFormatRFC3339),
+		UpdatedAt:       message.UpdatedAt.Format(timeFormatRFC3339),
 	}
 }
 
@@ -432,6 +497,27 @@ func normalizeAIChatMessages(messages []AIChatMessage) ([]AIChatMessage, error) 
 		return nil, ErrInvalidAIChatInput
 	}
 	return result, nil
+}
+
+func normalizeAIClientRequestID(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if len(value) > 96 {
+		return "", ErrInvalidAIChatInput
+	}
+	for _, character := range value {
+		if (character >= 'a' && character <= 'z') ||
+			(character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') ||
+			character == '-' ||
+			character == '_' {
+			continue
+		}
+		return "", ErrInvalidAIChatInput
+	}
+	return value, nil
 }
 
 func buildProjectAgentContext(project Project, models []ProjectModel) string {
@@ -523,6 +609,7 @@ type openAICompatibleChatRequest struct {
 	Messages            []openAICompatibleChatMessage `json:"messages"`
 	Temperature         float64                       `json:"temperature"`
 	MaxCompletionTokens int                           `json:"max_completion_tokens,omitempty"`
+	Stream              bool                          `json:"stream,omitempty"`
 	Tools               []openAICompatibleTool        `json:"tools,omitempty"`
 	ToolChoice          *openAICompatibleToolChoice   `json:"tool_choice,omitempty"`
 }
