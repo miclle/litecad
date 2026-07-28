@@ -75,7 +75,7 @@ test('authors repeated assembly occurrences through reload, history, preview, an
 	expect(browserErrors).toEqual([])
 })
 
-test('solves a point mate and propagates driver placement through history', async ({ page }) => {
+test('manages an existing position link and propagates driver placement through history', async ({ page }) => {
 	test.slow()
 	const browserErrors = captureBrowserErrors(page)
 	const fixture = await installProjectAPIFixture(page)
@@ -85,12 +85,39 @@ test('solves a point mate and propagates driver placement through history', asyn
 	await page.getByRole('option', { name: /Smoke bracket/ }).click()
 	await page.getByRole('button', { name: 'Duplicate occurrence' }).click()
 	await expect.poll(() => fixture.state.occurrenceDuplicateCount).toBe(1)
+	await expect(page.getByTestId('assembly-constraints')).toHaveCount(0)
 
-	await page.getByRole('spinbutton', { name: 'Mate offset X' }).fill('10')
-	await page.getByRole('button', { name: 'Create point mate' }).click()
+	const [driver, follower] = fixture.state.occurrences
+	const createResult = await page.evaluate(async ({ expectedRevision, firstOccurrenceID, projectID, secondOccurrenceID }) => {
+		const response = await fetch(`/api/v1/projects/${projectID}/cad-document/constraints`, {
+			body: JSON.stringify({
+				expected_revision: expectedRevision,
+				first_anchor: [0, 0, 0],
+				first_occurrence_id: firstOccurrenceID,
+				kind: 'mate',
+				name: 'Point mate 1',
+				offset: [10, 0, 0],
+				second_anchor: [0, 0, 0],
+				second_occurrence_id: secondOccurrenceID,
+			}),
+			headers: { 'Content-Type': 'application/json' },
+			method: 'POST',
+		})
+		return { ok: response.ok, status: response.status }
+	}, {
+		expectedRevision: fixture.state.cadRevision,
+		firstOccurrenceID: driver!.id,
+		projectID: projectId,
+		secondOccurrenceID: follower!.id,
+	})
+	expect(createResult).toEqual({ ok: true, status: 200 })
 	await expect.poll(() => fixture.state.assemblyConstraintCreateCount).toBe(1)
 	expect(fixture.state.occurrences[1]?.transform.matrix[3]).toBe(10)
-	await expect(page.getByText('Solved · residual 0')).toBeVisible()
+	await page.reload()
+	await page.getByRole('button', { name: 'Advanced position links, 1 link' }).click()
+	await expect(page.getByText('Smoke bracket copy follows Smoke bracket')).toBeVisible()
+	await expect(page.getByText('Connected')).toBeVisible()
+	await expect(page.getByText(/residual/i)).toHaveCount(0)
 
 	await page.getByRole('option', { name: /^Smoke bracket$/ }).click()
 	const driverX = page.getByLabel('X position for Smoke bracket')
@@ -110,8 +137,10 @@ test('solves a point mate and propagates driver placement through history', asyn
 	expect(fixture.state.occurrences[1]?.transform.matrix[3]).toBe(15)
 
 	await page.reload()
-	await expect(page.getByText('Solved · residual 0')).toBeVisible()
-	await page.getByRole('button', { name: 'Delete Point mate 1' }).click()
+	await page.getByRole('button', { name: 'Advanced position links, 1 link' }).click()
+	await expect(page.getByText('Smoke bracket copy follows Smoke bracket')).toBeVisible()
+	await page.getByRole('button', { name: 'Remove position link Point mate 1' }).click()
 	await expect.poll(() => fixture.state.assemblyConstraintDeleteCount).toBe(1)
+	await expect(page.getByTestId('assembly-constraints')).toHaveCount(0)
 	expect(browserErrors).toEqual([])
 })

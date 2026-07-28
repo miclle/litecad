@@ -209,7 +209,6 @@ export function ProjectWorkbenchComposition({
           modelCount={modelState.projectModels.length}
           onCollapseChange={shellState.setIsLeftPanelCollapsed}
 					onCreateAssemblyGroup={cadDocumentCommands.createAssemblyGroup}
-					onCreateAssemblyConstraint={cadDocumentCommands.createAssemblyConstraint}
 					onDeleteAssemblyConstraint={cadDocumentCommands.deleteAssemblyConstraint}
 					onDeleteAssemblyGroup={cadDocumentCommands.deleteAssemblyGroup}
 					onDeleteOccurrence={(occurrenceId) => {

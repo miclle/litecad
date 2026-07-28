@@ -43,7 +43,7 @@ This note is the short cross-machine handoff for the current LiteCAD development
 - CAD document schema v4 stores `point-coincident-v1` mates with two occurrence-local anchors, one world-space offset, solved status, and residual. The first occurrence drives the second occurrence's translation while preserving its 3 x 3 transform.
 - Solver constraints form an acyclic graph with at most one inbound driver per occurrence. A driver may feed multiple downstream mates; one driver edit resolves the complete downstream graph inside the same `expected_revision` transaction.
 - Creating a mate and moving a driver record every affected occurrence in database-backed History. Undo/Redo restores all placements atomically. The legacy model/node transform route follows the same rules and cannot bypass the solver.
-- The workbench authors and deletes point mates, displays solved residuals, and keeps driven occurrence placement read-only in both Inspector inputs and the Three.js transform control.
+- The owner-scoped API still creates and deletes point mates. The default workbench does not expose raw coordinate authoring; it hides the section when no links exist and keeps existing links in a collapsed advanced position-link manager where users can see which model follows which and remove the link. Driven occurrence placement remains read-only in both Inspector inputs and the Three.js transform control.
 - Schema v3 unresolved mate records upgrade without a solver and without moving geometry. The shipped solver does not handle rotation, planes, axes, concentricity, tangency, tolerances, over-constraint optimization, or topology-selected references.
 
 ### Immutable Reusable Subassembly Snapshots

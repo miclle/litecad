@@ -9,7 +9,6 @@ import type {
   CADAssemblyOccurrence,
   CADSubassemblyDefinitionRevision,
   CaptureCADSubassemblyPayload,
-  CreateCADAssemblyConstraintPayload,
   InstantiateCADSubassemblyPayload,
   ProjectModelRevision,
   ProjectParametricArtifact,
@@ -43,7 +42,6 @@ type ProjectWorkbenchSidebarProps = {
   modelCount: number
   onCollapseChange: (isCollapsed: boolean) => void
 	onDeleteOccurrence?: (occurrenceId: string) => void
-	onCreateAssemblyConstraint?: (payload: CreateCADAssemblyConstraintPayload) => void
 	onDeleteAssemblyConstraint?: (constraintId: string) => void
 	onCreateAssemblyGroup?: (name: string, parentGroupId: string) => void
 	onDeleteAssemblyGroup?: (groupId: string) => void
@@ -101,7 +99,6 @@ export function ProjectWorkbenchSidebar({
   modelCount,
   onCollapseChange,
 	onDeleteOccurrence,
-	onCreateAssemblyConstraint,
 	onDeleteAssemblyConstraint,
 	onCreateAssemblyGroup,
 	onDeleteAssemblyGroup,
@@ -230,7 +227,6 @@ export function ProjectWorkbenchSidebar({
               error={constraintError}
               isPending={isAssemblyConstraintMutationPending}
               occurrences={assemblyOccurrences}
-              onCreate={onCreateAssemblyConstraint}
               onDelete={onDeleteAssemblyConstraint}
             />
 

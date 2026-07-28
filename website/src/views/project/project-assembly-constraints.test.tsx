@@ -19,33 +19,56 @@ const occurrences: CADAssemblyOccurrence[] = [
 ]
 
 describe('ProjectAssemblyConstraints', () => {
-  test('creates a point mate from explicit local anchors and offset', async () => {
-    const user = userEvent.setup()
-    const onCreate = vi.fn()
-    render(<ProjectAssemblyConstraints constraints={[]} occurrences={occurrences} onCreate={onCreate} onDelete={vi.fn()} />)
+  test('stays out of the default sidebar when no position links exist', () => {
+    render(<ProjectAssemblyConstraints constraints={[]} occurrences={occurrences} onDelete={vi.fn()} />)
 
-    await user.clear(screen.getByRole('textbox', { name: 'Mate name' }))
-    await user.type(screen.getByRole('textbox', { name: 'Mate name' }), 'Driver to driven')
-    await user.clear(screen.getByRole('spinbutton', { name: 'Driver anchor X' }))
-    await user.type(screen.getByRole('spinbutton', { name: 'Driver anchor X' }), '1')
-    await user.clear(screen.getByRole('spinbutton', { name: 'Driven anchor X' }))
-    await user.type(screen.getByRole('spinbutton', { name: 'Driven anchor X' }), '2')
-    await user.clear(screen.getByRole('spinbutton', { name: 'Mate offset X' }))
-    await user.type(screen.getByRole('spinbutton', { name: 'Mate offset X' }), '10')
-    await user.click(screen.getByRole('button', { name: 'Create point mate' }))
-
-    expect(onCreate).toHaveBeenCalledWith({
-      name: 'Driver to driven',
-      kind: 'mate',
-      first_occurrence_id: 'occ_driver',
-      second_occurrence_id: 'occ_driven',
-      first_anchor: [1, 0, 0],
-      second_anchor: [2, 0, 0],
-      offset: [10, 0, 0],
-    })
+    expect(screen.queryByTestId('assembly-constraints')).toBeNull()
   })
 
-  test('renders solved mate status and deletes it', async () => {
+  test('keeps existing position links collapsed until the user opens advanced management', async () => {
+    const user = userEvent.setup()
+    render(
+      <ProjectAssemblyConstraints
+        constraints={[{
+          id: 'cst_point', kind: 'mate', name: 'Driver to driven', first_occurrence_id: 'occ_driver', second_occurrence_id: 'occ_driven',
+          status: 'solved', solver: 'point-coincident-v1', first_anchor: [1, 0, 0], second_anchor: [2, 0, 0], offset: [10, 0, 0], residual: 0,
+        }]}
+        occurrences={occurrences}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('Driven follows Driver')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Advanced position links, 1 link' }))
+
+    expect(screen.getByText('Driven follows Driver')).toBeTruthy()
+    expect(screen.getByText('Connected')).toBeTruthy()
+    expect(screen.queryByText(/residual/i)).toBeNull()
+    expect(screen.queryByRole('spinbutton')).toBeNull()
+  })
+
+  test('describes unresolved legacy records without claiming that one model follows another', async () => {
+    const user = userEvent.setup()
+    render(
+      <ProjectAssemblyConstraints
+        constraints={[{
+          id: 'cst_legacy', kind: 'mate', name: 'Legacy mate', first_occurrence_id: 'occ_driver', second_occurrence_id: 'occ_driven',
+          status: 'unresolved',
+        }]}
+        occurrences={occurrences}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Advanced position links, 1 link' }))
+
+    expect(screen.getByText('Inactive legacy link between Driver and Driven')).toBeTruthy()
+    expect(screen.queryByText('Driven follows Driver')).toBeNull()
+    expect(screen.getByText('Needs attention')).toBeTruthy()
+  })
+
+  test('removes an existing position link from advanced management', async () => {
     const user = userEvent.setup()
     const onDelete = vi.fn()
     render(
@@ -55,32 +78,12 @@ describe('ProjectAssemblyConstraints', () => {
           status: 'solved', solver: 'point-coincident-v1', first_anchor: [1, 0, 0], second_anchor: [2, 0, 0], offset: [10, 0, 0], residual: 0,
         }]}
         occurrences={occurrences}
-        onCreate={vi.fn()}
         onDelete={onDelete}
       />,
     )
 
-    expect(screen.getByText('Solved · residual 0')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: 'Delete Driver to driven' }))
+    await user.click(screen.getByRole('button', { name: 'Advanced position links, 1 link' }))
+    await user.click(screen.getByRole('button', { name: 'Remove position link Driver to driven' }))
     expect(onDelete).toHaveBeenCalledWith('cst_point')
-  })
-
-  test('does not offer immutable reusable assembly members as mate endpoints', async () => {
-    const user = userEvent.setup()
-    render(
-      <ProjectAssemblyConstraints
-        constraints={[]}
-        occurrences={[
-          ...occurrences,
-          { ...occurrences[1], id: 'occ_linked', name: 'Linked member', subassembly_member_id: 'smb_drive' },
-        ]}
-        onCreate={vi.fn()}
-        onDelete={vi.fn()}
-      />,
-    )
-
-    await user.click(screen.getByRole('combobox', { name: 'Driver occurrence' }))
-
-    expect(screen.queryByRole('option', { name: 'Linked member' })).toBeNull()
   })
 })
