@@ -8,7 +8,7 @@ LiteCAD is a Go + React single-page application for AI-assisted CAD exploration 
 
 Current implemented product surface:
 
-- Home-page import pipeline status panel and CAD-oriented project workbench shell, with browser-local persistence for the left-panel and Assistant-panel visibility and widths.
+- Public landing page with a lazy-loaded interactive Three.js mechanical-flange sample, shared workbench orientation controls, reduced-motion handling, bilingual guidance, and a WebGL-unavailable fallback; plus a CAD-oriented project workbench shell with browser-local persistence for the left-panel and Assistant-panel visibility and widths. The landing model is explicitly sample content, not project data.
 - English and Chinese user-facing UI copy through `i18next` / `react-i18next`, with a shared `LanguageSwitcher`, browser-local language preference, and synchronized document `lang` attribute.
 - Account registration/login/logout with an `HttpOnly` `litecad_session` cookie and explicit protected-route sign-in prompts for project pages.
 - Session-scoped project creation, listing with lightweight static thumbnail snapshots, detail lookup, owner-scoped rename, and soft delete.
@@ -49,7 +49,7 @@ task run             # Run in production mode
 task lint            # Auto-fix code style and run checks
 task check           # Full checks (backend + frontend types + mod tidy)
 task test            # Run tests (race detection + coverage)
-task test-browser    # Run deterministic isolated Playwright workbench workflows
+task test-browser    # Run deterministic isolated Playwright browser workflows
 task smoke-ai-provider # Run live AI provider artifact smoke against a running server
 task clean           # Remove build artifacts
 task update-tools    # Install/update dev tools
@@ -177,7 +177,7 @@ For feature work that changes the browser experience, combine the relevant front
 - Respect the existing layering and directory structure; do not reshape architecture for local changes.
 - Run `task check` before committing.
 - Run `task test` when changing behavior, API contracts, database models, or non-trivial frontend interactions.
-- Run `task test-browser` when changing project routing, workbench panels, model upload, thumbnail publication, or browser-visible CAD interactions. The suite uses per-test API fixture state and independently covers signed-out route protection, shell, import, transform conflict/Undo/Redo, Assistant parameter persistence, mock-provider prompt-to-artifact generation for a LiteCAD DSL sphere with X/Y/Z through holes, and export. Install Chromium once with `task install-browser`.
+- Run `task test-browser` when changing the landing-page preview, project routing, workbench panels, model upload, thumbnail publication, or browser-visible CAD interactions. The suite uses per-test API fixture state and independently covers the interactive home sample/WebGL fallback, signed-out route protection, shell, import, transform conflict/Undo/Redo, existing position-link management, Assistant parameter persistence, mock-provider prompt-to-artifact generation for a LiteCAD DSL sphere with X/Y/Z through holes, and export. Install Chromium once with `task install-browser`.
 - Do not treat `task test-browser` as live AI-provider validation. It uses deterministic fixtures and does not prove that `LITECAD_AI_API_KEY`, provider model names, network reachability, or live provider prompt behavior work in the running server. When changing provider configuration, provider prompts, or deployment AI setup, run and report `task smoke-ai-provider` or an equivalent environment-gated live-provider smoke.
 
 ## Pre-commit Checklist

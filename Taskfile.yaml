@@ -56,7 +56,7 @@ tasks:
           -- go run -trimpath -tags development ./cmd/litecad/ -c cmd/litecad/config.local.yaml
 
   run:
-    desc: Run the server (production mode, requires build first)
+    desc: Run the server with production build tags and local config
     deps: [init-config]
     cmds:
       - go run ./cmd/litecad/ -c cmd/litecad/config.local.yaml
@@ -125,7 +125,7 @@ tasks:
       - cd {{.WEBSITE_DIR}} && npx vitest run --passWithNoTests
 
   test-browser:
-    desc: Run the deterministic Playwright workbench smoke suite
+    desc: Run the deterministic Playwright browser workflow suite
     cmds:
       - cd {{.WEBSITE_DIR}} && npm run test:e2e
 

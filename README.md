@@ -10,6 +10,7 @@ LiteCAD currently supports:
 
 - Account registration, login, current-user lookup, logout with an `HttpOnly` session cookie, and deliberate sign-in prompts for protected project routes.
 - English and Chinese UI copy through the shared language switcher, including the public shell, auth pages, project list, project workbench, Assistant panel, export/history controls, and error states.
+- A lazy-loaded interactive Three.js mechanical-flange sample on the public landing page, with the shared workbench orientation controls, reduced-motion handling, bilingual guidance, and an explicit WebGL-unavailable fallback. This is labeled as a product sample and is not project CAD data.
 - User-owned projects with names, descriptions, owner-scoped rename/delete, project-list cards, and static thumbnail snapshots generated from the workbench.
 - Uploads for `.step`, `.stp`, self-contained `.gltf`, `.glb`, and `.stl` files.
 - Lightweight CAD source metadata, including STEP schema/product/component/unit/entity summaries and STL triangle counts where available.
@@ -23,7 +24,7 @@ LiteCAD currently supports:
 - Backend-published preview artifacts for validated GLB, self-contained GLTF, and STL-to-OBJ previews.
 - A project-scoped CAD Agent chat panel when an OpenAI-compatible provider is configured, including owner-scoped Assistant conversations, conversation-scoped persisted messages, immediate localized execution stages, provider-supplied reasoning summaries when available, incrementally rendered answers over SSE, explicit interrupted-stream recovery, localized parametric generation progress and failure-retry guidance, selected-model revision context for parametric runs, a structured parametric-run API that can create pending OpenSCAD-style or LiteCAD feature DSL artifact drafts, an Inspector-side generated-source editor with parsed parameter controls and compile-error state, browser-kernel preview for LiteCAD feature DSL drafts before save, automatic save-as-`.lcad.json` source model persistence for successfully compiled LiteCAD DSL artifacts, saved `.lcad.json` browser-kernel preview and STEP export, saved `.scad` / `.lcad.json` parameter edits, and a saved-`.lcad.json` recursive graph rail with stable node-scoped editing plus an advanced complete-source editor. Apply remains browser-kernel gated and creates one immutable source revision with graph-versioned, path-aware added/updated/moved/removed transitions in History.
 
-The home page and workbench use project-owned CAD data rather than hard-coded demo geometry.
+The project workbench uses project-owned CAD data rather than hard-coded demo geometry. The landing-page flange is an explicitly labeled product sample and is never represented as project-owned content.
 
 ## Product Boundaries
 
@@ -153,7 +154,7 @@ task run             # Run the server in production mode with local config
 task lint            # Auto-fix Go module/style issues and run frontend lint
 task check           # CI-aligned local checks
 task test            # Go tests with race/coverage + frontend Vitest
-task test-browser    # Deterministic Playwright workbench smoke
+task test-browser    # Deterministic Playwright browser workflows
 task smoke-ai-provider # Live provider artifact smoke against a running server
 task clean           # Remove build artifacts
 task update-tools    # Install/update reflex, staticcheck, golangci-lint
@@ -185,15 +186,15 @@ Run tests when behavior, API contracts, database models, shared frontend behavio
 task test
 ```
 
-Run the browser-level workbench smoke after changing project routing, panels, or user-visible CAD interactions:
+Run the browser-level workflow suite after changing the landing-page preview, project routing, panels, or user-visible CAD interactions:
 
 ```bash
 task test-browser
 ```
 
-The browser suite starts an isolated Vite server and uses a fresh closure-scoped API fixture for every test, so workflows do not share mutable models, messages, history, or counters. Independent specs cover signed-out project route protection, shell/panel rendering, source import, transform conflict recovery with Undo/Redo, duplicate occurrence rename/reorder/place/suppress/restore behavior, nested group authoring and hierarchical preview/export suppression through reload, separate preview-visible bounds and exact OCCT B-rep analysis, section artifact generation/stale detection/association regeneration/reload/restore/download/delete behavior, Assistant draft/save/parameter reload, a mock-provider prompt-to-artifact workflow for a LiteCAD DSL sphere with X/Y/Z through holes, and LiteCAD DSL STEP export; focused frontend tests cover protected project routes, project creation navigation, project selection state, workbench layout shell slots, model upload refresh/error handling, thumbnail publication dedupe, and project detail loading/error states. The browser suite fails on unexpected browser console or page errors and does not require a local database.
+The browser suite starts an isolated Vite server and uses a fresh closure-scoped API fixture for every test, so workflows do not share mutable models, messages, history, or counters. Independent specs cover the landing-page interactive flange and WebGL fallback, signed-out project route protection, shell/panel rendering, source import, transform conflict recovery with Undo/Redo, duplicate occurrence rename/reorder/place/suppress/restore behavior, collapsed management and removal of existing position links, nested group authoring and hierarchical preview/export suppression through reload, separate preview-visible bounds and exact OCCT B-rep analysis, section artifact generation/stale detection/association regeneration/reload/restore/download/delete behavior, Assistant draft/save/parameter reload, a mock-provider prompt-to-artifact workflow for a LiteCAD DSL sphere with X/Y/Z through holes, and LiteCAD DSL STEP export; focused frontend tests cover protected project routes, project creation navigation, project selection state, workbench layout shell slots, model upload refresh/error handling, thumbnail publication dedupe, and project detail loading/error states. The browser suite fails on unexpected browser console or page errors and does not require a local database.
 
-`task test-browser` is deterministic and does not call a real OpenAI-compatible provider. Treat it as coverage for the LiteCAD browser/API workflow around generated drafts, saved models, and failure UI, not as proof that a deployment's external provider credentials, model name, network path, or live prompt behavior are working. When changing provider configuration, provider prompts, or production AI setup, also run `task smoke-ai-provider` against the running server and record whether it created an artifact, showed a provider configuration error, or failed validation. The smoke uses `LITECAD_SMOKE_BASE_URL` when the server is not on `http://127.0.0.1:46280` and `LITECAD_SMOKE_ATTEMPTS` to control provider retry attempts.
+`task test-browser` is deterministic and does not call a real OpenAI-compatible provider. Treat it as coverage for the tested LiteCAD browser/API workflows, including generated drafts, saved models, and failure UI, not as proof that a deployment's external provider credentials, model name, network path, or live prompt behavior are working. When changing provider configuration, provider prompts, or production AI setup, also run `task smoke-ai-provider` against the running server and record whether it created an artifact, showed a provider configuration error, or failed validation. The smoke uses `LITECAD_SMOKE_BASE_URL` when the server is not on `http://127.0.0.1:46280` and `LITECAD_SMOKE_ATTEMPTS` to control provider retry attempts.
 
 CI also runs Go tests, frontend lint/type/test/browser/build, actionlint, dependency review on pull requests, and golangci-lint.
 

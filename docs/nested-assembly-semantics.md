@@ -1,6 +1,6 @@
 # Nested Assembly, Point-Mate, And Reusable Snapshot Semantics
 
-Updated: 2026-07-15
+Updated: 2026-07-28
 
 This note defines the shipped CAD document schema v4 assembly boundary. It separates implemented organizational nesting, deterministic point-translation solving, and immutable project-local reusable-assembly snapshots from general mechanical constraint solving and live, nested, or cross-project subassembly documents, which remain future work.
 
@@ -43,6 +43,8 @@ world(driver_anchor) + offset = world(driven_anchor)
 ```
 
 The residual is the Euclidean distance between those two world-space points after solving. Solver constraints form a directed acyclic graph: a driven occurrence has at most one inbound point mate, a driver may feed multiple downstream mates, and cycles are rejected. Moving a driver resolves its complete downstream graph in the same expected-revision transaction. The Inspector inputs and canvas transform control are read-only for a driven occurrence; move its driver or delete the mate instead.
+
+The owner-scoped API remains the creation boundary for raw local anchors and world offsets. The default workbench does not expose those coordinates: it hides position-link management when no records exist and shows existing records only in collapsed advanced management. Solved records identify the follower and driver; migrated unresolved records use inactive legacy wording and never claim that one model follows another. Either record type can be removed from this manager.
 
 This is a point-translation solver. It does not solve rotation, degrees of freedom, planes, axes, concentricity, tangency, tolerance stacks, over-constraints, or topology-selected geometric references.
 

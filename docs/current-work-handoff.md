@@ -1,101 +1,49 @@
 # Current Work Handoff
 
-Updated: 2026-07-15
+Updated: 2026-07-28
 
-This note is the short cross-machine handoff for the current LiteCAD development state. It is intentionally operational, not a product spec.
+This is the operational cross-machine entrypoint for the current LiteCAD mainline. Stable product facts live in `README.md`; active follow-up work lives in `TODO.md`; deeper CAD boundaries live in the focused documents linked below.
 
 ## Current Mainline
 
-- The assembly-semantics stream started from synchronized `main`, `origin/main`, and `origin/HEAD` at `f5db780 feat(cad): add stable topology inspection semantics` on 2026-07-15.
-- Work continues directly on `main` as requested. Each roadmap phase must pass automated E2E, in-app browser verification for UI-visible behavior, code review, documentation refresh, commit, and push before the next phase begins.
-- The old assembly and tapered-extrude feature branches have already been merged and cleaned up.
-- The topology inspection/section-lineage phase, schema v4 point-mate solver, and project-local reusable subassembly snapshot contract are complete on `main`. The latest implementation commit is `feat(cad): add reusable subassembly snapshots`.
+- Development is on `main`, with `origin/main` as the shared integration branch.
+- The product baseline immediately before this documentation refresh is `b345559 feat(cad): simplify position link management`.
+- The preceding user-visible mainline increments are `c52ea72 feat(assistant): stream chat responses` and `5604311 feat(website): add interactive homepage preview`.
+- Completed implementation plans have been reduced to short historical summaries under `docs/superpowers/plans/`; use current docs and code for capability truth.
 
-## Completed Phases
+## Recent Shipped Boundaries
 
-### True Feature DSL Chamfer
+### Landing Page And Workbench Data
 
-- `chamfer` now builds real OCCT bevel geometry in both `feature-dsl-preview` and `feature-dsl-export` instead of preserving the source shape.
-- Version 1 applies one symmetric distance to every eligible edge of the accumulated shape. A model with no edges or an OCCT build failure is rejected explicitly.
-- Assistant prompting and tool-schema guidance describe the shipped behavior, and the deterministic browser workflow covers prompt-to-draft compilation, automatic `.lcad.json` save, canvas preview, and STEP export selection.
-- Stable user-selectable topology references, per-edge distances, and edge/face remapping across revisions remain future work.
+- The public landing page lazy-loads a self-contained Three.js mechanical-flange sample with shared orientation controls, drag/zoom/keyboard interaction, reduced-motion handling, bilingual accessible copy, idle render-loop suspension, and an explicit WebGL-unavailable fallback.
+- That flange is labeled sample content. It is not a project model, persisted source, preview artifact, or editable CAD document.
+- The project workbench remains data-driven: its model geometry comes from project-owned source bytes, browser-kernel meshes, saved LiteCAD DSL models, or backend-published preview artifacts. It must not substitute decorative geometry for missing project data.
 
-### Versioned Recursive Feature DSL Source Graph
+### Assistant Streaming
 
-- Every top-level feature and recursive boolean operand now shares one globally unique, already-trimmed stable node-ID namespace in both Go validation and browser protocol validation.
-- The Inspector exposes an indented graph rail and edits one selected node's local JSON while preserving its stable ID. An advanced complete-source editor remains available for structural additions, removals, and reordering.
-- Apply remains disabled until the browser `feature-dsl-preview` worker compiles the candidate source. Reset remains available even when node or complete-source JSON is invalid.
-- The existing owner-scoped graph-update transaction preserves the parameter schema/value envelope, creates one immutable model revision, updates occurrence revision bindings, and appends one graph-versioned `feature-graph-change` History command under `expected_revision`.
-- History transitions are recursive and deterministic: they record added, updated, moved, or removed stable nodes with JSON-Pointer-safe before/after paths and explicit sibling indexes. Undo/Redo restores the exact source revisions across reloads and devices.
-- This is durable source-graph versioning. It is not serialized OCCT shape state, cross-revision B-rep topology naming/remapping, sketch constraints, imported source history, or full B-rep feature history.
+- Ordinary Assistant sends use authenticated POST SSE at `/api/v1/projects/:projectID/agent/conversations/:conversationID/messages/stream`; the JSON message route remains for compatibility.
+- The backend emits truthful execution stages, streams only provider-supplied reasoning summaries and content, persists the final result, and uses a persisted `client_request_id` to reconcile an exact response after a post-persistence disconnect.
+- Route or conversation replacement aborts the browser request; stale callbacks are ignored. Partial output is retained with explicit recovery guidance when a stream fails.
+- Deterministic browser tests do not prove live provider credentials, model compatibility, or network reachability. Use `task smoke-ai-provider` against a running server when those inputs change.
 
-### Stable Topology Inspection And Associative Section Lineage
+### Position Links And Assembly Semantics
 
-- The browser CAD kernel worker can rebuild revision-pinned occurrence shapes and compute exact OCCT aggregate volume, surface area, edge length, center of mass, and solid/face/edge counts.
-- Each deterministic face/edge reference is scoped to `(occurrence_id, model_revision_id, sha256_operations_signature, kind, one_based_index)`. The backend reconstructs that ID, validates aggregate/reference consistency and visible document provenance, and persists the result as `occt-brep-properties` in the existing inspection-record boundary.
-- Preview-visible AABB dimensions and diagonal remain a separately labeled viewer aid. The new exact properties do not add cross-revision topology remapping, user-selectable point/edge/face measurements, radius/diameter/angle semantics, or per-edge DSL authoring.
-- Section artifacts now belong to a stable association with an immutable plane and monotonic generations. A dedicated association row is locked transactionally during regeneration, and an expected-generation comparison prevents two concurrent callers from creating duplicate current generations.
-- The workbench renders current, stale, superseded, and legacy states. A document revision or visible occurrence/revision change marks the latest saved result stale; Regenerate reuses the stored plane against current targets, appends the next immutable generation, and retains the prior result.
-- This is explicit user-triggered lineage, not automatic background regeneration, a CAD-document section feature with Undo/Redo, a section solid, or durable serialized OCCT shape state.
+- CAD document schema v4 stores deterministic `point-coincident-v1` mates. The first occurrence drives the second occurrence's translation from two local anchors and a world offset through an acyclic, single-inbound solver graph.
+- Raw anchor and offset authoring remains available through the owner-scoped API, not the default workbench. When no constraints exist, the sidebar omits the section; existing records appear only in collapsed advanced position-link management and can be removed.
+- Solved records identify the follower and driver. Migrated `status: unresolved` records are labeled as inactive legacy links and never move geometry or claim a following relationship.
+- Driven occurrence placement remains read-only in both Inspector inputs and Three.js transform controls. Deleting a solved link leaves the current placement in place and releases the occurrence for direct editing.
+- The complete grouping, solver, migration, History, and immutable reusable-snapshot contract is in `docs/nested-assembly-semantics.md`.
 
-### Deterministic Point-Mate Solver
+### Browser CAD Kernel And Saved Models
 
-- CAD document schema v4 stores `point-coincident-v1` mates with two occurrence-local anchors, one world-space offset, solved status, and residual. The first occurrence drives the second occurrence's translation while preserving its 3 x 3 transform.
-- Solver constraints form an acyclic graph with at most one inbound driver per occurrence. A driver may feed multiple downstream mates; one driver edit resolves the complete downstream graph inside the same `expected_revision` transaction.
-- Creating a mate and moving a driver record every affected occurrence in database-backed History. Undo/Redo restores all placements atomically. The legacy model/node transform route follows the same rules and cannot bypass the solver.
-- The owner-scoped API still creates and deletes point mates. The default workbench does not expose raw coordinate authoring; it hides the section when no links exist and keeps existing links in a collapsed advanced position-link manager where users can see which model follows which and remove the link. Driven occurrence placement remains read-only in both Inspector inputs and the Three.js transform control.
-- Schema v3 unresolved mate records upgrade without a solver and without moving geometry. The shipped solver does not handle rotation, planes, axes, concentricity, tangency, tolerances, over-constraint optimization, or topology-selected references.
+- STEP/STP preview and export use the browser OCCT worker. Workbench preview/export respects immutable occurrence revisions, nested group suppression, solver-resolved placement, reusable-instance pinned placement, constrained box-union replay, and selected separate or compound STEP output.
+- Saved LiteCAD Feature DSL models support browser-kernel preview/export, immutable source revisions, parameter editing, recursive stable-node graph editing, and reversible History. OCCT shapes and Three.js buffers remain derived runtime state.
+- Preview-visible AABB measurements remain separate from exact aggregate OCCT B-rep inspection records. Section-edge STEP artifacts use immutable association generations with explicit stale/current/superseded state and user-triggered regeneration.
+- OpenSCAD remains a parameter-editable source-draft format without bundled browser compilation, normal Save as model, or project export under the current runtime decision.
 
-### Immutable Reusable Subassembly Snapshots
+## Verification Baseline
 
-- CAD document schema v4 stores project-local immutable revision-1 subassembly definitions captured from the direct ordinary occurrences of one ordinary leaf group. Captured members pin node/model/revision identity, name, suppression, and transforms normalized to the first member's translation.
-- Instantiation creates a tagged group plus expanded ordinary occurrences at an explicit XYZ translation. Preview, inspection, ancestor suppression, and separate/compound STEP export continue through the existing occurrence pipeline.
-- Linked member occurrences are read-only: they cannot be renamed, reordered, regrouped, independently suppressed, duplicated, deleted, transformed, used in mates, deleted through their source, or advanced to a newer current model revision. The tagged group supports whole-instance suppression only.
-- Capture and instantiation are owner-scoped `expected_revision` mutations. Each creates one reversible database-backed History command; Undo/Redo restores the complete definition or instance across reloads.
-- Definitions do not live-update instances. Definition revision evolution/deletion, editable members, nested definitions/instances, live propagation, cross-project libraries, source STEP hierarchy preservation, serialized kernel state, and nested STEP serialization remain future work.
-
-### Export Artifact History
-
-- Successful browser-kernel STEP exports are stored through owner-scoped project export artifact APIs.
-- The workbench export popover lists stored exports and can download a stored STEP artifact again after reload.
-- Focused Go/Vitest/Playwright coverage, full `task check`, `task test`, `task test-browser`, and in-app browser verification passed before commit `f7e4995`.
-
-### Saved Inspection Records
-
-- Owner-scoped project inspection record APIs create/list/delete viewer-derived visible-bounds measurement snapshots and center-plane section definitions.
-- The workbench can save, restore after reload, and delete records. Stored records include the CAD document revision, unit, visible model IDs, and the measurement snapshot or section-plane definition.
-- These records are not durable B-rep section bodies or serialized kernel shape state.
-- Focused Go/Vitest/Playwright coverage, full `task check`, `task test`, `task test-browser`, and in-app browser verification passed before commit `bacb659`.
-
-### OpenSCAD Browser Runtime Decision
-
-- `docs/openscad-browser-runtime-decision.md` records an explicit rejection of the current OpenSCAD browser runtime candidates for bundled production use.
-- The official OpenSCAD and OpenSCAD WASM distributions are GPL-2.0; LiteCAD is retaining its MIT single-binary distribution policy.
-- The inspected 2026-07-13 official browser snapshot contains 10,861,236 raw bytes across JavaScript and WASM, while the current embedded production server has no precompressed asset path.
-- The official runtime can produce STL through a headless browser call, but it does not provide LiteCAD's OCCT mesh-buffer or STEP-export contracts. OpenSCAD therefore remains a parameter-editable source-draft format without browser preview, normal Save as model, or project export.
-- The docs-only decision phase passed full `task check`, `task test`, and `task test-browser`; it did not change UI, so no in-app browser verification was required.
-
-### Nested Assembly Grouping
-
-- CAD document schema v3 adds nested organizational groups, occurrence `parent_group_id` bindings, and hierarchical suppression. Direct or ancestor suppression keeps occurrences durable but excludes them from preview and STEP export.
-- Owner-scoped expected-revision APIs validate group trees, reject cycles and dangling parents, require groups to be empty before deletion, and persist group create/update/delete plus occurrence regrouping in reversible History.
-- At the schema v3 milestone, validated `mate` records connected two distinct existing occurrences only with status `unresolved`. Those legacy records remain reversible and migration-safe; schema v4 adds the point-translation solver described above without silently moving them.
-- The workbench tree creates, renames, suppresses, and deletes groups, creates subgroups, and moves occurrences between groups. Preview/export filtering, Undo/Redo, and reload persistence share the same ancestor-suppression semantics.
-- The exact boundary is documented in `docs/nested-assembly-semantics.md`.
-
-### Kernel Section Geometry Artifacts
-
-- The browser CAD kernel worker accepts `section-geometry` requests, rebuilds the selected immutable model revisions with replayable operations and occurrence placement, and runs an OCCT B-rep section against the requested plane.
-- Owner-scoped project section artifact APIs store either generated STEP edge geometry or an explicit typed empty result together with the CAD document revision, unit, immutable association plane, generation, source revision IDs, occurrence IDs, edge count, and byte size.
-- The workbench can generate, explicitly regenerate stale associations, list after reload, restore the saved section plane, download ready STEP artifacts, and delete section artifacts. Visual center-plane clipping remains a preview aid; each stored STEP generation is the kernel-derived intersection result for its recorded inputs.
-- Visible-bounds measurement includes a diagonal and identifies its derivation as `preview-visible-aabb`; exact aggregate OCCT properties are stored and displayed separately.
-- Focused and full Go/Vitest/Playwright coverage plus real-backend in-app browser verification passed before commit `df0647e`.
-
-## Last Verification
-
-The reusable-subassembly phase was verified in the Codex in-app browser against the real local PostgreSQL backend. An ordinary two-member leaf group was captured as `驱动模块 QA` revision 1, then instantiated as `驱动模块 A` at X=100 and `驱动模块 B` at X=200. Preview composition increased from two source occurrences to six total occurrences. Selecting a linked member showed the reusable-member lock in the tree and Inspector with disabled placement input. Suppressing A reduced preview composition to four; Undo restored six, Redo returned to four, and reload preserved the definition, both instances, and suppression state. The current-flow console had no new warnings or errors; the deterministic E2E error collector was also empty.
-
-Full phase gates passed:
+The `b345559` product baseline passed:
 
 ```bash
 task check
@@ -103,30 +51,46 @@ task test
 task test-browser
 ```
 
-- `task check` passed backend formatting/vet/lint, frontend TypeScript, and module-tidy checks.
-- `task test` passed Go race/coverage tests and 82 Vitest files / 421 tests. Vitest still prints the existing `MaxListenersExceededWarning` warnings during the full run.
-- `task test-browser` passed all 18 deterministic Playwright workbench tests, including reusable definition capture, two translated instances, preview/export composition, whole-instance suppression, reload, Undo/Redo, and the existing CAD workflows.
-- Focused reusable-subassembly service/handler, API/controller/component, Inspector/Three.js lock, mate-filter, and model-revision-pinning tests also passed during TDD and after code-review fixes.
+- `task test` passed the Go race/coverage suite and 89 Vitest files / 468 frontend tests. The full Vitest run still emits the existing Node `MaxListenersExceededWarning` warnings.
+- `task test-browser` passed all 20 Playwright workflows, including the interactive landing sample/WebGL fallback, route protection, import, History, existing position-link management, reusable snapshots, inspection/section flows, Assistant generation and persistence, and STEP export.
+- This documentation refresh passed `task --list`, `git diff --check`, local Markdown-link validation, and `task check` before commit.
 
 ## Active Roadmap
 
-The original handoff follow-up list remains closed. True chamfer, the versioned recursive LiteCAD Feature DSL source graph, exact aggregate topology inspection, explicit section association generations, the deterministic point-translation mate solver, and the project-local immutable reusable subassembly snapshot contract are complete. The next assembly design decision is definition revision evolution/deletion; only after that boundary is explicit should LiteCAD consider nested definitions, live propagation, cross-project libraries, or nested STEP serialization.
+Use `TODO.md` as the authoritative active list. The highest-level open decisions are:
 
-These phases must preserve the existing source-of-truth boundary: replayable versioned graph data is durable, while OCCT shapes and Three.js buffers remain derived runtime state.
+- design a novice-facing canvas or automatically derived position-link creation flow before returning mate authoring to the default workbench;
+- define reusable-subassembly definition revision evolution, rename/delete lifecycle, and safe pinned-instance behavior before nested/live/cross-project reuse;
+- define cross-revision topology mapping before user-selectable point/edge/face measurements or topology-bound feature authoring;
+- decide whether explicit section generations become automatic or CAD-document-integrated associative features;
+- continue the LiteCAD Feature DSL only through narrow end-to-end slices spanning backend validation, provider prompting, browser preview/export, tests, and docs;
+- define launch-time source/artifact retention, quotas, backups, and operator procedures.
+
+Do not describe durable editable B-rep state, general rotational/mechanical mates, live-linked reusable documents, preserved source STEP assembly structure, cross-model editable booleans, successful OpenSCAD browser compilation, or AI tool calls that directly mutate CAD documents as shipped.
+
+## Focused Documentation
+
+- `README.md` — user-facing product, setup, configuration, workflows, and current limits.
+- `TODO.md` — unfinished product, data, and operations work.
+- `docs/browser-cad-kernel-roadmap.md` — browser-kernel architecture and completed phase history.
+- `docs/nested-assembly-semantics.md` — schema v4 grouping, point-translation solver, legacy records, and reusable snapshots.
+- `docs/ai-parametric-assistant.md` — current Assistant and LiteCAD Feature DSL workflow.
+- `docs/openscad-browser-runtime-decision.md` — bundled OpenSCAD runtime rejection and reconsideration gates.
+- `docs/production-deployment.md` — single-binary build, runtime configuration, reverse-proxy SSE requirements, and release checks.
 
 ## Resume Checklist
 
-On another machine with an existing checkout:
+For an existing checkout:
 
 ```bash
 git fetch origin
 git switch main
 git pull --ff-only
-git status --short
+git status --short --branch
 task install
 task check
 ```
 
-For a fresh machine, clone the repository, switch to `main`, and then run the same `task install` and `task check` steps. Confirm the latest `origin/main` includes `feat(cad): add reusable subassembly snapshots` before relying on the completed schema v4 snapshot descriptions above.
+For a fresh checkout, clone the repository and run the same `task install` and `task check` steps on `main`. Use `git log -1 --oneline` and `git rev-list --left-right --count main...origin/main` to confirm the local and remote branch state instead of relying on an old commit named in a handoff.
 
-No database contents, browser-local panel preferences, AI provider secrets, or `cmd/litecad/config.local.yaml` settings are transferred through Git. Recreate machine-local configuration from `cmd/litecad/config.example.yaml`; do not copy credentials into this handoff or commit them.
+Database contents, browser-local workspace preferences, AI provider secrets, and `cmd/litecad/config.local.yaml` are machine-local and are not transferred through Git. Recreate local configuration from `cmd/litecad/config.example.yaml`; never commit credentials, private hosts, or production DSNs.

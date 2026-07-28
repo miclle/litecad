@@ -105,7 +105,7 @@ task test
 task build
 ```
 
-Run `task test-browser` when the release changes project routing, protected-route behavior, workbench panels, browser-visible CAD interactions, preview/export flows, or frontend route state.
+Run `task test-browser` when the release changes the landing-page preview, project routing, protected-route behavior, workbench panels, browser-visible CAD interactions, preview/export flows, or frontend route state.
 
 Run the live AI provider smoke after changing provider config, provider prompts, model names, or deployment environment variables:
 
