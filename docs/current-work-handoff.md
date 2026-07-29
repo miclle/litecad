@@ -1,14 +1,14 @@
 # Current Work Handoff
 
-Updated: 2026-07-28
+Updated: 2026-07-29
 
 This is the operational cross-machine entrypoint for the current LiteCAD mainline. Stable product facts live in `README.md`; active follow-up work lives in `TODO.md`; deeper CAD boundaries live in the focused documents linked below.
 
 ## Current Mainline
 
 - Development is on `main`, with `origin/main` as the shared integration branch.
-- The product baseline immediately before this documentation refresh is `b345559 feat(cad): simplify position link management`.
-- The preceding user-visible mainline increments are `c52ea72 feat(assistant): stream chat responses` and `5604311 feat(website): add interactive homepage preview`.
+- The product baseline immediately before this documentation refresh is `344142f fix(projects): prioritize current analysis results`.
+- The preceding user-visible mainline increments are `b345559 feat(cad): simplify position link management` and `c52ea72 feat(assistant): stream chat responses`.
 - Completed implementation plans have been reduced to short historical summaries under `docs/superpowers/plans/`; use current docs and code for capability truth.
 
 ## Recent Shipped Boundaries
@@ -39,11 +39,12 @@ This is the operational cross-machine entrypoint for the current LiteCAD mainlin
 - STEP/STP preview and export use the browser OCCT worker. Workbench preview/export respects immutable occurrence revisions, nested group suppression, solver-resolved placement, reusable-instance pinned placement, constrained box-union replay, and selected separate or compound STEP output.
 - Saved LiteCAD Feature DSL models support browser-kernel preview/export, immutable source revisions, parameter editing, recursive stable-node graph editing, and reversible History. OCCT shapes and Three.js buffers remain derived runtime state.
 - Preview-visible AABB measurements remain separate from exact aggregate OCCT B-rep inspection records. Section-edge STEP artifacts use immutable association generations with explicit stale/current/superseded state and user-triggered regeneration.
+- The Analysis popover defaults to the latest result per category matching the current CAD document revision and visible occurrence scope. It keeps the latest stale section generation available for regeneration and moves older or differently scoped persisted results into collapsed, bounded history with an explicit show-all action.
 - OpenSCAD remains a parameter-editable source-draft format without bundled browser compilation, normal Save as model, or project export under the current runtime decision.
 
 ## Verification Baseline
 
-The `b345559` product baseline passed:
+The `344142f` product baseline passed:
 
 ```bash
 task check
@@ -51,8 +52,8 @@ task test
 task test-browser
 ```
 
-- `task test` passed the Go race/coverage suite and 89 Vitest files / 468 frontend tests. The full Vitest run still emits the existing Node `MaxListenersExceededWarning` warnings.
-- `task test-browser` passed all 20 Playwright workflows, including the interactive landing sample/WebGL fallback, route protection, import, History, existing position-link management, reusable snapshots, inspection/section flows, Assistant generation and persistence, and STEP export.
+- `task test` passed the Go race/coverage suite and 89 Vitest files / 469 frontend tests. The full Vitest run still emits the existing Node `MaxListenersExceededWarning` warnings.
+- `task test-browser` passed all 20 Playwright workflows, including the interactive landing sample/WebGL fallback, route protection, import, History, existing position-link management, reusable snapshots, current-first Analysis history, inspection/section flows, Assistant generation and persistence, and STEP export.
 - This documentation refresh passed `task --list`, `git diff --check`, local Markdown-link validation, and `task check` before commit.
 
 ## Active Roadmap
