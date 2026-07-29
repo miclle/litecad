@@ -281,6 +281,7 @@ export function ProjectCanvas({
           canGenerateSectionGeometry={canGenerateSectionGeometry}
           currentCADDocumentRevision={projectCADDocument?.revision}
           currentMeasurement={currentMeasurement}
+          currentVisibleModelIds={visibleModelIds}
           displayOptions={displayOptions}
           getSectionArtifactState={getSectionArtifactState}
           inspectionRecordError={inspectionRecordError}

@@ -76,7 +76,7 @@ describe('ProjectCanvas', () => {
     expect(document.querySelector('[data-model-preview]')?.getAttribute('data-selected-model')).toBe('')
     expect(document.querySelector('[aria-label="View orientation controls"]')).toBeTruthy()
     expect((document.querySelector('button[aria-pressed="false"]') as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole('button', { name: 'Analysis 0' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: 'Analysis' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   test('keeps the measurement HUD below desktop view orientation controls', () => {
@@ -136,6 +136,7 @@ describe('ProjectCanvas', () => {
     const onDeleteSectionArtifact = vi.fn()
     renderCanvas({
       canGenerateSectionGeometry: true,
+      getSectionArtifactState: () => 'current',
       sectionArtifacts: [
         {
           id: 'pse_section',
@@ -168,7 +169,7 @@ describe('ProjectCanvas', () => {
     })
 
     await user.click(document.querySelector('button[aria-label="Section"]') as HTMLButtonElement)
-    await user.click(screen.getByRole('button', { name: 'Analysis 1' }))
+    await user.click(screen.getByRole('button', { name: 'Analysis' }))
     const generateSectionButton = screen.getByRole('button', { name: 'Generate section geometry' }) as HTMLButtonElement
     expect(generateSectionButton.disabled).toBe(false)
     await user.click(generateSectionButton)
@@ -202,7 +203,7 @@ describe('ProjectCanvas', () => {
       previewAssets: [{ modelId: 'mdl_step', name: 'gearbox.step', previewFormat: 'obj', previewUrl: '/gearbox.obj' }],
     })
 
-    await user.click(screen.getByRole('button', { name: 'Analysis 1' }))
+    await user.click(screen.getByRole('button', { name: 'Analysis' }))
     expect(document.body.textContent).toContain('Generation 1 · Stale')
     await user.click(screen.getByRole('button', { name: /^Regenerate section-r3\.step, generation 1, saved / }))
     expect(onRegenerateSectionArtifact).toHaveBeenCalledWith(expect.objectContaining({ id: 'pse_stale' }))
@@ -231,13 +232,15 @@ describe('ProjectCanvas', () => {
       onAnalyzeTopology,
       previewAssets: [{ modelId: 'mdl_step', name: 'gearbox.step', previewFormat: 'obj', previewUrl: '/gearbox.obj' }],
       measurementUnitLabel: 'mm',
+      projectCADDocument: { ...cadDocument(), revision: 4 },
       unitLabel: 'cm',
+      visibleModelIds: ['occ_box'],
     })
 
-    expect(document.body.textContent).toContain('Analysis 1')
+    expect(document.body.textContent).toContain('Analysis')
     expect(document.body.textContent).not.toContain('Geometry properties')
 
-    await user.click(screen.getByRole('button', { name: 'Analysis 1' }))
+    await user.click(screen.getByRole('button', { name: 'Analysis' }))
     const calculatePropertiesButton = screen.getByRole('button', { name: 'Calculate geometry properties' }) as HTMLButtonElement
     expect(calculatePropertiesButton.disabled).toBe(false)
     await user.click(calculatePropertiesButton)
@@ -281,16 +284,76 @@ describe('ProjectCanvas', () => {
       ],
       onDeleteInspectionRecord: vi.fn(),
       projectCADDocument: currentDocument,
+      visibleModelIds: ['occ_box'],
     })
 
-    await user.click(screen.getByRole('button', { name: 'Analysis 2' }))
+    await user.click(screen.getByRole('button', { name: 'Analysis' }))
+
+    expect(document.body.textContent).toContain('Design revision 5')
+    expect(document.body.textContent).not.toContain('Design revision 4')
+
+    await user.click(screen.getByRole('button', { name: 'History 1' }))
 
     expect(document.body.textContent).toContain('Design revision 4')
-    expect(document.body.textContent).toContain('Design revision 5')
     expect(document.body.textContent).toContain('Earlier result')
     const deleteButtons = screen.getAllByRole('button', { name: /^Delete Overall dimensions,/ })
     expect(deleteButtons).toHaveLength(2)
     expect(new Set(deleteButtons.map((button) => button.getAttribute('aria-label'))).size).toBe(2)
+  })
+
+  test('shows only the latest result for the current visible models until history is expanded', async () => {
+    const user = userEvent.setup()
+    const currentDocument = cadDocument()
+    currentDocument.revision = 5
+    const boundsRecord = {
+      id: 'pir_bounds_current', project_id: 'prj_demo', kind: 'measurement' as const, name: 'Visible bounds',
+      cad_document_revision: 5, unit: 'millimetre', visible_model_ids: ['occ_box'],
+      measurement: {
+        derivation: 'preview-visible-aabb' as const, model_count: 1,
+        center: { x: 25, y: 10, z: 5 }, size: { x: 50, y: 20, z: 10 }, diagonal: 54.77,
+      },
+      created_at: '2026-07-17T00:00:00Z', updated_at: '2026-07-17T00:00:00Z',
+    }
+    renderCanvas({
+      inspectionRecords: [
+        boundsRecord,
+        {
+          ...boundsRecord,
+          id: 'pir_bounds_older',
+          measurement: {
+            ...boundsRecord.measurement,
+            size: { x: 40, y: 20, z: 10 },
+          },
+          created_at: '2026-07-16T00:00:00Z',
+          updated_at: '2026-07-16T00:00:00Z',
+        },
+        {
+          ...boundsRecord,
+          id: 'pir_bounds_other_scope',
+          visible_model_ids: ['occ_sphere'],
+          measurement: {
+            ...boundsRecord.measurement,
+            size: { x: 30, y: 20, z: 10 },
+          },
+          created_at: '2026-07-18T00:00:00Z',
+          updated_at: '2026-07-18T00:00:00Z',
+        },
+      ],
+      onDeleteInspectionRecord: vi.fn(),
+      projectCADDocument: currentDocument,
+      visibleModelIds: ['occ_box'],
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Analysis' }))
+
+    expect(document.body.textContent).toContain('X 50')
+    expect(document.body.textContent).not.toContain('X 40')
+    expect(document.body.textContent).not.toContain('X 30')
+
+    await user.click(screen.getByRole('button', { name: 'History 2' }))
+
+    expect(document.body.textContent).toContain('X 40')
+    expect(document.body.textContent).toContain('X 30')
   })
 
   test('announces localized action failures without exposing kernel diagnostics', async () => {
@@ -300,7 +363,7 @@ describe('ProjectCanvas', () => {
       sectionArtifactError: 'OpenCascade shape inspection produced a non-finite property',
     })
 
-    await user.click(screen.getByRole('button', { name: 'Analysis 0' }))
+    await user.click(screen.getByRole('button', { name: 'Analysis' }))
 
     const alerts = screen.getAllByRole('alert')
     expect(alerts).toHaveLength(2)
@@ -322,10 +385,13 @@ describe('ProjectCanvas', () => {
       onDeleteInspectionRecord: vi.fn(),
     })
 
-    await user.click(screen.getByRole('button', { name: 'Analysis 21' }))
+    await user.click(screen.getByRole('button', { name: 'Analysis' }))
+    expect(screen.queryAllByText(/^Snapshot \d+$/)).toHaveLength(0)
+
+    await user.click(screen.getByRole('button', { name: 'History 21' }))
     expect(screen.getAllByText(/^Snapshot \d+$/)).toHaveLength(20)
 
-    await user.click(screen.getByRole('button', { name: 'Show all 21 results' }))
+    await user.click(screen.getByRole('button', { name: 'Show all 21 history results' }))
     expect(screen.getAllByText(/^Snapshot \d+$/)).toHaveLength(21)
   })
 
@@ -345,6 +411,7 @@ describe('ProjectCanvas', () => {
       ],
       isInspectionRecordMutationPending: true,
       isSectionArtifactMutationPending: true,
+      getSectionArtifactState: () => 'current',
       onDeleteInspectionRecord: vi.fn(),
       onDeleteSectionArtifact: vi.fn(),
       sectionArtifacts: [
@@ -357,9 +424,11 @@ describe('ProjectCanvas', () => {
           edge_count: 4, byte_size: 1024, created_at: '2026-07-15T00:00:00Z', updated_at: '2026-07-15T00:00:00Z',
         },
       ],
+      projectCADDocument: { ...cadDocument(), revision: 4 },
+      visibleModelIds: ['occ_box'],
     })
 
-    await user.click(screen.getByRole('button', { name: 'Analysis 2' }))
+    await user.click(screen.getByRole('button', { name: 'Analysis' }))
 
     expect((screen.getByRole('button', { name: /^Delete Overall dimensions,/ }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: /^Delete center-x-section\.step, generation 1, saved / }) as HTMLButtonElement).disabled).toBe(true)
