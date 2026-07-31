@@ -48,7 +48,7 @@ type ProjectWorkbenchSidebarProps = {
 	onDuplicateOccurrence?: (occurrenceId: string) => void
 	onMoveOccurrence?: (occurrenceId: string, targetIndex: number) => void
   onCaptureSubassembly?: (payload: CaptureCADSubassemblyPayload) => void
-  onInstantiateSubassembly?: (definitionID: string, payload: InstantiateCADSubassemblyPayload) => void
+  onInstantiateSubassembly?: (definitionID: string, payload: InstantiateCADSubassemblyPayload) => Promise<void>
 	onModelSelect: (modelId: string, nodeId: string, occurrenceId?: string) => void
   onParameterValuesChange: (modelId: string, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onApplyGeneratedArtifactToModel?: (modelId: string, artifact: ProjectParametricArtifact, parameterValues: Record<string, OpenSCADParameterValue>) => void
@@ -195,7 +195,9 @@ export function ProjectWorkbenchSidebar({
               hiddenModelIds={hiddenModelIds}
               isLoading={isModelTreeLoading}
               isUploading={isUploading}
-						isOccurrenceMutationPending={isOccurrenceMutationPending}
+              isOccurrenceMutationPending={isOccurrenceMutationPending}
+              isSubassemblyMutationPending={isSubassemblyMutationPending}
+              onCaptureSubassembly={onCaptureSubassembly}
 						onCreateAssemblyGroup={onCreateAssemblyGroup}
 						onDeleteAssemblyGroup={onDeleteAssemblyGroup}
 						onDeleteOccurrence={onDeleteOccurrence}
@@ -212,13 +214,13 @@ export function ProjectWorkbenchSidebar({
               uploadError={uploadError}
             />
 
+            {subassemblyError ? (
+              <p className="mt-2 px-2 py-1 text-xs text-destructive" role="alert">{subassemblyError}</p>
+            ) : null}
+
             <ProjectSubassemblies
               definitions={assemblySubassemblies}
-              error={subassemblyError}
-              groups={assemblyGroups}
               isPending={isSubassemblyMutationPending}
-              occurrences={assemblyOccurrences}
-              onCapture={onCaptureSubassembly}
               onInstantiate={onInstantiateSubassembly}
             />
 

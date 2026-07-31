@@ -425,6 +425,7 @@ export function useCADDocumentCommands({
   const mutateAssemblyGroup = assemblyGroupMutation.mutate
   const mutateAssemblyConstraint = assemblyConstraintMutation.mutate
   const mutateSubassembly = subassemblyMutation.mutate
+  const mutateSubassemblyAsync = subassemblyMutation.mutateAsync
 
   useEffect(
     () => () => {
@@ -466,8 +467,10 @@ export function useCADDocumentCommands({
     [mutateSubassembly],
   )
   const instantiateSubassembly = useCallback(
-    (definitionId: string, payload: InstantiateCADSubassemblyPayload) => mutateSubassembly({ action: 'instantiate', definitionId, payload }),
-    [mutateSubassembly],
+    async (definitionId: string, payload: InstantiateCADSubassemblyPayload) => {
+      await mutateSubassemblyAsync({ action: 'instantiate', definitionId, payload })
+    },
+    [mutateSubassemblyAsync],
   )
   const deleteAssemblyGroup = useCallback((groupId: string) => mutateAssemblyGroup({ action: 'delete', groupId }), [mutateAssemblyGroup])
   const updateAssemblyGroup = useCallback(

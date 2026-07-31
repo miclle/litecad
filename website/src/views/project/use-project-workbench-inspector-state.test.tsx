@@ -145,7 +145,7 @@ describe('useProjectWorkbenchInspectorState', () => {
     }))
 
     expect(result.current.inspectorSelection?.transformLocked).toBe(true)
-    expect(result.current.inspectorSelection?.transformLockMessage).toBe('Placement is pinned by a reusable assembly instance. Suppress the whole instance or create another instance.')
+    expect(result.current.inspectorSelection?.transformLockMessage).toBe('Position is fixed inside a saved combination. Suppress the whole copy or insert another copy.')
   })
 })
 

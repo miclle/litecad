@@ -70,6 +70,22 @@ describe('ProjectWorkbenchSidebar', () => {
     expect(screen.getByRole('region', { name: 'Parametric artifact' })).toBeTruthy()
     expect((screen.getByLabelText('X position for Fixture right') as HTMLInputElement).value).toBe('24')
   })
+
+  it('shows a saved-combination error even before the first combination exists', () => {
+    renderSidebar({ subassemblyError: 'Could not save this combination' })
+
+    expect(screen.getByRole('alert').textContent).toBe('Could not save this combination')
+  })
+
+  it('shows a saved-combination error while existing combinations stay collapsed', () => {
+    renderSidebar({
+      assemblySubassemblies: [{ id: 'sub_drive', revision: 1, name: 'Drive module', members: [] }],
+      subassemblyError: 'Could not save another combination',
+    })
+
+    expect(screen.getByRole('button', { name: 'Saved combinations, 1 combination' }).getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByRole('alert').textContent).toBe('Could not save another combination')
+  })
 })
 
 function renderSidebar(overrides: Partial<Parameters<typeof ProjectWorkbenchSidebar>[0]> = {}) {

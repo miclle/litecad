@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, Box, Boxes, Check, Copy, Eye, EyeOff, FileText, Folder, FolderPlus, Pencil, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import type { CADAssemblyGroup, UpdateCADAssemblyGroupPayload, UpdateCADAssemblyOccurrencePayload } from 'src/types/project'
+import type { CADAssemblyGroup, CaptureCADSubassemblyPayload, UpdateCADAssemblyGroupPayload, UpdateCADAssemblyOccurrencePayload } from 'src/types/project'
 import type { ProjectModelTreeGroup } from './project-preview-assets'
 
 type ProjectModelTreeProps = {
@@ -16,6 +18,8 @@ type ProjectModelTreeProps = {
   isLoading: boolean
   isUploading: boolean
   isOccurrenceMutationPending?: boolean
+  isSubassemblyMutationPending?: boolean
+  onCaptureSubassembly?: (payload: CaptureCADSubassemblyPayload) => void
   onCreateAssemblyGroup?: (name: string, parentGroupId: string) => void
   onDeleteAssemblyGroup?: (groupId: string) => void
   onDeleteOccurrence?: (occurrenceId: string) => void
@@ -98,6 +102,8 @@ export function ProjectModelTree({
   isLoading,
   isUploading,
   isOccurrenceMutationPending = false,
+  isSubassemblyMutationPending = false,
+  onCaptureSubassembly,
   onCreateAssemblyGroup,
   onDeleteAssemblyGroup,
   onDeleteOccurrence,
@@ -117,6 +123,10 @@ export function ProjectModelTree({
   const assembly = groups[0]
   const treeEntries = buildAssemblyTreeEntries(assemblyGroups, groups)
   const groupOptions = assemblyGroupOptions(assemblyGroups)
+  const childGroupParentIDs = new Set(assemblyGroups.map((group) => group.parent_group_id).filter(Boolean))
+  const ordinaryOccurrenceParentIDs = new Set(
+    groups.filter((group) => !group.isSubassemblyMember && group.parentGroupId).map((group) => group.parentGroupId as string),
+  )
   const [renamingOccurrenceID, setRenamingOccurrenceID] = useState('')
   const [occurrenceNameDraft, setOccurrenceNameDraft] = useState('')
   const [renamingGroupID, setRenamingGroupID] = useState('')
@@ -177,6 +187,11 @@ export function ProjectModelTree({
           if (entry.type === 'assembly-group') {
             const group = entry.assemblyGroup
             const isSubassemblyInstance = Boolean(group.subassembly_definition_id)
+            const canSaveForReuse =
+              !isSubassemblyInstance &&
+              !childGroupParentIDs.has(group.id) &&
+              ordinaryOccurrenceParentIDs.has(group.id) &&
+              Boolean(onCaptureSubassembly)
             return (
               <div
                 className="group/assembly-row flex min-w-0 items-center gap-1 rounded-md px-2 py-1.5 text-sm text-[#334155] hover:bg-[#f1f5f9]"
@@ -230,6 +245,13 @@ export function ProjectModelTree({
                       <span className="shrink-0 font-mono text-[9px] uppercase text-[#2563eb]">
                         {t('project.modelTree.reusableRevision', { revision: group.subassembly_definition_revision })}
                       </span>
+                    ) : null}
+                    {canSaveForReuse ? (
+                      <SaveGroupForReusePopover
+                        disabled={isSubassemblyMutationPending}
+                        group={group}
+                        onSave={onCaptureSubassembly}
+                      />
                     ) : null}
                     <Button
                       aria-label={t('project.modelTree.createSubgroup', {
@@ -574,5 +596,69 @@ export function ProjectModelTree({
         {occurrenceError ? <p className="text-sm leading-6 text-[#8a2f24]">{occurrenceError}</p> : null}
       </div>
     </section>
+  )
+}
+
+function SaveGroupForReusePopover({
+  disabled,
+  group,
+  onSave,
+}: {
+  disabled: boolean
+  group: CADAssemblyGroup
+  onSave?: (payload: CaptureCADSubassemblyPayload) => void
+}) {
+  const { t } = useTranslation()
+  const nameID = useId()
+  const [isOpen, setIsOpen] = useState(false)
+  const [name, setName] = useState(group.name)
+  const updateOpen = (nextOpen: boolean) => {
+    setIsOpen(nextOpen)
+    if (nextOpen) setName(group.name)
+  }
+  const saveGroup = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const normalizedName = name.trim()
+    if (!normalizedName || disabled || !onSave) return
+    onSave({ group_id: group.id, name: normalizedName })
+    updateOpen(false)
+  }
+
+  return (
+    <Popover onOpenChange={updateOpen} open={isOpen}>
+      <PopoverTrigger
+        render={
+          <Button
+            aria-label={t('project.modelTree.saveGroupForReuse', { name: group.name })}
+            className="opacity-0 group-hover/assembly-row:opacity-100 focus-visible:opacity-100"
+            disabled={disabled}
+            size="icon-xs"
+            title={t('project.modelTree.saveGroupForReuse', { name: group.name })}
+            type="button"
+            variant="ghost"
+          />
+        }
+      >
+        <Boxes />
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72" side="right" sideOffset={8}>
+        <PopoverHeader>
+          <PopoverTitle>{t('project.modelTree.saveGroupTitle')}</PopoverTitle>
+          <PopoverDescription>{t('project.modelTree.saveGroupDescription')}</PopoverDescription>
+        </PopoverHeader>
+        <form className="flex flex-col gap-3" onSubmit={saveGroup}>
+          <FieldGroup className="gap-3">
+            <Field>
+              <FieldLabel htmlFor={nameID}>{t('project.modelTree.combinationName')}</FieldLabel>
+              <Input id={nameID} onChange={(event) => setName(event.target.value)} value={name} />
+            </Field>
+          </FieldGroup>
+          <Button disabled={!name.trim() || disabled} type="submit">
+            <Boxes data-icon="inline-start" />
+            {t('project.modelTree.saveCombination')}
+          </Button>
+        </form>
+      </PopoverContent>
+    </Popover>
   )
 }

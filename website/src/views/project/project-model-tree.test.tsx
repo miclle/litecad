@@ -223,6 +223,43 @@ describe('ProjectModelTree', () => {
     })
   })
 
+  it('saves an eligible leaf group for reuse from that group row', async () => {
+    const user = userEvent.setup()
+    const onCaptureSubassembly = vi.fn()
+    const tree = (groupName: string) => (
+      <ProjectModelTree
+        assemblyGroups={[
+          { id: 'grp_drive', parent_group_id: '', name: groupName, suppressed: false },
+          { id: 'grp_parent', parent_group_id: '', name: 'Parent group', suppressed: false },
+          { id: 'grp_child', parent_group_id: 'grp_parent', name: 'Child group', suppressed: false },
+        ]}
+        groups={[{ ...groups[0], parentGroupId: 'grp_drive' }]}
+        hiddenModelIds={new Set()}
+        isLoading={false}
+        isUploading={false}
+        onCaptureSubassembly={onCaptureSubassembly}
+        onSelect={vi.fn()}
+        onToggleVisibility={vi.fn()}
+        previewAssetModelIds={new Set(['occurrence_model_one'])}
+        selectedNodeId=""
+        uploadError=""
+      />
+    )
+    const { rerender } = render(tree('Drive group'))
+
+    expect(screen.queryByRole('button', { name: 'Save Parent group for reuse' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Save Drive group for reuse' }))
+    expect((screen.getByRole('textbox', { name: 'Combination name' }) as HTMLInputElement).value).toBe('Drive group')
+    await user.click(screen.getByRole('button', { name: 'Save combination' }))
+
+    expect(onCaptureSubassembly).toHaveBeenCalledWith({ group_id: 'grp_drive', name: 'Drive group' })
+
+    rerender(tree('Renamed drive group'))
+    await user.click(screen.getByRole('button', { name: 'Save Renamed drive group for reuse' }))
+
+    expect((screen.getByRole('textbox', { name: 'Combination name' }) as HTMLInputElement).value).toBe('Renamed drive group')
+  })
+
   it('keeps reusable instance groups and their expanded members immutable', () => {
     render(
       <ProjectModelTree
@@ -249,7 +286,7 @@ describe('ProjectModelTree', () => {
       />,
     )
 
-    expect(screen.getByText('Pinned reusable assembly member')).toBeTruthy()
+    expect(screen.getByText('Part of a saved combination copy')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Duplicate occurrence' })).toBeNull()
     expect((screen.getByRole('button', { name: 'Rename Drive A' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: 'Create subgroup in Drive A' }) as HTMLButtonElement).disabled).toBe(true)

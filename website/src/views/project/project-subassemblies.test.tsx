@@ -1,40 +1,17 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { CADAssemblyGroup, CADAssemblyOccurrence, CADSubassemblyDefinitionRevision } from 'src/types/project'
+import i18n from 'src/i18n'
+import type { CADSubassemblyDefinitionRevision } from 'src/types/project'
 import { ProjectSubassemblies } from './project-subassemblies'
 
-afterEach(cleanup)
+afterEach(async () => {
+  cleanup()
+  await i18n.changeLanguage('en')
+})
 
 const identityMatrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] as const
-
-const groups: CADAssemblyGroup[] = [
-  { id: 'grp_source', parent_group_id: '', name: 'Drive source', suppressed: false },
-  { id: 'grp_nested', parent_group_id: '', name: 'Nested source', suppressed: false },
-  { id: 'grp_child', parent_group_id: 'grp_nested', name: 'Child', suppressed: false },
-  {
-    id: 'grp_instance',
-    parent_group_id: '',
-    name: 'Drive A',
-    suppressed: false,
-    subassembly_definition_id: 'sub_drive',
-    subassembly_definition_revision: 1,
-  },
-]
-
-const occurrences: CADAssemblyOccurrence[] = [
-  {
-    id: 'occ_source',
-    node_id: 'node_drive',
-    model_id: 'model_drive',
-    model_revision_id: 'mvr_drive',
-    parent_group_id: 'grp_source',
-    name: 'Drive',
-    suppressed: false,
-    transform: { matrix: identityMatrix },
-  },
-]
 
 const definitions: CADSubassemblyDefinitionRevision[] = [
   {
@@ -56,44 +33,89 @@ const definitions: CADSubassemblyDefinitionRevision[] = [
 ]
 
 describe('ProjectSubassemblies', () => {
-  it('captures an eligible ordinary leaf group as an immutable definition', async () => {
-    const user = userEvent.setup()
-    const onCapture = vi.fn()
-    render(<ProjectSubassemblies definitions={[]} groups={groups} occurrences={occurrences} onCapture={onCapture} onInstantiate={vi.fn()} />)
+  it('hides the saved-combinations section until a combination exists', () => {
+    render(<ProjectSubassemblies definitions={[]} onInstantiate={vi.fn()} />)
 
-    expect(screen.getByRole('combobox', { name: 'Source group' }).textContent).toContain('Drive source')
-
-    await user.type(screen.getByRole('textbox', { name: 'Definition name' }), 'Drive module')
-    await user.click(screen.getByRole('button', { name: 'Capture definition' }))
-
-    expect(onCapture).toHaveBeenCalledWith({ group_id: 'grp_source', name: 'Drive module' })
+    expect(screen.queryByTestId('project-subassemblies')).toBeNull()
   })
 
-  it('instantiates a pinned definition at an explicit translation', async () => {
+  it('keeps saved combinations collapsed until the user asks for them', async () => {
+    const user = userEvent.setup()
+    render(<ProjectSubassemblies definitions={definitions} onInstantiate={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Saved combinations, 1 combination' }).getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText('Drive module · 1 model')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Saved combinations, 1 combination' }))
+
+    expect(screen.getByText('Drive module · 1 model')).toBeTruthy()
+  })
+
+  it('inserts a copy with a useful default name before optional position is expanded', async () => {
     const user = userEvent.setup()
     const onInstantiate = vi.fn()
-    render(<ProjectSubassemblies definitions={definitions} groups={groups} occurrences={occurrences} onCapture={vi.fn()} onInstantiate={onInstantiate} />)
+    render(<ProjectSubassemblies definitions={definitions} onInstantiate={onInstantiate} />)
 
-    expect(screen.getByText('Drive module · r1 · 1 member')).toBeTruthy()
-    await user.type(screen.getByRole('textbox', { name: 'Instance name' }), 'Drive B')
-    await user.clear(screen.getByRole('spinbutton', { name: 'Instance position X' }))
-    expect((screen.getByRole('button', { name: 'Create instance' }) as HTMLButtonElement).disabled).toBe(true)
-    await user.type(screen.getByRole('spinbutton', { name: 'Instance position X' }), '100')
-    await user.clear(screen.getByRole('spinbutton', { name: 'Instance position Y' }))
-    await user.type(screen.getByRole('spinbutton', { name: 'Instance position Y' }), '20')
-    await user.click(screen.getByRole('button', { name: 'Create instance' }))
+    await user.click(screen.getByRole('button', { name: 'Saved combinations, 1 combination' }))
+    await user.click(screen.getByRole('button', { name: 'Insert a copy of Drive module' }))
+
+    expect((screen.getByRole('textbox', { name: 'Copy name' }) as HTMLInputElement).value).toBe('Drive module copy')
+    expect(screen.queryByRole('spinbutton', { name: 'X position' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Position (optional)' }))
+    await user.clear(screen.getByRole('spinbutton', { name: 'X position' }))
+    await user.type(screen.getByRole('spinbutton', { name: 'X position' }), '100')
+    await user.click(screen.getByRole('button', { name: 'Insert copy' }))
 
     expect(onInstantiate).toHaveBeenCalledWith('sub_drive', {
-      name: 'Drive B',
+      name: 'Drive module copy',
       parent_group_id: '',
-      translation: [100, 20, 0],
+      translation: [100, 0, 0],
     })
+
+    await user.click(screen.getByRole('button', { name: 'Insert a copy of Drive module' }))
+
+    expect((screen.getByRole('textbox', { name: 'Copy name' }) as HTMLInputElement).value).toBe('Drive module copy')
+    expect(screen.queryByRole('spinbutton', { name: 'X position' })).toBeNull()
   })
 
-  it('explains why no source group can be captured', () => {
-    render(<ProjectSubassemblies definitions={[]} groups={groups.slice(1)} occurrences={[]} onCapture={vi.fn()} onInstantiate={vi.fn()} />)
+  it('keeps the copy draft available when insertion fails', async () => {
+    const user = userEvent.setup()
+    let rejectInsertion = (_error: Error) => {}
+    const onInstantiate = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectInsertion = reject
+        }),
+    )
+    render(<ProjectSubassemblies definitions={definitions} onInstantiate={onInstantiate} />)
 
-    expect(screen.getByText('Create a leaf group with at least one ordinary occurrence to capture it.')).toBeTruthy()
-    expect((screen.getByRole('button', { name: 'Capture definition' }) as HTMLButtonElement).disabled).toBe(true)
+    await user.click(screen.getByRole('button', { name: 'Saved combinations, 1 combination' }))
+    await user.click(screen.getByRole('button', { name: 'Insert a copy of Drive module' }))
+    await user.clear(screen.getByRole('textbox', { name: 'Copy name' }))
+    await user.type(screen.getByRole('textbox', { name: 'Copy name' }), 'Drive A')
+    await user.click(screen.getByRole('button', { name: 'Position (optional)' }))
+    await user.clear(screen.getByRole('spinbutton', { name: 'X position' }))
+    await user.type(screen.getByRole('spinbutton', { name: 'X position' }), '120')
+    await user.click(screen.getByRole('button', { name: 'Insert copy' }))
+
+    expect((screen.getByRole('textbox', { name: 'Copy name' }) as HTMLInputElement).value).toBe('Drive A')
+    expect((screen.getByRole('spinbutton', { name: 'X position' }) as HTMLInputElement).value).toBe('120')
+
+    await act(async () => rejectInsertion(new Error('request failed')))
+
+    expect((screen.getByRole('textbox', { name: 'Copy name' }) as HTMLInputElement).value).toBe('Drive A')
+    expect((screen.getByRole('spinbutton', { name: 'X position' }) as HTMLInputElement).value).toBe('120')
+  })
+
+  it('uses the current language for a default copy name on first open', async () => {
+    const user = userEvent.setup()
+    render(<ProjectSubassemblies definitions={definitions} onInstantiate={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Saved combinations, 1 combination' }))
+    await act(async () => i18n.changeLanguage('zh'))
+    await user.click(screen.getByRole('button', { name: '插入 Drive module 的副本' }))
+
+    expect((screen.getByRole('textbox', { name: '副本名称' }) as HTMLInputElement).value).toBe('Drive module 副本')
   })
 })
