@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -90,13 +90,14 @@ describe('ProjectModelTree', () => {
     const visibilityButton = screen.getByRole('button', { name: 'Hide Assembly' })
     expect(visibilityButton.compareDocumentPosition(sourceOption) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
     expect(visibilityButton.className).not.toContain('opacity-0')
+    expect(visibilityButton.querySelector('svg')).not.toBeNull()
+    expect(sourceOption.querySelector('svg')).toBeNull()
   })
 
   it('moves occurrence authoring commands into the row context menu', async () => {
     const user = userEvent.setup()
     const onDeleteOccurrence = vi.fn()
     const onDuplicateOccurrence = vi.fn()
-    const onMoveOccurrence = vi.fn()
     const onUpdateOccurrence = vi.fn()
     render(
       <ProjectModelTree
@@ -106,7 +107,6 @@ describe('ProjectModelTree', () => {
         isUploading={false}
         onDeleteOccurrence={onDeleteOccurrence}
         onDuplicateOccurrence={onDuplicateOccurrence}
-        onMoveOccurrence={onMoveOccurrence}
         onSelect={vi.fn()}
         onToggleVisibility={vi.fn()}
         onUpdateOccurrence={onUpdateOccurrence}
@@ -127,8 +127,6 @@ describe('ProjectModelTree', () => {
     await user.pointer({ keys: '[MouseRight]', target: occurrenceOption })
     await user.click(await screen.findByRole('menuitem', { name: /Paste/ }))
     await user.pointer({ keys: '[MouseRight]', target: occurrenceOption })
-    await user.click(await screen.findByRole('menuitem', { name: 'Move occurrence down' }))
-    await user.pointer({ keys: '[MouseRight]', target: occurrenceOption })
     await user.click(await screen.findByRole('menuitem', { name: 'Suppress occurrence' }))
     await user.pointer({ keys: '[MouseRight]', target: occurrenceOption })
     await user.click(await screen.findByRole('menuitem', { name: 'Rename occurrence' }))
@@ -142,10 +140,83 @@ describe('ProjectModelTree', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Delete occurrence' }))
 
     expect(onDuplicateOccurrence).toHaveBeenCalledWith('occurrence_model_one')
-    expect(onMoveOccurrence).toHaveBeenCalledWith('occurrence_model_one', 1)
     expect(onUpdateOccurrence).toHaveBeenNthCalledWith(1, 'occurrence_model_one', { suppressed: true })
     expect(onUpdateOccurrence).toHaveBeenNthCalledWith(2, 'occurrence_model_one', { name: 'Fixture right' })
     expect(onDeleteOccurrence).toHaveBeenCalledWith('occurrence_model_one')
+  })
+
+  it('keeps a dropped sibling at its target while persistence is pending', async () => {
+    const onMoveOccurrence = vi.fn(() => new Promise<void>(() => undefined))
+    const firstGroup = groups[0]
+    const secondGroup = {
+      ...firstGroup,
+      occurrenceId: 'occurrence_model_two',
+      occurrenceIndex: 1,
+      displayName: 'Assembly copy',
+    }
+    const renderTree = (modelGroups: ProjectModelTreeGroup[]) => (
+      <ProjectModelTree
+        groups={modelGroups}
+        hiddenModelIds={new Set()}
+        isLoading={false}
+        isUploading={false}
+        onMoveOccurrence={onMoveOccurrence}
+        onSelect={vi.fn()}
+        onToggleVisibility={vi.fn()}
+        previewAssetModelIds={new Set(['occurrence_model_one', 'occurrence_model_two'])}
+        selectedNodeId="node_model_one"
+        selectedOccurrenceId="occurrence_model_two"
+        uploadError=""
+      />
+    )
+    const { rerender } = render(renderTree([firstGroup, secondGroup]))
+
+    const firstOccurrence = screen.getByTitle('Assembly')
+    const secondOccurrence = screen.getByTitle('Assembly copy')
+    const firstRow = firstOccurrence.closest('.grid.gap-1') as HTMLElement
+    const secondRow = secondOccurrence.closest('.grid.gap-1') as HTMLElement
+    const secondModelRow = secondOccurrence.closest('[data-occurrence-row]') as HTMLElement
+    const rowRect = (top: number) =>
+      ({
+        bottom: top + 32,
+        height: 32,
+        left: 0,
+        right: 200,
+        top,
+        width: 200,
+        x: 0,
+        y: top,
+        toJSON: () => undefined,
+      }) as DOMRect
+    vi.spyOn(firstRow, 'getBoundingClientRect').mockReturnValue(rowRect(0))
+    vi.spyOn(secondRow, 'getBoundingClientRect').mockReturnValue(rowRect(40))
+    vi.spyOn(secondModelRow, 'getBoundingClientRect').mockReturnValue(rowRect(40))
+
+    secondOccurrence.focus()
+    fireEvent.keyDown(secondOccurrence, { code: 'Space', key: ' ' })
+    await waitFor(() => expect(screen.getAllByText('Assembly copy').length).toBeGreaterThan(1))
+    const dragOverlay = document.body.querySelector('.shadow-lg') as HTMLElement
+    expect(dragOverlay.querySelector('.lucide-eye')).not.toBeNull()
+    expect(dragOverlay.querySelector('.lucide-file-text')).toBeNull()
+    expect(dragOverlay.querySelector('[aria-label="Model preview is ready"]')).not.toBeNull()
+    expect(dragOverlay.style.width).toBe('200px')
+    expect(dragOverlay.style.height).toBe('32px')
+    fireEvent.keyDown(document, { code: 'ArrowUp', key: 'ArrowUp' })
+    fireEvent.keyDown(document, { code: 'Space', key: ' ' })
+
+    await waitFor(() => expect(onMoveOccurrence).toHaveBeenCalledOnce())
+    expect(onMoveOccurrence).toHaveBeenCalledWith('occurrence_model_two', 0)
+    await waitFor(() =>
+      expect(secondOccurrence.compareDocumentPosition(firstOccurrence) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0),
+    )
+
+    rerender(renderTree([secondGroup, firstGroup]))
+    rerender(renderTree([firstGroup, secondGroup]))
+    await waitFor(() =>
+      expect(firstOccurrence.compareDocumentPosition(secondOccurrence) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0),
+    )
+    expect(screen.queryByRole('menuitem', { name: 'Move occurrence up' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: 'Move occurrence down' })).toBeNull()
   })
 
   it('commits an occurrence rename when the input loses focus', async () => {

@@ -250,6 +250,74 @@ describe('useCADDocumentCommands', () => {
     await waitFor(() => expect(deleteProjectCADOccurrence).toHaveBeenCalledWith(projectId, occurrenceId, 10))
   })
 
+  it('optimistically reorders occurrences while the move request is pending', async () => {
+    const initialDocument = projectDocument(7)
+    const initialAssembly = initialDocument.assembly!
+    const secondOccurrence = {
+      ...initialAssembly.occurrences[0],
+      id: 'occ_second',
+      node_id: 'node_second',
+      name: 'Second part',
+    }
+    initialAssembly.occurrences = [...initialAssembly.occurrences, secondOccurrence]
+    const updatedDocument = projectDocument(8)
+    updatedDocument.assembly!.occurrences = [secondOccurrence, initialAssembly.occurrences[0]]
+    let resolveMove: ((value: Awaited<ReturnType<typeof moveProjectCADOccurrence>>) => void) | undefined
+    vi.mocked(moveProjectCADOccurrence).mockReturnValue(
+      new Promise((resolve) => {
+        resolveMove = resolve
+      }),
+    )
+    const { queryClient, wrapper } = createHarness(initialDocument)
+    const { result } = renderHook(() => useCADDocumentCommands({ projectId }), { wrapper })
+
+    act(() => result.current.moveOccurrence(secondOccurrence.id, 0))
+
+    await waitFor(() =>
+      expect(queryClient.getQueryData<ProjectCADDocument>(['projects', projectId, 'cad-document'])?.assembly?.occurrences.map(({ id }) => id)).toEqual([
+        secondOccurrence.id,
+        occurrenceId,
+      ]),
+    )
+
+    await act(async () => {
+      resolveMove?.({ data: { document: updatedDocument } } as Awaited<ReturnType<typeof moveProjectCADOccurrence>>)
+    })
+    await waitFor(() => expect(result.current.isPending).toBe(false))
+  })
+
+  it('restores the previous occurrence order when a move request fails', async () => {
+    const initialDocument = projectDocument(7)
+    const initialAssembly = initialDocument.assembly!
+    const secondOccurrence = {
+      ...initialAssembly.occurrences[0],
+      id: 'occ_second',
+      node_id: 'node_second',
+      name: 'Second part',
+    }
+    initialAssembly.occurrences = [...initialAssembly.occurrences, secondOccurrence]
+    let rejectMove: ((reason?: unknown) => void) | undefined
+    vi.mocked(moveProjectCADOccurrence).mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectMove = reject
+      }),
+    )
+    const { queryClient, wrapper } = createHarness(initialDocument)
+    const { result } = renderHook(() => useCADDocumentCommands({ projectId }), { wrapper })
+
+    act(() => result.current.moveOccurrence(secondOccurrence.id, 0))
+    await waitFor(() =>
+      expect(queryClient.getQueryData<ProjectCADDocument>(['projects', projectId, 'cad-document'])?.assembly?.occurrences[0]?.id).toBe(secondOccurrence.id),
+    )
+    await act(async () => rejectMove?.(new Error('move failed')))
+
+    await waitFor(() => expect(result.current.isPending).toBe(false))
+    expect(queryClient.getQueryData<ProjectCADDocument>(['projects', projectId, 'cad-document'])?.assembly?.occurrences.map(({ id }) => id)).toEqual([
+      occurrenceId,
+      secondOccurrence.id,
+    ])
+  })
+
   it('serializes assembly group commands through document revisions', async () => {
     vi.mocked(createProjectCADAssemblyGroup).mockResolvedValue({
       data: { document: projectDocument(8) },

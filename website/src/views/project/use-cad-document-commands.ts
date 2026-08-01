@@ -49,6 +49,10 @@ type OccurrenceMutationVariables =
   | { action: 'move'; occurrenceId: string; targetIndex: number }
   | { action: 'delete'; occurrenceId: string }
 
+type OccurrenceMutationContext = {
+  previousDocument?: ProjectCADDocument
+}
+
 type AssemblyGroupMutationVariables =
   | { action: 'create'; name: string; parentGroupId: string }
   | {
@@ -68,6 +72,24 @@ type SubassemblyMutationVariables =
 
 function isCADDocumentConflict(error: unknown) {
   return (error as { response?: { status?: number } }).response?.status === 409
+}
+
+function optimisticallyMoveOccurrence(document: ProjectCADDocument, occurrenceId: string, targetIndex: number): ProjectCADDocument {
+  const occurrences = document.assembly?.occurrences
+  const sourceIndex = occurrences?.findIndex((occurrence) => occurrence.id === occurrenceId) ?? -1
+  if (!document.assembly || !occurrences || sourceIndex < 0 || targetIndex < 0 || targetIndex >= occurrences.length || sourceIndex === targetIndex) {
+    return document
+  }
+  const nextOccurrences = [...occurrences]
+  const [occurrence] = nextOccurrences.splice(sourceIndex, 1)
+  nextOccurrences.splice(targetIndex, 0, occurrence)
+  return {
+    ...document,
+    assembly: {
+      ...document.assembly,
+      occurrences: nextOccurrences,
+    },
+  }
 }
 
 export function useCADDocumentCommands({
@@ -271,7 +293,19 @@ export function useCADDocumentCommands({
     },
   })
 
-  const occurrenceMutation = useMutation({
+  const occurrenceMutation = useMutation<ProjectCADDocument, unknown, OccurrenceMutationVariables, OccurrenceMutationContext>({
+    onMutate: async (variables) => {
+      if (variables.action !== 'move') {
+        return {}
+      }
+      const previousDocument = currentDocument()
+      const cancelPendingDocumentFetch = queryClient.cancelQueries({ queryKey: documentQueryKey })
+      if (previousDocument) {
+        queryClient.setQueryData(documentQueryKey, optimisticallyMoveOccurrence(previousDocument, variables.occurrenceId, variables.targetIndex))
+      }
+      await cancelPendingDocumentFetch
+      return { previousDocument }
+    },
     mutationFn: (variables: OccurrenceMutationVariables) =>
       enqueueCommand(async () => {
         const document = currentDocument()
@@ -296,7 +330,10 @@ export function useCADDocumentCommands({
       queryClient.setQueryData(documentQueryKey, document)
       await queryClient.invalidateQueries({ queryKey: historyQueryKey })
     },
-    onError: async (error) => {
+    onError: async (error, _variables, context) => {
+      if (context?.previousDocument) {
+        queryClient.setQueryData(documentQueryKey, context.previousDocument)
+      }
       if (!(await refreshAfterConflict(error))) {
         setOccurrenceError(t('project.errors.occurrenceFailed'))
       }

@@ -175,6 +175,7 @@ export type ProjectAPIFixtureState = {
 	occurrenceDuplicateCount: number
 	occurrenceUpdateCount: number
 	occurrenceMoveCount: number
+	occurrenceMoveDelayMs: number
 	occurrenceDeleteCount: number
   parametricRunDelayMs: number
   parametricRunErrorMessage: string
@@ -235,6 +236,7 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
 		occurrenceDuplicateCount: 0,
 		occurrenceUpdateCount: 0,
 		occurrenceMoveCount: 0,
+		occurrenceMoveDelayMs: 0,
 		occurrenceDeleteCount: 0,
     parametricRunDelayMs: 0,
     parametricRunErrorMessage: '',
@@ -1286,6 +1288,9 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
 			if (targetIndex < 0 || targetIndex >= state.occurrences.length || targetIndex === occurrenceIndex) {
 				await route.fulfill({ json: { message: 'invalid occurrence move' }, status: 400 })
 				return
+			}
+			if (state.occurrenceMoveDelayMs > 0) {
+				await new Promise((resolve) => setTimeout(resolve, state.occurrenceMoveDelayMs))
 			}
 			recordAssemblyMutation(state)
 			const [occurrence] = state.occurrences.splice(occurrenceIndex, 1)

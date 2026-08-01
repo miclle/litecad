@@ -1,5 +1,25 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Box, Boxes, Check, ClipboardPaste, Copy, Eye, EyeOff, FileText, Folder, FolderPlus, Pencil, Trash2, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MouseSensor,
+  pointerWithin,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragStartEvent,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
+} from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { Box, Boxes, Check, ClipboardPaste, Copy, Eye, EyeOff, Folder, FolderPlus, Pencil, Trash2, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -16,6 +36,7 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 import type { CADAssemblyGroup, CaptureCADSubassemblyPayload, UpdateCADAssemblyGroupPayload, UpdateCADAssemblyOccurrencePayload } from 'src/types/project'
 import type { ProjectModelTreeGroup } from './project-preview-assets'
 
@@ -53,6 +74,11 @@ type AssemblyTreeEntry =
       isEmpty: boolean
     }
   | { type: 'model'; modelGroup: ProjectModelTreeGroup; depth: number }
+
+type OptimisticOccurrenceMove = {
+  baseOccurrenceIDs: string[]
+  groups: ProjectModelTreeGroup[]
+}
 
 function buildAssemblyTreeEntries(assemblyGroups: CADAssemblyGroup[], modelGroups: ProjectModelTreeGroup[]): AssemblyTreeEntry[] {
   const childGroupsByParentID = new Map<string, CADAssemblyGroup[]>()
@@ -108,6 +134,62 @@ function isEditableShortcutTarget(target: EventTarget | null) {
   return target.isContentEditable || target.matches('input, textarea, select')
 }
 
+const siblingCollisionDetection: CollisionDetection = (args) => {
+  const parentGroupID = args.active.data.current?.parentGroupID ?? ''
+  const siblingArgs = {
+    ...args,
+    droppableContainers: args.droppableContainers.filter(
+      (container) => (container.data.current?.parentGroupID ?? '') === parentGroupID,
+    ),
+  }
+  const pointerCollisions = pointerWithin(siblingArgs)
+  return pointerCollisions.length > 0 ? pointerCollisions : closestCenter(siblingArgs)
+}
+
+type SortableOccurrenceRenderProps = {
+  attributes: DraggableAttributes
+  isDragging: boolean
+  isOver: boolean
+  listeners: DraggableSyntheticListeners
+  setActivatorNodeRef: (element: HTMLElement | null) => void
+}
+
+function SortableOccurrence({
+  children,
+  disabled,
+  id,
+  marginLeft,
+  parentGroupID,
+}: {
+  children: (props: SortableOccurrenceRenderProps) => ReactNode
+  disabled: boolean
+  id: string
+  marginLeft?: string
+  parentGroupID: string
+}) {
+  const { attributes, isDragging, isOver, listeners, setActivatorNodeRef, setNodeRef, transform, transition } = useSortable({
+    attributes: {
+      role: 'option',
+    },
+    data: { parentGroupID },
+    disabled,
+    id,
+  })
+  const style: CSSProperties = {
+    marginLeft,
+    position: isDragging ? 'relative' : undefined,
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 1 : undefined,
+  }
+
+  return (
+    <div className="grid gap-1 motion-reduce:!transition-none" ref={setNodeRef} style={style}>
+      {children({ attributes, isDragging, isOver, listeners, setActivatorNodeRef })}
+    </div>
+  )
+}
+
 export function ProjectModelTree({
   assemblyGroups = [],
   groups,
@@ -134,8 +216,18 @@ export function ProjectModelTree({
   uploadError,
 }: ProjectModelTreeProps) {
   const { t } = useTranslation()
-  const assembly = groups[0]
-  const treeEntries = buildAssemblyTreeEntries(assemblyGroups, groups)
+  const [optimisticMove, setOptimisticMove] = useState<OptimisticOccurrenceMove | null>(null)
+  const serverOrderStillAtOptimisticBase = Boolean(
+    optimisticMove &&
+    optimisticMove.baseOccurrenceIDs.length === groups.length &&
+    optimisticMove.baseOccurrenceIDs.every((occurrenceID, index) => occurrenceID === groups[index]?.occurrenceId),
+  )
+  if (optimisticMove && !serverOrderStillAtOptimisticBase) {
+    setOptimisticMove(null)
+  }
+  const displayedGroups = optimisticMove && serverOrderStillAtOptimisticBase ? optimisticMove.groups : groups
+  const assembly = displayedGroups[0]
+  const treeEntries = buildAssemblyTreeEntries(assemblyGroups, displayedGroups)
   const groupOptions = assemblyGroupOptions(assemblyGroups)
   const childGroupParentIDs = new Set(assemblyGroups.map((group) => group.parent_group_id).filter(Boolean))
   const ordinaryOccurrenceParentIDs = new Set(
@@ -145,9 +237,32 @@ export function ProjectModelTree({
   const [occurrenceNameDraft, setOccurrenceNameDraft] = useState('')
   const copiedOccurrenceIDRef = useRef('')
   const [copiedOccurrenceID, setCopiedOccurrenceID] = useState('')
+  const [activeOccurrenceID, setActiveOccurrenceID] = useState('')
+  const [activeOccurrenceSize, setActiveOccurrenceSize] = useState<{ height: number; width: number } | null>(null)
   const [renamingGroupID, setRenamingGroupID] = useState('')
   const [groupNameDraft, setGroupNameDraft] = useState('')
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
   const selectedOccurrence = groups.find((group) => group.occurrenceId === selectedOccurrenceId)
+  const activeOccurrence = groups.find((group) => group.occurrenceId === activeOccurrenceID)
+  const activePreviewID = activeOccurrence?.occurrenceId || activeOccurrence?.model.id || ''
+  const isActiveOccurrenceHidden = activePreviewID ? hiddenModelIds.has(activePreviewID) : false
+  const ActiveVisibilityIcon = isActiveOccurrenceHidden ? EyeOff : Eye
+  const activeOccurrenceHasPreviewAsset = activePreviewID ? previewAssetModelIds.has(activePreviewID) : false
+  const sortableOccurrenceIDs = treeEntries.flatMap((entry) => {
+    if (entry.type !== 'model') return []
+    const group = entry.modelGroup
+    return group.occurrenceId && !group.isSubassemblyMember && typeof group.occurrenceIndex === 'number' ? [group.occurrenceId] : []
+  })
   const canCopySelectedOccurrence = Boolean(selectedOccurrence?.occurrenceId && !selectedOccurrence.isSubassemblyMember)
   const canPasteCopiedOccurrence = Boolean(
     copiedOccurrenceID && groups.some((group) => group.occurrenceId === copiedOccurrenceID && !group.isSubassemblyMember),
@@ -175,6 +290,50 @@ export function ProjectModelTree({
       onUpdateAssemblyGroup?.(groupID, { name })
     }
     setRenamingGroupID('')
+  }
+  const clearOccurrenceDrag = () => {
+    setActiveOccurrenceID('')
+    setActiveOccurrenceSize(null)
+  }
+  const startOccurrenceDrag = ({ active, activatorEvent }: DragStartEvent) => {
+    const activatorRow =
+      activatorEvent.target instanceof Element ? activatorEvent.target.closest<HTMLElement>('[data-occurrence-row]') : null
+    const activatorRect = activatorRow?.getBoundingClientRect()
+    const sourceRect = activatorRect && activatorRect.width > 0 && activatorRect.height > 0 ? activatorRect : active.rect.current.initial
+    setActiveOccurrenceID(String(active.id))
+    setActiveOccurrenceSize(sourceRect ? { height: sourceRect.height, width: sourceRect.width } : null)
+  }
+  const finishOccurrenceDrag = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) {
+      clearOccurrenceDrag()
+      return
+    }
+
+    const source = groups.find((group) => group.occurrenceId === active.id)
+    const target = groups.find((group) => group.occurrenceId === over.id)
+    if (
+      !source?.occurrenceId ||
+      !target?.occurrenceId ||
+      source.isSubassemblyMember ||
+      target.isSubassemblyMember ||
+      (source.parentGroupId ?? '') !== (target.parentGroupId ?? '') ||
+      typeof target.occurrenceIndex !== 'number'
+    ) {
+      clearOccurrenceDrag()
+      return
+    }
+    const sourceIndex = groups.findIndex((group) => group.occurrenceId === source.occurrenceId)
+    const targetIndex = groups.findIndex((group) => group.occurrenceId === target.occurrenceId)
+    if (sourceIndex < 0 || targetIndex < 0) {
+      clearOccurrenceDrag()
+      return
+    }
+    setOptimisticMove({
+      baseOccurrenceIDs: groups.map((group) => group.occurrenceId),
+      groups: arrayMove(groups, sourceIndex, targetIndex),
+    })
+    clearOccurrenceDrag()
+    onMoveOccurrence?.(source.occurrenceId, target.occurrenceIndex)
   }
 
   useEffect(() => {
@@ -250,7 +409,47 @@ export function ProjectModelTree({
             </Button>
           </div>
         ) : null}
-        {treeEntries.map((entry) => {
+        <DndContext
+          accessibility={{
+            announcements: {
+              onDragCancel: ({ active }) =>
+                t('project.modelTree.dragCancel', {
+                  name: groups.find((group) => group.occurrenceId === active.id)?.displayName ?? String(active.id),
+                }),
+              onDragEnd: ({ active, over }) =>
+                over
+                  ? t('project.modelTree.dragEnd', {
+                      name: groups.find((group) => group.occurrenceId === active.id)?.displayName ?? String(active.id),
+                      target: groups.find((group) => group.occurrenceId === over.id)?.displayName ?? String(over.id),
+                    })
+                  : t('project.modelTree.dragCancel', {
+                      name: groups.find((group) => group.occurrenceId === active.id)?.displayName ?? String(active.id),
+                    }),
+              onDragOver: ({ active, over }) =>
+                over
+                  ? t('project.modelTree.dragOver', {
+                      name: groups.find((group) => group.occurrenceId === active.id)?.displayName ?? String(active.id),
+                      target: groups.find((group) => group.occurrenceId === over.id)?.displayName ?? String(over.id),
+                    })
+                  : undefined,
+              onDragStart: ({ active }) =>
+                t('project.modelTree.dragStart', {
+                  name: groups.find((group) => group.occurrenceId === active.id)?.displayName ?? String(active.id),
+                }),
+            },
+            screenReaderInstructions: {
+              draggable: t('project.modelTree.dragInstructions'),
+            },
+          }}
+          collisionDetection={siblingCollisionDetection}
+          modifiers={[restrictToVerticalAxis]}
+          onDragCancel={clearOccurrenceDrag}
+          onDragEnd={finishOccurrenceDrag}
+          onDragStart={startOccurrenceDrag}
+          sensors={sensors}
+        >
+          <SortableContext items={sortableOccurrenceIDs} strategy={verticalListSortingStrategy}>
+            {treeEntries.map((entry) => {
           if (entry.type === 'assembly-group') {
             const group = entry.assemblyGroup
             const isSubassemblyInstance = Boolean(group.subassembly_definition_id)
@@ -410,51 +609,55 @@ export function ProjectModelTree({
           const isSelectedSourceNode = isSelectedOccurrence && selectedNodeId === group.sourceNodeId
           const hasPreviewAsset = previewAssetModelIds.has(previewID)
           const VisibilityIcon = isModelHidden ? EyeOff : Eye
-          const canMoveUp = (group.occurrenceIndex ?? 0) > 0
-          const canMoveDown =
-            (group.occurrenceIndex ?? (group.assemblyOccurrenceCount ?? groups.length) - 1) < (group.assemblyOccurrenceCount ?? groups.length) - 1
           const canDeleteOccurrence = (group.modelOccurrenceCount ?? 1) > 1
           const isSubassemblyMember = Boolean(group.isSubassemblyMember)
+          const canDragOccurrence = Boolean(
+            group.occurrenceId && !isSubassemblyMember && !isOccurrenceMutationPending && onMoveOccurrence && typeof group.occurrenceIndex === 'number',
+          )
 
           return (
-            <div
-              className="grid gap-1"
+            <SortableOccurrence
+              disabled={!canDragOccurrence}
+              id={group.occurrenceId || model.id}
               key={group.occurrenceId || model.id}
-              style={{
-                marginLeft: assembly?.assemblyId ? `${entry.depth * 16 + 12}px` : undefined,
-              }}
+              marginLeft={assembly?.assemblyId ? `${entry.depth * 16 + 12}px` : undefined}
+              parentGroupID={group.parentGroupId ?? ''}
             >
-              <OccurrenceContextMenu
-                canDelete={canDeleteOccurrence}
-                canMoveDown={canMoveDown}
-                canMoveUp={canMoveUp}
-                canPaste={canPasteCopiedOccurrence}
-                disabled={isOccurrenceMutationPending}
-                group={group}
-                onCopy={() => copyOccurrence(group.occurrenceId)}
-                onDelete={() => onDeleteOccurrence?.(group.occurrenceId)}
-                onMove={(targetIndex) => onMoveOccurrence?.(group.occurrenceId, targetIndex)}
-                onOpen={() => onSelect(model.id, group.sourceNodeId, group.occurrenceId)}
-                onPaste={pasteOccurrence}
-                onRename={() => {
-                  setOccurrenceNameDraft(group.occurrenceName || group.displayName)
-                  setRenamingOccurrenceID(group.occurrenceId)
-                }}
-                onToggleSuppressed={() =>
-                  onUpdateOccurrence?.(group.occurrenceId, {
-                    suppressed: !group.suppressed,
-                  })
-                }
-              >
-                <div
-                  className={`group/model-row min-w-0 rounded-md px-2 py-1.5 text-sm transition ${
-                    isSelectedSourceNode
-                      ? 'bg-[#eff6ff] text-[#0f172a] ring-1 ring-[#bfdbfe]'
-                      : isModelHidden
-                        ? 'text-[#94a3b8] hover:bg-[#f1f5f9]'
-                        : 'text-[#1f2937] hover:bg-[#f1f5f9]'
-                  }`}
-                >
+              {({ attributes, isDragging, isOver, listeners, setActivatorNodeRef }) => (
+                <>
+                  <OccurrenceContextMenu
+                    canDelete={canDeleteOccurrence}
+                    canPaste={canPasteCopiedOccurrence}
+                    disabled={isOccurrenceMutationPending}
+                    group={group}
+                    onCopy={() => copyOccurrence(group.occurrenceId)}
+                    onDelete={() => onDeleteOccurrence?.(group.occurrenceId)}
+                    onOpen={() => onSelect(model.id, group.sourceNodeId, group.occurrenceId)}
+                    onPaste={pasteOccurrence}
+                    onRename={() => {
+                      setOccurrenceNameDraft(group.occurrenceName || group.displayName)
+                      setRenamingOccurrenceID(group.occurrenceId)
+                    }}
+                    onToggleSuppressed={() =>
+                      onUpdateOccurrence?.(group.occurrenceId, {
+                        suppressed: !group.suppressed,
+                      })
+                    }
+                  >
+                    <div
+                      className={cn(
+                        'group/model-row min-w-0 rounded-md px-2 py-1.5 text-sm transition',
+                        isOver && !isDragging
+                          ? 'bg-accent ring-2 ring-ring/40'
+                          : isSelectedSourceNode
+                            ? 'bg-[#eff6ff] text-[#0f172a] ring-1 ring-[#bfdbfe]'
+                            : isModelHidden
+                              ? 'text-[#94a3b8] hover:bg-[#f1f5f9]'
+                              : 'text-[#1f2937] hover:bg-[#f1f5f9]',
+                        isDragging && 'opacity-25',
+                      )}
+                      data-occurrence-row
+                    >
                   <div className="flex min-w-0 items-center gap-2">
                     {hasPreviewAsset ? (
                       <Button
@@ -492,14 +695,19 @@ export function ProjectModelTree({
                       </>
                     ) : (
                       <button
+                        {...attributes}
                         aria-selected={isSelectedSourceNode}
-                        className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]"
+                        className={cn(
+                          'flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]',
+                          canDragOccurrence && 'touch-manipulation cursor-grab active:cursor-grabbing',
+                        )}
+                        {...listeners}
                         onClick={() => onSelect(model.id, group.sourceNodeId, group.occurrenceId)}
+                        ref={setActivatorNodeRef}
                         role="option"
                         title={group.displayName}
                         type="button"
                       >
-                        <FileText className={`size-4 shrink-0 ${isSelectedSourceNode ? 'text-[#1d4ed8]' : isModelHidden ? 'text-[#94a3b8]' : 'text-[#475569]'}`} />
                         <span className="min-w-0 flex-1 truncate">{group.displayName}</span>
                         {group.children.length > 0 ? (
                           <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">
@@ -582,9 +790,46 @@ export function ProjectModelTree({
                   })}
                 </div>
               ) : null}
-            </div>
+                </>
+              )}
+            </SortableOccurrence>
           )
-        })}
+            })}
+          </SortableContext>
+          {createPortal(
+            <DragOverlay>
+              {activeOccurrence ? (
+                <div
+                  className="flex min-w-0 items-center gap-2 overflow-hidden rounded-md border border-[#60a5fa] bg-[#eff6ff] px-2 py-1.5 text-sm text-[#0f172a] shadow-lg"
+                  style={{ height: activeOccurrenceSize?.height, width: activeOccurrenceSize?.width }}
+                >
+                  {activeOccurrenceHasPreviewAsset ? (
+                    <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-[min(var(--radius-md),10px)]">
+                      <ActiveVisibilityIcon className="size-3" />
+                    </span>
+                  ) : null}
+                  <span className="min-w-0 flex-1 truncate">{activeOccurrence.displayName}</span>
+                  {activeOccurrence.children.length > 0 ? (
+                    <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">
+                      {t('project.sidebar.modelCount', {
+                        count: activeOccurrence.children.length,
+                      })}
+                    </span>
+                  ) : null}
+                  <div
+                    aria-label={
+                      activeOccurrence.model.parse_status === 'parsed'
+                        ? t('project.modelTree.previewReady')
+                        : t('project.modelTree.processing')
+                    }
+                    className={`size-1.5 shrink-0 rounded-full ${activeOccurrence.model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'}`}
+                  />
+                </div>
+              ) : null}
+            </DragOverlay>,
+            document.body,
+          )}
+        </DndContext>
         {isUploading ? (
           <div className="rounded-md border border-[#e2e8f0] bg-[#f1f5f9] px-3 py-3 font-mono text-[11px] uppercase text-[#475569]">
             {t('project.modelTree.importing')}
@@ -599,30 +844,24 @@ export function ProjectModelTree({
 
 function OccurrenceContextMenu({
   canDelete,
-  canMoveDown,
-  canMoveUp,
   canPaste,
   children,
   disabled,
   group,
   onCopy,
   onDelete,
-  onMove,
   onOpen,
   onPaste,
   onRename,
   onToggleSuppressed,
 }: {
   canDelete: boolean
-  canMoveDown: boolean
-  canMoveUp: boolean
   canPaste: boolean
   children: ReactNode
   disabled: boolean
   group: ProjectModelTreeGroup
   onCopy: () => void
   onDelete: () => void
-  onMove: (targetIndex: number) => void
   onOpen: () => void
   onPaste: () => void
   onRename: () => void
@@ -657,14 +896,6 @@ function OccurrenceContextMenu({
         </ContextMenuGroup>
         <ContextMenuSeparator />
         <ContextMenuGroup>
-          <ContextMenuItem disabled={!canMoveUp || disabled} onClick={() => onMove((group.occurrenceIndex ?? 0) - 1)}>
-            <ArrowUp />
-            {t('project.modelTree.moveOccurrenceUp')}
-          </ContextMenuItem>
-          <ContextMenuItem disabled={!canMoveDown || disabled} onClick={() => onMove((group.occurrenceIndex ?? 0) + 1)}>
-            <ArrowDown />
-            {t('project.modelTree.moveOccurrenceDown')}
-          </ContextMenuItem>
           <ContextMenuItem disabled={disabled} onClick={onToggleSuppressed}>
             {group.suppressed ? <Eye /> : <EyeOff />}
             {t(group.suppressed ? 'project.modelTree.unsuppressOccurrence' : 'project.modelTree.suppressOccurrence')}
