@@ -5,7 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectModelTreeGroup } from './project-preview-assets'
 import { ProjectModelTree } from './project-model-tree'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  window.getSelection()?.removeAllRanges()
+})
 
 const groups: ProjectModelTreeGroup[] = [
   {
@@ -83,9 +86,13 @@ describe('ProjectModelTree', () => {
     expect(onSelect).toHaveBeenNthCalledWith(2, 'model_one', 'node_child_one', 'occurrence_model_one')
     expect(onToggleVisibility).toHaveBeenCalledWith('occurrence_model_one')
     expect(screen.getByTestId('assembly-root').textContent).toContain('Robot project')
+    const sourceOption = screen.getByRole('option', { name: /Assembly/ })
+    const visibilityButton = screen.getByRole('button', { name: 'Hide Assembly' })
+    expect(visibilityButton.compareDocumentPosition(sourceOption) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(visibilityButton.className).not.toContain('opacity-0')
   })
 
-  it('forwards compact occurrence authoring commands', async () => {
+  it('moves occurrence authoring commands into the row context menu', async () => {
     const user = userEvent.setup()
     const onDeleteOccurrence = vi.fn()
     const onDuplicateOccurrence = vi.fn()
@@ -110,21 +117,154 @@ describe('ProjectModelTree', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Duplicate occurrence' }))
-    await user.click(screen.getByRole('button', { name: 'Move occurrence down' }))
-    await user.click(screen.getByRole('button', { name: 'Suppress occurrence' }))
-    await user.click(screen.getByRole('button', { name: 'Rename occurrence' }))
+    const occurrenceOption = screen.getByRole('option', { name: /Assembly/ })
+    expect(screen.queryByRole('button', { name: 'Duplicate occurrence' })).toBeNull()
+
+    await user.pointer({ keys: '[MouseRight]', target: occurrenceOption })
+    expect((await screen.findByRole('menuitem', { name: /Copy/ })).textContent).toContain('Ctrl/Cmd+C')
+    expect(screen.getByRole('menuitem', { name: /Paste/ }).textContent).toContain('Ctrl/Cmd+V')
+    await user.click(await screen.findByRole('menuitem', { name: /Copy/ }))
+    await user.pointer({ keys: '[MouseRight]', target: occurrenceOption })
+    await user.click(await screen.findByRole('menuitem', { name: /Paste/ }))
+    await user.pointer({ keys: '[MouseRight]', target: occurrenceOption })
+    await user.click(await screen.findByRole('menuitem', { name: 'Move occurrence down' }))
+    await user.pointer({ keys: '[MouseRight]', target: occurrenceOption })
+    await user.click(await screen.findByRole('menuitem', { name: 'Suppress occurrence' }))
+    await user.pointer({ keys: '[MouseRight]', target: occurrenceOption })
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename occurrence' }))
     const nameInput = screen.getByRole('textbox', { name: 'Occurrence name' })
+    expect(screen.queryByRole('button', { name: 'Save occurrence name' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cancel occurrence name' })).toBeNull()
     await user.clear(nameInput)
     await user.type(nameInput, 'Fixture right')
-    await user.click(screen.getByRole('button', { name: 'Save occurrence name' }))
-    await user.click(screen.getByRole('button', { name: 'Delete occurrence' }))
+    await user.keyboard('{Enter}')
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByRole('option', { name: /Assembly/ }) })
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete occurrence' }))
 
     expect(onDuplicateOccurrence).toHaveBeenCalledWith('occurrence_model_one')
     expect(onMoveOccurrence).toHaveBeenCalledWith('occurrence_model_one', 1)
     expect(onUpdateOccurrence).toHaveBeenNthCalledWith(1, 'occurrence_model_one', { suppressed: true })
     expect(onUpdateOccurrence).toHaveBeenNthCalledWith(2, 'occurrence_model_one', { name: 'Fixture right' })
     expect(onDeleteOccurrence).toHaveBeenCalledWith('occurrence_model_one')
+  })
+
+  it('commits an occurrence rename when the input loses focus', async () => {
+    const user = userEvent.setup()
+    const onUpdateOccurrence = vi.fn()
+    render(
+      <ProjectModelTree
+        groups={groups}
+        hiddenModelIds={new Set()}
+        isLoading={false}
+        isUploading={false}
+        onSelect={vi.fn()}
+        onToggleVisibility={vi.fn()}
+        onUpdateOccurrence={onUpdateOccurrence}
+        previewAssetModelIds={new Set(['occurrence_model_one'])}
+        selectedNodeId="node_model_one"
+        selectedOccurrenceId="occurrence_model_one"
+        uploadError=""
+      />,
+    )
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByRole('option', { name: /Assembly/ }) })
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename occurrence' }))
+    const nameInput = screen.getByRole('textbox', { name: 'Occurrence name' })
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Fixture left')
+    await user.click(screen.getByTestId('assembly-root'))
+
+    expect(onUpdateOccurrence).toHaveBeenCalledOnce()
+    expect(onUpdateOccurrence).toHaveBeenCalledWith('occurrence_model_one', { name: 'Fixture left' })
+    expect(screen.queryByRole('textbox', { name: 'Occurrence name' })).toBeNull()
+  })
+
+  it('cancels an occurrence rename with Escape', async () => {
+    const user = userEvent.setup()
+    const onUpdateOccurrence = vi.fn()
+    render(
+      <ProjectModelTree
+        groups={groups}
+        hiddenModelIds={new Set()}
+        isLoading={false}
+        isUploading={false}
+        onSelect={vi.fn()}
+        onToggleVisibility={vi.fn()}
+        onUpdateOccurrence={onUpdateOccurrence}
+        previewAssetModelIds={new Set(['occurrence_model_one'])}
+        selectedNodeId="node_model_one"
+        selectedOccurrenceId="occurrence_model_one"
+        uploadError=""
+      />,
+    )
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByRole('option', { name: /Assembly/ }) })
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename occurrence' }))
+    const nameInput = screen.getByRole('textbox', { name: 'Occurrence name' })
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Discarded name')
+    await user.keyboard('{Escape}')
+
+    expect(onUpdateOccurrence).not.toHaveBeenCalled()
+    expect(screen.queryByRole('textbox', { name: 'Occurrence name' })).toBeNull()
+    expect(screen.getByRole('option', { name: /Assembly/ })).toBeTruthy()
+  })
+
+  it('copies and pastes the selected occurrence with platform shortcuts', async () => {
+    const user = userEvent.setup()
+    const onDuplicateOccurrence = vi.fn()
+    render(
+      <ProjectModelTree
+        groups={groups}
+        hiddenModelIds={new Set()}
+        isLoading={false}
+        isUploading={false}
+        onDuplicateOccurrence={onDuplicateOccurrence}
+        onSelect={vi.fn()}
+        onToggleVisibility={vi.fn()}
+        previewAssetModelIds={new Set(['occurrence_model_one'])}
+        selectedNodeId="node_model_one"
+        selectedOccurrenceId="occurrence_model_one"
+        uploadError=""
+      />,
+    )
+
+    await user.keyboard('{Meta>}c{/Meta}{Meta>}v{/Meta}')
+
+    expect(onDuplicateOccurrence).toHaveBeenCalledOnce()
+    expect(onDuplicateOccurrence).toHaveBeenCalledWith('occurrence_model_one')
+  })
+
+  it('discards the copied occurrence when the user subsequently copies text', async () => {
+    const user = userEvent.setup()
+    const onDuplicateOccurrence = vi.fn()
+    render(
+      <>
+        <span data-testid="copyable-note">Inspection note</span>
+        <ProjectModelTree
+          groups={groups}
+          hiddenModelIds={new Set()}
+          isLoading={false}
+          isUploading={false}
+          onDuplicateOccurrence={onDuplicateOccurrence}
+          onSelect={vi.fn()}
+          onToggleVisibility={vi.fn()}
+          previewAssetModelIds={new Set(['occurrence_model_one'])}
+          selectedNodeId="node_model_one"
+          selectedOccurrenceId="occurrence_model_one"
+          uploadError=""
+        />
+      </>,
+    )
+
+    await user.keyboard('{Meta>}c{/Meta}')
+    const range = document.createRange()
+    range.selectNodeContents(screen.getByTestId('copyable-note'))
+    window.getSelection()?.addRange(range)
+
+    await user.keyboard('{Meta>}c{/Meta}{Meta>}v{/Meta}')
+
+    expect(onDuplicateOccurrence).not.toHaveBeenCalled()
   })
 
   it('keeps duplicate display suffixes out of occurrence rename values', async () => {
@@ -150,7 +290,9 @@ describe('ProjectModelTree', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Rename occurrence' }))
+    const occurrenceOption = screen.getByRole('option', { name: /Assembly/ })
+    await user.pointer({ keys: '[MouseRight]', target: occurrenceOption })
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename occurrence' }))
 
     expect(
       (

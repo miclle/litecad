@@ -1,8 +1,17 @@
-import { useId, useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, Box, Boxes, Check, Copy, Eye, EyeOff, FileText, Folder, FolderPlus, Pencil, Trash2, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { ArrowDown, ArrowUp, Box, Boxes, Check, ClipboardPaste, Copy, Eye, EyeOff, FileText, Folder, FolderPlus, Pencil, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
@@ -94,6 +103,11 @@ function assemblyGroupOptions(assemblyGroups: CADAssemblyGroup[]) {
   )
 }
 
+function isEditableShortcutTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false
+  return target.isContentEditable || target.matches('input, textarea, select')
+}
+
 export function ProjectModelTree({
   assemblyGroups = [],
   groups,
@@ -129,8 +143,25 @@ export function ProjectModelTree({
   )
   const [renamingOccurrenceID, setRenamingOccurrenceID] = useState('')
   const [occurrenceNameDraft, setOccurrenceNameDraft] = useState('')
+  const copiedOccurrenceIDRef = useRef('')
+  const [copiedOccurrenceID, setCopiedOccurrenceID] = useState('')
   const [renamingGroupID, setRenamingGroupID] = useState('')
   const [groupNameDraft, setGroupNameDraft] = useState('')
+  const selectedOccurrence = groups.find((group) => group.occurrenceId === selectedOccurrenceId)
+  const canCopySelectedOccurrence = Boolean(selectedOccurrence?.occurrenceId && !selectedOccurrence.isSubassemblyMember)
+  const canPasteCopiedOccurrence = Boolean(
+    copiedOccurrenceID && groups.some((group) => group.occurrenceId === copiedOccurrenceID && !group.isSubassemblyMember),
+  )
+  const copyOccurrence = (occurrenceID: string) => {
+    copiedOccurrenceIDRef.current = occurrenceID
+    setCopiedOccurrenceID(occurrenceID)
+  }
+  const pasteOccurrence = () => {
+    const occurrenceID = copiedOccurrenceIDRef.current
+    if (!occurrenceID || isOccurrenceMutationPending) return
+    if (!groups.some((group) => group.occurrenceId === occurrenceID && !group.isSubassemblyMember)) return
+    onDuplicateOccurrence?.(occurrenceID)
+  }
   const commitOccurrenceName = (occurrenceID: string) => {
     const name = occurrenceNameDraft.trim()
     if (name) {
@@ -145,6 +176,42 @@ export function ProjectModelTree({
     }
     setRenamingGroupID('')
   }
+
+  useEffect(() => {
+    const clearCopiedOccurrence = () => {
+      copiedOccurrenceIDRef.current = ''
+      setCopiedOccurrenceID('')
+    }
+    const handleOccurrenceClipboardShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || (!event.metaKey && !event.ctrlKey) || event.altKey || event.shiftKey) return
+      const key = event.key.toLowerCase()
+      if (key === 'c' && (isEditableShortcutTarget(event.target) || window.getSelection()?.toString())) {
+        clearCopiedOccurrence()
+        return
+      }
+      if (isEditableShortcutTarget(event.target)) return
+
+      if (key === 'c' && canCopySelectedOccurrence && selectedOccurrenceId) {
+        event.preventDefault()
+        copiedOccurrenceIDRef.current = selectedOccurrenceId
+        setCopiedOccurrenceID(selectedOccurrenceId)
+        return
+      }
+      if (key === 'v' && copiedOccurrenceIDRef.current && !isOccurrenceMutationPending) {
+        const occurrenceID = copiedOccurrenceIDRef.current
+        if (!groups.some((group) => group.occurrenceId === occurrenceID && !group.isSubassemblyMember)) return
+        event.preventDefault()
+        onDuplicateOccurrence?.(occurrenceID)
+      }
+    }
+
+    window.addEventListener('keydown', handleOccurrenceClipboardShortcut)
+    window.addEventListener('copy', clearCopiedOccurrence)
+    return () => {
+      window.removeEventListener('keydown', handleOccurrenceClipboardShortcut)
+      window.removeEventListener('copy', clearCopiedOccurrence)
+    }
+  }, [canCopySelectedOccurrence, groups, isOccurrenceMutationPending, onDuplicateOccurrence, selectedOccurrenceId])
 
   return (
     <section>
@@ -357,173 +424,104 @@ export function ProjectModelTree({
                 marginLeft: assembly?.assemblyId ? `${entry.depth * 16 + 12}px` : undefined,
               }}
             >
-              <div
-                className={`group/model-row min-w-0 rounded-md px-2 py-1.5 text-sm transition ${
-                  isSelectedSourceNode
-                    ? 'bg-[#eff6ff] text-[#0f172a] ring-1 ring-[#bfdbfe]'
-                    : isModelHidden
-                      ? 'text-[#94a3b8] hover:bg-[#f1f5f9]'
-                      : 'text-[#1f2937] hover:bg-[#f1f5f9]'
-                }`}
+              <OccurrenceContextMenu
+                canDelete={canDeleteOccurrence}
+                canMoveDown={canMoveDown}
+                canMoveUp={canMoveUp}
+                canPaste={canPasteCopiedOccurrence}
+                disabled={isOccurrenceMutationPending}
+                group={group}
+                onCopy={() => copyOccurrence(group.occurrenceId)}
+                onDelete={() => onDeleteOccurrence?.(group.occurrenceId)}
+                onMove={(targetIndex) => onMoveOccurrence?.(group.occurrenceId, targetIndex)}
+                onOpen={() => onSelect(model.id, group.sourceNodeId, group.occurrenceId)}
+                onPaste={pasteOccurrence}
+                onRename={() => {
+                  setOccurrenceNameDraft(group.occurrenceName || group.displayName)
+                  setRenamingOccurrenceID(group.occurrenceId)
+                }}
+                onToggleSuppressed={() =>
+                  onUpdateOccurrence?.(group.occurrenceId, {
+                    suppressed: !group.suppressed,
+                  })
+                }
               >
-                <div className="flex min-w-0 items-center gap-2">
-                  <button
-                    aria-selected={isSelectedSourceNode}
-                    className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]"
-                    onClick={() => onSelect(model.id, group.sourceNodeId, group.occurrenceId)}
-                    role="option"
-                    title={group.displayName}
-                    type="button"
-                  >
-                    <FileText className={`size-4 shrink-0 ${isSelectedSourceNode ? 'text-[#1d4ed8]' : isModelHidden ? 'text-[#94a3b8]' : 'text-[#475569]'}`} />
-                    <span className="min-w-0 flex-1 truncate">{group.displayName}</span>
-                    {group.children.length > 0 ? (
-                      <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">
-                        {t('project.sidebar.modelCount', {
-                          count: group.children.length,
-                        })}
-                      </span>
+                <div
+                  className={`group/model-row min-w-0 rounded-md px-2 py-1.5 text-sm transition ${
+                    isSelectedSourceNode
+                      ? 'bg-[#eff6ff] text-[#0f172a] ring-1 ring-[#bfdbfe]'
+                      : isModelHidden
+                        ? 'text-[#94a3b8] hover:bg-[#f1f5f9]'
+                        : 'text-[#1f2937] hover:bg-[#f1f5f9]'
+                  }`}
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    {hasPreviewAsset ? (
+                      <Button
+                        aria-label={t(isModelHidden ? 'project.modelTree.show' : 'project.modelTree.hide', { name: group.displayName })}
+                        aria-pressed={!isModelHidden}
+                        onClick={() => onToggleVisibility(previewID)}
+                        size="icon-xs"
+                        title={t(isModelHidden ? 'project.modelTree.showModel' : 'project.modelTree.hideModel')}
+                        type="button"
+                        variant="ghost"
+                      >
+                        <VisibilityIcon />
+                      </Button>
                     ) : null}
-                  </button>
-                  {hasPreviewAsset ? (
-                    <Button
-                      aria-label={t(isModelHidden ? 'project.modelTree.show' : 'project.modelTree.hide', { name: group.displayName })}
-                      aria-pressed={!isModelHidden}
-                      className={`opacity-0 group-hover/model-row:opacity-100 focus-visible:opacity-100 ${isModelHidden ? 'opacity-100' : ''}`}
-                      onClick={() => onToggleVisibility(previewID)}
-                      size="icon-xs"
-                      title={t(isModelHidden ? 'project.modelTree.showModel' : 'project.modelTree.hideModel')}
-                      type="button"
-                      variant="ghost"
-                    >
-                      <VisibilityIcon />
-                    </Button>
-                  ) : null}
-                  <div
-                    aria-label={model.parse_status === 'parsed' ? t('project.modelTree.previewReady') : t('project.modelTree.processing')}
-                    className={`size-1.5 shrink-0 rounded-full ${model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'}`}
-                  />
-                </div>
-              </div>
-              {isSelectedOccurrence && group.occurrenceId ? (
-                <div className="mt-1 grid min-w-0 gap-1 border-t border-[#dbeafe] pt-1">
-                  {isSubassemblyMember ? (
-                    <p className="px-1 py-1 text-[11px] leading-4 text-[#64748b]">{t('project.modelTree.reusableMemberLocked')}</p>
-                  ) : (
-                    <div className="flex min-w-0 items-center gap-1">
                     {renamingOccurrenceID === group.occurrenceId ? (
                       <>
                         <Input
                           aria-label={t('project.modelTree.occurrenceName')}
-                          className="h-7 min-w-0 flex-1 px-2 text-xs"
                           autoFocus
+                          className="h-7 min-w-0 flex-1 px-2 text-xs"
+                          onBlur={() => commitOccurrenceName(group.occurrenceId)}
                           onChange={(event) => setOccurrenceNameDraft(event.target.value)}
                           onKeyDown={(event) => {
-                            if (event.key === 'Enter') commitOccurrenceName(group.occurrenceId)
-                            if (event.key === 'Escape') setRenamingOccurrenceID('')
+                            if (event.key === 'Enter') {
+                              event.preventDefault()
+                              event.currentTarget.blur()
+                            }
+                            if (event.key === 'Escape') {
+                              event.preventDefault()
+                              setRenamingOccurrenceID('')
+                            }
                           }}
                           value={occurrenceNameDraft}
                         />
-                        <Button
-                          aria-label={t('project.modelTree.saveOccurrenceName')}
-                          onClick={() => commitOccurrenceName(group.occurrenceId)}
-                          size="icon-xs"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Check />
-                        </Button>
-                        <Button
-                          aria-label={t('project.modelTree.cancelOccurrenceName')}
-                          onClick={() => setRenamingOccurrenceID('')}
-                          size="icon-xs"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <X />
-                        </Button>
                       </>
                     ) : (
-                      <>
-                        <Button
-                          aria-label={t('project.modelTree.duplicateOccurrence')}
-                          disabled={isOccurrenceMutationPending}
-                          onClick={() => onDuplicateOccurrence?.(group.occurrenceId)}
-                          size="icon-xs"
-                          title={t('project.modelTree.duplicateOccurrence')}
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Copy />
-                        </Button>
-                        <Button
-                          aria-label={t('project.modelTree.renameOccurrence')}
-                          disabled={isOccurrenceMutationPending}
-                          onClick={() => {
-                            setOccurrenceNameDraft(group.occurrenceName || group.displayName)
-                            setRenamingOccurrenceID(group.occurrenceId)
-                          }}
-                          size="icon-xs"
-                          title={t('project.modelTree.renameOccurrence')}
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Pencil />
-                        </Button>
-                        <Button
-                          aria-label={t('project.modelTree.moveOccurrenceUp')}
-                          disabled={!canMoveUp || isOccurrenceMutationPending}
-                          onClick={() => onMoveOccurrence?.(group.occurrenceId, (group.occurrenceIndex ?? 0) - 1)}
-                          size="icon-xs"
-                          title={t('project.modelTree.moveOccurrenceUp')}
-                          type="button"
-                          variant="ghost"
-                        >
-                          <ArrowUp />
-                        </Button>
-                        <Button
-                          aria-label={t('project.modelTree.moveOccurrenceDown')}
-                          disabled={!canMoveDown || isOccurrenceMutationPending}
-                          onClick={() => onMoveOccurrence?.(group.occurrenceId, (group.occurrenceIndex ?? 0) + 1)}
-                          size="icon-xs"
-                          title={t('project.modelTree.moveOccurrenceDown')}
-                          type="button"
-                          variant="ghost"
-                        >
-                          <ArrowDown />
-                        </Button>
-                        <Button
-                          aria-label={t(group.suppressed ? 'project.modelTree.unsuppressOccurrence' : 'project.modelTree.suppressOccurrence')}
-                          aria-pressed={Boolean(group.suppressed)}
-                          disabled={isOccurrenceMutationPending}
-                          onClick={() =>
-                            onUpdateOccurrence?.(group.occurrenceId, {
-                              suppressed: !group.suppressed,
-                            })
-                          }
-                          size="icon-xs"
-                          title={t(group.suppressed ? 'project.modelTree.unsuppressOccurrence' : 'project.modelTree.suppressOccurrence')}
-                          type="button"
-                          variant="ghost"
-                        >
-                          {group.suppressed ? <Eye /> : <EyeOff />}
-                        </Button>
-                        <span className="flex-1" />
-                        <Button
-                          aria-label={t('project.modelTree.deleteOccurrence')}
-                          disabled={!canDeleteOccurrence || isOccurrenceMutationPending}
-                          onClick={() => onDeleteOccurrence?.(group.occurrenceId)}
-                          size="icon-xs"
-                          title={canDeleteOccurrence ? t('project.modelTree.deleteOccurrence') : t('project.modelTree.keepLastOccurrence')}
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Trash2 />
-                        </Button>
-                      </>
+                      <button
+                        aria-selected={isSelectedSourceNode}
+                        className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#94a3b8]"
+                        onClick={() => onSelect(model.id, group.sourceNodeId, group.occurrenceId)}
+                        role="option"
+                        title={group.displayName}
+                        type="button"
+                      >
+                        <FileText className={`size-4 shrink-0 ${isSelectedSourceNode ? 'text-[#1d4ed8]' : isModelHidden ? 'text-[#94a3b8]' : 'text-[#475569]'}`} />
+                        <span className="min-w-0 flex-1 truncate">{group.displayName}</span>
+                        {group.children.length > 0 ? (
+                          <span className="shrink-0 font-mono text-[10px] uppercase text-[#94a3b8]">
+                            {t('project.sidebar.modelCount', {
+                              count: group.children.length,
+                            })}
+                          </span>
+                        ) : null}
+                      </button>
                     )}
-                    </div>
-                  )}
+                    <div
+                      aria-label={model.parse_status === 'parsed' ? t('project.modelTree.previewReady') : t('project.modelTree.processing')}
+                      className={`size-1.5 shrink-0 rounded-full ${model.parse_status === 'parsed' ? 'bg-[#475569]' : 'bg-[#c9a66b]'}`}
+                    />
+                  </div>
+                </div>
+              </OccurrenceContextMenu>
+              {isSelectedOccurrence && group.occurrenceId && (isSubassemblyMember || assemblyGroups.length > 0) ? (
+                <div className="mt-1 grid min-w-0 gap-1 border-t border-[#dbeafe] pt-1">
+                  {isSubassemblyMember ? (
+                    <p className="px-1 py-1 text-[11px] leading-4 text-[#64748b]">{t('project.modelTree.reusableMemberLocked')}</p>
+                  ) : null}
                   {!isSubassemblyMember && assemblyGroups.length > 0 ? (
                     <Select
                       items={[
@@ -596,6 +594,96 @@ export function ProjectModelTree({
         {occurrenceError ? <p className="text-sm leading-6 text-[#8a2f24]">{occurrenceError}</p> : null}
       </div>
     </section>
+  )
+}
+
+function OccurrenceContextMenu({
+  canDelete,
+  canMoveDown,
+  canMoveUp,
+  canPaste,
+  children,
+  disabled,
+  group,
+  onCopy,
+  onDelete,
+  onMove,
+  onOpen,
+  onPaste,
+  onRename,
+  onToggleSuppressed,
+}: {
+  canDelete: boolean
+  canMoveDown: boolean
+  canMoveUp: boolean
+  canPaste: boolean
+  children: ReactNode
+  disabled: boolean
+  group: ProjectModelTreeGroup
+  onCopy: () => void
+  onDelete: () => void
+  onMove: (targetIndex: number) => void
+  onOpen: () => void
+  onPaste: () => void
+  onRename: () => void
+  onToggleSuppressed: () => void
+}) {
+  const { t } = useTranslation()
+  if (!group.occurrenceId || group.isSubassemblyMember) return children
+
+  return (
+    <ContextMenu
+      onOpenChange={(open) => {
+        if (open) onOpen()
+      }}
+    >
+      <ContextMenuTrigger className="min-w-0">{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuGroup>
+          <ContextMenuItem onClick={onCopy}>
+            <Copy />
+            {t('project.modelTree.copyOccurrence')}
+            <ContextMenuShortcut>Ctrl/Cmd+C</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuItem disabled={!canPaste || disabled} onClick={onPaste}>
+            <ClipboardPaste />
+            {t('project.modelTree.pasteOccurrence')}
+            <ContextMenuShortcut>Ctrl/Cmd+V</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuItem disabled={disabled} onClick={onRename}>
+            <Pencil />
+            {t('project.modelTree.renameOccurrence')}
+          </ContextMenuItem>
+        </ContextMenuGroup>
+        <ContextMenuSeparator />
+        <ContextMenuGroup>
+          <ContextMenuItem disabled={!canMoveUp || disabled} onClick={() => onMove((group.occurrenceIndex ?? 0) - 1)}>
+            <ArrowUp />
+            {t('project.modelTree.moveOccurrenceUp')}
+          </ContextMenuItem>
+          <ContextMenuItem disabled={!canMoveDown || disabled} onClick={() => onMove((group.occurrenceIndex ?? 0) + 1)}>
+            <ArrowDown />
+            {t('project.modelTree.moveOccurrenceDown')}
+          </ContextMenuItem>
+          <ContextMenuItem disabled={disabled} onClick={onToggleSuppressed}>
+            {group.suppressed ? <Eye /> : <EyeOff />}
+            {t(group.suppressed ? 'project.modelTree.unsuppressOccurrence' : 'project.modelTree.suppressOccurrence')}
+          </ContextMenuItem>
+        </ContextMenuGroup>
+        <ContextMenuSeparator />
+        <ContextMenuGroup>
+          <ContextMenuItem
+            disabled={!canDelete || disabled}
+            onClick={onDelete}
+            title={canDelete ? t('project.modelTree.deleteOccurrence') : t('project.modelTree.keepLastOccurrence')}
+            variant="destructive"
+          >
+            <Trash2 />
+            {t('project.modelTree.deleteOccurrence')}
+          </ContextMenuItem>
+        </ContextMenuGroup>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 

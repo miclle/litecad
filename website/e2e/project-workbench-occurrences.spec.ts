@@ -10,19 +10,21 @@ test('authors repeated assembly occurrences through reload, history, preview, an
 
 	await page.goto(`/projects/${projectId}`)
 	await page.getByRole('option', { name: /Smoke bracket/ }).click()
-	await page.getByRole('button', { name: 'Duplicate occurrence' }).click()
+	await page.keyboard.press('ControlOrMeta+C')
+	await page.keyboard.press('ControlOrMeta+V')
 	await expect.poll(() => fixture.state.occurrenceDuplicateCount).toBe(1)
 	await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '2')
 
-	await page.getByRole('option', { name: /Smoke bracket copy/ }).click()
-	await page.getByRole('button', { name: 'Rename occurrence' }).click()
+	await page.getByRole('option', { name: /Smoke bracket copy/ }).click({ button: 'right' })
+	await page.getByRole('menuitem', { name: 'Rename occurrence' }).click()
 	const nameInput = page.getByRole('textbox', { name: 'Occurrence name' })
 	await nameInput.fill('Fixture right')
-	await page.getByRole('button', { name: 'Save occurrence name' }).click()
+	await nameInput.press('Enter')
 	await expect.poll(() => fixture.state.occurrenceUpdateCount).toBe(1)
 	await expect(page.getByRole('option', { name: /Fixture right/ })).toBeVisible()
 
-	await page.getByRole('button', { name: 'Move occurrence up' }).click()
+	await page.getByRole('option', { name: /Fixture right/ }).click({ button: 'right' })
+	await page.getByRole('menuitem', { name: 'Move occurrence up' }).click()
 	await expect.poll(() => fixture.state.occurrenceMoveCount).toBe(1)
 	expect(fixture.state.occurrences[0]?.name).toBe('Fixture right')
 
@@ -32,10 +34,12 @@ test('authors repeated assembly occurrences through reload, history, preview, an
 	await expect.poll(() => fixture.state.transformUpdateCount).toBe(1)
 	expect(fixture.state.occurrences[0]?.transform.matrix[3]).toBe(24)
 
-	await page.getByRole('button', { name: 'Suppress occurrence' }).click()
+	await page.getByRole('option', { name: /Fixture right/ }).click({ button: 'right' })
+	await page.getByRole('menuitem', { name: 'Suppress occurrence' }).click()
 	await expect.poll(() => fixture.state.occurrences[0]?.suppressed).toBe(true)
 	await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
-	await page.getByRole('button', { name: 'Unsuppress occurrence' }).click()
+	await page.getByRole('option', { name: /Fixture right/ }).click({ button: 'right' })
+	await page.getByRole('menuitem', { name: 'Unsuppress occurrence' }).click()
 	await expect.poll(() => fixture.state.occurrences[0]?.suppressed).toBe(false)
 	await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '2')
 
@@ -83,7 +87,8 @@ test('manages an existing position link and propagates driver placement through 
 
 	await page.goto(`/projects/${projectId}`)
 	await page.getByRole('option', { name: /Smoke bracket/ }).click()
-	await page.getByRole('button', { name: 'Duplicate occurrence' }).click()
+	await page.keyboard.press('ControlOrMeta+C')
+	await page.keyboard.press('ControlOrMeta+V')
 	await expect.poll(() => fixture.state.occurrenceDuplicateCount).toBe(1)
 	await expect(page.getByTestId('assembly-constraints')).toHaveCount(0)
 
