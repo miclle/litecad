@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Box, Braces, History, Save } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Box, History, Save, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Field, FieldError, FieldGroup, FieldLabel, FieldSet, FieldTitle } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
 import { parseOpenSCADParameters } from 'src/cad/openscad-parameters'
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
 import type { ProjectModelRevision, ProjectParametricArtifact } from 'src/types/project'
@@ -87,6 +87,7 @@ export function ParametricArtifactEditor({
     initialSignature: editorInitialSignature,
     values: editorInitialValues,
   }))
+  const [structureEditorArtifactID, setStructureEditorArtifactID] = useState('')
   const autoSaveSignatureRef = useRef('')
   const pendingParameterSaveRef = useRef<PendingParameterSave | undefined>(undefined)
   const savedParameterSignatureRef = useRef(`${artifact.id}:${editorInitialSignature}`)
@@ -153,6 +154,8 @@ export function ParametricArtifactEditor({
   const parameterSignature = useMemo(() => stableParameterValueSignature(parameterValues), [parameterValues])
   const hasOnSaveParameters = Boolean(onSaveParameters)
   const shouldAutoSaveOnPreviewSuccess = autoSaveOnPreviewSuccess && artifact.source_kind === 'litecad-feature-dsl'
+  const canEditModelStructure = artifact.source_kind === 'litecad-feature-dsl' && Boolean(onSaveFeatureGraph)
+  const isEditingModelStructure = canEditModelStructure && structureEditorArtifactID === artifact.id
 
   const updateParameterValue = (name: string, value: OpenSCADParameterValue) => {
     setParameterEditorState((currentState) => {
@@ -207,43 +210,78 @@ export function ParametricArtifactEditor({
 
   return (
     <section aria-label={t('project.parametric.artifact')} className="mt-4 min-w-0 overflow-hidden border-t border-[#e2e8f0] pt-4">
-      <div className="min-w-0">
-        <h2 className="truncate text-sm font-semibold text-[#0f172a]" title={artifact.title}>
-          {artifact.title}
-        </h2>
-      </div>
-
-      {currentRevisionID && modelRevisions.length > 0 ? (
-        <div className="mt-2 flex min-w-0 items-center gap-2 border-y border-[#e2e8f0] py-2">
-          <History className="size-3.5 shrink-0 text-[#64748b]" />
-          <label className="shrink-0 text-[11px] font-medium text-[#475569]" htmlFor={`model-revision-${artifact.id}`}>
-            {t('project.parametric.version')}
-          </label>
-          <select
-            aria-label={t('project.parametric.version')}
-            className="h-7 min-w-0 flex-1 border border-[#d6dbe3] bg-white px-2 text-[11px] text-[#0f172a] outline-none focus:border-[#0074d9]"
-            disabled={isRevisionRestorePending}
-            id={`model-revision-${artifact.id}`}
-            onChange={(event) => {
-              if (event.target.value !== currentRevisionID) {
-                onRestoreRevision?.(event.target.value)
-              }
-            }}
-            value={currentRevisionID}
+      {isEditingModelStructure ? (
+        <>
+          <Button
+            aria-label={t('project.parametric.backToParameterEditing')}
+            className="-ml-2 justify-start text-muted-foreground"
+            onClick={() => setStructureEditorArtifactID('')}
+            size="sm"
+            type="button"
+            variant="ghost"
           >
-            {modelRevisions.map((revision) => (
-              <option key={revision.id} value={revision.id}>
-                {t('project.parametric.versionOption', { sequence: revision.sequence })}
-              </option>
-            ))}
-          </select>
-          <span className="shrink-0 font-mono text-[10px] text-[#64748b]">
-            {t('project.parametric.currentVersion', { sequence: currentRevisionSequence })}
-          </span>
-        </div>
-      ) : null}
+            <ArrowLeft data-icon="inline-start" />
+            {t('project.parametric.backToParameterEditing')}
+          </Button>
+          <div className="mt-2 min-w-0">
+            <p className="truncate text-[10px] font-medium text-muted-foreground" title={artifact.title}>
+              {artifact.title}
+            </p>
+            <h2 className="mt-0.5 text-sm font-semibold text-foreground">
+              {t('project.parametric.modelStructureTitle')}
+            </h2>
+            <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+              {t('project.parametric.modelStructureDescription')}
+            </p>
+          </div>
+          <Separator className="my-3" />
+          <FeatureDSLGraphEditor
+            artifact={artifact}
+            compileFeatureDSL={compileFeatureDSL}
+            debounceMs={debounceMs}
+            isSaving={isFeatureGraphSaving}
+            onSave={(sourceCode) => onSaveFeatureGraph?.(sourceCode)}
+          />
+        </>
+      ) : (
+        <>
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-semibold text-[#0f172a]" title={artifact.title}>
+              {artifact.title}
+            </h2>
+          </div>
 
-      <FieldSet className="mt-3 min-w-0 gap-3">
+          {currentRevisionID && modelRevisions.length > 0 ? (
+            <div className="mt-2 flex min-w-0 items-center gap-2 border-y border-[#e2e8f0] py-2">
+              <History className="size-3.5 shrink-0 text-[#64748b]" />
+              <label className="shrink-0 text-[11px] font-medium text-[#475569]" htmlFor={`model-revision-${artifact.id}`}>
+                {t('project.parametric.version')}
+              </label>
+              <select
+                aria-label={t('project.parametric.version')}
+                className="h-7 min-w-0 flex-1 border border-[#d6dbe3] bg-white px-2 text-[11px] text-[#0f172a] outline-none focus:border-[#0074d9]"
+                disabled={isRevisionRestorePending}
+                id={`model-revision-${artifact.id}`}
+                onChange={(event) => {
+                  if (event.target.value !== currentRevisionID) {
+                    onRestoreRevision?.(event.target.value)
+                  }
+                }}
+                value={currentRevisionID}
+              >
+                {modelRevisions.map((revision) => (
+                  <option key={revision.id} value={revision.id}>
+                    {t('project.parametric.versionOption', { sequence: revision.sequence })}
+                  </option>
+                ))}
+              </select>
+              <span className="shrink-0 font-mono text-[10px] text-[#64748b]">
+                {t('project.parametric.currentVersion', { sequence: currentRevisionSequence })}
+              </span>
+            </div>
+          ) : null}
+
+          <FieldSet className="mt-3 min-w-0 gap-3">
         {preview.parameters.length > 0 ? (
           <FieldGroup className="min-w-0 gap-2">
             <FieldTitle className="text-xs text-[#334155]">{t('project.parametric.parameters')}</FieldTitle>
@@ -376,29 +414,26 @@ export function ParametricArtifactEditor({
             {resolvedSaveLabel}
           </Button>
         )}
-      </FieldSet>
+          </FieldSet>
 
-      {artifact.source_kind === 'litecad-feature-dsl' && onSaveFeatureGraph ? (
-        <Collapsible className="mt-3 border-t border-[#e2e8f0] pt-3">
-          <CollapsibleTrigger
-            render={
-              <Button aria-label={t('project.parametric.editFeatureGraph')} className="w-full justify-start" size="sm" type="button" variant="outline" />
-            }
-          >
-            <Braces data-icon="inline-start" />
-            {t('project.parametric.editFeatureGraph')}
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pt-3">
-            <FeatureDSLGraphEditor
-              artifact={artifact}
-              compileFeatureDSL={compileFeatureDSL}
-              debounceMs={debounceMs}
-              isSaving={isFeatureGraphSaving}
-              onSave={onSaveFeatureGraph}
-            />
-          </CollapsibleContent>
-        </Collapsible>
-      ) : null}
+          {canEditModelStructure ? (
+            <>
+              <Separator className="mt-3" />
+              <Button
+                aria-label={t('project.parametric.advancedEditing')}
+                className="mt-2 w-full justify-start text-muted-foreground"
+                onClick={() => setStructureEditorArtifactID(artifact.id)}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <Settings2 data-icon="inline-start" />
+                {t('project.parametric.advancedEditing')}
+              </Button>
+            </>
+          ) : null}
+        </>
+      )}
     </section>
   )
 }

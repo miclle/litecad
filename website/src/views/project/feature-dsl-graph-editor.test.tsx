@@ -29,7 +29,7 @@ describe('FeatureDSLGraphEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit complete source' }))
     const source = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Complete feature graph source' })
     expect(source.value).toBe(initialSource)
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Apply graph' }).disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Apply changes' })).toBeNull()
 
     fireEvent.change(source, { target: { value: updatedSource } })
 
@@ -40,14 +40,14 @@ describe('FeatureDSLGraphEditor', () => {
         parameterValues: { width: 96 },
       }),
     )
-    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Apply graph' }).disabled).toBe(false))
-    expect(screen.getByText('base')).not.toBeNull()
-    expect(screen.getByText('slot')).not.toBeNull()
+    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Apply changes' }).disabled).toBe(false))
+    expect(screen.getByText('base · box')).not.toBeNull()
+    expect(screen.getByText('slot · box_cut')).not.toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Apply graph' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply changes' }))
     expect(onSave).toHaveBeenCalledWith(updatedSource)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reset feature graph' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reset changes' }))
     expect(source.value).toBe(initialSource)
   })
 
@@ -67,7 +67,7 @@ describe('FeatureDSLGraphEditor', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Complete feature graph source' }), { target: { value: updatedSource } })
 
     await waitFor(() => expect(screen.getByText('Graph cannot compile')).not.toBeNull())
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Apply graph' }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Apply changes' }).disabled).toBe(true)
   })
 
   it('rejects parameter envelope edits before applying the graph', async () => {
@@ -86,7 +86,7 @@ describe('FeatureDSLGraphEditor', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Complete feature graph source' }), { target: { value: changedParameterSource } })
 
     await waitFor(() => expect(screen.getByText('Only feature nodes can be changed here. Use the parameter controls for parameter values.')).not.toBeNull())
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Apply graph' }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Apply changes' }).disabled).toBe(true)
   })
 
   it('can reset invalid node JSON and an invalid complete source', async () => {
@@ -99,19 +99,21 @@ describe('FeatureDSLGraphEditor', () => {
       />,
     )
 
-    const nodeSource = screen.getByRole('textbox', { name: 'Selected node source' })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit selected step source' }))
+    const nodeSource = screen.getByRole('textbox', { name: 'Selected step source' })
     fireEvent.change(nodeSource, { target: { value: '{' } })
-    const reset = screen.getByRole<HTMLButtonElement>('button', { name: 'Reset feature graph' })
+    const reset = screen.getByRole<HTMLButtonElement>('button', { name: 'Reset changes' })
     expect(reset.disabled).toBe(false)
     fireEvent.click(reset)
-    expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Selected node source' }).value).toContain('"id": "base"')
+    expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Selected step source' }).value).toContain('"id": "base"')
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit complete source' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Complete feature graph source' }), { target: { value: '{' } })
-    expect(screen.queryByRole('textbox', { name: 'Selected node source' })).toBeNull()
-    expect(reset.disabled).toBe(false)
-    fireEvent.click(reset)
-    expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Selected node source' }).value).toContain('"id": "base"')
+    expect(screen.queryByRole('textbox', { name: 'Selected step source' })).toBeNull()
+    const resetInvalidCompleteSource = screen.getByRole<HTMLButtonElement>('button', { name: 'Reset changes' })
+    expect(resetInvalidCompleteSource.disabled).toBe(false)
+    fireEvent.click(resetInvalidCompleteSource)
+    expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Selected step source' }).value).toContain('"id": "base"')
   })
 
   it('edits one stable nested node while preserving its boolean parent and siblings', async () => {
@@ -126,9 +128,14 @@ describe('FeatureDSLGraphEditor', () => {
       />,
     )
 
-    expect(screen.getByText('Feature graph · v1 · 3 nodes')).not.toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Select graph node bore' }))
-    const nodeSource = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Selected node source' })
+    expect(screen.getByText('Model structure · 3 steps')).not.toBeNull()
+    expect(screen.getByText('Boolean operation')).not.toBeNull()
+    expect(screen.getByText('Body')).not.toBeNull()
+    expect(screen.getByText('Cylinder')).not.toBeNull()
+    expect(screen.getByText('body · boolean')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Select model step Cylinder' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit selected step source' }))
+    const nodeSource = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Selected step source' })
     expect(nodeSource.value).toContain('"diameter": 4')
     expect(nodeSource.value).not.toContain('blank')
     expect(screen.getByText('features/body/operands/bore')).not.toBeNull()
@@ -153,7 +160,7 @@ describe('FeatureDSLGraphEditor', () => {
         }),
       ),
     )
-    const applyButton = screen.getByRole<HTMLButtonElement>('button', { name: 'Apply graph' })
+    const applyButton = screen.getByRole<HTMLButtonElement>('button', { name: 'Apply changes' })
     await waitFor(() => expect(applyButton.disabled).toBe(false))
     fireEvent.click(applyButton)
     const savedSource = onSave.mock.calls[0]?.[0] as string
@@ -166,8 +173,8 @@ describe('FeatureDSLGraphEditor', () => {
     expect(screen.getByText('Node ID must remain bore.')).not.toBeNull()
     expect(applyButton.disabled).toBe(true)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reset feature graph' }))
-    expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Selected node source' }).value).toContain('"id": "body"')
+    fireEvent.click(screen.getByRole('button', { name: 'Reset changes' }))
+    expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Selected step source' }).value).toContain('"id": "body"')
   })
 })
 

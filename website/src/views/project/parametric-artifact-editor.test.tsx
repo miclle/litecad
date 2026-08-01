@@ -132,14 +132,15 @@ describe('ParametricArtifactEditor', () => {
     })
     const onSaveFeatureGraph = vi.fn()
     const sourceCode =
-      '{"version":1,"unit":"millimetre","parameters":{},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":[80,40,6]}]}'
+      '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}'
     const updatedSourceCode =
-      '{"version":1,"unit":"millimetre","parameters":{},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":[80,40,8]}]}'
+      '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,8]}]}'
     const savedArtifact = {
       ...artifact,
       id: 'pma_saved_lcad',
       source_kind: 'litecad-feature-dsl',
       source_code: sourceCode,
+      parameter_values: { width: 80 },
       preview_model_id: 'mdl_saved_lcad',
     } satisfies ProjectParametricArtifact
 
@@ -152,29 +153,39 @@ describe('ParametricArtifactEditor', () => {
       />,
     )
 
-    expect(screen.queryByLabelText('Feature graph source')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Edit feature graph' }))
-    const sourceEditor = screen.getByLabelText<HTMLTextAreaElement>('Selected node source')
+    expect(screen.getByLabelText('width parameter')).not.toBeNull()
+    expect(screen.queryByText('base')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced editing' }))
+    expect(screen.queryByLabelText('width parameter')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Back to parameter editing' })).not.toBeNull()
+    expect(screen.getByText('Model structure · 1 step')).not.toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'Selected step source' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit selected step source' }))
+    const sourceEditor = screen.getByLabelText<HTMLTextAreaElement>('Selected step source')
     expect(sourceEditor.value).toContain('"id": "base"')
 
-    fireEvent.change(sourceEditor, { target: { value: '{"id":"base","type":"box","origin":[0,0,0],"size":[80,40,8]}' } })
+    fireEvent.change(sourceEditor, { target: { value: '{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,8]}' } })
     await waitFor(() =>
       expect(compileFeatureDSL).toHaveBeenLastCalledWith(
-        expect.objectContaining({ document: expect.objectContaining({ features: [expect.objectContaining({ id: 'base', size: [80, 40, 8] })] }) }),
+        expect.objectContaining({ document: expect.objectContaining({ features: [expect.objectContaining({ id: 'base', size: ['width', 40, 8] })] }) }),
       ),
     )
-    const applyButton = screen.getByRole<HTMLButtonElement>('button', { name: 'Apply graph' })
+    const applyButton = screen.getByRole<HTMLButtonElement>('button', { name: 'Apply changes' })
     await waitFor(() => expect(applyButton.disabled).toBe(false))
     fireEvent.click(applyButton)
 
     const savedSourceCode = onSaveFeatureGraph.mock.calls[0]?.[0] as string
     expect(JSON.parse(savedSourceCode)).toEqual(JSON.parse(updatedSourceCode))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to parameter editing' }))
+    expect(screen.getByLabelText('width parameter')).not.toBeNull()
+    expect(screen.queryByText('Model structure · 1 step')).toBeNull()
   })
 
   it('does not offer feature graph editing for OpenSCAD models', () => {
     render(<ParametricArtifactEditor artifact={artifact} onSaveFeatureGraph={vi.fn()} />)
 
-    expect(screen.queryByRole('button', { name: 'Edit feature graph' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Advanced editing' })).toBeNull()
   })
 
   it('automatically saves generated LiteCAD feature DSL drafts after preview succeeds', async () => {

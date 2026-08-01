@@ -43,6 +43,7 @@ export function FeatureDSLGraphEditor({
 }: FeatureDSLGraphEditorProps) {
   const { t } = useTranslation()
   const [draftState, setDraftState] = useState(() => createFeatureDSLGraphDraft(artifact))
+  const [isNodeSourceOpen, setIsNodeSourceOpen] = useState(false)
   const hasCurrentDraft = draftState.artifactID === artifact.id && draftState.baseSourceCode === artifact.source_code
   const draft = hasCurrentDraft ? draftState : createFeatureDSLGraphDraft(artifact)
   const sourceCode = draft.sourceCode
@@ -69,6 +70,12 @@ export function FeatureDSLGraphEditor({
     preview.status === 'success' &&
     preview.isCurrent &&
     !isSaving
+  const nodeKindTotals = new Map<FeatureDSLNodeKind, number>()
+  for (const node of parsedGraph.nodes) {
+    const kind = featureDSLNodeKind(node.type)
+    nodeKindTotals.set(kind, (nodeKindTotals.get(kind) ?? 0) + 1)
+  }
+  const nodeKindIndexes = new Map<FeatureDSLNodeKind, number>()
 
   const resetDraft = () => setDraftState(createFeatureDSLGraphDraft(artifact))
 
@@ -135,50 +142,83 @@ export function FeatureDSLGraphEditor({
     <div className="flex min-w-0 flex-col gap-3">
       <div className="rounded-lg border border-border bg-muted/30 p-2">
         <p className="px-1 pb-1.5 text-[11px] font-medium text-muted-foreground">
-          {t('project.parametric.featureGraphSummary', {
-            version: parsedGraph.document?.version ?? '—',
-            count: parsedGraph.nodes.length,
-          })}
+          {t('project.parametric.modelStructureSummary', { count: parsedGraph.nodes.length })}
         </p>
         {parsedGraph.nodes.length > 0 ? (
-          <ul aria-label={t('project.parametric.featureGraphNodes')} className="space-y-0.5">
-            {parsedGraph.nodes.map((node) => (
-              <li key={node.id}>
-                <Button
-                  aria-label={t('project.parametric.selectFeatureGraphNode', { id: node.id })}
-                  className="h-7 w-full justify-start gap-1.5 px-2 font-mono text-[10px]"
-                  onClick={() => selectNode(node)}
-                  style={{ paddingLeft: `${8 + node.depth * 14}px` }}
-                  type="button"
-                  variant={selectedNode?.id === node.id ? 'secondary' : 'ghost'}
-                >
-                  {node.depth > 0 ? <CornerDownRight className="text-muted-foreground" /> : <Braces className="text-muted-foreground" />}
-                  <span className="min-w-0 flex-1 truncate text-left">{node.id}</span>
-                  <span className="shrink-0 text-muted-foreground">{node.type}</span>
-                </Button>
-              </li>
-            ))}
+          <ul aria-label={t('project.parametric.modelStructureSteps')} className="space-y-0.5">
+            {parsedGraph.nodes.map((node) => {
+              const kind = featureDSLNodeKind(node.type)
+              const sequence = (nodeKindIndexes.get(kind) ?? 0) + 1
+              nodeKindIndexes.set(kind, sequence)
+              const kindLabel = t(`project.parametric.featureKinds.${kind}`)
+              const displayLabel =
+                (nodeKindTotals.get(kind) ?? 0) > 1
+                  ? t('project.parametric.featureStepWithSequence', { name: kindLabel, sequence })
+                  : kindLabel
+              return (
+                <li key={node.id}>
+                  <Button
+                    aria-label={t('project.parametric.selectModelStructureStep', { name: displayLabel })}
+                    className="h-auto min-h-10 w-full justify-start gap-1.5 px-2 py-1.5"
+                    onClick={() => selectNode(node)}
+                    style={{ paddingLeft: `${8 + node.depth * 14}px` }}
+                    type="button"
+                    variant={selectedNode?.id === node.id ? 'secondary' : 'ghost'}
+                  >
+                    {node.depth > 0 ? (
+                      <CornerDownRight className="text-muted-foreground" data-icon="inline-start" />
+                    ) : (
+                      <Braces className="text-muted-foreground" data-icon="inline-start" />
+                    )}
+                    <span className="flex min-w-0 flex-1 flex-col items-start text-left">
+                      <span className="w-full truncate text-[11px] font-medium">{displayLabel}</span>
+                      <span className="w-full truncate font-mono text-[9px] font-normal text-muted-foreground">
+                        {node.id} · {node.type}
+                      </span>
+                    </span>
+                  </Button>
+                </li>
+              )
+            })}
           </ul>
         ) : null}
       </div>
 
       {selectedNode ? (
-        <Field data-invalid={Boolean(draft.nodeError) || Boolean(envelopeError) || preview.status === 'error'}>
-          <div className="flex items-center justify-between gap-2">
-            <FieldLabel htmlFor={`feature-graph-node-${artifact.id}`}>{t('project.parametric.featureGraphNodeSource')}</FieldLabel>
-          </div>
-          <FieldDescription className="break-all font-mono text-[10px]">{selectedNode.path}</FieldDescription>
-          <Textarea
-            aria-invalid={Boolean(draft.nodeError) || Boolean(envelopeError) || preview.status === 'error'}
-            aria-label={t('project.parametric.featureGraphNodeSource')}
-            className="min-h-40 resize-y font-mono text-xs"
-            id={`feature-graph-node-${artifact.id}`}
-            onChange={(event) => updateNode(event.target.value)}
-            spellCheck={false}
-            value={draft.nodeSourceCode}
-          />
-          {draft.nodeError ? <FieldError>{draft.nodeError}</FieldError> : null}
-        </Field>
+        <Collapsible onOpenChange={setIsNodeSourceOpen} open={isNodeSourceOpen}>
+          <CollapsibleTrigger
+            render={
+              <Button
+                aria-label={t('project.parametric.editSelectedFeatureSource')}
+                className="w-full justify-start"
+                size="sm"
+                type="button"
+                variant="outline"
+              />
+            }
+          >
+            <Braces data-icon="inline-start" />
+            {t('project.parametric.editSelectedFeatureSource')}
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-3">
+            <Field data-invalid={Boolean(draft.nodeError) || Boolean(envelopeError) || preview.status === 'error'}>
+              <FieldLabel htmlFor={`feature-graph-node-${artifact.id}`}>
+                {t('project.parametric.featureGraphNodeSource')}
+              </FieldLabel>
+              <FieldDescription className="break-all font-mono text-[10px]">{selectedNode.path}</FieldDescription>
+              <Textarea
+                aria-invalid={Boolean(draft.nodeError) || Boolean(envelopeError) || preview.status === 'error'}
+                aria-label={t('project.parametric.featureGraphNodeSource')}
+                className="min-h-40 resize-y font-mono text-xs"
+                id={`feature-graph-node-${artifact.id}`}
+                onChange={(event) => updateNode(event.target.value)}
+                spellCheck={false}
+                value={draft.nodeSourceCode}
+              />
+              {draft.nodeError ? <FieldError>{draft.nodeError}</FieldError> : null}
+            </Field>
+          </CollapsibleContent>
+        </Collapsible>
       ) : null}
 
       <Collapsible>
@@ -216,23 +256,25 @@ export function FeatureDSLGraphEditor({
 
       {envelopeError || preview.error ? <FieldError>{envelopeError || preview.error}</FieldError> : null}
 
-      <div className="grid grid-cols-2 gap-2">
-        <Button
-          aria-label={t('project.parametric.resetFeatureGraph')}
-          disabled={!hasDraftChanges || isSaving}
-          onClick={resetDraft}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          <RotateCcw data-icon="inline-start" />
-          {t('project.parametric.resetFeatureGraph')}
-        </Button>
-        <Button disabled={!canSave} onClick={() => onSave(sourceCode.trim())} size="sm" type="button">
-          {preview.status === 'pending' || isSaving ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Save data-icon="inline-start" />}
-          {t('project.parametric.applyFeatureGraph')}
-        </Button>
-      </div>
+      {hasDraftChanges ? (
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            aria-label={t('project.parametric.resetFeatureGraph')}
+            disabled={isSaving}
+            onClick={resetDraft}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <RotateCcw data-icon="inline-start" />
+            {t('project.parametric.resetFeatureGraph')}
+          </Button>
+          <Button disabled={!canSave} onClick={() => onSave(sourceCode.trim())} size="sm" type="button">
+            {preview.status === 'pending' || isSaving ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Save data-icon="inline-start" />}
+            {t('project.parametric.applyFeatureGraph')}
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -311,4 +353,63 @@ function stableJSONValue(value: unknown): unknown {
     )
   }
   return value
+}
+
+type FeatureDSLNodeKind =
+  | 'body'
+  | 'hole'
+  | 'cut'
+  | 'sketch'
+  | 'extrusion'
+  | 'taperedExtrusion'
+  | 'cylinder'
+  | 'sphere'
+  | 'ellipsoid'
+  | 'ellipticalExtrusion'
+  | 'revolve'
+  | 'sweep'
+  | 'loft'
+  | 'fillet'
+  | 'chamfer'
+  | 'boolean'
+  | 'feature'
+
+function featureDSLNodeKind(type: string): FeatureDSLNodeKind {
+  switch (type) {
+    case 'box':
+      return 'body'
+    case 'cylinder_cut':
+      return 'hole'
+    case 'box_cut':
+    case 'extrude_cut':
+      return 'cut'
+    case 'sketch':
+      return 'sketch'
+    case 'extrude':
+      return 'extrusion'
+    case 'tapered_extrude':
+      return 'taperedExtrusion'
+    case 'cylinder':
+      return 'cylinder'
+    case 'sphere':
+      return 'sphere'
+    case 'ellipsoid':
+      return 'ellipsoid'
+    case 'ellipse_extrude':
+      return 'ellipticalExtrusion'
+    case 'revolve':
+      return 'revolve'
+    case 'sweep':
+      return 'sweep'
+    case 'loft':
+      return 'loft'
+    case 'fillet':
+      return 'fillet'
+    case 'chamfer':
+      return 'chamfer'
+    case 'boolean':
+      return 'boolean'
+    default:
+      return 'feature'
+  }
 }
