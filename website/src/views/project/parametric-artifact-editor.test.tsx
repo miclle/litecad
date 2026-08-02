@@ -40,7 +40,9 @@ describe('ParametricArtifactEditor', () => {
       />,
     )
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Version' }), { target: { value: 'mvr_first' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Version' }), {
+      target: { value: 'mvr_first' },
+    })
     expect(onRestoreRevision).toHaveBeenCalledWith('mvr_first')
     expect(screen.getByText('r2')).not.toBeNull()
   })
@@ -74,21 +76,12 @@ describe('ParametricArtifactEditor', () => {
       id: 'pma_lcad',
       title: 'Feature DSL bracket',
       source_kind: 'litecad-feature-dsl',
-      source_code:
-        '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80,"min":20,"max":200}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
+      source_code: '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80,"min":20,"max":200}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
       parameter_values: { width: 96 },
       compile_status: 'pending',
     } satisfies ProjectParametricArtifact
 
-    render(
-      <ParametricArtifactEditor
-        artifact={featureDSLArtifact}
-        compile={compile}
-        compileFeatureDSL={compileFeatureDSL}
-        debounceMs={0}
-        onSaveAsModel={onSaveAsModel}
-      />,
-    )
+    render(<ParametricArtifactEditor artifact={featureDSLArtifact} compile={compile} compileFeatureDSL={compileFeatureDSL} debounceMs={0} onSaveAsModel={onSaveAsModel} />)
 
     expect(screen.getByRole('heading', { name: 'Feature DSL bracket' })).not.toBeNull()
     expect(screen.getByLabelText('width parameter')).not.toBeNull()
@@ -106,8 +99,7 @@ describe('ParametricArtifactEditor', () => {
       mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0] },
       meshSummary: { vertexCount: 1, triangleCount: 0, hasNormals: true },
     })
-    const sourceCode =
-      '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}'
+    const sourceCode = '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}'
     const featureDSLArtifact = {
       ...artifact,
       id: 'pma_hidden_source',
@@ -125,16 +117,12 @@ describe('ParametricArtifactEditor', () => {
     expect(screen.queryByRole('button', { name: 'Hide source' })).toBeNull()
   })
 
-  it('edits the feature graph only for saved LiteCAD models after browser kernel validation', async () => {
+  it('keeps source-level model structure editing out of the saved LiteCAD model inspector', () => {
     const compileFeatureDSL = vi.fn().mockResolvedValue({
       mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0] },
       meshSummary: { vertexCount: 1, triangleCount: 0, hasNormals: true },
     })
-    const onSaveFeatureGraph = vi.fn()
-    const sourceCode =
-      '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}'
-    const updatedSourceCode =
-      '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,8]}]}'
+    const sourceCode = '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}'
     const savedArtifact = {
       ...artifact,
       id: 'pma_saved_lcad',
@@ -144,47 +132,9 @@ describe('ParametricArtifactEditor', () => {
       preview_model_id: 'mdl_saved_lcad',
     } satisfies ProjectParametricArtifact
 
-    render(
-      <ParametricArtifactEditor
-        artifact={savedArtifact}
-        compileFeatureDSL={compileFeatureDSL}
-        debounceMs={0}
-        onSaveFeatureGraph={onSaveFeatureGraph}
-      />,
-    )
+    render(<ParametricArtifactEditor artifact={savedArtifact} compileFeatureDSL={compileFeatureDSL} debounceMs={0} />)
 
     expect(screen.getByLabelText('width parameter')).not.toBeNull()
-    expect(screen.queryByText('base')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Advanced editing' }))
-    expect(screen.queryByLabelText('width parameter')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Back to parameter editing' })).not.toBeNull()
-    expect(screen.getByText('Model structure · 1 step')).not.toBeNull()
-    expect(screen.queryByRole('textbox', { name: 'Selected step source' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Edit selected step source' }))
-    const sourceEditor = screen.getByLabelText<HTMLTextAreaElement>('Selected step source')
-    expect(sourceEditor.value).toContain('"id": "base"')
-
-    fireEvent.change(sourceEditor, { target: { value: '{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,8]}' } })
-    await waitFor(() =>
-      expect(compileFeatureDSL).toHaveBeenLastCalledWith(
-        expect.objectContaining({ document: expect.objectContaining({ features: [expect.objectContaining({ id: 'base', size: ['width', 40, 8] })] }) }),
-      ),
-    )
-    const applyButton = screen.getByRole<HTMLButtonElement>('button', { name: 'Apply changes' })
-    await waitFor(() => expect(applyButton.disabled).toBe(false))
-    fireEvent.click(applyButton)
-
-    const savedSourceCode = onSaveFeatureGraph.mock.calls[0]?.[0] as string
-    expect(JSON.parse(savedSourceCode)).toEqual(JSON.parse(updatedSourceCode))
-
-    fireEvent.click(screen.getByRole('button', { name: 'Back to parameter editing' }))
-    expect(screen.getByLabelText('width parameter')).not.toBeNull()
-    expect(screen.queryByText('Model structure · 1 step')).toBeNull()
-  })
-
-  it('does not offer feature graph editing for OpenSCAD models', () => {
-    render(<ParametricArtifactEditor artifact={artifact} onSaveFeatureGraph={vi.fn()} />)
-
     expect(screen.queryByRole('button', { name: 'Advanced editing' })).toBeNull()
   })
 
@@ -200,22 +150,12 @@ describe('ParametricArtifactEditor', () => {
       id: 'pma_auto_lcad',
       title: 'Auto saved block',
       source_kind: 'litecad-feature-dsl',
-      source_code:
-        '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
+      source_code: '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
       parameter_values: { width: 88 },
       compile_status: 'pending',
     } satisfies ProjectParametricArtifact
 
-    render(
-      <ParametricArtifactEditor
-        artifact={featureDSLArtifact}
-        autoSaveOnPreviewSuccess
-        compile={compile}
-        compileFeatureDSL={compileFeatureDSL}
-        debounceMs={0}
-        onSaveAsModel={onSaveAsModel}
-      />,
-    )
+    render(<ParametricArtifactEditor artifact={featureDSLArtifact} autoSaveOnPreviewSuccess compile={compile} compileFeatureDSL={compileFeatureDSL} debounceMs={0} onSaveAsModel={onSaveAsModel} />)
 
     await waitFor(() => expect(onSaveAsModel).toHaveBeenCalledWith({ width: 88 }))
     expect(onSaveAsModel).toHaveBeenCalledTimes(1)
@@ -243,8 +183,7 @@ describe('ParametricArtifactEditor', () => {
       id: 'pma_first_lcad',
       title: 'First block',
       source_kind: 'litecad-feature-dsl',
-      source_code:
-        '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
+      source_code: '{"version":1,"unit":"millimetre","parameters":{"width":{"type":"number","default":80}},"features":[{"id":"base","type":"box","origin":[0,0,0],"size":["width",40,6]}]}',
       parameter_values: { width: 80 },
       compile_status: 'pending',
     } satisfies ProjectParametricArtifact
@@ -255,28 +194,10 @@ describe('ParametricArtifactEditor', () => {
       parameter_values: { width: 120 },
     } satisfies ProjectParametricArtifact
 
-    const { rerender } = render(
-      <ParametricArtifactEditor
-        artifact={firstArtifact}
-        autoSaveOnPreviewSuccess
-        compile={compile}
-        compileFeatureDSL={compileFeatureDSL}
-        debounceMs={0}
-        onSaveAsModel={onSaveAsModel}
-      />,
-    )
+    const { rerender } = render(<ParametricArtifactEditor artifact={firstArtifact} autoSaveOnPreviewSuccess compile={compile} compileFeatureDSL={compileFeatureDSL} debounceMs={0} onSaveAsModel={onSaveAsModel} />)
 
     await waitFor(() => expect(onSaveAsModel).toHaveBeenCalledWith({ width: 80 }))
-    rerender(
-      <ParametricArtifactEditor
-        artifact={secondArtifact}
-        autoSaveOnPreviewSuccess
-        compile={compile}
-        compileFeatureDSL={compileFeatureDSL}
-        debounceMs={0}
-        onSaveAsModel={onSaveAsModel}
-      />,
-    )
+    rerender(<ParametricArtifactEditor artifact={secondArtifact} autoSaveOnPreviewSuccess compile={compile} compileFeatureDSL={compileFeatureDSL} debounceMs={0} onSaveAsModel={onSaveAsModel} />)
 
     await waitFor(() => expect(compileFeatureDSL).toHaveBeenCalledTimes(2))
     expect(onSaveAsModel).toHaveBeenCalledTimes(1)
@@ -321,9 +242,16 @@ describe('ParametricArtifactEditor', () => {
     expect(screen.getByRole('heading', { name: 'Mounting bracket' })).not.toBeNull()
     expect(screen.getByLabelText('width parameter')).not.toBeNull()
 
-    fireEvent.change(screen.getByLabelText('width parameter'), { target: { value: '40' } })
+    fireEvent.change(screen.getByLabelText('width parameter'), {
+      target: { value: '40' },
+    })
 
-    await waitFor(() => expect(compile).toHaveBeenLastCalledWith({ code: artifact.source_code, parameterValues: { width: 40, style: 'round', centered: true } }))
+    await waitFor(() =>
+      expect(compile).toHaveBeenLastCalledWith({
+        code: artifact.source_code,
+        parameterValues: { width: 40, style: 'round', centered: true },
+      }),
+    )
   })
 
   it('keeps compile errors visible and does not enable Save as model', async () => {
@@ -340,25 +268,23 @@ describe('ParametricArtifactEditor', () => {
     const compile = vi.fn().mockRejectedValue(new Error('OpenSCAD runtime unavailable'))
     const onSaveParameters = vi.fn()
 
-    render(
-      <ParametricArtifactEditor
-        artifact={artifact}
-        compile={compile}
-        debounceMs={0}
-        initialParameterValues={{ width: 30, style: 'square', centered: false }}
-        onSaveParameters={onSaveParameters}
-      />,
-    )
+    render(<ParametricArtifactEditor artifact={artifact} compile={compile} debounceMs={0} initialParameterValues={{ width: 30, style: 'square', centered: false }} onSaveParameters={onSaveParameters} />)
 
     expect(screen.queryByRole('button', { name: 'Save parameters' })).toBeNull()
     expect(onSaveParameters).not.toHaveBeenCalled()
-    fireEvent.change(screen.getByLabelText('width value'), { target: { value: '48' } })
+    fireEvent.change(screen.getByLabelText('width value'), {
+      target: { value: '48' },
+    })
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000)
     })
 
-    expect(onSaveParameters).toHaveBeenCalledWith({ width: 48, style: 'square', centered: false })
+    expect(onSaveParameters).toHaveBeenCalledWith({
+      width: 48,
+      style: 'square',
+      centered: false,
+    })
     expect(onSaveParameters).toHaveBeenCalledTimes(1)
   })
 
@@ -367,19 +293,17 @@ describe('ParametricArtifactEditor', () => {
     const compile = vi.fn().mockRejectedValue(new Error('OpenSCAD runtime unavailable'))
     const onSaveParameters = vi.fn()
 
-    render(
-      <ParametricArtifactEditor
-        artifact={artifact}
-        compile={compile}
-        debounceMs={0}
-        initialParameterValues={{ width: 30, style: 'square', centered: false }}
-        onSaveParameters={onSaveParameters}
-      />,
-    )
+    render(<ParametricArtifactEditor artifact={artifact} compile={compile} debounceMs={0} initialParameterValues={{ width: 30, style: 'square', centered: false }} onSaveParameters={onSaveParameters} />)
 
-    fireEvent.change(screen.getByLabelText('width value'), { target: { value: '48' } })
-    fireEvent.change(screen.getByLabelText('width value'), { target: { value: '64' } })
-    fireEvent.change(screen.getByLabelText('width value'), { target: { value: '72' } })
+    fireEvent.change(screen.getByLabelText('width value'), {
+      target: { value: '48' },
+    })
+    fireEvent.change(screen.getByLabelText('width value'), {
+      target: { value: '64' },
+    })
+    fireEvent.change(screen.getByLabelText('width value'), {
+      target: { value: '72' },
+    })
 
     expect(screen.getByLabelText<HTMLInputElement>('width value').value).toBe('72')
     expect(onSaveParameters).not.toHaveBeenCalled()
@@ -392,7 +316,11 @@ describe('ParametricArtifactEditor', () => {
     fireEvent.blur(screen.getByLabelText('width value'))
 
     expect(onSaveParameters).toHaveBeenCalledTimes(1)
-    expect(onSaveParameters).toHaveBeenCalledWith({ width: 72, style: 'square', centered: false })
+    expect(onSaveParameters).toHaveBeenCalledWith({
+      width: 72,
+      style: 'square',
+      centered: false,
+    })
   })
 
   it('reports saved-model parameter edits immediately for live preview before persistence', async () => {
@@ -412,17 +340,31 @@ describe('ParametricArtifactEditor', () => {
       />,
     )
 
-    expect(onParameterValuesChange).toHaveBeenLastCalledWith({ width: 30, style: 'square', centered: false })
-    fireEvent.change(screen.getByLabelText('width value'), { target: { value: '48' } })
+    expect(onParameterValuesChange).toHaveBeenLastCalledWith({
+      width: 30,
+      style: 'square',
+      centered: false,
+    })
+    fireEvent.change(screen.getByLabelText('width value'), {
+      target: { value: '48' },
+    })
 
-    expect(onParameterValuesChange).toHaveBeenLastCalledWith({ width: 48, style: 'square', centered: false })
+    expect(onParameterValuesChange).toHaveBeenLastCalledWith({
+      width: 48,
+      style: 'square',
+      centered: false,
+    })
     expect(onSaveParameters).not.toHaveBeenCalled()
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000)
     })
 
-    expect(onSaveParameters).toHaveBeenCalledWith({ width: 48, style: 'square', centered: false })
+    expect(onSaveParameters).toHaveBeenCalledWith({
+      width: 48,
+      style: 'square',
+      centered: false,
+    })
   })
 })
 

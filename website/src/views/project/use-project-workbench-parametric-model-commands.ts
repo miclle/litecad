@@ -1,12 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-import {
-  saveProjectParametricArtifactModel,
-  restoreProjectModelRevision,
-  updateProjectFeatureDSLGraph,
-  updateProjectParametricArtifact,
-  updateProjectParametricModelParameters,
-} from 'src/api/projects'
+import { saveProjectParametricArtifactModel, restoreProjectModelRevision, updateProjectFeatureDSLGraph, updateProjectParametricArtifact, updateProjectParametricModelParameters } from 'src/api/projects'
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
 import type { ProjectCADDocument, ProjectModel, ProjectParametricArtifact } from 'src/types/project'
 
@@ -38,17 +32,7 @@ type RestoreModelRevisionInput = {
   revisionID: string
 }
 
-type SaveFeatureGraphInput = {
-  modelID: string
-  sourceCode: string
-}
-
-export function useProjectWorkbenchParametricModelCommands({
-  onArtifactSaveError,
-  onConflict,
-  onModelSelected,
-  projectId,
-}: ProjectWorkbenchParametricModelCommandsOptions) {
+export function useProjectWorkbenchParametricModelCommands({ onArtifactSaveError, onConflict, onModelSelected, projectId }: ProjectWorkbenchParametricModelCommandsOptions) {
   const queryClient = useQueryClient()
   const documentQueryKey = ['projects', projectId, 'cad-document'] as const
 
@@ -67,8 +51,12 @@ export function useProjectWorkbenchParametricModelCommands({
     onConflict?.()
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: documentQueryKey }),
-      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] }),
-      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] }),
+      queryClient.invalidateQueries({
+        queryKey: ['projects', projectId, 'models'],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['projects', projectId, 'cad-document', 'history'],
+      }),
     ])
   }
 
@@ -86,9 +74,15 @@ export function useProjectWorkbenchParametricModelCommands({
     },
     onSuccess: async (model: ProjectModel) => {
       onModelSelected(model.id)
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] })
+      await queryClient.invalidateQueries({
+        queryKey: ['projects', projectId, 'models'],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['projects', projectId, 'cad-document'],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['projects', projectId, 'parametric-artifacts'],
+      })
     },
     onError: onArtifactSaveError,
   })
@@ -111,14 +105,24 @@ export function useProjectWorkbenchParametricModelCommands({
       ).data.model
     },
     onSuccess: async (model: ProjectModel) => {
-      queryClient.removeQueries({ queryKey: ['projects', projectId, 'models', model.id, 'parametric-source'] })
+      queryClient.removeQueries({
+        queryKey: ['projects', projectId, 'models', model.id, 'parametric-source'],
+      })
       onModelSelected(model.id)
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] }),
-        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models', model.id, 'revisions'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['projects', projectId, 'models'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['projects', projectId, 'models', model.id, 'revisions'],
+        }),
         queryClient.invalidateQueries({ queryKey: documentQueryKey }),
-        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] }),
-        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'parametric-artifacts'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['projects', projectId, 'cad-document', 'history'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['projects', projectId, 'parametric-artifacts'],
+        }),
       ])
     },
     onError: handleModelMutationError,
@@ -134,46 +138,40 @@ export function useProjectWorkbenchParametricModelCommands({
       ).data.model,
     onSuccess: async (model: ProjectModel) => {
       onModelSelected(model.id)
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document'] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] })
-      await queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models', model.id, 'revisions'] })
+      await queryClient.invalidateQueries({
+        queryKey: ['projects', projectId, 'models'],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['projects', projectId, 'cad-document'],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['projects', projectId, 'cad-document', 'history'],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['projects', projectId, 'models', model.id, 'revisions'],
+      })
     },
     onError: handleModelMutationError,
   })
 
   const restoreProjectModelRevisionMutation = useMutation({
-    mutationFn: async ({ modelID, revisionID }: RestoreModelRevisionInput) =>
-      (await restoreProjectModelRevision(projectId, modelID, revisionID, currentDocumentRevision())).data.model,
+    mutationFn: async ({ modelID, revisionID }: RestoreModelRevisionInput) => (await restoreProjectModelRevision(projectId, modelID, revisionID, currentDocumentRevision())).data.model,
     onSuccess: async (model: ProjectModel) => {
-      queryClient.removeQueries({ queryKey: ['projects', projectId, 'models', model.id, 'parametric-source'] })
+      queryClient.removeQueries({
+        queryKey: ['projects', projectId, 'models', model.id, 'parametric-source'],
+      })
       onModelSelected(model.id)
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] }),
-        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models', model.id, 'revisions'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['projects', projectId, 'models'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['projects', projectId, 'models', model.id, 'revisions'],
+        }),
         queryClient.invalidateQueries({ queryKey: documentQueryKey }),
-        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] }),
-      ])
-    },
-    onError: handleModelMutationError,
-  })
-
-  const updateProjectFeatureDSLGraphMutation = useMutation({
-    mutationFn: async ({ modelID, sourceCode }: SaveFeatureGraphInput) =>
-      (
-        await updateProjectFeatureDSLGraph(projectId, modelID, {
-          source_code: sourceCode,
-          expected_revision: currentDocumentRevision(),
-        })
-      ).data.model,
-    onSuccess: async (model: ProjectModel) => {
-      queryClient.removeQueries({ queryKey: ['projects', projectId, 'models', model.id, 'parametric-source'] })
-      onModelSelected(model.id)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models'] }),
-        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'models', model.id, 'revisions'] }),
-        queryClient.invalidateQueries({ queryKey: documentQueryKey }),
-        queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'cad-document', 'history'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['projects', projectId, 'cad-document', 'history'],
+        }),
       ])
     },
     onError: handleModelMutationError,
@@ -184,8 +182,6 @@ export function useProjectWorkbenchParametricModelCommands({
     saveGeneratedArtifactAsModel: saveProjectParametricArtifactMutation.mutate,
     saveModelParameters: updateProjectParametricModelParametersMutation.mutate,
     restoreModelRevision: restoreProjectModelRevisionMutation.mutate,
-    saveFeatureGraph: updateProjectFeatureDSLGraphMutation.mutate,
-    isSavingFeatureGraph: updateProjectFeatureDSLGraphMutation.isPending,
     isRestoringModelRevision: restoreProjectModelRevisionMutation.isPending,
   }
 }

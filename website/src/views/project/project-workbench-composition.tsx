@@ -78,7 +78,7 @@ export function ProjectWorkbenchComposition({
     activeCADTool,
     effectiveSelectedDocumentNodeID,
     effectiveSelectedModelID,
-		effectiveSelectedOccurrenceID,
+    effectiveSelectedOccurrenceID,
     clearSelection,
     selectModel,
     selectedArtifact: selectedParametricArtifact,
@@ -147,12 +147,12 @@ export function ProjectWorkbenchComposition({
           onRegenerateSectionArtifact={projectSectionArtifacts.regenerateSectionArtifact}
           onRestoreSectionArtifact={projectSectionArtifacts.restoreSectionArtifact}
           onSaveMeasurementRecord={projectInspectionRecords.saveMeasurementRecord}
-			onSelectModel={(modelID, nodeID, occurrenceID) => {
-				if (occurrenceID) {
-					selectModel(modelID, nodeID, occurrenceID)
-				} else {
-					selectModel(modelID, nodeID)
-				}
+          onSelectModel={(modelID, nodeID, occurrenceID) => {
+            if (occurrenceID) {
+              selectModel(modelID, nodeID, occurrenceID)
+            } else {
+              selectModel(modelID, nodeID)
+            }
             cadDocumentCommands.clearDeleteError()
           }}
           onSetOrientation={viewControls.applyCanvasOrientation}
@@ -175,7 +175,7 @@ export function ProjectWorkbenchComposition({
           selectedModelBoxFeatureError={inspectorState.selectedModelBoxFeatureError}
           selectedModelDisplayName={inspectorState.selectedModelDisplayName}
           selectedModelId={effectiveSelectedModelID}
-					selectedOccurrenceId={effectiveSelectedOccurrenceID}
+          selectedOccurrenceId={effectiveSelectedOccurrenceID}
           selectedModelSupportsFuseBox={inspectorState.selectedModelSupportsFuseBox}
           selectedNodeId={effectiveSelectedDocumentNodeID}
           selectedSourceModel={selectedSourceModel}
@@ -201,61 +201,70 @@ export function ProjectWorkbenchComposition({
           isLeftPanelCollapsed={shellState.isLeftPanelCollapsed}
           isModelTreeLoading={modelState.projectModelsQuery.isLoading}
           isUploading={projectModelUpload.isUploading}
-          isFeatureGraphSaving={parametricModelCommands.isSavingFeatureGraph}
-					isAssemblyConstraintMutationPending={cadDocumentCommands.isAssemblyConstraintMutationPending}
-					isOccurrenceMutationPending={cadDocumentCommands.isOccurrenceMutationPending}
+          isAssemblyConstraintMutationPending={cadDocumentCommands.isAssemblyConstraintMutationPending}
+          isOccurrenceMutationPending={cadDocumentCommands.isOccurrenceMutationPending}
           isSubassemblyMutationPending={cadDocumentCommands.isSubassemblyMutationPending}
           leftPanelWidth={shellState.leftPanelWidth}
           modelCount={modelState.projectModels.length}
           onCollapseChange={shellState.setIsLeftPanelCollapsed}
-					onCreateAssemblyGroup={cadDocumentCommands.createAssemblyGroup}
-					onDeleteAssemblyConstraint={cadDocumentCommands.deleteAssemblyConstraint}
-					onDeleteAssemblyGroup={cadDocumentCommands.deleteAssemblyGroup}
-					onDeleteOccurrence={(occurrenceId) => {
-						cadDocumentCommands.deleteOccurrence(occurrenceId)
-						clearSelection()
-					}}
-					onDuplicateOccurrence={cadDocumentCommands.duplicateOccurrence}
-					onMoveOccurrence={cadDocumentCommands.moveOccurrence}
-					onCaptureSubassembly={cadDocumentCommands.captureSubassembly}
-					onInstantiateSubassembly={cadDocumentCommands.instantiateSubassembly}
-			onModelSelect={(modelId, nodeId, occurrenceId) => {
-				if (occurrenceId) {
-					selectModel(modelId, nodeId, occurrenceId)
-				} else {
-					selectModel(modelId, nodeId)
-				}
+          onCreateAssemblyGroup={cadDocumentCommands.createAssemblyGroup}
+          onDeleteAssemblyConstraint={cadDocumentCommands.deleteAssemblyConstraint}
+          onDeleteAssemblyGroup={cadDocumentCommands.deleteAssemblyGroup}
+          onDeleteOccurrence={(occurrenceId) => {
+            cadDocumentCommands.deleteOccurrence(occurrenceId)
+            clearSelection()
+          }}
+          onDuplicateOccurrence={cadDocumentCommands.duplicateOccurrence}
+          onMoveOccurrence={cadDocumentCommands.moveOccurrence}
+          onCaptureSubassembly={cadDocumentCommands.captureSubassembly}
+          onInstantiateSubassembly={cadDocumentCommands.instantiateSubassembly}
+          onModelSelect={(modelId, nodeId, occurrenceId) => {
+            if (occurrenceId) {
+              selectModel(modelId, nodeId, occurrenceId)
+            } else {
+              selectModel(modelId, nodeId)
+            }
             cadDocumentCommands.clearDeleteError()
           }}
           onParameterValuesChange={modelState.parametricModels.updatePreviewParameters}
           onApplyGeneratedArtifactToModel={(modelID, artifact, parameterValues) =>
-            parametricModelCommands.applyGeneratedArtifactToModel({ modelID, artifact, parameterValues })
+            parametricModelCommands.applyGeneratedArtifactToModel({
+              modelID,
+              artifact,
+              parameterValues,
+            })
           }
           onResizePointerDown={shellState.startLeftPanelResize}
           onSaveGeneratedArtifactAsModel={(artifact, parameterValues) =>
-            parametricModelCommands.saveGeneratedArtifactAsModel({ artifact, parameterValues })
-          }
-          onSaveFeatureGraph={(modelID, sourceCode) =>
-            parametricModelCommands.saveFeatureGraph({ modelID, sourceCode })
+            parametricModelCommands.saveGeneratedArtifactAsModel({
+              artifact,
+              parameterValues,
+            })
           }
           onSaveModelParameters={(modelID, parameterValues) =>
-            parametricModelCommands.saveModelParameters({ modelID, parameterValues })
+            parametricModelCommands.saveModelParameters({
+              modelID,
+              parameterValues,
+            })
           }
           onRestoreModelRevision={(modelID, revisionID) =>
-            parametricModelCommands.restoreModelRevision({ modelID, revisionID })
+            parametricModelCommands.restoreModelRevision({
+              modelID,
+              revisionID,
+            })
           }
           onToggleModelVisibility={visibilityState.toggleModelVisibility}
           onUpdateAssemblyGroup={cadDocumentCommands.updateAssemblyGroup}
-					onUpdateOccurrence={cadDocumentCommands.updateOccurrence}
-					constraintError={cadDocumentCommands.constraintError}
-					occurrenceError={cadDocumentCommands.occurrenceError}
-					subassemblyError={cadDocumentCommands.subassemblyError}
+          onUpdateOccurrence={cadDocumentCommands.updateOccurrence}
+          constraintError={cadDocumentCommands.constraintError}
+          occurrenceError={cadDocumentCommands.occurrenceError}
+          subassemblyError={cadDocumentCommands.subassemblyError}
           onTransformChange={draftCommands.updateTransformDraftField}
           previewAssetModelIds={modelState.previewAssetModelIDs}
           projectModelTree={modelState.projectModelTree}
           selectedGeneratedArtifact={selectedParametricArtifact}
           selectedNodeId={effectiveSelectedDocumentNodeID}
-					selectedOccurrenceId={effectiveSelectedOccurrenceID}
+          selectedOccurrenceId={effectiveSelectedOccurrenceID}
           selectedSavedArtifact={modelState.parametricModels.selectedSavedArtifact}
           selectedSavedModelRevisionID={selectedSourceModel?.current_revision_id}
           selectedSavedModelRevisionSequence={selectedSourceModel?.revision_sequence}

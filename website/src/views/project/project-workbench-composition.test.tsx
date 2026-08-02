@@ -53,22 +53,21 @@ vi.mock('./project-canvas', () => ({
 }))
 
 vi.mock('./project-workbench-sidebar', () => ({
-  ProjectWorkbenchSidebar: ({
-    modelCount,
-    onModelSelect,
-    onApplyGeneratedArtifactToModel,
-    onCaptureSubassembly,
-    onInstantiateSubassembly,
-    onSaveGeneratedArtifactAsModel,
-    onSaveFeatureGraph,
-    onSaveModelParameters,
-    onToggleModelVisibility,
-  }: MockProps) => (
+  ProjectWorkbenchSidebar: ({ modelCount, onModelSelect, onApplyGeneratedArtifactToModel, onCaptureSubassembly, onInstantiateSubassembly, onSaveGeneratedArtifactAsModel, onSaveModelParameters, onToggleModelVisibility }: MockProps) => (
     <aside data-testid="sidebar">
       sidebar {String(modelCount)}
       <button onClick={() => (onModelSelect as (modelID: string, nodeID: string) => void)('model_a', 'node_a')}>select model</button>
       <button onClick={() => (onToggleModelVisibility as (modelID: string) => void)('model_a')}>toggle visibility</button>
-      <button onClick={() => (onCaptureSubassembly as (payload: unknown) => void)({ group_id: 'grp_source', name: 'Drive module' })}>capture subassembly</button>
+      <button
+        onClick={() =>
+          (onCaptureSubassembly as (payload: unknown) => void)({
+            group_id: 'grp_source',
+            name: 'Drive module',
+          })
+        }
+      >
+        capture subassembly
+      </button>
       <button
         onClick={() =>
           (onInstantiateSubassembly as (definitionID: string, payload: unknown) => void)('sub_drive', {
@@ -80,31 +79,9 @@ vi.mock('./project-workbench-sidebar', () => ({
       >
         instantiate subassembly
       </button>
-      <button
-        onClick={() =>
-          (onSaveGeneratedArtifactAsModel as (artifact: unknown, parameterValues: Record<string, unknown>) => void)(
-            { id: 'artifact_a' },
-            { width: 12 },
-          )
-        }
-      >
-        save generated
-      </button>
-      <button
-        onClick={() =>
-          (onApplyGeneratedArtifactToModel as (modelID: string, artifact: unknown, parameterValues: Record<string, unknown>) => void)(
-            'model_a',
-            { id: 'artifact_a' },
-            { width: 18 },
-          )
-        }
-      >
-        apply generated
-      </button>
-      <button onClick={() => (onSaveModelParameters as (modelID: string, parameterValues: Record<string, unknown>) => void)('model_a', { radius: 8 })}>
-        save params
-      </button>
-      <button onClick={() => (onSaveFeatureGraph as (modelID: string, sourceCode: string) => void)('model_a', '{"features":[]}')}>save graph</button>
+      <button onClick={() => (onSaveGeneratedArtifactAsModel as (artifact: unknown, parameterValues: Record<string, unknown>) => void)({ id: 'artifact_a' }, { width: 12 })}>save generated</button>
+      <button onClick={() => (onApplyGeneratedArtifactToModel as (modelID: string, artifact: unknown, parameterValues: Record<string, unknown>) => void)('model_a', { id: 'artifact_a' }, { width: 18 })}>apply generated</button>
+      <button onClick={() => (onSaveModelParameters as (modelID: string, parameterValues: Record<string, unknown>) => void)('model_a', { radius: 8 })}>save params</button>
     </aside>
   ),
 }))
@@ -148,22 +125,32 @@ describe('ProjectWorkbenchComposition', () => {
     expect(callbacks.setActiveCADTool).toHaveBeenCalledWith(expect.any(Function))
 
     click('save generated')
-    expect(callbacks.saveGeneratedArtifactAsModel).toHaveBeenCalledWith({ artifact: { id: 'artifact_a' }, parameterValues: { width: 12 } })
+    expect(callbacks.saveGeneratedArtifactAsModel).toHaveBeenCalledWith({
+      artifact: { id: 'artifact_a' },
+      parameterValues: { width: 12 },
+    })
 
     click('apply generated')
-    expect(callbacks.applyGeneratedArtifactToModel).toHaveBeenCalledWith({ modelID: 'model_a', artifact: { id: 'artifact_a' }, parameterValues: { width: 18 } })
+    expect(callbacks.applyGeneratedArtifactToModel).toHaveBeenCalledWith({
+      modelID: 'model_a',
+      artifact: { id: 'artifact_a' },
+      parameterValues: { width: 18 },
+    })
 
     click('save params')
-    expect(callbacks.saveModelParameters).toHaveBeenCalledWith({ modelID: 'model_a', parameterValues: { radius: 8 } })
-
-    click('save graph')
-    expect(callbacks.saveFeatureGraph).toHaveBeenCalledWith({ modelID: 'model_a', sourceCode: '{"features":[]}' })
+    expect(callbacks.saveModelParameters).toHaveBeenCalledWith({
+      modelID: 'model_a',
+      parameterValues: { radius: 8 },
+    })
 
     click('toggle visibility')
     expect(callbacks.toggleModelVisibility).toHaveBeenCalledWith('model_a')
 
     click('capture subassembly')
-    expect(callbacks.captureSubassembly).toHaveBeenCalledWith({ group_id: 'grp_source', name: 'Drive module' })
+    expect(callbacks.captureSubassembly).toHaveBeenCalledWith({
+      group_id: 'grp_source',
+      name: 'Drive module',
+    })
 
     click('instantiate subassembly')
     expect(callbacks.instantiateSubassembly).toHaveBeenCalledWith('sub_drive', {
@@ -236,7 +223,6 @@ function callbackSpies() {
     instantiateSubassembly: vi.fn(),
     applyGeneratedArtifactToModel: vi.fn(),
     saveGeneratedArtifactAsModel: vi.fn(),
-    saveFeatureGraph: vi.fn(),
     saveModelParameters: vi.fn(),
     selectModel: vi.fn(),
     setActiveCADTool: vi.fn(),
@@ -250,7 +236,10 @@ function modelState(callbacks: ReturnType<typeof callbackSpies>) {
     canvasStatusBody: 'Ready',
     canvasStatusLabel: 'READY',
     modelTranslationsByID: {},
-    parametricModels: { selectedSavedArtifact: undefined, updatePreviewParameters: vi.fn() },
+    parametricModels: {
+      selectedSavedArtifact: undefined,
+      updatePreviewParameters: vi.fn(),
+    },
     previewAssetModelIDs: new Set(['model_a']),
     previewAssets: [],
     previewSummary: { sourceBody: 'Empty', sourceLabel: 'Preview' },
@@ -422,7 +411,6 @@ function parametricModelCommands(callbacks: ReturnType<typeof callbackSpies>) {
   return {
     applyGeneratedArtifactToModel: callbacks.applyGeneratedArtifactToModel,
     saveGeneratedArtifactAsModel: callbacks.saveGeneratedArtifactAsModel,
-    saveFeatureGraph: callbacks.saveFeatureGraph,
     saveModelParameters: callbacks.saveModelParameters,
   } as unknown as ReturnType<typeof useProjectWorkbenchParametricModelCommands>
 }

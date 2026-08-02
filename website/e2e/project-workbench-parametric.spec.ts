@@ -1,50 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
-import {
-  captureBrowserErrors,
-  chamferedBoxFeatureDSLSource,
-  hollowRevolveFeatureDSLSource,
-  installProjectAPIFixture,
-  nestedBooleanFeatureDSLSource,
-  projectId,
-  smokeFeatureDSLSource,
-  smokeUpdatedFeatureDSLSource,
-  sphereXYZThroughHoleFeatureDSLSource,
-} from './fixtures/project-api'
-
-async function openModelStructure(page: Page) {
-  const backToParameterEditing = page.getByRole('button', { name: 'Back to parameter editing' })
-  if (!(await backToParameterEditing.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: 'Advanced editing' }).click()
-  }
-}
-
-async function openParameterEditor(page: Page) {
-  const versionSelector = page.getByRole('combobox', { name: 'Version' })
-  if (!(await versionSelector.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: 'Back to parameter editing' }).click()
-  }
-  return versionSelector
-}
-
-async function openCompleteFeatureGraphSource(page: Page) {
-  await openModelStructure(page)
-  const completeSource = page.getByLabel('Complete feature graph source')
-  if (!(await completeSource.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: 'Edit complete source' }).click()
-  }
-  return completeSource
-}
-
-async function selectModelStructureStep(page: Page, stepName: string) {
-  await openModelStructure(page)
-  await page.getByRole('button', { name: `Select model step ${stepName}` }).click()
-  const stepSource = page.getByRole('textbox', { name: 'Selected step source' })
-  if (!(await stepSource.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: 'Edit selected step source' }).click()
-  }
-  return stepSource
-}
+import { captureBrowserErrors, chamferedBoxFeatureDSLSource, hollowRevolveFeatureDSLSource, installProjectAPIFixture, projectId, smokeFeatureDSLSource, smokeUpdatedFeatureDSLSource, sphereXYZThroughHoleFeatureDSLSource } from './fixtures/project-api'
 
 test('runs the Assistant draft, save, parameter edit, and reload workflow', async ({ page }) => {
   test.slow()
@@ -64,7 +20,9 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
   await page.getByLabel('Message Assistant').fill('Make a smoke bracket')
   await page.getByRole('button', { name: 'Generate parametric model' }).click()
   await expect(page.getByRole('heading', { name: 'Smoke bracket' })).toBeVisible()
-  const generatedInspector = page.getByRole('region', { name: 'Parametric artifact' })
+  const generatedInspector = page.getByRole('region', {
+    name: 'Parametric artifact',
+  })
   await expect(page.getByLabel('width parameter')).toBeVisible()
   await expect(generatedInspector.getByText('success')).toBeHidden()
   await expect(generatedInspector.getByText('Generated source')).toBeHidden()
@@ -75,9 +33,7 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
   const generatedInspectorBounds = await generatedInspector.boundingBox()
   expect(generatedParameterBounds).not.toBeNull()
   expect(generatedInspectorBounds).not.toBeNull()
-  expect(generatedParameterBounds!.x + generatedParameterBounds!.width).toBeLessThanOrEqual(
-    generatedInspectorBounds!.x + generatedInspectorBounds!.width + 1,
-  )
+  expect(generatedParameterBounds!.x + generatedParameterBounds!.width).toBeLessThanOrEqual(generatedInspectorBounds!.x + generatedInspectorBounds!.width + 1)
   await expect(page.getByRole('option', { name: 'Smoke bracket' })).toBeVisible()
   await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
   expect(fixture.state.artifactUpdateCount).toBe(1)
@@ -91,17 +47,22 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
   await page.getByRole('option', { name: 'Smoke bracket' }).click()
   await expect(page.getByLabel('width value')).toHaveValue('60')
   await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_1')
-  const savedModelInspector = page.getByRole('region', { name: 'Parametric artifact' })
+  const savedModelInspector = page.getByRole('region', {
+    name: 'Parametric artifact',
+  })
   await expect(savedModelInspector.getByRole('button', { name: 'Save parameters' })).toBeHidden()
   const modelParameterUpdatesBefore = fixture.state.modelParameterUpdateCount
-  await page.locator('[data-model-preview] canvas').first().evaluate((canvas) => {
-    canvas.setAttribute('data-litecad-stable-canvas', 'saved-parameter-edit')
-  })
+  await page
+    .locator('[data-model-preview] canvas')
+    .first()
+    .evaluate((canvas) => {
+      canvas.setAttribute('data-litecad-stable-canvas', 'saved-parameter-edit')
+    })
   await page.getByLabel('width value').fill('90')
   await expect(page.getByLabel('width value')).toHaveValue('90')
   await expect.poll(() => fixture.state.modelParameterUpdateCount).toBe(modelParameterUpdatesBefore + 1)
   expect(fixture.state.savedParameterValues).toEqual({ width: 90 })
-  await expect(await openParameterEditor(page)).toHaveValue('mvr_smoke_2')
+  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_2')
   await page.setViewportSize({ width: 1024, height: 768 })
   const versionSelectorBounds = await page.getByRole('combobox', { name: 'Version' }).boundingBox()
   const savedInspectorBounds = await savedModelInspector.boundingBox()
@@ -114,97 +75,65 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
   await page.getByRole('button', { name: 'Operation history' }).click()
   await expect(page.getByText('Restore smoke-bracket-litecad.lcad.json revision 1')).toBeVisible()
   await page.getByRole('button', { name: 'Operation history' }).click()
+  await expect(savedModelInspector.getByRole('button', { name: 'Advanced editing' })).toBeHidden()
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-model-preview] canvas')
+        .first()
+        .evaluate((canvas) => canvas.getAttribute('data-litecad-stable-canvas')),
+    )
+    .toBe('saved-parameter-edit')
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await page.getByRole('option', { name: 'Smoke bracket' }).click()
+  await expect(page.getByLabel('width value')).toHaveValue('60')
+  await expect(page.getByRole('region', { name: 'Parametric artifact' }).getByRole('button', { name: 'Advanced editing' })).toBeHidden()
+  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
 
-  const featureGraphSource = await openCompleteFeatureGraphSource(page)
-  await expect(featureGraphSource).toHaveValue(smokeFeatureDSLSource)
-  await featureGraphSource.fill(smokeUpdatedFeatureDSLSource)
-  const applyGraph = page.getByRole('button', { name: 'Apply changes' })
-  await expect(applyGraph).toBeEnabled()
-  await applyGraph.click()
+  expect(browserErrors).toEqual([])
+})
+
+test('revises a selected saved model through Assistant and restores it through history', async ({ page }) => {
+  test.slow()
+  const browserErrors = captureBrowserErrors(page)
+  const fixture = await installProjectAPIFixture(page)
+  fixture.seedSavedModel()
+  fixture.state.generatedArtifactSourceCode = smokeUpdatedFeatureDSLSource
+
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await page.getByRole('option', { name: 'Smoke bracket' }).click()
+  await page.getByRole('button', { name: 'Toggle Assistant' }).click()
+  await page.getByLabel('Message Assistant').fill('Add a slot to the selected bracket')
+  await page.getByRole('button', { name: 'Generate parametric model' }).click()
+
   await expect.poll(() => fixture.state.featureGraphUpdateCount).toBe(1)
+  expect(fixture.state.parametricRunActiveModelID).toBe('mdl_smoke_lcad')
   expect(fixture.state.parametricArtifactSourceCode).toBe(smokeUpdatedFeatureDSLSource)
   await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_2')
 
   await page.getByRole('button', { name: 'Operation history' }).click()
   await expect(page.getByText('Update feature graph for smoke-bracket-litecad.lcad.json')).toBeVisible()
-  await expect(page.getByText('Feature graph v1')).toBeVisible()
   await expect(page.getByText('features/base · Updated')).toBeVisible()
   await expect(page.getByText('features/slot · Added')).toBeVisible()
   await page.getByRole('button', { name: 'Operation history' }).click()
 
   await page.getByRole('button', { name: 'Undo' }).click()
   await expect.poll(() => fixture.state.undoCount).toBe(1)
-  await expect(await openParameterEditor(page)).toHaveValue('mvr_smoke_1')
-  await expect(await openCompleteFeatureGraphSource(page)).toHaveValue(smokeFeatureDSLSource)
+  expect(fixture.state.parametricArtifactSourceCode).toBe(smokeFeatureDSLSource)
+  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_1')
+
   await page.getByRole('button', { name: 'Redo' }).click()
   await expect.poll(() => fixture.state.redoCount).toBe(1)
-  await expect(await openParameterEditor(page)).toHaveValue('mvr_smoke_2')
-  await expect(await openCompleteFeatureGraphSource(page)).toHaveValue(smokeUpdatedFeatureDSLSource)
-  await expect
-    .poll(() => page.locator('[data-model-preview] canvas').first().evaluate((canvas) => canvas.getAttribute('data-litecad-stable-canvas')))
-    .toBe('saved-parameter-edit')
+  expect(fixture.state.parametricArtifactSourceCode).toBe(smokeUpdatedFeatureDSLSource)
+  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_2')
+
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
   await page.getByRole('option', { name: 'Smoke bracket' }).click()
-  await expect(page.getByLabel('width value')).toHaveValue('60')
-  await expect(await openCompleteFeatureGraphSource(page)).toHaveValue(smokeUpdatedFeatureDSLSource)
-  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
-
-  expect(browserErrors).toEqual([])
-})
-
-test('edits a stable nested feature node and restores it through history', async ({ page }) => {
-  test.slow()
-  const browserErrors = captureBrowserErrors(page)
-  const fixture = await installProjectAPIFixture(page)
-  fixture.state.parametricArtifactTitle = 'Nested boolean bracket'
-  fixture.state.parametricArtifactSourceCode = nestedBooleanFeatureDSLSource
-  fixture.state.savedModelID = 'mdl_nested_boolean_lcad'
-  fixture.state.savedModelFilename = 'nested-boolean-bracket.lcad.json'
-  fixture.seedSavedModel()
-
-  await page.goto(`/projects/${projectId}`)
-  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
-  await page.getByRole('option', { name: 'Nested boolean bracket' }).click()
-  await openModelStructure(page)
-  await expect(page.getByText('Model structure · 3 steps')).toBeVisible()
-  const nodeSource = await selectModelStructureStep(page, 'Cylinder')
-  await expect(nodeSource).toHaveValue(/"diameter": 4/)
-  await nodeSource.fill('{"id":"bore","type":"cylinder","origin":[20,12,-1],"diameter":6,"height":10}')
-  await expect(page.getByText('features/body/operands/bore')).toBeVisible()
-
-  const applyGraph = page.getByRole('button', { name: 'Apply changes' })
-  await expect(applyGraph).toBeEnabled()
-  await applyGraph.click()
-  await expect.poll(() => fixture.state.featureGraphUpdateCount).toBe(1)
-  expect(JSON.parse(fixture.state.parametricArtifactSourceCode).features[0].operands[1].diameter).toBe(6)
-
-  await page.getByRole('button', { name: 'Operation history' }).click()
-  await expect(page.getByText('Feature graph v1')).toBeVisible()
-  await expect(page.getByText('features/body/operands/bore · Updated')).toBeVisible()
-  await page.getByRole('button', { name: 'Operation history' }).click()
-
-  await page.getByRole('button', { name: 'Undo' }).click()
-  await expect.poll(() => fixture.state.undoCount).toBe(1)
-  await selectModelStructureStep(page, 'Cylinder')
-  await expect(page.getByRole('textbox', { name: 'Selected step source' })).toHaveValue(/"diameter": 4/)
-
-  await page.getByRole('button', { name: 'Redo' }).click()
-  await expect.poll(() => fixture.state.redoCount).toBe(1)
-  await selectModelStructureStep(page, 'Cylinder')
-  await expect(page.getByRole('textbox', { name: 'Selected step source' })).toHaveValue(/"diameter": 6/)
-
-  await page.reload()
-  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
-  await page.getByRole('option', { name: 'Nested boolean bracket' }).click()
-  await selectModelStructureStep(page, 'Cylinder')
-  await expect(page.getByRole('textbox', { name: 'Selected step source' })).toHaveValue(/"diameter": 6/)
-  await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
-  await expect(page.getByRole('button', { name: 'Export STEP' })).toBeEnabled()
-  await page.getByRole('button', { name: 'Export STEP' }).click()
-  await expect(page.getByRole('dialog', { name: 'Export STEP' })).toBeVisible()
-  await expect(page.getByText('1/1 selected')).toBeVisible()
-
+  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_2')
+  await expect(page.getByRole('region', { name: 'Parametric artifact' }).getByRole('button', { name: 'Advanced editing' })).toBeHidden()
   expect(browserErrors).toEqual([])
 })
 
@@ -222,9 +151,7 @@ test('generates a sphere with X Y Z through holes through the mock provider work
 
   await page.getByRole('button', { name: 'Toggle Assistant' }).click()
   await expect(page.getByText('0 project sources attached')).toBeVisible()
-  await page
-    .getByLabel('Message Assistant')
-    .fill('创建一个直径 30mm 的球体，xyz 轴每根轴线上都有一个直径 5mm 的通孔')
+  await page.getByLabel('Message Assistant').fill('创建一个直径 30mm 的球体，xyz 轴每根轴线上都有一个直径 5mm 的通孔')
   await page.getByRole('button', { name: 'Generate parametric model' }).click()
 
   await expect(page.getByRole('heading', { name: 'Ball with XYZ through holes' })).toBeVisible()
@@ -261,9 +188,7 @@ test('generates previews saves and exposes STEP export for a chamfered box', asy
   await page.goto(`/projects/${projectId}`)
   await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
   await page.getByRole('button', { name: 'Toggle Assistant' }).click()
-  await page
-    .getByLabel('Message Assistant')
-    .fill('Create a 40 by 24 by 12 millimeter box with a 1 millimeter chamfer')
+  await page.getByLabel('Message Assistant').fill('Create a 40 by 24 by 12 millimeter box with a 1 millimeter chamfer')
   await page.getByRole('button', { name: 'Generate parametric model' }).click()
 
   await expect(page.getByRole('heading', { name: 'Chamfered box' })).toBeVisible()
@@ -331,14 +256,8 @@ test('shows Assistant parametric progress and failure recovery guidance', async 
 
   const assistantForm = page.locator('form')
   await expect(page.getByText('Generation needs attention')).toBeVisible()
-  await expect(
-    assistantForm.getByText('The AI provider returned a model draft LiteCAD could not validate. Retry generation with a more specific prompt.'),
-  ).toBeVisible()
-  await expect(
-    assistantForm.getByText(
-      'No canvas changes were made. Retry sends the same prompt again; edit the prompt below if the request needs more detail.',
-    ),
-  ).toBeVisible()
+  await expect(assistantForm.getByText('The AI provider returned a model draft LiteCAD could not validate. Retry generation with a more specific prompt.')).toBeVisible()
+  await expect(assistantForm.getByText('No canvas changes were made. Retry sends the same prompt again; edit the prompt below if the request needs more detail.')).toBeVisible()
   await expect(assistantForm.getByText('Last prompt:')).toBeVisible()
   await expect(assistantForm.getByRole('button', { name: 'Retry generation' })).toBeVisible()
 

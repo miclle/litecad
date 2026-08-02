@@ -126,6 +126,8 @@ export type ProjectAPIFixtureState = {
   models: unknown[]
   parametricArtifactTitle: string
   parametricArtifactSourceCode: string
+  generatedArtifactSourceCode: string
+  parametricRunActiveModelID: string
   savedModelID: string
   savedModelFilename: string
   featureDSLSourceRequestCount: number
@@ -187,6 +189,8 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
     models: [],
     parametricArtifactTitle: 'Smoke bracket',
     parametricArtifactSourceCode: smokeFeatureDSLSource,
+    generatedArtifactSourceCode: '',
+    parametricRunActiveModelID: '',
     savedModelID: 'mdl_smoke_lcad',
     savedModelFilename: 'smoke-bracket-litecad.lcad.json',
     featureDSLSourceRequestCount: 0,
@@ -371,7 +375,7 @@ function parametricArtifact(state: ProjectAPIFixtureState) {
   return {
     ...smokeParametricArtifact,
     title: state.parametricArtifactTitle,
-    source_code: state.parametricArtifactSourceCode,
+    source_code: state.generatedArtifactSourceCode || state.parametricArtifactSourceCode,
   }
 }
 
@@ -682,7 +686,8 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
     return
   }
   if (request.method() === 'POST' && pathname === `/api/v1/projects/${projectId}/agent/conversations/agc_smoke/parametric-runs`) {
-    const requestBody = request.postDataJSON() as { message?: string }
+    const requestBody = request.postDataJSON() as { active_model_id?: string; message?: string }
+    state.parametricRunActiveModelID = requestBody.active_model_id ?? ''
     if (state.parametricRunDelayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, state.parametricRunDelayMs))
     }

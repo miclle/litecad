@@ -34,42 +34,40 @@ type ProjectWorkbenchSidebarProps = {
   isLeftPanelCollapsed: boolean
   isModelTreeLoading: boolean
   isUploading: boolean
-  isFeatureGraphSaving?: boolean
   generatedArtifactRevisionTargetModelID?: string
-	isOccurrenceMutationPending?: boolean
+  isOccurrenceMutationPending?: boolean
   isSubassemblyMutationPending?: boolean
   leftPanelWidth: number
   modelCount: number
   onCollapseChange: (isCollapsed: boolean) => void
-	onDeleteOccurrence?: (occurrenceId: string) => void
-	onDeleteAssemblyConstraint?: (constraintId: string) => void
-	onCreateAssemblyGroup?: (name: string, parentGroupId: string) => void
-	onDeleteAssemblyGroup?: (groupId: string) => void
-	onDuplicateOccurrence?: (occurrenceId: string) => void
-	onMoveOccurrence?: (occurrenceId: string, targetIndex: number) => void
+  onDeleteOccurrence?: (occurrenceId: string) => void
+  onDeleteAssemblyConstraint?: (constraintId: string) => void
+  onCreateAssemblyGroup?: (name: string, parentGroupId: string) => void
+  onDeleteAssemblyGroup?: (groupId: string) => void
+  onDuplicateOccurrence?: (occurrenceId: string) => void
+  onMoveOccurrence?: (occurrenceId: string, targetIndex: number) => void
   onCaptureSubassembly?: (payload: CaptureCADSubassemblyPayload) => void
   onInstantiateSubassembly?: (definitionID: string, payload: InstantiateCADSubassemblyPayload) => Promise<void>
-	onModelSelect: (modelId: string, nodeId: string, occurrenceId?: string) => void
+  onModelSelect: (modelId: string, nodeId: string, occurrenceId?: string) => void
   onParameterValuesChange: (modelId: string, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onApplyGeneratedArtifactToModel?: (modelId: string, artifact: ProjectParametricArtifact, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
   onSaveGeneratedArtifactAsModel: (artifact: ProjectParametricArtifact, parameterValues: Record<string, OpenSCADParameterValue>) => void
-  onSaveFeatureGraph?: (modelId: string, sourceCode: string) => void
   onSaveModelParameters: (modelId: string, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onRestoreModelRevision?: (modelId: string, revisionId: string) => void
   onToggleModelVisibility: (modelId: string) => void
   onUpdateAssemblyGroup?: (groupId: string, payload: UpdateCADAssemblyGroupPayload) => void
   onUpdateOccurrence?: (occurrenceId: string, payload: UpdateCADAssemblyOccurrencePayload) => void
-	occurrenceError?: string
-	constraintError?: string
-	subassemblyError?: string
-	isAssemblyConstraintMutationPending?: boolean
+  occurrenceError?: string
+  constraintError?: string
+  subassemblyError?: string
+  isAssemblyConstraintMutationPending?: boolean
   onTransformChange: (nodeId: string, axis: keyof CADTranslation, value: string) => void
   previewAssetModelIds: ReadonlySet<string>
   projectModelTree: ProjectModelTreeGroup[]
   selectedGeneratedArtifact?: ProjectParametricArtifact
   selectedNodeId: string
-	selectedOccurrenceId?: string
+  selectedOccurrenceId?: string
   selectedSavedArtifact?: ProjectParametricArtifact
   selectedSavedModelRevisionID?: string
   selectedSavedModelRevisionSequence?: number
@@ -91,19 +89,18 @@ export function ProjectWorkbenchSidebar({
   isLeftPanelCollapsed,
   isModelTreeLoading,
   isUploading,
-  isFeatureGraphSaving = false,
   generatedArtifactRevisionTargetModelID = '',
-	isOccurrenceMutationPending,
+  isOccurrenceMutationPending,
   isSubassemblyMutationPending,
   leftPanelWidth,
   modelCount,
   onCollapseChange,
-	onDeleteOccurrence,
-	onDeleteAssemblyConstraint,
-	onCreateAssemblyGroup,
-	onDeleteAssemblyGroup,
-	onDuplicateOccurrence,
-	onMoveOccurrence,
+  onDeleteOccurrence,
+  onDeleteAssemblyConstraint,
+  onCreateAssemblyGroup,
+  onDeleteAssemblyGroup,
+  onDuplicateOccurrence,
+  onMoveOccurrence,
   onCaptureSubassembly,
   onInstantiateSubassembly,
   onModelSelect,
@@ -111,22 +108,21 @@ export function ProjectWorkbenchSidebar({
   onApplyGeneratedArtifactToModel,
   onResizePointerDown,
   onSaveGeneratedArtifactAsModel,
-  onSaveFeatureGraph,
   onSaveModelParameters,
   onRestoreModelRevision,
   onToggleModelVisibility,
   onUpdateAssemblyGroup,
   onUpdateOccurrence,
-	occurrenceError,
-	constraintError,
-	subassemblyError,
-	isAssemblyConstraintMutationPending,
+  occurrenceError,
+  constraintError,
+  subassemblyError,
+  isAssemblyConstraintMutationPending,
   onTransformChange,
   previewAssetModelIds,
   projectModelTree,
   selectedGeneratedArtifact,
   selectedNodeId,
-	selectedOccurrenceId = '',
+  selectedOccurrenceId = '',
   selectedSavedArtifact,
   selectedSavedModelRevisionID,
   selectedSavedModelRevisionSequence,
@@ -150,9 +146,7 @@ export function ProjectWorkbenchSidebar({
           <Box className="size-3.5 shrink-0 text-[#0f172a]" />
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <p className="truncate text-sm font-semibold text-[#0f172a]">{t('project.sidebar.project')}</p>
-            <span className="shrink-0 rounded bg-[#eff6ff] px-1.5 py-0.5 text-[11px] font-medium leading-none text-[#0074d9]">
-              {t('project.sidebar.modelCount', { count: modelCount })}
-            </span>
+            <span className="shrink-0 rounded bg-[#eff6ff] px-1.5 py-0.5 text-[11px] font-medium leading-none text-[#0074d9]">{t('project.sidebar.modelCount', { count: modelCount })}</span>
           </div>
           <button
             aria-label={t('project.sidebar.expand')}
@@ -198,39 +192,31 @@ export function ProjectWorkbenchSidebar({
               isOccurrenceMutationPending={isOccurrenceMutationPending}
               isSubassemblyMutationPending={isSubassemblyMutationPending}
               onCaptureSubassembly={onCaptureSubassembly}
-						onCreateAssemblyGroup={onCreateAssemblyGroup}
-						onDeleteAssemblyGroup={onDeleteAssemblyGroup}
-						onDeleteOccurrence={onDeleteOccurrence}
-						onDuplicateOccurrence={onDuplicateOccurrence}
-						onMoveOccurrence={onMoveOccurrence}
+              onCreateAssemblyGroup={onCreateAssemblyGroup}
+              onDeleteAssemblyGroup={onDeleteAssemblyGroup}
+              onDeleteOccurrence={onDeleteOccurrence}
+              onDuplicateOccurrence={onDuplicateOccurrence}
+              onMoveOccurrence={onMoveOccurrence}
               onSelect={onModelSelect}
               onToggleVisibility={onToggleModelVisibility}
               onUpdateAssemblyGroup={onUpdateAssemblyGroup}
               onUpdateOccurrence={onUpdateOccurrence}
-						occurrenceError={occurrenceError}
+              occurrenceError={occurrenceError}
               previewAssetModelIds={previewAssetModelIds}
               selectedNodeId={selectedNodeId}
-						selectedOccurrenceId={selectedOccurrenceId}
+              selectedOccurrenceId={selectedOccurrenceId}
               uploadError={uploadError}
             />
 
             {subassemblyError ? (
-              <p className="mt-2 px-2 py-1 text-xs text-destructive" role="alert">{subassemblyError}</p>
+              <p className="mt-2 px-2 py-1 text-xs text-destructive" role="alert">
+                {subassemblyError}
+              </p>
             ) : null}
 
-            <ProjectSubassemblies
-              definitions={assemblySubassemblies}
-              isPending={isSubassemblyMutationPending}
-              onInstantiate={onInstantiateSubassembly}
-            />
+            <ProjectSubassemblies definitions={assemblySubassemblies} isPending={isSubassemblyMutationPending} onInstantiate={onInstantiateSubassembly} />
 
-            <ProjectAssemblyConstraints
-              constraints={assemblyConstraints}
-              error={constraintError}
-              isPending={isAssemblyConstraintMutationPending}
-              occurrences={assemblyOccurrences}
-              onDelete={onDeleteAssemblyConstraint}
-            />
+            <ProjectAssemblyConstraints constraints={assemblyConstraints} error={constraintError} isPending={isAssemblyConstraintMutationPending} occurrences={assemblyOccurrences} onDelete={onDeleteAssemblyConstraint} />
 
             {selectedGeneratedArtifact ? (
               <ParametricArtifactEditor
@@ -250,28 +236,16 @@ export function ProjectWorkbenchSidebar({
                 currentRevisionID={selectedSavedModelRevisionID}
                 currentRevisionSequence={selectedSavedModelRevisionSequence}
                 initialParameterValues={selectedSavedArtifact.parameter_values}
-                isFeatureGraphSaving={isFeatureGraphSaving}
                 isRevisionRestorePending={isRevisionRestorePending}
                 modelRevisions={selectedModelRevisions}
                 onParameterValuesChange={(parameterValues) => onParameterValuesChange(selectedSavedArtifact.preview_model_id, parameterValues)}
                 onSaveParameters={(parameterValues) => onSaveModelParameters(selectedSavedArtifact.preview_model_id, parameterValues)}
                 onRestoreRevision={(revisionID) => onRestoreModelRevision?.(selectedSavedArtifact.preview_model_id, revisionID)}
-                onSaveFeatureGraph={
-                  onSaveFeatureGraph
-                    ? (sourceCode) => onSaveFeatureGraph(selectedSavedArtifact.preview_model_id, sourceCode)
-                    : undefined
-                }
               />
             ) : null}
 
             {!selectedGeneratedArtifact && (!selectedSavedArtifact || inspectorSelection) ? (
-              <ProjectInspector
-                documentDetails={documentDetails}
-                modelCount={modelCount}
-                onTransformChange={onTransformChange}
-                selected={inspectorSelection}
-                unitLabel={unitLabel}
-              />
+              <ProjectInspector documentDetails={documentDetails} modelCount={modelCount} onTransformChange={onTransformChange} selected={inspectorSelection} unitLabel={unitLabel} />
             ) : null}
           </div>
         </>
