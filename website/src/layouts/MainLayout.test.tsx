@@ -133,7 +133,7 @@ describe('MainLayout', () => {
     accountTrigger.focus()
     await user.keyboard('{Enter}')
 
-    expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Create project' }))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Create project' })))
   })
 
   test('signs out from the projects page and clears account-scoped cache data', async () => {
