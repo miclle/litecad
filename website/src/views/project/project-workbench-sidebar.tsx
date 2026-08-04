@@ -10,7 +10,6 @@ import type {
   CADSubassemblyDefinitionRevision,
   CaptureCADSubassemblyPayload,
   InstantiateCADSubassemblyPayload,
-  ProjectModelRevision,
   ProjectParametricArtifact,
   UpdateCADAssemblyGroupPayload,
   UpdateCADAssemblyOccurrencePayload,
@@ -54,7 +53,6 @@ type ProjectWorkbenchSidebarProps = {
   onResizePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
   onSaveGeneratedArtifactAsModel: (artifact: ProjectParametricArtifact, parameterValues: Record<string, OpenSCADParameterValue>) => void
   onSaveModelParameters: (modelId: string, parameterValues: Record<string, OpenSCADParameterValue>) => void
-  onRestoreModelRevision?: (modelId: string, revisionId: string) => void
   onToggleModelVisibility: (modelId: string) => void
   onUpdateAssemblyGroup?: (groupId: string, payload: UpdateCADAssemblyGroupPayload) => void
   onUpdateOccurrence?: (occurrenceId: string, payload: UpdateCADAssemblyOccurrencePayload) => void
@@ -69,10 +67,6 @@ type ProjectWorkbenchSidebarProps = {
   selectedNodeId: string
   selectedOccurrenceId?: string
   selectedSavedArtifact?: ProjectParametricArtifact
-  selectedSavedModelRevisionID?: string
-  selectedSavedModelRevisionSequence?: number
-  selectedModelRevisions?: ProjectModelRevision[]
-  isRevisionRestorePending?: boolean
   unitLabel: string
   uploadError: string
 }
@@ -109,7 +103,6 @@ export function ProjectWorkbenchSidebar({
   onResizePointerDown,
   onSaveGeneratedArtifactAsModel,
   onSaveModelParameters,
-  onRestoreModelRevision,
   onToggleModelVisibility,
   onUpdateAssemblyGroup,
   onUpdateOccurrence,
@@ -124,10 +117,6 @@ export function ProjectWorkbenchSidebar({
   selectedNodeId,
   selectedOccurrenceId = '',
   selectedSavedArtifact,
-  selectedSavedModelRevisionID,
-  selectedSavedModelRevisionSequence,
-  selectedModelRevisions = [],
-  isRevisionRestorePending = false,
   unitLabel,
   uploadError,
 }: ProjectWorkbenchSidebarProps) {
@@ -233,14 +222,9 @@ export function ProjectWorkbenchSidebar({
             ) : selectedSavedArtifact ? (
               <ParametricArtifactEditor
                 artifact={selectedSavedArtifact}
-                currentRevisionID={selectedSavedModelRevisionID}
-                currentRevisionSequence={selectedSavedModelRevisionSequence}
                 initialParameterValues={selectedSavedArtifact.parameter_values}
-                isRevisionRestorePending={isRevisionRestorePending}
-                modelRevisions={selectedModelRevisions}
                 onParameterValuesChange={(parameterValues) => onParameterValuesChange(selectedSavedArtifact.preview_model_id, parameterValues)}
                 onSaveParameters={(parameterValues) => onSaveModelParameters(selectedSavedArtifact.preview_model_id, parameterValues)}
-                onRestoreRevision={(revisionID) => onRestoreModelRevision?.(selectedSavedArtifact.preview_model_id, revisionID)}
               />
             ) : null}
 

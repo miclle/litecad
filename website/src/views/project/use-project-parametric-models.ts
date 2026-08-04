@@ -1,7 +1,7 @@
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { fetchProjectModelRevisions, fetchProjectModelSource } from 'src/api/projects'
+import { fetchProjectModelSource } from 'src/api/projects'
 import { runFeatureDSLPreviewInWorker, type CadKernelWorkerPreviewResult } from 'src/cad/kernel-worker-client'
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
 import type { ProjectModel, ProjectParametricArtifact } from 'src/types/project'
@@ -30,11 +30,6 @@ export function useProjectParametricModels({
   const selectedSourceQuery = useQuery({
     queryKey: ['projects', projectId, 'models', selectedSourceModelID, 'parametric-source'],
     queryFn: async () => (await fetchProjectModelSource(projectId, selectedSourceModelID)).data.text(),
-    enabled: projectId !== '' && isParametricProjectModelFormat(selectedSourceModel?.format) && !selectedArtifact,
-  })
-  const selectedModelRevisionsQuery = useQuery({
-    queryKey: ['projects', projectId, 'models', selectedSourceModelID, 'revisions'],
-    queryFn: async () => (await fetchProjectModelRevisions(projectId, selectedSourceModelID)).data.revisions,
     enabled: projectId !== '' && isParametricProjectModelFormat(selectedSourceModel?.format) && !selectedArtifact,
   })
   const selectedSavedArtifact = useMemo<ProjectParametricArtifact | undefined>(() => {
@@ -166,8 +161,6 @@ export function useProjectParametricModels({
     parameterOverridesByModelID,
     previewModels,
     selectedSavedArtifact,
-    selectedModelRevisions: selectedModelRevisionsQuery.data ?? [],
-    selectedModelRevisionsPending: selectedModelRevisionsQuery.isPending,
     updatePreviewParameters,
   }
 }

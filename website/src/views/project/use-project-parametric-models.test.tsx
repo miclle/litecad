@@ -3,12 +3,12 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fetchProjectModelRevisions, fetchProjectModelSource } from 'src/api/projects'
+import { fetchProjectModelSource } from 'src/api/projects'
 import { runFeatureDSLPreviewInWorker } from 'src/cad/kernel-worker-client'
 import type { ProjectModel } from 'src/types/project'
 import { useProjectParametricModels } from './use-project-parametric-models'
 
-vi.mock('src/api/projects', () => ({ fetchProjectModelRevisions: vi.fn(), fetchProjectModelSource: vi.fn() }))
+vi.mock('src/api/projects', () => ({ fetchProjectModelSource: vi.fn() }))
 vi.mock('src/cad/kernel-worker-client', () => ({ runFeatureDSLPreviewInWorker: vi.fn() }))
 
 const projectId = 'project_parametric'
@@ -58,9 +58,6 @@ describe('useProjectParametricModels', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(fetchProjectModelSource).mockResolvedValue({ data: new Blob([sourceCode]) } as Awaited<ReturnType<typeof fetchProjectModelSource>>)
-    vi.mocked(fetchProjectModelRevisions).mockResolvedValue(
-      { data: { revisions: [] } } as unknown as Awaited<ReturnType<typeof fetchProjectModelRevisions>>,
-    )
     vi.mocked(runFeatureDSLPreviewInWorker).mockResolvedValue({
       mesh: { positions: [0, 0, 0], normals: [0, 0, 1], indices: [0] },
       meshSummary: { vertexCount: 1, triangleCount: 0, hasNormals: true },
@@ -86,6 +83,7 @@ describe('useProjectParametricModels', () => {
       preview_model_id: model.id,
       parameter_values: { width: 20 },
     })
+    await waitFor(() => expect(result.current.kernelMeshesByModelID[model.id]).toBeDefined())
   })
 
   it('applies local parameter overrides to the preview model without mutating server data', async () => {
@@ -133,5 +131,6 @@ describe('useProjectParametricModels', () => {
     rerender({ projectModel: restoredModel })
 
     await waitFor(() => expect(result.current.previewModels[0]?.metadata.parameter_values).toEqual({ width: 12 }))
+    await waitFor(() => expect(result.current.kernelMeshesByModelID[model.id]).toBeDefined())
   })
 })

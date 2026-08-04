@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { ProjectModelRevision, ProjectParametricArtifact } from 'src/types/project'
+import type { ProjectParametricArtifact } from 'src/types/project'
 import { ParametricArtifactEditor } from './parametric-artifact-editor'
 
 const artifact = {
@@ -28,25 +28,6 @@ afterEach(() => {
 })
 
 describe('ParametricArtifactEditor', () => {
-  it('shows immutable model revisions and requests a restore when another version is selected', () => {
-    const onRestoreRevision = vi.fn()
-    render(
-      <ParametricArtifactEditor
-        artifact={artifact}
-        currentRevisionID="mvr_second"
-        currentRevisionSequence={2}
-        modelRevisions={[modelRevision('mvr_second', 2, true), modelRevision('mvr_first', 1, false)]}
-        onRestoreRevision={onRestoreRevision}
-      />,
-    )
-
-    fireEvent.change(screen.getByRole('combobox', { name: 'Version' }), {
-      target: { value: 'mvr_first' },
-    })
-    expect(onRestoreRevision).toHaveBeenCalledWith('mvr_first')
-    expect(screen.getByText('r2')).not.toBeNull()
-  })
-
   it('keeps persisted generation telemetry out of the normal inspector controls', async () => {
     const compile = vi.fn()
     const generatedArtifact = {
@@ -367,27 +348,3 @@ describe('ParametricArtifactEditor', () => {
     })
   })
 })
-
-function modelRevision(id: string, sequence: number, isCurrent: boolean): ProjectModelRevision {
-  return {
-    id,
-    project_id: 'prj_one',
-    model_id: 'mdl_one',
-    sequence,
-    byte_size: 120,
-    metadata: {
-      asset_type: 'lcad',
-      version: '1',
-      schema: 'litecad-feature-dsl',
-      product_names: ['Bracket'],
-      length_unit: 'millimetre',
-      entity_count: 1,
-      representation_count: 1,
-      triangle_count: 12,
-    },
-    content_checksum: `checksum-${sequence}`,
-    summary: sequence === 1 ? 'Initial model source' : 'Updated parametric parameters',
-    is_current: isCurrent,
-    created_at: '2026-07-14T00:00:00Z',
-  }
-}

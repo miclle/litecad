@@ -484,9 +484,6 @@ const resources = {
         parametric: {
           artifact: 'Parametric artifact',
           parameters: 'Parameters',
-          version: 'Version',
-          versionOption: 'Revision {{sequence}}',
-          currentVersion: 'r{{sequence}}',
           saveAsModel: 'Save as model',
           value: '{{name}} value',
           parameter: '{{name}} parameter',
@@ -1024,9 +1021,6 @@ const resources = {
         parametric: {
           artifact: '参数化产物',
           parameters: '参数',
-          version: '版本',
-          versionOption: '版本 {{sequence}}',
-          currentVersion: 'r{{sequence}}',
           saveAsModel: '保存为模型',
           value: '{{name}} 的值',
           parameter: '{{name}} 参数',

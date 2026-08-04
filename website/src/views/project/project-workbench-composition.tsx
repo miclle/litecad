@@ -247,12 +247,6 @@ export function ProjectWorkbenchComposition({
               parameterValues,
             })
           }
-          onRestoreModelRevision={(modelID, revisionID) =>
-            parametricModelCommands.restoreModelRevision({
-              modelID,
-              revisionID,
-            })
-          }
           onToggleModelVisibility={visibilityState.toggleModelVisibility}
           onUpdateAssemblyGroup={cadDocumentCommands.updateAssemblyGroup}
           onUpdateOccurrence={cadDocumentCommands.updateOccurrence}
@@ -266,10 +260,6 @@ export function ProjectWorkbenchComposition({
           selectedNodeId={effectiveSelectedDocumentNodeID}
           selectedOccurrenceId={effectiveSelectedOccurrenceID}
           selectedSavedArtifact={modelState.parametricModels.selectedSavedArtifact}
-          selectedSavedModelRevisionID={selectedSourceModel?.current_revision_id}
-          selectedSavedModelRevisionSequence={selectedSourceModel?.revision_sequence}
-          selectedModelRevisions={modelState.parametricModels.selectedModelRevisions}
-          isRevisionRestorePending={parametricModelCommands.isRestoringModelRevision}
           unitLabel={inspectorState.documentUnitLabel}
           uploadError={projectModelUpload.uploadError}
         />

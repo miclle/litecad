@@ -46,7 +46,6 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
   await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
   await page.getByRole('option', { name: 'Smoke bracket' }).click()
   await expect(page.getByLabel('width value')).toHaveValue('60')
-  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_1')
   const savedModelInspector = page.getByRole('region', {
     name: 'Parametric artifact',
   })
@@ -62,18 +61,14 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
   await expect(page.getByLabel('width value')).toHaveValue('90')
   await expect.poll(() => fixture.state.modelParameterUpdateCount).toBe(modelParameterUpdatesBefore + 1)
   expect(fixture.state.savedParameterValues).toEqual({ width: 90 })
-  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_2')
   await page.setViewportSize({ width: 1024, height: 768 })
-  const versionSelectorBounds = await page.getByRole('combobox', { name: 'Version' }).boundingBox()
+  const savedParameterBounds = await page.getByLabel('width value').boundingBox()
   const savedInspectorBounds = await savedModelInspector.boundingBox()
-  expect(versionSelectorBounds).not.toBeNull()
+  expect(savedParameterBounds).not.toBeNull()
   expect(savedInspectorBounds).not.toBeNull()
-  expect(versionSelectorBounds!.x + versionSelectorBounds!.width).toBeLessThanOrEqual(savedInspectorBounds!.x + savedInspectorBounds!.width + 1)
-  await page.getByRole('combobox', { name: 'Version' }).selectOption('mvr_smoke_1')
-  await expect.poll(() => fixture.state.modelRevisionRestoreCount).toBe(1)
-  await expect(page.getByLabel('width value')).toHaveValue('60')
+  expect(savedParameterBounds!.x + savedParameterBounds!.width).toBeLessThanOrEqual(savedInspectorBounds!.x + savedInspectorBounds!.width + 1)
   await page.getByRole('button', { name: 'Operation history' }).click()
-  await expect(page.getByText('Restore smoke-bracket-litecad.lcad.json revision 1')).toBeVisible()
+  await expect(page.getByText('Update parameters for smoke-bracket-litecad.lcad.json')).toBeVisible()
   await page.getByRole('button', { name: 'Operation history' }).click()
   await expect(savedModelInspector.getByRole('button', { name: 'Advanced editing' })).toBeHidden()
   await expect
@@ -87,10 +82,24 @@ test('runs the Assistant draft, save, parameter edit, and reload workflow', asyn
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
   await page.getByRole('option', { name: 'Smoke bracket' }).click()
-  await expect(page.getByLabel('width value')).toHaveValue('60')
+  await expect(page.getByLabel('width value')).toHaveValue('90')
   await expect(page.getByRole('region', { name: 'Parametric artifact' }).getByRole('button', { name: 'Advanced editing' })).toBeHidden()
   await expect(page.locator('[data-model-preview]')).toHaveAttribute('data-preview-asset-count', '1')
 
+  expect(browserErrors).toEqual([])
+})
+
+test('keeps the saved-model Inspector focused on parameters', async ({ page }) => {
+  const browserErrors = captureBrowserErrors(page)
+  const fixture = await installProjectAPIFixture(page)
+  fixture.seedSavedModel()
+
+  await page.goto(`/projects/${projectId}`)
+  await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
+  await page.getByRole('option', { name: 'Smoke bracket' }).click()
+
+  await expect(page.getByLabel('width value')).toHaveValue('60')
+  await expect(page.getByRole('combobox', { name: 'Version' })).toBeHidden()
   expect(browserErrors).toEqual([])
 })
 
@@ -111,7 +120,7 @@ test('revises a selected saved model through Assistant and restores it through h
   await expect.poll(() => fixture.state.featureGraphUpdateCount).toBe(1)
   expect(fixture.state.parametricRunActiveModelID).toBe('mdl_smoke_lcad')
   expect(fixture.state.parametricArtifactSourceCode).toBe(smokeUpdatedFeatureDSLSource)
-  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_2')
+  expect(fixture.state.currentModelRevisionID).toBe('mvr_smoke_2')
 
   await page.getByRole('button', { name: 'Operation history' }).click()
   await expect(page.getByText('Update feature graph for smoke-bracket-litecad.lcad.json')).toBeVisible()
@@ -122,17 +131,16 @@ test('revises a selected saved model through Assistant and restores it through h
   await page.getByRole('button', { name: 'Undo' }).click()
   await expect.poll(() => fixture.state.undoCount).toBe(1)
   expect(fixture.state.parametricArtifactSourceCode).toBe(smokeFeatureDSLSource)
-  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_1')
+  expect(fixture.state.currentModelRevisionID).toBe('mvr_smoke_1')
 
   await page.getByRole('button', { name: 'Redo' }).click()
   await expect.poll(() => fixture.state.redoCount).toBe(1)
   expect(fixture.state.parametricArtifactSourceCode).toBe(smokeUpdatedFeatureDSLSource)
-  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_2')
+  expect(fixture.state.currentModelRevisionID).toBe('mvr_smoke_2')
 
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Workbench Smoke' })).toBeVisible()
   await page.getByRole('option', { name: 'Smoke bracket' }).click()
-  await expect(page.getByRole('combobox', { name: 'Version' })).toHaveValue('mvr_smoke_2')
   await expect(page.getByRole('region', { name: 'Parametric artifact' }).getByRole('button', { name: 'Advanced editing' })).toBeHidden()
   expect(browserErrors).toEqual([])
 })

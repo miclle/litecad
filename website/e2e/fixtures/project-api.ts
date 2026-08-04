@@ -142,7 +142,6 @@ export type ProjectAPIFixtureState = {
   featureGraphAfterRevisionSequence: number
   historyEntries: unknown[]
   modelParameterUpdateCount: number
-  modelRevisionRestoreCount: number
   modelRevisionSequence: number
   currentModelRevisionID: string
   savedParameterValues: Record<string, unknown>
@@ -205,7 +204,6 @@ export function createProjectFixtureState(): ProjectAPIFixtureState {
     featureGraphAfterRevisionSequence: 0,
     historyEntries: [],
     modelParameterUpdateCount: 0,
-    modelRevisionRestoreCount: 0,
     modelRevisionSequence: 1,
     currentModelRevisionID: 'mvr_smoke_1',
     savedParameterValues: {},
@@ -751,68 +749,6 @@ async function fulfillAPI(route: Route, state: ProjectAPIFixtureState) {
       await route.fulfill({ json: { message: 'artifact was not compiled before save' }, status: 400 })
       return
     }
-    state.models = [smokeSavedModel(state)]
-    await route.fulfill({ json: { model: smokeSavedModel(state) } })
-    return
-  }
-  if (request.method() === 'GET' && pathname === `/api/v1/projects/${projectId}/models/${state.savedModelID}/revisions`) {
-    const currentModel = smokeSavedModel(state)
-    const currentHistoryCommand = (state.historyEntries[0] as { command_type?: string } | undefined)?.command_type
-    const revisions = [
-      {
-        id: state.currentModelRevisionID,
-        project_id: projectId,
-        model_id: state.savedModelID,
-        parent_revision_id: state.modelRevisionSequence > 1 ? 'mvr_smoke_1' : '',
-        sequence: state.modelRevisionSequence,
-        byte_size: state.parametricArtifactSourceCode.length,
-        metadata: currentModel.metadata,
-        content_checksum: `checksum-${state.modelRevisionSequence}`,
-        summary:
-          state.modelRevisionSequence > 1
-            ? currentHistoryCommand === 'feature-graph-change'
-              ? 'Updated Feature DSL graph'
-              : 'Updated parametric parameters'
-            : 'Initial model source',
-        is_current: true,
-        created_at: now,
-      },
-    ]
-    if (state.modelRevisionSequence > 1) {
-      revisions.push({
-        ...revisions[0],
-        id: 'mvr_smoke_1',
-        parent_revision_id: '',
-        sequence: 1,
-        metadata: { ...currentModel.metadata, parameter_values: {} },
-        content_checksum: 'checksum-1',
-        summary: 'Initial model source',
-        is_current: false,
-      })
-    }
-    await route.fulfill({ json: { revisions } })
-    return
-  }
-  if (
-    request.method() === 'POST' &&
-    pathname === `/api/v1/projects/${projectId}/models/${state.savedModelID}/revisions/mvr_smoke_1/restore`
-  ) {
-    state.savedParameterValues = {}
-    state.currentModelRevisionID = 'mvr_smoke_1'
-    state.modelRevisionSequence = 1
-    state.modelRevisionRestoreCount += 1
-    state.cadRevision += 1
-    state.historyEntries = [
-      {
-        id: 'hist_smoke_revision_restore',
-        sequence: 2,
-        status: 'applied',
-        command_type: 'model-revision-restore',
-        target_id: state.savedModelID,
-        summary: `Restore ${state.savedModelFilename} revision 1`,
-        created_at: now,
-      },
-    ]
     state.models = [smokeSavedModel(state)]
     await route.fulfill({ json: { model: smokeSavedModel(state) } })
     return

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { saveProjectParametricArtifactModel, restoreProjectModelRevision, updateProjectFeatureDSLGraph, updateProjectParametricArtifact, updateProjectParametricModelParameters } from 'src/api/projects'
+import { saveProjectParametricArtifactModel, updateProjectFeatureDSLGraph, updateProjectParametricArtifact, updateProjectParametricModelParameters } from 'src/api/projects'
 import type { OpenSCADParameterValue } from 'src/cad/openscad-protocol'
 import type { ProjectCADDocument, ProjectModel, ProjectParametricArtifact } from 'src/types/project'
 
@@ -25,11 +25,6 @@ type ApplyGeneratedArtifactToModelInput = {
 type SaveModelParametersInput = {
   modelID: string
   parameterValues: Record<string, OpenSCADParameterValue>
-}
-
-type RestoreModelRevisionInput = {
-  modelID: string
-  revisionID: string
 }
 
 export function useProjectWorkbenchParametricModelCommands({ onArtifactSaveError, onConflict, onModelSelected, projectId }: ProjectWorkbenchParametricModelCommandsOptions) {
@@ -154,34 +149,9 @@ export function useProjectWorkbenchParametricModelCommands({ onArtifactSaveError
     onError: handleModelMutationError,
   })
 
-  const restoreProjectModelRevisionMutation = useMutation({
-    mutationFn: async ({ modelID, revisionID }: RestoreModelRevisionInput) => (await restoreProjectModelRevision(projectId, modelID, revisionID, currentDocumentRevision())).data.model,
-    onSuccess: async (model: ProjectModel) => {
-      queryClient.removeQueries({
-        queryKey: ['projects', projectId, 'models', model.id, 'parametric-source'],
-      })
-      onModelSelected(model.id)
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ['projects', projectId, 'models'],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ['projects', projectId, 'models', model.id, 'revisions'],
-        }),
-        queryClient.invalidateQueries({ queryKey: documentQueryKey }),
-        queryClient.invalidateQueries({
-          queryKey: ['projects', projectId, 'cad-document', 'history'],
-        }),
-      ])
-    },
-    onError: handleModelMutationError,
-  })
-
   return {
     applyGeneratedArtifactToModel: applyGeneratedArtifactToModelMutation.mutate,
     saveGeneratedArtifactAsModel: saveProjectParametricArtifactMutation.mutate,
     saveModelParameters: updateProjectParametricModelParametersMutation.mutate,
-    restoreModelRevision: restoreProjectModelRevisionMutation.mutate,
-    isRestoringModelRevision: restoreProjectModelRevisionMutation.isPending,
   }
 }
